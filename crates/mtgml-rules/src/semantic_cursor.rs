@@ -293,6 +293,39 @@ impl SemanticValidationCursor {
             AuthoritativeRuleEventKind::StateBasedActionsApplied { actions } => {
                 self.apply_state_based_actions(actions)?
             }
+            AuthoritativeRuleEventKind::PriorityChanged { from, to } => {
+                if self.priority != *from || from == to {
+                    return Err(TransitionViolation::Priority);
+                }
+                match (*from, *to) {
+                    (
+                        PriorityState::None,
+                        PriorityState::HeldBy {
+                            consecutive_passes: 0,
+                            ..
+                        },
+                    )
+                    | (
+                        PriorityState::HeldBy {
+                            consecutive_passes: 0,
+                            ..
+                        },
+                        PriorityState::HeldBy {
+                            consecutive_passes: 1,
+                            ..
+                        },
+                    )
+                    | (
+                        PriorityState::HeldBy {
+                            consecutive_passes: 1,
+                            ..
+                        },
+                        PriorityState::None,
+                    ) => {}
+                    _ => return Err(TransitionViolation::Priority),
+                }
+                self.priority = *to;
+            }
             AuthoritativeRuleEventKind::RandomValueSampled {
                 stream,
                 bound,

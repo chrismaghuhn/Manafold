@@ -43,6 +43,10 @@ pub enum SemanticDeltaOperation {
     StateBasedActionsApplied {
         actions: Vec<crate::SbaSelectedActionV1>,
     },
+    PriorityChanged {
+        from: crate::PriorityState,
+        to: crate::PriorityState,
+    },
     RandomValueSampled {
         stream: RandomStreamKeyV1,
         bound: u64,

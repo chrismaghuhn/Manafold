@@ -137,3 +137,58 @@ pub fn magic_s3_a_ordered_sba_0_1_0_semantic_contract_id() -> SemanticContractId
     )
     .expect("generated canonical hex")
 }
+
+// magic_s3_b_basic_priority_0_1_0
+pub const SEMANTIC_CONTRACT_CATALOG_MAGIC_S3_B_BASIC_PRIORITY_0_1_0_RULES_CONTRACT_HEX: &str =
+    "873fe066abbb7b74b68d2eb16e2ba19ef488c70dfe2014f484db28f1be1a5804";
+pub const SEMANTIC_CONTRACT_CATALOG_MAGIC_S3_B_BASIC_PRIORITY_0_1_0_SEMANTIC_CONTRACT_HEX: &str =
+    "c480cbae69bf0496aff83bb973a859721bfa0f969351b33b3f0b09ee3f7c5498";
+
+pub fn magic_s3_b_basic_priority_0_1_0_rules_manifest() -> mtgml_model::RulesContractManifestV1 {
+    mtgml_model::RulesContractManifestV1 {
+        rules_authority: mtgml_model::RulesAuthorityV1::ComprehensiveRules {
+            snapshot_id: "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f".to_owned(),
+        },
+        capability_closure: Some(vec![
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/basic-priority".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/state-based-actions-combat".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/turn-structure".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/zone-incarnation".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+        ]),
+    }
+}
+
+pub fn magic_s3_b_basic_priority_0_1_0_semantic_manifest() -> mtgml_model::SemanticContractManifestV1
+{
+    mtgml_model::SemanticContractManifestV1 {
+        rules_contract_id: magic_s3_b_basic_priority_0_1_0_rules_contract_id(),
+        format_contract_id: None,
+        content_contract_id: None,
+    }
+}
+
+pub fn magic_s3_b_basic_priority_0_1_0_rules_contract_id() -> RulesContractIdV1 {
+    RulesContractIdV1::parse(
+        SEMANTIC_CONTRACT_CATALOG_MAGIC_S3_B_BASIC_PRIORITY_0_1_0_RULES_CONTRACT_HEX,
+    )
+    .expect("generated canonical hex")
+}
+
+pub fn magic_s3_b_basic_priority_0_1_0_semantic_contract_id() -> SemanticContractIdV1 {
+    SemanticContractIdV1::parse(
+        SEMANTIC_CONTRACT_CATALOG_MAGIC_S3_B_BASIC_PRIORITY_0_1_0_SEMANTIC_CONTRACT_HEX,
+    )
+    .expect("generated canonical hex")
+}

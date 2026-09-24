@@ -8,6 +8,8 @@ pub(crate) const MAGIC_TURN_STRUCTURE_SEMANTIC_CONTRACT_HEX: &str =
     "7e8f54f15bd27d16643422f6904a23ea2004cab1098b56f8cd842a2397ff42fe";
 pub(crate) const MAGIC_S3_A_SEMANTIC_CONTRACT_HEX: &str =
     "51efc0307d9ef8fc4fca46f8ea6e4ea5d5293cb8301c2a7917a590982079020e";
+pub(crate) const MAGIC_S3_B_SEMANTIC_CONTRACT_HEX: &str =
+    "c480cbae69bf0496aff83bb973a859721bfa0f969351b33b3f0b09ee3f7c5498";
 pub(crate) const SYNTHETIC_LEGACY_SEMANTIC_CONTRACT_HEX: &str =
     "66ccac959475370e641e853473cbdd7f88489399587794b43f66cfa0342b1be4";
 
@@ -18,6 +20,9 @@ pub(crate) fn magic_turn_structure_0_1_0_semantic_contract_id() -> SemanticContr
 pub(crate) fn magic_s3_a_ordered_sba_0_1_0_semantic_contract_id() -> SemanticContractIdV1 {
     SemanticContractIdV1::parse(MAGIC_S3_A_SEMANTIC_CONTRACT_HEX).expect("generated canonical hex")
 }
+pub(crate) fn magic_s3_b_basic_priority_0_1_0_semantic_contract_id() -> SemanticContractIdV1 {
+    SemanticContractIdV1::parse(MAGIC_S3_B_SEMANTIC_CONTRACT_HEX).expect("generated canonical hex")
+}
 pub(crate) fn synthetic_legacy_default_semantic_contract_id() -> SemanticContractIdV1 {
     SemanticContractIdV1::parse(SYNTHETIC_LEGACY_SEMANTIC_CONTRACT_HEX)
         .expect("generated canonical hex")
@@ -27,6 +32,7 @@ pub(crate) struct MagicExecutionProfile {
     admitted_contract: SemanticContractIdV1,
     turn_structure_0_1_0: bool,
     state_based_actions_combat_0_1_0: bool,
+    basic_priority_0_1_0: bool,
 }
 impl MagicExecutionProfile {
     pub(crate) fn allows_turn_structure_0_1_0(&self) -> bool {
@@ -35,7 +41,12 @@ impl MagicExecutionProfile {
     }
     pub(crate) fn allows_state_based_actions_combat_0_1_0(&self) -> bool {
         self.state_based_actions_combat_0_1_0
-            && self.admitted_contract == magic_s3_a_ordered_sba_0_1_0_semantic_contract_id()
+            && (self.admitted_contract == magic_s3_a_ordered_sba_0_1_0_semantic_contract_id()
+                || self.admitted_contract == magic_s3_b_basic_priority_0_1_0_semantic_contract_id())
+    }
+    pub(crate) fn allows_basic_priority_0_1_0(&self) -> bool {
+        self.basic_priority_0_1_0
+            && self.admitted_contract == magic_s3_b_basic_priority_0_1_0_semantic_contract_id()
     }
 }
 #[cfg(test)]
@@ -47,6 +58,7 @@ pub(crate) fn test_only_magic_execution_profile(
         admitted_contract,
         turn_structure_0_1_0,
         state_based_actions_combat_0_1_0: false,
+        basic_priority_0_1_0: false,
     }
 }
 pub(crate) fn magic_execution_profile(
@@ -57,6 +69,7 @@ pub(crate) fn magic_execution_profile(
             admitted_contract: semantic_contract_id,
             turn_structure_0_1_0: true,
             state_based_actions_combat_0_1_0: false,
+            basic_priority_0_1_0: false,
         });
     }
     if semantic_contract_id == magic_s3_a_ordered_sba_0_1_0_semantic_contract_id() {
@@ -64,6 +77,15 @@ pub(crate) fn magic_execution_profile(
             admitted_contract: semantic_contract_id,
             turn_structure_0_1_0: true,
             state_based_actions_combat_0_1_0: true,
+            basic_priority_0_1_0: false,
+        });
+    }
+    if semantic_contract_id == magic_s3_b_basic_priority_0_1_0_semantic_contract_id() {
+        return Some(MagicExecutionProfile {
+            admitted_contract: semantic_contract_id,
+            turn_structure_0_1_0: true,
+            state_based_actions_combat_0_1_0: true,
+            basic_priority_0_1_0: true,
         });
     }
     None

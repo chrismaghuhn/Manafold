@@ -528,6 +528,31 @@ fn validate_sba_batch_product(
         return Err(TransitionViolation::SbaBatch);
     }
     let (batch_index, actions) = batches[0];
+    let priority_open_tail = result.events.len() >= 3
+        && matches!(
+            result.events[result.events.len() - 2].event,
+            AuthoritativeRuleEventKind::PriorityChanged {
+                from: mtgml_state::PriorityState::None,
+                to: mtgml_state::PriorityState::HeldBy {
+                    player,
+                    consecutive_passes: 0,
+                }
+            } if player == result.next_state.core.active_player
+        )
+        && matches!(
+            result.events.last().map(|event| &event.event),
+            Some(AuthoritativeRuleEventKind::DecisionCreated { decision })
+                if result.next_state.execution.pending_decision.as_ref().is_some_and(|pending|
+                    pending.request.decision_id == *decision)
+        );
+    let semantic_event_end = if priority_open_tail {
+        result.events.len() - 2
+    } else {
+        result.events.len()
+    };
+    if semantic_event_end <= batch_index {
+        return Err(TransitionViolation::SbaBatch);
+    }
     let plan = crate::state_based_actions::derive_bounded_sba_round_plan(before)
         .map_err(|_| TransitionViolation::SbaBatch)?;
     if actions != &plan.selected_sba_actions || actions.is_empty() {
@@ -618,7 +643,7 @@ fn validate_sba_batch_product(
     }
     let mut expected_events = result.events[..prefix_len].to_vec();
     let mut candidate = before.clone();
-    candidate.revision = result.next_state.revision;
+    candidate.revision = result.events[batch_index].state_revision;
     candidate.execution.pending_decision = None;
     if let Some(continuation) = continuation_id {
         candidate.execution.continuations.remove(&continuation);
@@ -709,7 +734,7 @@ fn validate_sba_batch_product(
         )
         .map_err(|_| TransitionViolation::ZoneTransition)?;
     }
-    if expected_events != result.events {
+    if expected_events != result.events[..semantic_event_end] {
         return Err(TransitionViolation::SbaBatch);
     }
     candidate.allocators.next_rule_event_id = mtgml_model::RuleEventId(
@@ -723,6 +748,37 @@ fn validate_sba_batch_product(
             )
             .ok_or(TransitionViolation::EventIdentity)?,
     );
+    if priority_open_tail {
+        let after_request = result
+            .next_state
+            .execution
+            .pending_decision
+            .as_ref()
+            .ok_or(TransitionViolation::SbaBatch)?;
+        candidate.revision = result.next_state.revision;
+        candidate.core.priority = result.next_state.core.priority;
+        candidate.execution.pending_decision = Some(after_request.clone());
+        candidate.allocators.next_decision_id = mtgml_model::DecisionId(
+            before
+                .allocators
+                .next_decision_id
+                .0
+                .checked_add(1)
+                .ok_or(TransitionViolation::DecisionProgression)?,
+        );
+        let identity = candidate
+            .perspective_identities
+            .players
+            .get_mut(&after_request.request.actor)
+            .ok_or(TransitionViolation::DecisionProgression)?;
+        identity.next_player_decision_id = mtgml_model::PlayerDecisionIdV1(
+            identity
+                .next_player_decision_id
+                .0
+                .checked_add(1)
+                .ok_or(TransitionViolation::DecisionProgression)?,
+        );
+    }
     if candidate != result.next_state {
         return Err(TransitionViolation::SbaBatch);
     }
@@ -768,7 +824,7 @@ fn validate_sba_batch_product(
         },
         _ => return Err(TransitionViolation::SbaBatch),
     };
-    if result.status != expected_status || result.next_decision.is_some() {
+    if result.status != expected_status || (result.next_decision.is_some() != priority_open_tail) {
         return Err(TransitionViolation::SbaBatch);
     }
     Ok(())
@@ -971,7 +1027,7 @@ fn validate_accepted_progression(
         // Exact Cleanup event shape validated: active_player and turn_number
         // changes are expected and proven by events. Continue to blanket
         // check which will pass for all non-position/non-priority fields.
-    } else {
+    } else if !is_second_pass_cleanup_composition(before, result) {
         // Task 7 turn-switch events (TurnNumberChanged, ActivePlayerChanged)
         // are valid for the Cleanup -> next-Untap transition only. Outside
         // that boundary they must never justify any transition, because the
@@ -988,6 +1044,9 @@ fn validate_accepted_progression(
         if has_turn_switch_event {
             return Err(TransitionViolation::TurnStructure);
         }
+    } else {
+        validate_quiescent_cleanup_boundary(before, before.core.active_player)
+            .map_err(|_| TransitionViolation::TurnStructure)?;
     }
 
     // Task 9: if this accepted product performs the ordinary untap boundary
@@ -1131,10 +1190,17 @@ fn validate_accepted_progression(
             AuthoritativeRuleEventKind::StateBasedActionsApplied { .. }
         )
     });
+    let has_priority_application = result.events.iter().any(|event| {
+        matches!(
+            event.event,
+            AuthoritativeRuleEventKind::PriorityChanged { .. }
+        )
+    });
     if (before.core.active_player != after.core.active_player
         || before.core.turn_number != after.core.turn_number)
         && !is_cleanup_boundary
-        || before.core.priority != after.core.priority
+        && !is_second_pass_cleanup_composition(before, result)
+        || (before.core.priority != after.core.priority && !has_priority_application)
         || before.core.players.len() != after.core.players.len()
         || (has_lost_changed && !has_sba_application)
         || (before.combat != after.combat && !has_sba_application)
@@ -1319,6 +1385,23 @@ fn validate_sba_order_transition(
             validate_sba_order_stage_world(before, after, first_owner, next_continuation, 1)
         }
         (Some(before_continuation), None) => {
+            let priority_follows_batch = result.events.len() >= 5
+                && matches!(
+                    result.events[result.events.len() - 2].event,
+                    Event::PriorityChanged {
+                        from: mtgml_state::PriorityState::None,
+                        to: mtgml_state::PriorityState::HeldBy {
+                            player,
+                            consecutive_passes: 0,
+                        }
+                    } if player == after.core.active_player
+                )
+                && matches!(
+                    result.events.last().map(|event| &event.event),
+                    Some(Event::DecisionCreated { decision })
+                        if after.execution.pending_decision.as_ref().is_some_and(|pending|
+                            pending.request.decision_id == *decision)
+                );
             if !has_order_event
                 || result.events.len() < 3
                 || !matches!(
@@ -1331,7 +1414,7 @@ fn validate_sba_order_transition(
                     &result.events[2].event,
                     Event::StateBasedActionsApplied { .. }
                 )
-                || after.execution.pending_decision.is_some()
+                || (after.execution.pending_decision.is_some() && !priority_follows_batch)
                 || after.execution.continuations.values().any(|record| {
                     matches!(
                         record.payload,
@@ -1471,6 +1554,143 @@ fn validate_sba_order_transition(
     }
 }
 
+fn is_final_sba_order_priority_composition(
+    before: &EngineState,
+    result: &TransitionResult,
+) -> bool {
+    let after = &result.next_state;
+    let has_sba_continuation = before.execution.continuations.values().any(|record| {
+        matches!(
+            record.payload,
+            ContinuationPayloadV2::MagicSbaGraveyardOrderV1 { .. }
+        )
+    });
+    let pending_before_is_order =
+        before
+            .execution
+            .pending_decision
+            .as_ref()
+            .is_some_and(|pending| {
+                matches!(
+                    pending.request.decision,
+                    mtgml_decision::DecisionDomainV2::Order { .. }
+                )
+            });
+    let pending_after_is_pass = after
+        .execution
+        .pending_decision
+        .as_ref()
+        .is_some_and(|pending| {
+            pending.request.actor == after.core.active_player
+                && matches!(
+                    pending.request.decision,
+                    mtgml_decision::DecisionDomainV2::ChooseOne
+                )
+                && pending.request.candidates.len() == 1
+                && matches!(
+                    pending.request.candidates[0].visible_intent,
+                    mtgml_decision::CandidateIntent::PassPriority
+                )
+        });
+    has_sba_continuation
+        && pending_before_is_order
+        && pending_after_is_pass
+        && matches!(result.status, EpisodeStatus::Running)
+        && matches!(
+            after.core.priority,
+            mtgml_state::PriorityState::HeldBy {
+                player,
+                consecutive_passes: 0
+            } if player == after.core.active_player
+        )
+        && result.events.len() >= 5
+        && result.events.iter().any(|event| {
+            matches!(
+                event.event,
+                AuthoritativeRuleEventKind::StateBasedActionsApplied { .. }
+            )
+        })
+        && matches!(
+            result.events[result.events.len() - 2].event,
+            AuthoritativeRuleEventKind::PriorityChanged {
+                from: mtgml_state::PriorityState::None,
+                to: mtgml_state::PriorityState::HeldBy {
+                    player,
+                    consecutive_passes: 0,
+                }
+            } if player == after.core.active_player
+        )
+        && matches!(
+            result.events.last().map(|event| &event.event),
+            Some(AuthoritativeRuleEventKind::DecisionCreated { decision })
+                if after.execution.pending_decision.as_ref().is_some_and(|pending|
+                    pending.request.decision_id == *decision)
+        )
+}
+
+pub(crate) fn is_second_pass_cleanup_composition(
+    before: &EngineState,
+    result: &TransitionResult,
+) -> bool {
+    use crate::events::AuthoritativeRuleEventKind as Event;
+    let after = &result.next_state;
+    let Some(pending) = before.execution.pending_decision.as_ref() else {
+        return false;
+    };
+    let other = before
+        .core
+        .players
+        .keys()
+        .copied()
+        .find(|player| *player != before.core.active_player);
+    let Some(other) = other else { return false };
+    let next_turn = before.core.turn_number.checked_add(1);
+    matches!(
+        before.core.priority,
+        mtgml_state::PriorityState::HeldBy {
+            player,
+            consecutive_passes: 1
+        } if player == other
+    ) && crate::basic_priority::validate_pass_only_state(before, true).is_ok()
+        && matches!(
+            pending.request.decision,
+            mtgml_decision::DecisionDomainV2::ChooseOne
+        )
+        && pending.request.actor == other
+        && pending.request.visibility == mtgml_decision::DecisionVisibility::ActingPlayerOnly
+        && pending.request.candidates.len() == 1
+        && pending.request.candidates[0].candidate_id.0 == 0
+        && matches!(
+            pending.request.candidates[0].visible_intent,
+            mtgml_decision::CandidateIntent::PassPriority
+        )
+        && pending.request.candidates[0].trusted_binding
+            == mtgml_decision::EngineCandidateBinding::PassPriority
+        && result.events.len() == 6
+        && matches!(result.events[0].event, Event::DecisionCleared { decision } if decision == pending.request.decision_id)
+        && matches!(result.events[1].event, Event::PriorityChanged { from, to }
+            if from == before.core.priority && to == mtgml_state::PriorityState::None)
+        && matches!(result.events[2].event, Event::TurnPositionChanged { from, to }
+            if from == before.core.position
+                && to == TurnPosition::Ending { step: EndingStep::Cleanup })
+        && matches!(result.events[3].event, Event::TurnNumberChanged { from, to }
+            if from == before.core.turn_number && Some(to) == next_turn)
+        && matches!(result.events[4].event, Event::ActivePlayerChanged { from, to }
+            if from == before.core.active_player && to == other)
+        && matches!(result.events[5].event, Event::TurnPositionChanged { from, to }
+            if from == TurnPosition::Ending { step: EndingStep::Cleanup }
+                && to == TurnPosition::Beginning { step: BeginningStep::Untap })
+        && after.core.priority == mtgml_state::PriorityState::None
+        && after.execution.pending_decision.is_none()
+        && after.core.position
+            == TurnPosition::Beginning {
+                step: BeginningStep::Untap,
+            }
+        && after.core.turn_number == next_turn.unwrap_or(0)
+        && after.core.active_player == other
+        && matches!(result.status, EpisodeStatus::Running)
+}
+
 pub fn validate_transition_contract(
     before: &EngineState,
     result: &TransitionResult,
@@ -1496,15 +1716,21 @@ pub fn validate_transition_contract(
         {
             return Err(TransitionViolation::RejectedMutation);
         }
-    } else if result.next_state.revision.0
-        != before
+    } else {
+        let composed_sba = is_final_sba_order_priority_composition(before, result);
+        let composed_cleanup = is_second_pass_cleanup_composition(before, result);
+        let expected_revision = before
             .revision
             .0
-            .checked_add(1)
-            .ok_or(TransitionViolation::RevisionDidNotAdvance)?
-    {
-        return Err(TransitionViolation::RevisionDidNotAdvance);
-    } else {
+            .checked_add(if composed_sba || composed_cleanup {
+                2
+            } else {
+                1
+            })
+            .ok_or(TransitionViolation::RevisionDidNotAdvance)?;
+        if result.next_state.revision.0 != expected_revision {
+            return Err(TransitionViolation::RevisionDidNotAdvance);
+        }
         let before_decision = before
             .execution
             .pending_decision
@@ -1523,6 +1749,7 @@ pub fn validate_transition_contract(
 
     if result.accepted {
         validate_accepted_progression(before, result)?;
+        crate::basic_priority::validate_priority_transition(before, result)?;
         validate_s2_zone_transition_product(before, result)?;
     }
 
@@ -1541,6 +1768,29 @@ pub fn validate_transition_contract(
     let mut seen_transitions = Vec::new();
     let mut previous_random_sample = None;
     let mut cursor = SemanticValidationCursor::from_state(before)?;
+    let composed_sba = is_final_sba_order_priority_composition(before, result);
+    let composed_cleanup = is_second_pass_cleanup_composition(before, result);
+    let composed_priority = composed_sba || composed_cleanup;
+    let composed_split = u64::try_from(if composed_cleanup {
+        3
+    } else {
+        result.events.len().saturating_sub(2)
+    })
+    .map_err(|_| TransitionViolation::EventIdentity)?;
+    let revision_one = mtgml_model::StateRevision(
+        before
+            .revision
+            .0
+            .checked_add(1)
+            .ok_or(TransitionViolation::RevisionDidNotAdvance)?,
+    );
+    let revision_two = mtgml_model::StateRevision(
+        before
+            .revision
+            .0
+            .checked_add(2)
+            .ok_or(TransitionViolation::RevisionDidNotAdvance)?,
+    );
     for (offset, event) in result.events.iter().enumerate() {
         let offset = u64::try_from(offset).map_err(|_| TransitionViolation::EventIdentity)?;
         let expected = before
@@ -1549,8 +1799,17 @@ pub fn validate_transition_contract(
             .0
             .checked_add(offset)
             .ok_or(TransitionViolation::EventIdentity)?;
+        let expected_revision = if composed_priority {
+            if offset < composed_split {
+                revision_one
+            } else {
+                revision_two
+            }
+        } else {
+            result.next_state.revision
+        };
         if event.event_id.0 != expected
-            || event.state_revision != result.next_state.revision
+            || event.state_revision != expected_revision
             || !seen.insert(event.event_id)
         {
             return Err(TransitionViolation::EventIdentity);

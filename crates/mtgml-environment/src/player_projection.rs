@@ -31,6 +31,7 @@ use crate::endpoint::PlayerEndpointError;
 use crate::errors::{ControllerError, EnvironmentCommitError};
 use crate::semantic_catalog_generated::{
     magic_s3_a_ordered_sba_0_1_0_semantic_contract_id,
+    magic_s3_b_basic_priority_0_1_0_semantic_contract_id,
     magic_turn_structure_0_1_0_semantic_contract_id, synthetic_legacy_default_semantic_contract_id,
 };
 
@@ -57,7 +58,9 @@ pub(crate) fn profile_for_execution_identity(
     }
     if identity.semantic_contract_id == magic_turn_structure_0_1_0_semantic_contract_id() {
         Ok(ObservationProjectionProfile::SyntheticM3)
-    } else if identity.semantic_contract_id == magic_s3_a_ordered_sba_0_1_0_semantic_contract_id() {
+    } else if identity.semantic_contract_id == magic_s3_a_ordered_sba_0_1_0_semantic_contract_id()
+        || identity.semantic_contract_id == magic_s3_b_basic_priority_0_1_0_semantic_contract_id()
+    {
         Ok(ObservationProjectionProfile::MagicM3)
     } else {
         Err(ControllerError::SemanticContractUnsupported)

@@ -12,7 +12,7 @@
 //!
 //! Production Magic admission: `for_admitted_execution` receives the
 //! semantic contract ID after the V6 catalog confirms support for the exact
-//! S1 or S3.A contract. Only that production constructor uses
+//! S1, S3.A, or S3.B contract. Only that production constructor uses
 //! `magic_execution_profile()`.
 //! The testkit constructor uses a fixed prospective profile without any
 //! SemanticContractId.
@@ -39,7 +39,7 @@ pub struct ProgramKernelV1 {
 }
 
 /// Private inner dispatch. Production Magic execution is reachable only
-/// through V5 admission; the fixed conformance candidate is feature-gated.
+/// through V6 admission; fixed conformance candidates are feature-gated.
 enum ProgramKernelInner {
     SyntheticLegacy(SyntheticM1RulesKernel),
     Magic(MagicRulesKernel),
@@ -85,7 +85,7 @@ impl ProgramKernelV1 {
 
     /// Contract-aware admitted construction for Magic execution.
     ///
-    /// Requires a semantic contract ID that the V5 admission layer has
+    /// Requires a semantic contract ID that the V6 admission layer has
     /// already confirmed is the exact supported contract via
     /// `catalog.supported(id, MagicRules) == true`. Program kind alone is
     /// never sufficient to construct Magic runtime.
@@ -178,7 +178,7 @@ impl ProgramKernelV1 {
 /// lives here, in the rules layer.
 ///
 /// For MagicRules: legacy program-only validation remains the exact S1
-/// validator. Production S1/S3.A restore admission uses
+/// validator. Production S1/S3.A/S3.B restore admission uses
 /// `validate_runtime_state_for_contract` so the content-addressed identity
 /// selects one exact profile.
 pub fn validate_runtime_state(
@@ -216,12 +216,32 @@ pub fn validate_runtime_state_for_contract(
                     .map_err(KernelExecutionError::TurnStructure)?;
                 return Ok(());
             }
+            if profile.allows_basic_priority_0_1_0() {
+                return validate_s3_b_runtime_state(state, status);
+            }
             if profile.allows_state_based_actions_combat_0_1_0() {
                 return validate_s3_a_runtime_state(state, status);
             }
             Err(KernelExecutionError::UnsupportedStagePath)
         }
     }
+}
+
+fn validate_s3_b_runtime_state(
+    state: &EngineState,
+    status: &EpisodeStatus,
+) -> Result<(), KernelExecutionError> {
+    if matches!(
+        state.core.priority,
+        mtgml_state::PriorityState::HeldBy { .. }
+    ) {
+        if !matches!(status, EpisodeStatus::Running) {
+            return Err(KernelExecutionError::UnsupportedStagePath);
+        }
+        crate::basic_priority::validate_pass_only_state(state, true)?;
+        return Ok(());
+    }
+    validate_s3_a_runtime_state(state, status)
 }
 
 fn validate_s3_a_runtime_state(

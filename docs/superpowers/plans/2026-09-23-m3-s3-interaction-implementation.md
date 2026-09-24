@@ -458,6 +458,20 @@ repository generator. Never hand-edit generated output.
 
 ## 5. S3.B exact Basic Priority scope
 
+Production Basic Priority uses a distinct generated S3.B semantic identity;
+the S1 turn-structure and S3.A ordered-SBA identities remain unchanged. Its
+exact production capability closure is:
+
+```text
+rules/basic-priority@0.1.0
+rules/state-based-actions-combat@0.1.0
+rules/turn-structure@0.1.0
+rules/zone-incarnation@0.1.0
+```
+
+The S3.B identity uses the existing `magic-m3-observation.v1` codec and adds
+no Draw or Combat capability.
+
 Support only the validated pass-only two-player profile. Before every window:
 
 1. The `priority-sba-gate` derives the complete S3.A round.
@@ -598,7 +612,10 @@ must preserve this rejection. Preserve ADR-0040 order exactly:
 3. If accepted, no Decision exists, and status is Running, call
    `kernel.advance_forced_progress` exactly once. Merge its complete event
    sequence and recompute one before-to-final `StateDelta` over the whole
-   response transaction.
+   response transaction. The Rules products each advance one revision; their
+   one atomic environment commit may therefore advance `R -> R+2`. Preserve
+   each event's originating revision. One `ReplayStepV6` still contains only
+   the real submitted response; no more than one forced call is permitted.
 4. Validate the complete transition contract.
 5. On semantic rejection, prove checkpoint, status, every counter, replay and
    projected player state equal their before values; commit nothing.

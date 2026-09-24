@@ -73,8 +73,13 @@ final identities.
 
 Each `ReplayStepV6` contains exactly one real `DecisionResponseV2`. Forced
 progress has no replay input; deterministic consequences belong to the real
-response that caused them. No event-as-input, implicit pass, or synthetic
-response is introduced by the state identity cut.
+response that caused them. The shared response transaction may commit the
+response product and at most one forced-progress product together. Under the
+exact S3.B pass-only contract, one accepted replay step may therefore advance
+one or two Rules revisions; other current profiles retain their existing
+revision progression. The S3.B replay revision bound is `+2`; it does not
+authorize a forced-progress loop. No event-as-input, implicit pass, or
+synthetic response is introduced.
 
 The V6 manifest binds the observation payload codec. Existing producers retain
 `synthetic-m3-observation.v1`; `magic-m3-observation.v1` is admitted only for a

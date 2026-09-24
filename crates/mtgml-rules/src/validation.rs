@@ -67,4 +67,6 @@ pub enum TransitionViolation {
     ContinuationIdentity,
     #[error("turn-structure event sequence does not compose to the final state")]
     TurnStructure,
+    #[error("priority event sequence does not compose to the final state")]
+    Priority,
 }

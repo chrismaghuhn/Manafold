@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the V5 semantic-contract catalog constants (spec §10).
+"""Generate semantic-contract catalog constants and V6 execution profiles (spec §10).
 
 Single generator for the single hand-authored manifest source
 ``contracts/catalog/semantic-contracts.v1.json``. Emits BOTH the Rust manifest
@@ -17,8 +17,8 @@ Layering (review Fix-02):
   accepts.
 - ``render_rules_execution_generated`` derives the Magic execution
   authority mapping from the SAME source manifest. It identifies the
-  exact ComprehensiveRules turn-structure contract authorized for
-  ``ExecutionProgramV1::MagicRules`` at this V5 slice.
+    exact ComprehensiveRules contracts authorized for
+    ``ExecutionProgramV1::MagicRules`` by the current V6 runtime.
 - ``assert_production_policy`` is the PRODUCTION source validator.
 - The CLI (``main``) always enforces the production policy before rendering
   and checks BOTH targets byte-exactly on ``--check``.
@@ -50,25 +50,28 @@ RULES_TARGET_PATH = ROOT / RULES_TARGET_REL
 
 RULES_ENTRY_ID = "magic_turn_structure_0_1_0"
 S3A_ENTRY_ID = "magic_s3_a_ordered_sba_0_1_0"
+S3B_ENTRY_ID = "magic_s3_b_basic_priority_0_1_0"
 
 
 def render_rules_execution_generated(
     catalog: dict[str, object] | None = None,
 ) -> str:
-    """Render the exact S1 and S3.A Magic execution profiles."""
+    """Render exact S1, S3.A and S3.B Magic execution profiles."""
     catalog = catalog if catalog is not None else load_source()
     entries = {
         entry.get("entry_id"): entry for entry in catalog["entries"] if isinstance(entry, dict)
     }
     s1 = entries.get(RULES_ENTRY_ID)
     s3a = entries.get(S3A_ENTRY_ID)
+    s3b = entries.get(S3B_ENTRY_ID)
     synthetic = entries.get("synthetic_legacy_default")
-    if s1 is None or s3a is None or synthetic is None:
+    if s1 is None or s3a is None or s3b is None or synthetic is None:
         raise SystemExit("production catalog is missing a required execution identity")
-    for entry in (s1, s3a, synthetic):
+    for entry in (s1, s3a, s3b, synthetic):
         validate_entry_facts(entry)
     _, s1_semantic = derive_ids(s1)
     _, s3a_semantic = derive_ids(s3a)
+    _, s3b_semantic = derive_ids(s3b)
     _, synthetic_semantic = derive_ids(synthetic)
 
     def has_capability(entry: dict[str, object], key: str) -> bool:
@@ -90,6 +93,8 @@ pub(crate) const MAGIC_TURN_STRUCTURE_SEMANTIC_CONTRACT_HEX: &str =
     "@S1_ID@";
 pub(crate) const MAGIC_S3_A_SEMANTIC_CONTRACT_HEX: &str =
     "@S3_ID@";
+pub(crate) const MAGIC_S3_B_SEMANTIC_CONTRACT_HEX: &str =
+    "@S3B_ID@";
 pub(crate) const SYNTHETIC_LEGACY_SEMANTIC_CONTRACT_HEX: &str =
     "@SYNTHETIC_ID@";
 
@@ -100,6 +105,9 @@ pub(crate) fn magic_turn_structure_0_1_0_semantic_contract_id() -> SemanticContr
 pub(crate) fn magic_s3_a_ordered_sba_0_1_0_semantic_contract_id() -> SemanticContractIdV1 {
     SemanticContractIdV1::parse(MAGIC_S3_A_SEMANTIC_CONTRACT_HEX).expect("generated canonical hex")
 }
+pub(crate) fn magic_s3_b_basic_priority_0_1_0_semantic_contract_id() -> SemanticContractIdV1 {
+    SemanticContractIdV1::parse(MAGIC_S3_B_SEMANTIC_CONTRACT_HEX).expect("generated canonical hex")
+}
 pub(crate) fn synthetic_legacy_default_semantic_contract_id() -> SemanticContractIdV1 {
     SemanticContractIdV1::parse(SYNTHETIC_LEGACY_SEMANTIC_CONTRACT_HEX)
         .expect("generated canonical hex")
@@ -109,6 +117,7 @@ pub(crate) struct MagicExecutionProfile {
     admitted_contract: SemanticContractIdV1,
     turn_structure_0_1_0: bool,
     state_based_actions_combat_0_1_0: bool,
+    basic_priority_0_1_0: bool,
 }
 impl MagicExecutionProfile {
     pub(crate) fn allows_turn_structure_0_1_0(&self) -> bool {
@@ -117,7 +126,12 @@ impl MagicExecutionProfile {
     }
     pub(crate) fn allows_state_based_actions_combat_0_1_0(&self) -> bool {
         self.state_based_actions_combat_0_1_0
-            && self.admitted_contract == magic_s3_a_ordered_sba_0_1_0_semantic_contract_id()
+            && (self.admitted_contract == magic_s3_a_ordered_sba_0_1_0_semantic_contract_id()
+                || self.admitted_contract == magic_s3_b_basic_priority_0_1_0_semantic_contract_id())
+    }
+    pub(crate) fn allows_basic_priority_0_1_0(&self) -> bool {
+        self.basic_priority_0_1_0
+            && self.admitted_contract == magic_s3_b_basic_priority_0_1_0_semantic_contract_id()
     }
 }
 #[cfg(test)]
@@ -129,6 +143,7 @@ pub(crate) fn test_only_magic_execution_profile(
         admitted_contract,
         turn_structure_0_1_0,
         state_based_actions_combat_0_1_0: false,
+        basic_priority_0_1_0: false,
     }
 }
 pub(crate) fn magic_execution_profile(
@@ -139,6 +154,7 @@ pub(crate) fn magic_execution_profile(
             admitted_contract: semantic_contract_id,
             turn_structure_0_1_0: @S1_TURN@,
             state_based_actions_combat_0_1_0: false,
+            basic_priority_0_1_0: false,
         });
     }
     if semantic_contract_id == magic_s3_a_ordered_sba_0_1_0_semantic_contract_id() {
@@ -146,6 +162,15 @@ pub(crate) fn magic_execution_profile(
             admitted_contract: semantic_contract_id,
             turn_structure_0_1_0: @S3_TURN@,
             state_based_actions_combat_0_1_0: @S3_SBA@,
+            basic_priority_0_1_0: false,
+        });
+    }
+    if semantic_contract_id == magic_s3_b_basic_priority_0_1_0_semantic_contract_id() {
+        return Some(MagicExecutionProfile {
+            admitted_contract: semantic_contract_id,
+            turn_structure_0_1_0: @S3B_TURN@,
+            state_based_actions_combat_0_1_0: @S3B_SBA@,
+            basic_priority_0_1_0: @S3B_PRIORITY@,
         });
     }
     None
@@ -167,6 +192,7 @@ pub fn execution_contract_supported(
     return (
         template.replace("@S1_ID@", s1_semantic)
         .replace("@S3_ID@", s3a_semantic)
+        .replace("@S3B_ID@", s3b_semantic)
         .replace("@SYNTHETIC_ID@", synthetic_semantic)
         .replace("@S1_TURN@", str(has_capability(s1, "rules/turn-structure")).lower())
         .replace("@S3_TURN@", str(has_capability(s3a, "rules/turn-structure")).lower())
@@ -174,6 +200,12 @@ pub fn execution_contract_supported(
             "@S3_SBA@",
             str(has_capability(s3a, "rules/state-based-actions-combat")).lower(),
         )
+        .replace("@S3B_TURN@", str(has_capability(s3b, "rules/turn-structure")).lower())
+        .replace(
+            "@S3B_SBA@",
+            str(has_capability(s3b, "rules/state-based-actions-combat")).lower(),
+        )
+        .replace("@S3B_PRIORITY@", str(has_capability(s3b, "rules/basic-priority")).lower())
     )
 
 
@@ -358,9 +390,15 @@ def render_catalog_generated(catalog: dict[str, object] | None = None) -> str:
         lines.append("    }")
         lines.append("}")
         lines.append("")
-        lines.append(
-            f"pub fn {snake}_semantic_manifest() -> mtgml_model::SemanticContractManifestV1 {{"
+        semantic_manifest_signature = (
+            f"pub fn {snake}_semantic_manifest() -> "
+            "mtgml_model::SemanticContractManifestV1"
         )
+        if len(semantic_manifest_signature) + 2 <= 100:
+            lines.append(f"{semantic_manifest_signature} {{")
+        else:
+            lines.append(semantic_manifest_signature)
+            lines.append("{")
         lines.append("    mtgml_model::SemanticContractManifestV1 {")
         lines.append(f"        rules_contract_id: {snake}_rules_contract_id(),")
         lines.append("        format_contract_id: None,")
@@ -390,11 +428,11 @@ def render_catalog_generated(catalog: dict[str, object] | None = None) -> str:
 
 
 def assert_production_policy(catalog: dict[str, object]) -> None:
-    """Require Synthetic, frozen S1, and the distinct bounded S3.A identity."""
+    """Require Synthetic, frozen S1, and distinct bounded S3.A/S3.B identities."""
     entries = catalog["entries"]
-    if len(entries) != 3:
+    if len(entries) != 4:
         raise SystemExit(
-            "production semantic-contract catalog must contain exactly three entries; "
+            "production semantic-contract catalog must contain exactly four entries; "
             f"got {len(entries)}"
         )
     by_id = {}
@@ -409,9 +447,10 @@ def assert_production_policy(catalog: dict[str, object]) -> None:
     synthetic = by_id.get("synthetic_legacy_default")
     s1 = by_id.get(RULES_ENTRY_ID)
     s3a = by_id.get(S3A_ENTRY_ID)
-    if synthetic is None or s1 is None or s3a is None:
+    s3b = by_id.get(S3B_ENTRY_ID)
+    if synthetic is None or s1 is None or s3a is None or s3b is None:
         raise SystemExit(
-            "production semantic catalog requires Synthetic, exact S1, and exact S3.A entries"
+            "production semantic catalog requires Synthetic, exact S1, S3.A, and S3.B entries"
         )
     if (
         synthetic["rules_authority"] != {"variant": "synthetic_legacy"}
@@ -437,7 +476,14 @@ def assert_production_policy(catalog: dict[str, object]) -> None:
         {"key": "rules/zone-incarnation", "version": "0.1.0"},
     ]:
         raise SystemExit("S3.A must use the exact reviewed turn/SBA/zone-incarnation closure")
-    for entry in (s1, s3a):
+    if s3b["rules_authority"] != expected_authority or s3b["capability_closure"] != [
+        {"key": "rules/basic-priority", "version": "0.1.0"},
+        {"key": "rules/state-based-actions-combat", "version": "0.1.0"},
+        {"key": "rules/turn-structure", "version": "0.1.0"},
+        {"key": "rules/zone-incarnation", "version": "0.1.0"},
+    ]:
+        raise SystemExit("S3.B must use the exact reviewed priority/SBA/turn/zone closure")
+    for entry in (s1, s3a, s3b):
         if entry["format_contract_id"] is not None or entry["content_contract_id"] is not None:
             raise SystemExit(
                 "current S1/S3.A production identities have null format/content dimensions"

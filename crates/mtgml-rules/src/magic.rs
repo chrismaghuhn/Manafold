@@ -3,7 +3,7 @@
 //! This module establishes the milestone-free, future-authoritative owner of
 //! Magic execution inside `mtgml-rules`. Production execution is reachable
 //! through `ProgramKernelV1::for_admitted_execution` once V6 admission confirms
-//! the exact S1 or S3.A contract. A separate fixed S3.A
+//! the exact S1, S3.A, or S3.B contract. Separate fixed S3.A/S3.B
 //! conformance-candidate profile exists only behind the non-default
 //! `m3-conformance-testkit` feature and carries no production identity.
 //!
@@ -52,7 +52,7 @@ use crate::turn_structure::{
 /// Durable, milestone-free owner of Magic execution.
 ///
 /// Production construction is reachable only through
-/// `ProgramKernelV1::for_admitted_execution` with the exact V5-admitted
+/// `ProgramKernelV1::for_admitted_execution` with the exact V6-admitted
 /// semantic contract. The non-default conformance testkit has a separate
 /// fixed constructor that does not participate in production admission.
 pub(crate) struct MagicRulesKernel {
@@ -60,16 +60,19 @@ pub(crate) struct MagicRulesKernel {
 }
 
 /// The kernel's execution context is not itself a semantic contract. The
-/// admitted production profile remains the frozen S1 contract; S3.A RED/GREEN
-/// execution uses one fixed, non-production candidate profile behind the
-/// non-default conformance-testkit feature.
+/// admitted S1, S3.A, and S3.B production profiles are selected only by their
+/// exact V6 semantic identities. S3.A/S3.B candidate profiles carry no
+/// production identity and exist only in test/conformance builds.
 enum MagicKernelProfile {
     AdmittedS1(MagicExecutionProfile),
     AdmittedS3A(MagicExecutionProfile),
+    AdmittedS3B(MagicExecutionProfile),
     #[cfg(test)]
     UnitTest(MagicExecutionProfile),
     #[cfg(any(test, feature = "m3-conformance-testkit"))]
     S3AConformanceCandidate,
+    #[cfg(test)]
+    S3BConformanceCandidate,
 }
 
 impl MagicKernelProfile {
@@ -77,21 +80,37 @@ impl MagicKernelProfile {
         match self {
             Self::AdmittedS1(profile) => profile.allows_turn_structure_0_1_0(),
             Self::AdmittedS3A(_) => false,
+            Self::AdmittedS3B(_) => false,
             #[cfg(test)]
             Self::UnitTest(profile) => profile.allows_turn_structure_0_1_0(),
             #[cfg(any(test, feature = "m3-conformance-testkit"))]
             Self::S3AConformanceCandidate => false,
+            #[cfg(test)]
+            Self::S3BConformanceCandidate => false,
         }
     }
 
     fn allows_s3_a(&self) -> bool {
         match self {
             Self::AdmittedS1(_) => false,
-            Self::AdmittedS3A(profile) => profile.allows_state_based_actions_combat_0_1_0(),
+            Self::AdmittedS3A(profile) | Self::AdmittedS3B(profile) => {
+                profile.allows_state_based_actions_combat_0_1_0()
+            }
             #[cfg(test)]
             Self::UnitTest(_) => false,
             #[cfg(any(test, feature = "m3-conformance-testkit"))]
             Self::S3AConformanceCandidate => true,
+            #[cfg(test)]
+            Self::S3BConformanceCandidate => true,
+        }
+    }
+
+    fn allows_s3_b(&self) -> bool {
+        match self {
+            Self::AdmittedS3B(profile) => profile.allows_basic_priority_0_1_0(),
+            #[cfg(test)]
+            Self::S3BConformanceCandidate => true,
+            _ => false,
         }
     }
 }
@@ -101,9 +120,11 @@ impl MagicRulesKernel {
     ///
     /// This is the production admission authority for Magic execution.
     /// The profile MUST carry the exact supported semantic contract ID;
-    /// the V5 admission layer guarantees this before construction.
+    /// the V6 admission layer guarantees this before construction.
     pub(crate) fn from_admitted_profile(profile: MagicExecutionProfile) -> Self {
-        let profile = if profile.allows_state_based_actions_combat_0_1_0() {
+        let profile = if profile.allows_basic_priority_0_1_0() {
+            MagicKernelProfile::AdmittedS3B(profile)
+        } else if profile.allows_state_based_actions_combat_0_1_0() {
             MagicKernelProfile::AdmittedS3A(profile)
         } else {
             MagicKernelProfile::AdmittedS1(profile)
@@ -118,6 +139,13 @@ impl MagicRulesKernel {
     pub(crate) fn s3_a_conformance_candidate() -> Self {
         Self {
             profile: MagicKernelProfile::S3AConformanceCandidate,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn s3_b_conformance_candidate() -> Self {
+        Self {
+            profile: MagicKernelProfile::S3BConformanceCandidate,
         }
     }
 
@@ -136,7 +164,7 @@ impl MagicRulesKernel {
     /// Construct a bare shell instance for crate-internal tests only.
     ///
     /// This is NOT a production constructor and carries no semantic-admission
-    /// authority. V5 admission constructs the production kernel.
+    /// authority. V6 admission constructs the production kernel.
     #[cfg(test)]
     pub(crate) fn new() -> Self {
         Self {
@@ -162,7 +190,19 @@ impl RulesKernel for MagicRulesKernel {
         response: &DecisionResponseV2,
     ) -> Result<TransitionResult, KernelExecutionError> {
         if self.profile.allows_s3_a() {
-            return self.apply_s3_a_order_response(state, trusted_actor, response);
+            if state
+                .execution
+                .pending_decision
+                .as_ref()
+                .is_some_and(|pending| {
+                    matches!(pending.request.decision, DecisionDomainV2::Order { .. })
+                })
+            {
+                return self.apply_s3_a_order_response(state, trusted_actor, response);
+            }
+            if self.profile.allows_s3_b() {
+                return self.apply_priority_response(state, trusted_actor, response);
+            }
         }
         let _ = (state, trusted_actor, response);
         Err(KernelExecutionError::UnsupportedPlayerResponse)
@@ -201,13 +241,21 @@ impl MagicRulesKernel {
         let plan = crate::state_based_actions::derive_bounded_sba_round_plan(state)
             .map_err(|_| KernelExecutionError::UnsupportedStagePath)?;
         if plan.selected_sba_actions.is_empty() {
+            if self.profile.allows_s3_b() {
+                return crate::basic_priority::open_priority_window(state);
+            }
             return match unsupported_rules_boundary(state.core.position) {
                 Some(boundary) => Err(KernelExecutionError::UnsupportedRulesBoundary(boundary)),
                 None => Err(KernelExecutionError::UnsupportedStagePath),
             };
         }
         let Some(actor) = plan.apnap_owners.first().copied() else {
-            return self.apply_s3_a_batch(state, None, plan.selected_sba_actions);
+            return self.apply_s3_a_batch(
+                state,
+                None,
+                plan.selected_sba_actions,
+                self.profile.allows_s3_b(),
+            );
         };
 
         let continuation_id = state.allocators.next_continuation_id;
@@ -286,6 +334,7 @@ impl MagicRulesKernel {
         state: &EngineState,
         final_order: Option<(mtgml_model::ContinuationId, Vec<SbaGraveyardOwnerOrderV1>)>,
         selected_sba_actions: Vec<SbaSelectedActionV1>,
+        open_priority_if_stable: bool,
     ) -> Result<TransitionResult, KernelExecutionError> {
         validate_engine_state(state).map_err(KernelExecutionError::BeforeState)?;
         let plan = crate::state_based_actions::derive_bounded_sba_round_plan(state)
@@ -551,6 +600,58 @@ impl MagicRulesKernel {
             }
         }
 
+        if open_priority_if_stable && matches!(status, EpisodeStatus::Running) {
+            crate::basic_priority::validate_pass_only_state(&candidate, false)?;
+            let actor = candidate.core.active_player;
+            let identity = crate::decision_stage::fresh_stage_identity(state, actor)?;
+            let request = crate::basic_priority::make_pass_request(
+                actor,
+                revision,
+                identity.decision_id,
+                identity.player_decision_id,
+            )?;
+            let next_decision = DecisionId(
+                identity
+                    .decision_id
+                    .0
+                    .checked_add(1)
+                    .ok_or(KernelExecutionError::Exhaustion("decision"))?,
+            );
+            events.push(Self::s3_a_bound_event(
+                state,
+                u64::try_from(events.len())
+                    .map_err(|_| KernelExecutionError::RuleEventIdOverflow)?,
+                revision,
+                AuthoritativeRuleEventKind::PriorityChanged {
+                    from: mtgml_state::PriorityState::None,
+                    to: mtgml_state::PriorityState::HeldBy {
+                        player: actor,
+                        consecutive_passes: 0,
+                    },
+                },
+            )?);
+            events.push(Self::s3_a_bound_event(
+                state,
+                u64::try_from(events.len())
+                    .map_err(|_| KernelExecutionError::RuleEventIdOverflow)?,
+                revision,
+                AuthoritativeRuleEventKind::DecisionCreated {
+                    decision: identity.decision_id,
+                },
+            )?);
+            candidate.core.priority = mtgml_state::PriorityState::HeldBy {
+                player: actor,
+                consecutive_passes: 0,
+            };
+            candidate.execution.pending_decision = Some(PendingDecisionRecordV2 { request });
+            candidate.allocators.next_decision_id = next_decision;
+            crate::decision_stage::advance_player_allocator(
+                &mut candidate,
+                actor,
+                identity.player_decision_id,
+            )?;
+        }
+
         build_accepted_product_with_status(state, candidate, events, status, |_| Ok(()))
     }
 
@@ -637,6 +738,7 @@ impl MagicRulesKernel {
                 state,
                 Some((continuation_id, orders)),
                 selected_sba_actions.clone(),
+                false,
             );
         }
         let next_owner = next_owner.ok_or(KernelExecutionError::UnsupportedStagePath)?;
@@ -729,6 +831,158 @@ impl MagicRulesKernel {
             )?;
             Ok(())
         })
+    }
+
+    fn apply_priority_response(
+        &mut self,
+        state: &EngineState,
+        trusted_actor: PlayerId,
+        response: &DecisionResponseV2,
+    ) -> Result<TransitionResult, KernelExecutionError> {
+        if state.execution.pending_decision.is_none() {
+            return crate::decision_stage::rejected(state);
+        }
+        crate::basic_priority::validate_pass_only_state(state, true)?;
+        let Some(pending) = state.execution.pending_decision.as_ref() else {
+            return crate::decision_stage::rejected(state);
+        };
+        let request = &pending.request;
+        let Ok(visible_request) = request.project_player_request() else {
+            return crate::decision_stage::rejected(state);
+        };
+        if trusted_actor != request.actor
+            || response.validate_for(&visible_request).is_err()
+            || response.state_revision != state.revision
+            || !matches!(&response.answer, DecisionAnswerV2::SelectOne { candidate_id } if candidate_id.0 == 0)
+        {
+            return crate::decision_stage::rejected(state);
+        }
+        let unique_other = state
+            .core
+            .players
+            .keys()
+            .copied()
+            .find(|player| *player != state.core.active_player)
+            .ok_or(KernelExecutionError::UnsupportedStagePath)?;
+        match state.core.priority {
+            mtgml_state::PriorityState::HeldBy {
+                player,
+                consecutive_passes: 0,
+            } if player == state.core.active_player && request.actor == player => {
+                let identity = crate::decision_stage::fresh_stage_identity(state, unique_other)?;
+                let next_request = crate::basic_priority::make_pass_request(
+                    unique_other,
+                    identity.revision,
+                    identity.decision_id,
+                    identity.player_decision_id,
+                )?;
+                let next_decision = DecisionId(
+                    identity
+                        .decision_id
+                        .0
+                        .checked_add(1)
+                        .ok_or(KernelExecutionError::Exhaustion("decision"))?,
+                );
+                let events = vec![
+                    crate::basic_priority::bound_event(
+                        state,
+                        0,
+                        identity.revision,
+                        AuthoritativeRuleEventKind::DecisionCleared {
+                            decision: request.decision_id,
+                        },
+                    )?,
+                    crate::basic_priority::bound_event(
+                        state,
+                        1,
+                        identity.revision,
+                        AuthoritativeRuleEventKind::PriorityChanged {
+                            from: mtgml_state::PriorityState::HeldBy {
+                                player,
+                                consecutive_passes: 0,
+                            },
+                            to: mtgml_state::PriorityState::HeldBy {
+                                player: unique_other,
+                                consecutive_passes: 1,
+                            },
+                        },
+                    )?,
+                    crate::basic_priority::bound_event(
+                        state,
+                        2,
+                        identity.revision,
+                        AuthoritativeRuleEventKind::DecisionCreated {
+                            decision: identity.decision_id,
+                        },
+                    )?,
+                ];
+                let mut next = state.clone();
+                next.revision = identity.revision;
+                build_accepted_product(state, next, events, |workspace| {
+                    workspace.core.priority = mtgml_state::PriorityState::HeldBy {
+                        player: unique_other,
+                        consecutive_passes: 1,
+                    };
+                    workspace.execution.pending_decision = Some(PendingDecisionRecordV2 {
+                        request: next_request,
+                    });
+                    workspace.allocators.next_decision_id = next_decision;
+                    crate::decision_stage::advance_player_allocator(
+                        workspace,
+                        unique_other,
+                        identity.player_decision_id,
+                    )?;
+                    Ok(())
+                })
+            }
+            mtgml_state::PriorityState::HeldBy {
+                player,
+                consecutive_passes: 1,
+            } if player != state.core.active_player && request.actor == player => {
+                let revision = crate::decision_stage::next_revision(state)?;
+                let successor = temporal_successor(state.core.position);
+                let events = vec![
+                    crate::basic_priority::bound_event(
+                        state,
+                        0,
+                        revision,
+                        AuthoritativeRuleEventKind::DecisionCleared {
+                            decision: request.decision_id,
+                        },
+                    )?,
+                    crate::basic_priority::bound_event(
+                        state,
+                        1,
+                        revision,
+                        AuthoritativeRuleEventKind::PriorityChanged {
+                            from: mtgml_state::PriorityState::HeldBy {
+                                player,
+                                consecutive_passes: 1,
+                            },
+                            to: mtgml_state::PriorityState::None,
+                        },
+                    )?,
+                    crate::basic_priority::bound_event(
+                        state,
+                        2,
+                        revision,
+                        AuthoritativeRuleEventKind::TurnPositionChanged {
+                            from: state.core.position,
+                            to: successor,
+                        },
+                    )?,
+                ];
+                let mut next = state.clone();
+                next.revision = revision;
+                build_accepted_product(state, next, events, |workspace| {
+                    workspace.core.priority = mtgml_state::PriorityState::None;
+                    workspace.core.position = successor;
+                    workspace.execution.pending_decision = None;
+                    Ok(())
+                })
+            }
+            _ => crate::decision_stage::rejected(state),
+        }
     }
 
     fn s3_a_order_candidates(

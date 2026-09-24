@@ -109,11 +109,16 @@ impl PlayerStepV2 {
         self.status
             .validate()
             .map_err(|_| ObservationValidationError::EpisodeStatus)?;
+        let mut previous_event_revision = None;
         for (index, event) in self.observed_events.iter().enumerate() {
             event.validate()?;
-            // One accepted transition owns exactly one revision: every
-            // observed envelope of a step belongs to that step's revision.
-            if event.state_revision != self.information_state.state_revision {
+            // A response transaction may atomically commit one Rules product
+            // and one forced-progress product. Preserve their event revisions
+            // while requiring every occurrence to belong no later than the
+            // final PlayerStep revision.
+            if event.state_revision > self.information_state.state_revision
+                || previous_event_revision.is_some_and(|previous| event.state_revision < previous)
+            {
                 return Err(ObservationValidationError::FutureEvent);
             }
             // Perspective-local visible sequences are strictly increasing and
@@ -124,6 +129,7 @@ impl PlayerStepV2 {
             if index > 0 && event.sequence <= self.observed_events[index - 1].sequence {
                 return Err(ObservationValidationError::VisibleSequence);
             }
+            previous_event_revision = Some(event.state_revision);
         }
         if let Some(decision) = &self.next_decision {
             decision

@@ -42,6 +42,10 @@ pub enum AuthoritativeRuleEventKind {
     StateBasedActionsApplied {
         actions: Vec<mtgml_state::SbaSelectedActionV1>,
     },
+    PriorityChanged {
+        from: mtgml_state::PriorityState,
+        to: mtgml_state::PriorityState,
+    },
     RandomValueSampled {
         stream: RandomStreamKeyV1,
         bound: u64,
@@ -123,6 +127,10 @@ impl AuthoritativeRuleEventKind {
                     actions: actions.clone(),
                 }
             }
+            Self::PriorityChanged { from, to } => SemanticDeltaOperation::PriorityChanged {
+                from: *from,
+                to: *to,
+            },
             Self::RandomValueSampled {
                 stream,
                 bound,

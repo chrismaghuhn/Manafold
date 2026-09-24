@@ -18,8 +18,10 @@ A typed submitted player response is handled as one atomic transaction:
 8. create a transition workspace from EngineState
 9. execute the currently specified rule program/continuation
 10. accumulate semantic events and exact state replacement delta
-11. perform mandatory forced progress until next choice/outcome/stop
-12. validate EngineState and sequential event/delta parity
+11. perform at most one mandatory forced-progress transition when the
+    accepted response leaves a Running state without a Decision
+12. validate EngineState and sequential event/delta parity across the
+    response product and optional single forced-progress product
 13. derive next authoritative decision and EpisodeStatus
 14. derive and validate every required perspective projection
 15. commit state, status/counters, accepted replay step and projections atomically
@@ -47,6 +49,13 @@ A typed semantic rejection preserves exactly:
 A wire decode failure additionally proves zero mutation but is a wire-layer result, not semantic rejection.
 
 Internal invariant/binding/projection/digest failure discards the workspace and returns only the closed endpoint service failure; trusted diagnostics remain private.
+
+Each accepted Rules `TransitionResult` advances `StateRevision` exactly once.
+The environment may merge the submitted response product with the one
+mandatory forced-progress product in a single externally atomic commit. In
+that case the committed delta and replay step span two revisions, and events
+retain the revision of the Rules product that emitted them. The environment
+never loops forced progress within one response transaction.
 
 ## Forced progress
 
