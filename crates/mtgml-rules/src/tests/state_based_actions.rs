@@ -106,7 +106,7 @@ fn magic_rules_state_based_actions_round_is_missing_before_priority() {
     let mut state = sba_upkeep_state();
     state.core.players.get_mut(&PlayerId(1)).unwrap().life = 0;
     let before = state.clone();
-    let mut kernel = crate::magic::MagicRulesKernel::new();
+    let mut kernel = crate::magic::MagicRulesKernel::s3_a_conformance_candidate();
     let result = kernel.advance_forced_progress(&state);
     assert_eq!(state, before, "the RED probe must not mutate the input fixture");
     let transition = result.unwrap_or_else(|error| {
@@ -136,7 +136,7 @@ fn magic_rules_state_based_actions_round_is_missing_before_priority() {
 fn magic_rules_state_based_actions_same_owner_deaths_require_order_before_mutation() {
     let state = two_same_owner_deaths_at_upkeep();
     let before = state.clone();
-    let mut kernel = crate::magic::MagicRulesKernel::new();
+    let mut kernel = crate::magic::MagicRulesKernel::s3_a_conformance_candidate();
     let result = kernel.advance_forced_progress(&state);
     assert_eq!(state, before, "forced progress must not mutate its input");
     let transition = result.unwrap_or_else(|error| {

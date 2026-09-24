@@ -57,7 +57,7 @@ enum MagicKernelProfile {
     AdmittedS1(MagicExecutionProfile),
     #[cfg(test)]
     UnitTest(MagicExecutionProfile),
-    #[cfg(feature = "m3-conformance-testkit")]
+    #[cfg(any(test, feature = "m3-conformance-testkit"))]
     S3AConformanceCandidate,
 }
 
@@ -67,7 +67,7 @@ impl MagicKernelProfile {
             Self::AdmittedS1(profile) => profile.allows_turn_structure_0_1_0(),
             #[cfg(test)]
             Self::UnitTest(profile) => profile.allows_turn_structure_0_1_0(),
-            #[cfg(feature = "m3-conformance-testkit")]
+            #[cfg(any(test, feature = "m3-conformance-testkit"))]
             Self::S3AConformanceCandidate => true,
         }
     }
@@ -88,7 +88,7 @@ impl MagicRulesKernel {
     /// Construct the single prospective S3.A candidate profile for isolated
     /// conformance. It carries no SemanticContractId and cannot be admitted
     /// from a production checkpoint or replay.
-    #[cfg(feature = "m3-conformance-testkit")]
+    #[cfg(any(test, feature = "m3-conformance-testkit"))]
     pub(crate) fn s3_a_conformance_candidate() -> Self {
         Self {
             profile: MagicKernelProfile::S3AConformanceCandidate,
