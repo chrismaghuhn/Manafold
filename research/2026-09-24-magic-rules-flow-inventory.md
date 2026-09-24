@@ -1,7 +1,7 @@
 # MAGIC_RULES_FLOW_INVENTORY_V1
 
 - **Status:** RESEARCH / PLANNING / NON-NORMATIVE
-- **Baseline:** branch `chris/m3-s3-a-ordered-sba`, exact `HEAD = 8cafb91b121cc2e29f3837fffbd8a189cbf817`
+- **Baseline:** branch `chris/m3-s3-a-ordered-sba`, exact `HEAD = 8cafb91b121cc2e29f3834ddb1a959a429a20ec4`
 - **Reference master:** `66f3b713787cad89674257f6e0b6448b9fd568f9`
 - **Rules authority:** `wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f`
 
@@ -72,26 +72,28 @@ snapshot](2026-09-15-m3-inputs/standard-matchup-research.md) and its
 
 ### B. What M3 still needs
 
-1. Complete the S3.A atomic simultaneous SBA batch, including no-order and
-   final-Order paths, `has_lost`, terminal mapping, ordered S2 composition,
-   bounded post-damage combat-reference pruning and rollback evidence.
-2. Complete S3.A fixed-point, checkpoint/restore/fork/replay evidence and the
-   production S3 semantic contract. Task 9B0 explicitly blocks nonterminal
-   final-Order environment/replay claims until S3.B or a reviewed transaction
-   disposition because forced progress reaches the missing Basic Priority
-   boundary.
-3. Implement the specified two-player pass-only Basic Priority kernel and its
-   event/delta/cursor contract.
-4. Admit the new Magic contract through V6 and wire Reference player responses
-   through the existing response transaction; prove actor/nonactor products,
-   rejection atomicity and replay.
-5. Implement ordinary Draw through the one S2 workspace; integrate
-   Upkeep-pass → Draw → active-player priority without an environment loop.
-6. Supply the genuine V6 S2 transition replay witness and complete SBA/Draw ×
-   priority/zone/information interactions; only then can S2 coverage and the
-   remaining capability evidence be reviewed.
-7. Run cumulative M3 gates and exact-head review; promote no lifecycle until
-   its evidence passes.
+1. Finish bounded S3.A: atomic SBA batch, fixed point, production semantic
+   identity, replay/restore/fork, terminal/loss handling, ordered S2 composition
+   and bounded post-CombatDamage combat-reference pruning.
+2. Implement Basic Priority and integrate the Reference response path through
+   the shared transaction, including the nonterminal final-Order disposition.
+3. Implement ordinary Draw through the S2 workspace and establish the
+   authoritative S2 replay/interaction evidence.
+4. Implement Combat Phase and Declare Attackers as one coherent flow.
+5. Implement Declare Blockers, reusing Decision V2 and the bounded combat
+   state contract.
+6. Implement Damage/Life and Combat Damage, including simultaneous assignment
+   and the post-damage SBA interaction.
+7. Implement Cleanup Reset and compose the complete synthetic normal turn.
+8. Run cumulative M3 interaction, lifecycle, parity and exact-head closure
+   gates; promote no lifecycle until its evidence passes.
+
+S3 completion != M3 completion. The current S3 implementation plan covers the
+SBA/Priority/Draw work and their immediate interactions, but does not implement
+the remaining specified `combat-phase`, `declare-attackers`,
+`declare-blockers`, `damage-and-life`, `combat-damage`, and `cleanup-reset`
+Foundation capabilities. They are explicit later M3 blocks above, not work
+implied by S3 completion.
 
 ### C. What the first playable game still needs
 
@@ -287,33 +289,40 @@ which those owners are implemented.
 
 ### M3 critical path
 
-`M3_CRITICAL_PATH` from this HEAD is seven major semantic/evidence blocks:
+`M3_CRITICAL_PATH` from this HEAD is eight major semantic/evidence blocks:
 
-1. **S3.A atomic batch:** Task9B design REDs → atomic one-round producer,
-   `StateBasedActionsApplied`, exact S2 move composition, loss/terminal and
-   bounded post-damage combat closure. Task9B0 exact-head review precedes this.
-2. **S3.A durability:** fixed point, restore/fork at APNAP stages, production
-   S3 semantic contract, replay and all atomicity evidence. Disposition the
-   known nonterminal response/Basic Priority barrier before claiming closure.
-3. **Basic Priority Rules:** event/state/pass contract and pass-only semantic
-   implementation.
-4. **Magic response integration:** admit reviewed S3 identity, wire Reference
-   player responses to the shared response transaction, verify rejection and
-   actor-only behavior.
-5. **Draw disposition/producer:** freeze event choice, RED and implement
-   ordinary Draw through S2.
-6. **Normal-turn composition:** Upkeep pass → Draw → priority; verify combat,
-   cleanup, V6 replay and S2 interactions/coverage.
-7. **M3 closure:** lifecycle/interaction evidence, workspace and full exact-head
-   gates; no promotion from candidate or implementation alone.
+1. **S3.A — finish bounded SBA:** atomic batch, fixed point, production
+   identity, replay/restore/fork and bounded post-CombatDamage combat closure.
+2. **Basic Priority + Reference response integration:** implement the
+   pass-only kernel and route admitted responses through the shared transaction.
+3. **Draw + S2 replay/interaction coverage:** implement ordinary Draw and prove
+   the real S2 transition/replay and information interactions.
+4. **Combat Phase + Declare Attackers:** implement temporal combat progression,
+   skip rules and the bounded attacker declaration flow.
+5. **Declare Blockers:** implement the bounded blocker choice and state/event
+   product.
+6. **Damage/Life + Combat Damage + post-damage SBA interaction:** assign and
+   apply the bounded simultaneous damage product, then check SBA before priority.
+7. **Cleanup Reset + complete synthetic normal-turn composition:** reset
+   damage/durations and compose the covered synthetic turn through next Untap.
+8. **Cumulative M3 closure:** interaction, lifecycle, parity, replay and
+   exact-head gates; do not promote lifecycle from implementation alone.
+
+S3 completion != M3 completion. Tasks 9B–24 address S3.A and the planned
+Priority/Draw integration; they do not by themselves implement the remaining
+combat and cleanup Foundation capabilities. This ordering groups work without
+adding capability identities.
 
 ```text
-ESTIMATED_MAJOR_SEMANTIC_BLOCKS_REMAINING_M3 = 7
+ESTIMATED_MAJOR_SEMANTIC_BLOCKS_REMAINING_M3 = 8
 ```
 
-This is grouped from the current accepted plan's Task9B/10, Tasks11–14,
-Tasks15–21 and Tasks22–24. Task 9B0 and Task 9B must not be collapsed: the
-former freezes the design and RED; the latter owns production semantics.
+This grouping accounts for all eleven frozen Foundation capabilities: S1
+`turn-structure`; S2 `zone-incarnation`; S3 `state-based-actions-combat`; and
+the specified `basic-priority`, `draw-card`, `cleanup-reset`,
+`combat-damage`, `combat-phase`, `declare-attackers`, `declare-blockers`, and
+`damage-and-life`. It is derived from the actual lifecycle/code audit, not a
+claim that the S3 plan implements the full M3 remainder.
 
 ### First playable critical path
 
@@ -429,7 +438,7 @@ as implemented behavior.
 ## 10. Required executive closure values
 
 ```text
-CURRENT_HEAD = 8cafb91b121cc2e29f3837fffbd8a189cbf817
+CURRENT_HEAD = 8cafb91b121cc2e29f3834ddb1a959a429a20ec4
 MASTER = 66f3b713787cad89674257f6e0b6448b9fd568f9
 FLOW_ROWS = 56
 M3_REQUIRED_ROWS = 30
@@ -441,7 +450,7 @@ PARTIAL = 30
 MISSING = 18
 DEFER = 3
 
-M3_MAJOR_SEMANTIC_BLOCKS_REMAINING = 7
+M3_MAJOR_SEMANTIC_BLOCKS_REMAINING = 8
 PLAYABLE_MAJOR_SEMANTIC_BLOCKS_ADDED = 5
 R1_ADDITIONAL_MAJOR_SEMANTIC_BLOCKS = 3_PROVISIONAL
 CROSS_LAYER_CONTRADICTIONS = 0_DIRECT
@@ -453,8 +462,11 @@ M3_CRITICAL_PATH =
   -> Basic Priority Rules
   -> Reference/environment response integration
   -> Draw through S2
-  -> normal-turn composition and S2 coverage
-  -> cumulative M3 closure
+  -> Combat Phase + Declare Attackers
+  -> Declare Blockers
+  -> Damage/Life + Combat Damage + post-damage SBA
+  -> Cleanup Reset + synthetic normal turn
+  -> cumulative M3 interaction/lifecycle/parity/closure gates
 
 FIRST_PLAYABLE_CRITICAL_PATH =
   pregame/decks
