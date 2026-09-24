@@ -1,0 +1,26 @@
+services:
+  dev:
+    image: python:3.13.15-slim
+    working_dir: /app
+    volumes:
+      - .:/app
+      - cargo-cache:/root/.cargo
+      - rustup-cache:/root/.rustup
+    ports:
+      - "3000:3000"
+    environment:
+      - CARGO_HOME=/root/.cargo
+      - RUSTUP_HOME=/root/.rustup
+    command: >
+      bash -c '
+        set -e
+        apt-get update &&
+        apt-get install -y --no-install-recommends curl build-essential pkg-config libssl-dev ca-certificates git &&
+        curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.85.1 --profile minimal &&
+        . "$$HOME/.cargo/env" &&
+        exec python3 scripts/dev_status_server.py
+      '
+
+volumes:
+  cargo-cache:
+  rustup-cache:
