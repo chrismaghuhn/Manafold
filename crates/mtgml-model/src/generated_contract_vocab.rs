@@ -53,6 +53,7 @@ pub const STABLE_WIRE_ERROR_CODES: &[&str] = &[
     "encode.serialization",
     "semantic.decision",
     "semantic.decision_response",
+    "semantic.magic_m3_observation",
     "semantic.observation",
     "semantic.information_state",
     "semantic.observed_event",

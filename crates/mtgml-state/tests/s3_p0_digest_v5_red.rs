@@ -190,7 +190,7 @@ fn magic_order_state(
     let continuation = ContinuationRecordV2 {
         id: ContinuationId(1),
         actor: PlayerId(2),
-        created_at_revision: StateRevision(0),
+        created_at_revision: StateRevision(1),
         stage_index: payload.stage_index(),
         payload,
     };
@@ -201,6 +201,7 @@ fn magic_order_state(
         .insert(continuation.id, continuation);
 
     state.allocators.next_decision_id = DecisionId(2);
+    state.revision = StateRevision(2);
     state
         .perspective_identities
         .players
@@ -211,7 +212,7 @@ fn magic_order_state(
         request: mtgml_decision::AuthoritativeDecisionRequestV2 {
             decision_id: DecisionId(1),
             player_decision_id: PlayerDecisionIdV1(1),
-            state_revision: StateRevision(0),
+            state_revision: StateRevision(2),
             actor: PlayerId(2),
             visibility: DecisionVisibility::ActingPlayerOnly,
             decision: DecisionDomainV2::Order {
@@ -306,7 +307,7 @@ fn magic_continuation_is_valid_v5_state_and_changes_digest_when_its_order_change
     let digest_changed_cause: FullStateDigestV5 = changed_cause.digest().unwrap();
     assert_eq!(
         digest_a.to_string(),
-        "62831653aef08f7394b3f42aad5fbba1407b5094745f927d63dc331e46b451a4"
+        "9e2484a74264efec84fde07112ee023fa59b1c3eb5c391804cbbdf42f0b57667"
     );
     assert_ne!(digest_a, digest_b);
     assert_ne!(digest_a, digest_no_player_loss);
@@ -403,7 +404,16 @@ fn objectless_player_loss_state() -> EngineState {
         next_owner_index: 0,
         completed_owner_orders: Vec::new(),
     };
+    continuation.created_at_revision = StateRevision(1);
     continuation.stage_index = continuation.payload.stage_index();
+    state.revision = StateRevision(1);
+    state
+        .execution
+        .pending_decision
+        .as_mut()
+        .unwrap()
+        .request
+        .state_revision = StateRevision(1);
     state
 }
 

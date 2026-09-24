@@ -179,6 +179,6 @@ pub fn validate_m2_shape(
             }
         }
     }
-    validate_program_coherence(pending, continuations, players, objects)?;
+    validate_program_coherence(pending, continuations, players, objects, identities)?;
     Ok(())
 }

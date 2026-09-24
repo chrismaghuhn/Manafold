@@ -1,5 +1,7 @@
 use crate::TurnPosition;
-use mtgml_model::{DecisionId, FullStateDigestV5, GameObjectId, PlayerId, StateRevision};
+use mtgml_model::{
+    ContinuationId, DecisionId, FullStateDigestV5, GameObjectId, PlayerId, StateRevision,
+};
 use mtgml_random::RandomStreamKeyV1;
 use serde::{Deserialize, Serialize};
 
@@ -32,6 +34,18 @@ pub enum SemanticDeltaOperation {
     },
     DecisionCleared {
         decision: DecisionId,
+    },
+    SbaGraveyardOrderChosen {
+        continuation: ContinuationId,
+        owner: PlayerId,
+        top_to_bottom: Vec<GameObjectId>,
+    },
+    StateBasedActionsApplied {
+        actions: Vec<crate::SbaSelectedActionV1>,
+    },
+    PriorityChanged {
+        from: crate::PriorityState,
+        to: crate::PriorityState,
     },
     RandomValueSampled {
         stream: RandomStreamKeyV1,

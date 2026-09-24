@@ -4,7 +4,7 @@
 //! conformance facade below only translates its closed test vocabulary and
 //! delegates here; it contains no transition behavior.
 
-use mtgml_model::{GameObjectId, StateRevision};
+use mtgml_model::{GameObjectId, RuleEventId, StateRevision};
 use mtgml_state::{validate_engine_state, EngineState, ZoneLocation, ZonePosition, ZoneTransition};
 
 use crate::errors::ZoneIncarnationError;
@@ -102,18 +102,22 @@ fn validate_old_references(
 }
 
 fn emit_perspective_occurrence(
-    before: &EngineState,
+    event_origin: RuleEventId,
+    prior_event_count: usize,
     candidate: &mut EngineState,
     events: &mut Vec<AuthoritativeRuleEvent>,
     lifecycle: PerspectiveLifecycleAuditV1,
     observation: crate::PerspectiveObservationPolicyV1,
 ) -> Result<(), KernelExecutionError> {
     mtgml_state::apply_perspective_lifecycle(candidate, &lifecycle)?;
-    let event_offset =
+    let local_offset =
         u64::try_from(events.len()).map_err(|_| KernelExecutionError::RuleEventIdOverflow)?;
-    let event_id = before
-        .allocators
-        .next_rule_event_id
+    let prior_offset =
+        u64::try_from(prior_event_count).map_err(|_| KernelExecutionError::RuleEventIdOverflow)?;
+    let event_offset = prior_offset
+        .checked_add(local_offset)
+        .ok_or(KernelExecutionError::RuleEventIdOverflow)?;
+    let event_id = event_origin
         .0
         .checked_add(event_offset)
         .ok_or(KernelExecutionError::RuleEventIdOverflow)?;
@@ -128,17 +132,81 @@ fn emit_perspective_occurrence(
     Ok(())
 }
 
-/// The one future implementation point for both selected transition families.
-///
-/// Executes one admitted selected zone transition through the ordinary
-/// accepted-product path. Task-3 lifecycle/reference closures remain owned by
-/// their later integration step; this core executor requires the candidate to
-/// satisfy the existing complete EngineState validator.
+/// Standalone S2 transition wrapper. It owns the one-move revision policy,
+/// complete before/after validation, delta, and accepted product.
 pub(crate) fn execute_selected_zone_transition(
     state: &EngineState,
     request: &SelectedZoneTransitionRequest,
 ) -> Result<TransitionResult, KernelExecutionError> {
     validate_engine_state(state).map_err(KernelExecutionError::BeforeState)?;
+    let revision = StateRevision(
+        state
+            .revision
+            .0
+            .checked_add(1)
+            .ok_or(KernelExecutionError::RevisionOverflow)?,
+    );
+    let mut candidate = state.clone();
+    candidate.revision = revision;
+    let mut events = Vec::new();
+    apply_selected_zone_transition_in_workspace(
+        &mut candidate,
+        request,
+        state.allocators.next_rule_event_id,
+        &mut events,
+    )?;
+    build_accepted_product(state, candidate, events, |_| Ok(()))
+}
+
+/// Apply one selected S2 move to a caller-owned scratch workspace.
+///
+/// The candidate revision and outer event cursor belong to the coordinator.
+/// This primitive never creates a `TransitionResult`, increments revision, or
+/// validates a potentially incomplete intermediate workspace. It stages all
+/// work in a private clone so an error leaves both the candidate and its event
+/// vector untouched.
+pub(crate) fn apply_selected_zone_transition_in_workspace(
+    candidate: &mut EngineState,
+    request: &SelectedZoneTransitionRequest,
+    event_origin: RuleEventId,
+    events: &mut Vec<AuthoritativeRuleEvent>,
+) -> Result<ZoneTransition, KernelExecutionError> {
+    apply_selected_zone_transition_in_workspace_with_reindex(
+        candidate,
+        request,
+        event_origin,
+        events,
+        false,
+    )
+}
+
+/// SBA-batch entry into the same S2 workspace authority. The extra flag
+/// permits the single occurrence for a public Graveyard insertion to refresh
+/// every tracked member whose trusted top offset changes; standalone S2 keeps
+/// its reviewed single-move product byte-for-byte unchanged.
+pub(crate) fn apply_selected_zone_transition_in_sba_batch_workspace(
+    candidate: &mut EngineState,
+    request: &SelectedZoneTransitionRequest,
+    event_origin: RuleEventId,
+    events: &mut Vec<AuthoritativeRuleEvent>,
+) -> Result<ZoneTransition, KernelExecutionError> {
+    apply_selected_zone_transition_in_workspace_with_reindex(
+        candidate,
+        request,
+        event_origin,
+        events,
+        true,
+    )
+}
+
+fn apply_selected_zone_transition_in_workspace_with_reindex(
+    candidate: &mut EngineState,
+    request: &SelectedZoneTransitionRequest,
+    event_origin: RuleEventId,
+    events: &mut Vec<AuthoritativeRuleEvent>,
+    reindex_graveyard_knowledge: bool,
+) -> Result<ZoneTransition, KernelExecutionError> {
+    let state = &*candidate;
 
     let old_object =
         state
@@ -359,13 +427,6 @@ pub(crate) fn execute_selected_zone_transition(
         .ok_or(KernelExecutionError::ZoneIncarnation(
             ZoneIncarnationError::ObjectNotLive,
         ))?;
-    next.revision = StateRevision(
-        state
-            .revision
-            .0
-            .checked_add(1)
-            .ok_or(KernelExecutionError::RevisionOverflow)?,
-    );
     next.zones.objects.insert(
         new_object_id,
         mtgml_state::GameObject {
@@ -397,18 +458,25 @@ pub(crate) fn execute_selected_zone_transition(
         last_known,
         new_snapshot,
     };
+    let prior_event_count =
+        u64::try_from(events.len()).map_err(|_| KernelExecutionError::RuleEventIdOverflow)?;
+    let event_id = event_origin
+        .0
+        .checked_add(prior_event_count)
+        .ok_or(KernelExecutionError::RuleEventIdOverflow)?;
     let event = AuthoritativeRuleEvent {
-        event_id: state.allocators.next_rule_event_id,
+        event_id: mtgml_model::RuleEventId(event_id),
         state_revision: next.revision,
         event: AuthoritativeRuleEventKind::ZoneTransition {
             transition: Box::new(transition.clone()),
         },
     };
-    let mut events = vec![event];
+    let mut staged_events = vec![event];
     let new_object = new_object_id;
     let to_location = transition.to.clone();
     match request.kind {
         SelectedZoneTransitionKind::BattlefieldToOwnerGraveyard => {
+            let destination_key = transition.to.key();
             for perspective in state.core.players.keys().copied() {
                 let identity = state
                     .perspective_identities
@@ -417,57 +485,147 @@ pub(crate) fn execute_selected_zone_transition(
                     .ok_or(KernelExecutionError::ZoneIncarnation(
                         ZoneIncarnationError::PerspectiveKnowledgeMismatch,
                     ))?;
-                let Some(opaque) = identity.object_to_opaque.get(&request.object).copied() else {
-                    continue;
-                };
                 let knowledge = state.knowledge.players.get(&perspective).ok_or(
                     KernelExecutionError::ZoneIncarnation(
                         ZoneIncarnationError::PerspectiveKnowledgeMismatch,
                     ),
                 )?;
-                if !knowledge.active.contains_key(&opaque) {
-                    return Err(KernelExecutionError::ZoneIncarnation(
-                        ZoneIncarnationError::PerspectiveKnowledgeMismatch,
-                    ));
-                }
+                let owner_opaque = identity.object_to_opaque.get(&request.object).copied();
                 let sequence = knowledge.next_visible_sequence;
                 let provenance = KnowledgeAcquisitionReason::Observed {
                     channel: KnowledgeHistoryChannel::Public,
                     sequence,
                     cause: KnowledgeAcquisitionCause::PublicEvent,
                 };
-                let lifecycle = PerspectiveLifecycleAuditV1 {
-                    perspective,
-                    sequence,
-                    mutation: PerspectiveLifecycleMutationV1 {
-                        identity: IdentityMutationV1::Remap {
-                            opaque,
-                            from_object: request.object,
-                            to_object: new_object,
-                        },
-                        knowledge: Some(KnowledgeMutationV1::UpdateLocation {
+
+                if reindex_graveyard_knowledge {
+                    let mut updates = Vec::new();
+                    if let Some(existing) = state.zones.ordered_zones.get(&destination_key) {
+                        for member in existing {
+                            let Some(opaque) = identity.object_to_opaque.get(member).copied()
+                            else {
+                                continue;
+                            };
+                            let record = knowledge.active.get(&opaque).ok_or(
+                                KernelExecutionError::ZoneIncarnation(
+                                    ZoneIncarnationError::PerspectiveKnowledgeMismatch,
+                                ),
+                            )?;
+                            if record.known_location.is_some() {
+                                let location = next.zones.locations.get(member).cloned().ok_or(
+                                    KernelExecutionError::ZoneIncarnation(
+                                        ZoneIncarnationError::PerspectiveKnowledgeMismatch,
+                                    ),
+                                )?;
+                                updates.push(mtgml_state::KnowledgeLocationUpdateV1 {
+                                    opaque,
+                                    fact: KnownLocationFactV2 {
+                                        location,
+                                        provenance,
+                                    },
+                                });
+                            }
+                        }
+                    }
+                    let identity_mutation = if let Some(opaque) = owner_opaque {
+                        if !knowledge.active.contains_key(&opaque) {
+                            return Err(KernelExecutionError::ZoneIncarnation(
+                                ZoneIncarnationError::PerspectiveKnowledgeMismatch,
+                            ));
+                        }
+                        updates.push(mtgml_state::KnowledgeLocationUpdateV1 {
                             opaque,
                             fact: KnownLocationFactV2 {
                                 location: to_location.clone(),
                                 provenance,
                             },
-                        }),
-                    },
-                };
-                emit_perspective_occurrence(
-                    state,
-                    &mut next,
-                    &mut events,
-                    lifecycle,
-                    crate::PerspectiveObservationPolicyV1::MovedInSight {
-                        from_zone: transition.from.zone,
-                        to_zone: transition.to.zone,
-                        old_object: request.object,
-                        new_object,
-                        reveals_old: true,
-                        reveals_new: true,
-                    },
-                )?;
+                        });
+                        IdentityMutationV1::Remap {
+                            opaque,
+                            from_object: request.object,
+                            to_object: new_object,
+                        }
+                    } else {
+                        IdentityMutationV1::None
+                    };
+                    if updates.is_empty() {
+                        continue;
+                    }
+                    updates.sort_by_key(|update| update.opaque);
+                    if updates
+                        .windows(2)
+                        .any(|pair| pair[0].opaque == pair[1].opaque)
+                    {
+                        return Err(KernelExecutionError::ZoneIncarnation(
+                            ZoneIncarnationError::PerspectiveKnowledgeMismatch,
+                        ));
+                    }
+                    let lifecycle = PerspectiveLifecycleAuditV1 {
+                        perspective,
+                        sequence,
+                        mutation: PerspectiveLifecycleMutationV1 {
+                            identity: identity_mutation,
+                            knowledge: Some(KnowledgeMutationV1::UpdateLocations { updates }),
+                        },
+                    };
+                    emit_perspective_occurrence(
+                        event_origin,
+                        events.len(),
+                        &mut next,
+                        &mut staged_events,
+                        lifecycle,
+                        crate::PerspectiveObservationPolicyV1::MovedInSight {
+                            from_zone: transition.from.zone,
+                            to_zone: transition.to.zone,
+                            old_object: request.object,
+                            new_object,
+                            reveals_old: true,
+                            reveals_new: true,
+                        },
+                    )?;
+                } else {
+                    let Some(opaque) = owner_opaque else {
+                        continue;
+                    };
+                    if !knowledge.active.contains_key(&opaque) {
+                        return Err(KernelExecutionError::ZoneIncarnation(
+                            ZoneIncarnationError::PerspectiveKnowledgeMismatch,
+                        ));
+                    }
+                    let lifecycle = PerspectiveLifecycleAuditV1 {
+                        perspective,
+                        sequence,
+                        mutation: PerspectiveLifecycleMutationV1 {
+                            identity: IdentityMutationV1::Remap {
+                                opaque,
+                                from_object: request.object,
+                                to_object: new_object,
+                            },
+                            knowledge: Some(KnowledgeMutationV1::UpdateLocation {
+                                opaque,
+                                fact: KnownLocationFactV2 {
+                                    location: to_location.clone(),
+                                    provenance,
+                                },
+                            }),
+                        },
+                    };
+                    emit_perspective_occurrence(
+                        event_origin,
+                        events.len(),
+                        &mut next,
+                        &mut staged_events,
+                        lifecycle,
+                        crate::PerspectiveObservationPolicyV1::MovedInSight {
+                            from_zone: transition.from.zone,
+                            to_zone: transition.to.zone,
+                            old_object: request.object,
+                            new_object,
+                            reveals_old: true,
+                            reveals_new: true,
+                        },
+                    )?;
+                }
             }
         }
         SelectedZoneTransitionKind::LibraryTopToOwnerHand => {
@@ -552,10 +710,19 @@ pub(crate) fn execute_selected_zone_transition(
                     knowledge: knowledge_mutation,
                 },
             };
-            emit_perspective_occurrence(state, &mut next, &mut events, lifecycle, observation)?;
+            emit_perspective_occurrence(
+                event_origin,
+                events.len(),
+                &mut next,
+                &mut staged_events,
+                lifecycle,
+                observation,
+            )?;
         }
     }
-    build_accepted_product(state, next, events, |_| Ok(()))
+    *candidate = next;
+    events.extend(staged_events);
+    Ok(transition)
 }
 
 /// Closed family vocabulary available only when the conformance testkit feature

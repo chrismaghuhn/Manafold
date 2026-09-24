@@ -118,3 +118,33 @@ fn fnd_016a_rejection_matrix_requires_the_correct_decision_presence() {
     );
     assert!(closed_without_decision.validate().is_ok());
 }
+
+#[test]
+fn player_step_v2_preserves_earlier_event_revision_in_one_atomic_response_product() {
+    let mut information_state = valid_information_state();
+    information_state.state_revision = StateRevision(2);
+    information_state.current_observation.state_revision = StateRevision(2);
+    information_state.next_visible_sequence = VisibleSequence(3);
+    let mut first = moved(Some(1), Some(2));
+    first.sequence = VisibleSequence(1);
+    first.state_revision = StateRevision(1);
+    let mut second = moved(Some(2), Some(3));
+    second.sequence = VisibleSequence(2);
+    second.state_revision = StateRevision(2);
+    let step = PlayerStepV2 {
+        schema_version: PLAYER_STEP_SCHEMA_V2.into(),
+        information_state,
+        observed_events: vec![first, second],
+        next_decision: None,
+        status: EpisodeStatus::Running,
+        submission: PlayerStepSubmissionV1::Accepted,
+    };
+    assert!(step.validate().is_ok());
+
+    let mut future = step;
+    future.observed_events[1].state_revision = StateRevision(3);
+    assert_eq!(
+        future.validate(),
+        Err(ObservationValidationError::FutureEvent)
+    );
+}

@@ -1,5 +1,13 @@
 use crate::semantic_catalog::{CatalogEntry, RuntimeSemanticCatalog};
 use crate::semantic_catalog_generated::{
+    magic_s3_a_ordered_sba_0_1_0_rules_contract_id,
+    magic_s3_a_ordered_sba_0_1_0_rules_manifest,
+    magic_s3_a_ordered_sba_0_1_0_semantic_contract_id,
+    magic_s3_a_ordered_sba_0_1_0_semantic_manifest,
+    magic_s3_b_basic_priority_0_1_0_rules_contract_id,
+    magic_s3_b_basic_priority_0_1_0_rules_manifest,
+    magic_s3_b_basic_priority_0_1_0_semantic_contract_id,
+    magic_s3_b_basic_priority_0_1_0_semantic_manifest,
     magic_turn_structure_0_1_0_rules_contract_id,
     magic_turn_structure_0_1_0_rules_manifest,
     magic_turn_structure_0_1_0_semantic_contract_id,
@@ -77,7 +85,7 @@ fn known_meaning_is_distinct_from_supported_execution() {
 #[test]
 fn production_catalog_contains_exactly_generated_material() {
     let catalog = RuntimeSemanticCatalog::production();
-    assert_eq!(catalog.entry_count(), 2, "exactly two production entries");
+    assert_eq!(catalog.entry_count(), 4, "Synthetic, frozen S1, S3.A, and S3.B identities");
 
     let syn_id = synthetic_legacy_default_semantic_contract_id();
     let syn_entry = catalog.resolve(&syn_id).unwrap();
@@ -100,6 +108,61 @@ fn production_catalog_contains_exactly_generated_material() {
     assert!(ts_entry.rules_manifest.capability_closure.is_some());
     assert!(ts_entry.manifest.format_contract_id.is_none());
     assert!(ts_entry.manifest.content_contract_id.is_none());
+
+    let s3a_id = magic_s3_a_ordered_sba_0_1_0_semantic_contract_id();
+    let s3a_entry = catalog.resolve(&s3a_id).unwrap();
+    assert_eq!(s3a_entry.semantic_contract_id, s3a_id);
+    assert_eq!(
+        s3a_entry.manifest.rules_contract_id,
+        magic_s3_a_ordered_sba_0_1_0_rules_contract_id()
+    );
+    assert_eq!(
+        s3a_entry.manifest,
+        magic_s3_a_ordered_sba_0_1_0_semantic_manifest()
+    );
+    assert_eq!(
+        s3a_entry.rules_manifest,
+        magic_s3_a_ordered_sba_0_1_0_rules_manifest()
+    );
+    assert!(s3a_entry.rules_manifest.capability_closure.is_some());
+    let s3a_closure = s3a_entry
+        .rules_manifest
+        .capability_closure
+        .as_ref()
+        .unwrap();
+    assert_eq!(s3a_closure.len(), 3);
+    assert_eq!(s3a_closure[0].key, "rules/state-based-actions-combat");
+    assert_eq!(s3a_closure[1].key, "rules/turn-structure");
+    assert_eq!(s3a_closure[2].key, "rules/zone-incarnation");
+    assert!(catalog.supported(&s3a_id, ExecutionProgramV1::MagicRules));
+    assert_ne!(s3a_id, ts_id, "S3.A gets its own generated semantic identity");
+    assert!(s3a_entry.manifest.format_contract_id.is_none());
+    assert!(s3a_entry.manifest.content_contract_id.is_none());
+
+    let s3b_id = magic_s3_b_basic_priority_0_1_0_semantic_contract_id();
+    let s3b_entry = catalog.resolve(&s3b_id).unwrap();
+    assert_eq!(s3b_entry.semantic_contract_id, s3b_id);
+    assert_eq!(
+        s3b_entry.manifest.rules_contract_id,
+        magic_s3_b_basic_priority_0_1_0_rules_contract_id()
+    );
+    assert_eq!(
+        s3b_entry.manifest,
+        magic_s3_b_basic_priority_0_1_0_semantic_manifest()
+    );
+    assert_eq!(
+        s3b_entry.rules_manifest,
+        magic_s3_b_basic_priority_0_1_0_rules_manifest()
+    );
+    let s3b_closure = s3b_entry.rules_manifest.capability_closure.as_ref().unwrap();
+    assert_eq!(s3b_closure.len(), 4);
+    assert_eq!(s3b_closure[0].key, "rules/basic-priority");
+    assert_eq!(s3b_closure[1].key, "rules/state-based-actions-combat");
+    assert_eq!(s3b_closure[2].key, "rules/turn-structure");
+    assert_eq!(s3b_closure[3].key, "rules/zone-incarnation");
+    assert!(catalog.supported(&s3b_id, ExecutionProgramV1::MagicRules));
+    assert_ne!(s3b_id, s3a_id, "S3.B must not reinterpret the S3.A identity");
+    assert_ne!(s3b_id, ts_id, "S3.B must not reinterpret the S1 identity");
 }
 
 #[test]

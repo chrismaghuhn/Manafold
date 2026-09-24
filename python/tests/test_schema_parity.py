@@ -118,6 +118,7 @@ class SchemaParityTests(unittest.TestCase):
             "player-step.v2": "player-step.v2.schema.json",
             "replay-manifest.v3": "replay-manifest.v3.schema.json",
             "authoritative-replay.v3": "authoritative-replay.v3.schema.json",
+            "magic-m3-observation.v1": "magic-m3-observation.v1.schema.json",
             "synthetic-m3-observation.v1": "synthetic-m3-observation.v1.schema.json",
             "replay-manifest.v4": "replay-manifest.v4.schema.json",
             "authoritative-replay.v4": "authoritative-replay.v4.schema.json",

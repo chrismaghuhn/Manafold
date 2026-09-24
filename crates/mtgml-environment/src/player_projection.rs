@@ -6,7 +6,7 @@
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use mtgml_decision::PlayerDecisionRequestV2;
-use mtgml_model::{EpisodeStatus, PlayerId};
+use mtgml_model::{EpisodeStatus, ExecutionIdentityV1, ExecutionProgramV1, PlayerId};
 use mtgml_observation::{
     InformationStateDigestInputV2, ObservationEnvelope, ObservedEventEnvelopeV2,
     PlayerInformationStateV2, PlayerKnowledgeCauseV1, PlayerKnowledgeChannelV1,
@@ -16,6 +16,11 @@ use mtgml_observation::{
     SyntheticM3Priority, SyntheticM3TurnPosition, INFORMATION_STATE_SCHEMA_V2, OBSERVATION_SCHEMA,
     PLAYER_STEP_SCHEMA_V2, SYNTHETIC_M3_OBSERVATION_SCHEMA,
 };
+use mtgml_observation::{
+    MagicM3CompletedOrder, MagicM3Observation, MagicM3PendingSbaOrdering,
+    MAGIC_M3_OBSERVATION_SCHEMA,
+};
+use mtgml_state::ContinuationPayloadV2;
 use mtgml_state::{
     BeginningStep, CombatStep, EndingStep, EngineState, KnowledgeAcquisitionCause,
     KnowledgeAcquisitionReason, KnowledgeHistoryChannel, KnowledgeInvalidationReason,
@@ -24,27 +29,101 @@ use mtgml_state::{
 
 use crate::endpoint::PlayerEndpointError;
 use crate::errors::{ControllerError, EnvironmentCommitError};
+use crate::semantic_catalog_generated::{
+    magic_s3_a_ordered_sba_0_1_0_semantic_contract_id,
+    magic_s3_b_basic_priority_0_1_0_semantic_contract_id,
+    magic_turn_structure_0_1_0_semantic_contract_id, synthetic_legacy_default_semantic_contract_id,
+};
 
 const SYNTHETIC_M3_OBSERVATION_CODEC: &str = SYNTHETIC_M3_OBSERVATION_SCHEMA;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ObservationProjectionProfile {
+    SyntheticM3,
+    MagicM3,
+}
+
+pub(crate) fn profile_for_execution_identity(
+    identity: &ExecutionIdentityV1,
+) -> Result<ObservationProjectionProfile, ControllerError> {
+    if identity.program_kind == ExecutionProgramV1::SyntheticRulesCompat {
+        return if identity.semantic_contract_id == synthetic_legacy_default_semantic_contract_id() {
+            Ok(ObservationProjectionProfile::SyntheticM3)
+        } else {
+            Err(ControllerError::ProgramAuthorityMismatch)
+        };
+    }
+    if identity.program_kind != ExecutionProgramV1::MagicRules {
+        return Err(ControllerError::ProgramAuthorityMismatch);
+    }
+    if identity.semantic_contract_id == magic_turn_structure_0_1_0_semantic_contract_id() {
+        Ok(ObservationProjectionProfile::SyntheticM3)
+    } else if identity.semantic_contract_id == magic_s3_a_ordered_sba_0_1_0_semantic_contract_id()
+        || identity.semantic_contract_id == magic_s3_b_basic_priority_0_1_0_semantic_contract_id()
+    {
+        Ok(ObservationProjectionProfile::MagicM3)
+    } else {
+        Err(ControllerError::SemanticContractUnsupported)
+    }
+}
 
 pub(crate) fn project_observation(
     state: &EngineState,
     perspective: PlayerId,
 ) -> Result<ObservationEnvelope, PlayerEndpointError> {
-    let payload_value = SyntheticM3Observation {
-        schema_version: SYNTHETIC_M3_OBSERVATION_SCHEMA.into(),
-        active_player: state.core.active_player,
-        turn_number: state.core.turn_number.to_string(),
-        turn_position: public_turn_position(state.core.position),
-        priority: public_priority(state.core.priority),
+    project_observation_with_profile(
+        state,
+        perspective,
+        ObservationProjectionProfile::SyntheticM3,
+    )
+}
+
+pub(crate) fn project_observation_with_profile(
+    state: &EngineState,
+    perspective: PlayerId,
+    profile: ObservationProjectionProfile,
+) -> Result<ObservationEnvelope, PlayerEndpointError> {
+    if !state.core.players.contains_key(&perspective) {
+        return Err(PlayerEndpointError::ServiceUnavailable);
+    }
+    let (codec, payload) = match profile {
+        ObservationProjectionProfile::SyntheticM3 => {
+            let value = SyntheticM3Observation {
+                schema_version: SYNTHETIC_M3_OBSERVATION_SCHEMA.into(),
+                active_player: state.core.active_player,
+                turn_number: state.core.turn_number.to_string(),
+                turn_position: public_turn_position(state.core.position),
+                priority: public_priority(state.core.priority),
+            };
+            (
+                SYNTHETIC_M3_OBSERVATION_CODEC,
+                mtgml_wire::encode_canonical(&value),
+            )
+        }
+        ObservationProjectionProfile::MagicM3 => {
+            let value = MagicM3Observation {
+                schema_version: MAGIC_M3_OBSERVATION_SCHEMA.into(),
+                active_player: state.core.active_player,
+                turn_number: state.core.turn_number.to_string(),
+                turn_position: public_turn_position(state.core.position),
+                priority: public_priority(state.core.priority),
+                pending_sba_ordering: project_sba_ordering(state, perspective)?,
+            };
+            value
+                .validate()
+                .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
+            (
+                MAGIC_M3_OBSERVATION_SCHEMA,
+                mtgml_wire::encode_canonical(&value),
+            )
+        }
     };
-    let payload = mtgml_wire::encode_canonical(&payload_value)
-        .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
+    let payload = payload.map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
     let observation = ObservationEnvelope {
         schema_version: OBSERVATION_SCHEMA.into(),
         perspective,
         state_revision: state.revision,
-        payload_codec: SYNTHETIC_M3_OBSERVATION_CODEC.into(),
+        payload_codec: codec.into(),
         payload_base64: STANDARD.encode(&payload),
         digest: mtgml_model::ObservationDigest::from_canonical_bytes(&payload),
     };
@@ -52,6 +131,73 @@ pub(crate) fn project_observation(
         .validate()
         .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
     Ok(observation)
+}
+
+fn project_sba_ordering(
+    state: &EngineState,
+    perspective: PlayerId,
+) -> Result<Option<MagicM3PendingSbaOrdering>, PlayerEndpointError> {
+    let mut matching = state
+        .execution
+        .continuations
+        .values()
+        .filter(|continuation| {
+            matches!(
+                continuation.payload,
+                ContinuationPayloadV2::MagicSbaGraveyardOrderV1 { .. }
+            )
+        });
+    let Some(continuation) = matching.next() else {
+        return Ok(None);
+    };
+    if matching.next().is_some() {
+        return Err(PlayerEndpointError::ServiceUnavailable);
+    }
+    let ContinuationPayloadV2::MagicSbaGraveyardOrderV1 {
+        apnap_owners,
+        next_owner_index,
+        completed_owner_orders,
+        ..
+    } = &continuation.payload
+    else {
+        unreachable!()
+    };
+    let next_order_owner = apnap_owners
+        .get(
+            usize::try_from(*next_owner_index)
+                .map_err(|_| PlayerEndpointError::ServiceUnavailable)?,
+        )
+        .copied()
+        .ok_or(PlayerEndpointError::ServiceUnavailable)?;
+    let identity = state
+        .perspective_identities
+        .players
+        .get(&perspective)
+        .ok_or(PlayerEndpointError::ServiceUnavailable)?;
+    let completed_orders = completed_owner_orders
+        .iter()
+        .map(|order| {
+            let ordered_objects = order
+                .top_to_bottom
+                .iter()
+                .map(|object| {
+                    identity
+                        .object_to_opaque
+                        .get(object)
+                        .copied()
+                        .ok_or(PlayerEndpointError::ServiceUnavailable)
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(MagicM3CompletedOrder {
+                owner: order.owner,
+                ordered_objects,
+            })
+        })
+        .collect::<Result<Vec<_>, PlayerEndpointError>>()?;
+    Ok(Some(MagicM3PendingSbaOrdering {
+        completed_orders,
+        next_order_owner,
+    }))
 }
 
 fn public_location(location: &mtgml_state::ZoneLocation) -> PlayerKnownLocationV1 {
@@ -120,10 +266,22 @@ pub(crate) fn project_information_state(
     state: &EngineState,
     perspective: PlayerId,
 ) -> Result<PlayerInformationStateV2, PlayerEndpointError> {
+    project_information_state_with_profile(
+        state,
+        perspective,
+        ObservationProjectionProfile::SyntheticM3,
+    )
+}
+
+pub(crate) fn project_information_state_with_profile(
+    state: &EngineState,
+    perspective: PlayerId,
+    profile: ObservationProjectionProfile,
+) -> Result<PlayerInformationStateV2, PlayerEndpointError> {
     if !state.core.players.contains_key(&perspective) {
         return Err(PlayerEndpointError::ServiceUnavailable);
     }
-    let current_observation = project_observation(state, perspective)?;
+    let current_observation = project_observation_with_profile(state, perspective, profile)?;
     let knowledge = state
         .knowledge
         .players
@@ -250,6 +408,22 @@ pub(crate) fn project_player_step(
     status: EpisodeStatus,
     submission: PlayerStepSubmissionV1,
 ) -> Result<PlayerStepV2, PlayerEndpointError> {
+    project_player_step_with_profile(
+        state,
+        perspective,
+        status,
+        submission,
+        ObservationProjectionProfile::SyntheticM3,
+    )
+}
+
+pub(crate) fn project_player_step_with_profile(
+    state: &EngineState,
+    perspective: PlayerId,
+    status: EpisodeStatus,
+    submission: PlayerStepSubmissionV1,
+    profile: ObservationProjectionProfile,
+) -> Result<PlayerStepV2, PlayerEndpointError> {
     let next_decision = state
         .execution
         .pending_decision
@@ -260,7 +434,7 @@ pub(crate) fn project_player_step(
         .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
     let step = PlayerStepV2 {
         schema_version: PLAYER_STEP_SCHEMA_V2.into(),
-        information_state: project_information_state(state, perspective)?,
+        information_state: project_information_state_with_profile(state, perspective, profile)?,
         observed_events: Vec::<ObservedEventEnvelopeV2>::new(),
         next_decision,
         status,
@@ -271,12 +445,15 @@ pub(crate) fn project_player_step(
     Ok(step)
 }
 
-pub(crate) fn validate_candidate_projections(state: &EngineState) -> Result<(), ControllerError> {
+pub(crate) fn validate_candidate_projections_with_profile(
+    state: &EngineState,
+    profile: ObservationProjectionProfile,
+) -> Result<(), ControllerError> {
     for perspective in state.core.players.keys().copied() {
-        project_observation(state, perspective).map_err(|_| {
+        project_observation_with_profile(state, perspective, profile).map_err(|_| {
             ControllerError::EnvironmentCommit(EnvironmentCommitError::PlayerProjectionInvalid)
         })?;
-        project_information_state(state, perspective).map_err(|_| {
+        project_information_state_with_profile(state, perspective, profile).map_err(|_| {
             ControllerError::EnvironmentCommit(EnvironmentCommitError::PlayerProjectionInvalid)
         })?;
         project_visible_decision(state, perspective).map_err(|_| {

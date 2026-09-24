@@ -21,6 +21,12 @@ from ._knowledge import (
     PlayerKnownLocationV1,
     PlayerKnownObjectV1,
 )
+from ._magic_observation_m3 import (
+    MAGIC_M3_OBSERVATION_SCHEMA,
+    MagicM3CompletedOrder,
+    MagicM3Observation,
+    MagicM3PendingSbaOrdering,
+)
 from ._observation_m3 import (
     M3_BEGINNING_STEPS,
     M3_COMBAT_STEPS,
@@ -69,6 +75,7 @@ __all__ = [
     "M3_ENDING_STEPS",
     "M3_PRIORITY_KINDS",
     "M3_TURN_KINDS",
+    "MAGIC_M3_OBSERVATION_SCHEMA",
     "OBSERVATION_SCHEMA",
     "OBSERVED_EVENT_KINDS",
     "OBSERVED_EVENT_SCHEMA_V2",
@@ -80,6 +87,9 @@ __all__ = [
     "EpisodeStatus",
     "InformationStateDigestInputV2",
     "InformationStateEnvelope",
+    "MagicM3CompletedOrder",
+    "MagicM3Observation",
+    "MagicM3PendingSbaOrdering",
     "ObservationEnvelope",
     "ObservedEventEnvelope",
     "ObservedEventEnvelopeV2",

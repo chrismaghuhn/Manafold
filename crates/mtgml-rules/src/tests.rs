@@ -12,9 +12,10 @@ use mtgml_model::{
 use mtgml_random::RootSeed256;
 
 use mtgml_state::{
-    construct_synthetic_engine_state, AssemblyStageV2, ContinuationPayloadV2, ContinuationRecordV2,
-    EngineState, IdentityMutationV1, PendingDecisionRecordV2, PerspectiveLifecycleAuditV1,
-    PerspectiveLifecycleMutationV1, SyntheticResetInputs, SyntheticV4Setup,
+    construct_synthetic_engine_state, AssemblyStageV2, BaseCharacteristics, ContinuationPayloadV2,
+    ContinuationRecordV2, ControlHistory, EngineState, FoundationCreatureSource,
+    FoundationSourceKind, IdentityMutationV1, PendingDecisionRecordV2, PerspectiveLifecycleAuditV1,
+    PerspectiveLifecycleMutationV1, PriorityState, SyntheticResetInputs, SyntheticV4Setup,
 };
 
 use crate::ProgramKernelV1;
@@ -202,3 +203,9 @@ include!("tests/batch_e.rs");
 include!("tests/batch_f.rs");
 include!("tests/turn_structure.rs");
 include!("tests/magic_turn_structure.rs");
+include!("tests/state_based_actions.rs");
+include!("tests/basic_priority.rs");
+mod zone_incarnation_tests {
+    use super::*;
+    include!("tests/zone_incarnation.rs");
+}

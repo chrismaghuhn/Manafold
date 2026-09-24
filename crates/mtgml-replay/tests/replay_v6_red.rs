@@ -242,6 +242,121 @@ fn replay_v6_appends_one_response_and_has_no_forced_work_input() {
 }
 
 #[test]
+fn replay_v6_one_response_can_include_exactly_one_forced_progress_transition() {
+    let rules = RulesContractManifestV1 {
+        rules_authority: RulesAuthorityV1::ComprehensiveRules {
+            snapshot_id: "cr:test".to_owned(),
+        },
+        capability_closure: Some(vec![
+            CapabilityRequirementV1 {
+                key: "rules/basic-priority".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            CapabilityRequirementV1 {
+                key: "rules/state-based-actions-combat".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            CapabilityRequirementV1 {
+                key: "rules/turn-structure".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            CapabilityRequirementV1 {
+                key: "rules/zone-incarnation".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+        ]),
+    };
+    let mut s3b_manifest = manifest();
+    rebind_rules_and_codec(&mut s3b_manifest, rules, "magic-m3-observation.v1");
+    let initial = s3b_manifest.initial_identity.clone();
+    let after = identity(
+        initial.state_revision.0 + 2,
+        2,
+        EnvironmentLimitCounters {
+            decisions_submitted: 1,
+            accepted_transitions: 1,
+            ..EnvironmentLimitCounters::default()
+        },
+        initial.execution_identity.clone(),
+    );
+    let step = ReplayStepV6 {
+        step_index: 0,
+        actor: PlayerId(1),
+        checkpoint_digest_before: initial.checkpoint_digest.clone(),
+        state_revision_before: initial.state_revision,
+        response: response(initial.state_revision.0),
+        accepted: true,
+        state_revision_after: after.state_revision,
+        full_state_digest_after: after.full_state_digest.clone(),
+        episode_status_after: after.episode_status.clone(),
+        environment_limit_counters_after: after.environment_limit_counters.clone(),
+        checkpoint_digest_after: after.checkpoint_digest.clone(),
+    };
+    let mut recorder = ReplayRecorderV6::new(s3b_manifest).unwrap();
+    recorder.append(step).unwrap();
+    recorder.export().unwrap().validate().unwrap();
+
+    let mut too_many = recorder.export().unwrap();
+    too_many.steps[0].state_revision_after = StateRevision(initial.state_revision.0 + 3);
+    assert_eq!(
+        too_many.validate(),
+        Err(ReplayValidationError::RevisionDiscontinuity)
+    );
+
+    let s3a_rules = RulesContractManifestV1 {
+        rules_authority: RulesAuthorityV1::ComprehensiveRules {
+            snapshot_id: "cr:test".to_owned(),
+        },
+        capability_closure: Some(vec![
+            CapabilityRequirementV1 {
+                key: "rules/state-based-actions-combat".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            CapabilityRequirementV1 {
+                key: "rules/turn-structure".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            CapabilityRequirementV1 {
+                key: "rules/zone-incarnation".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+        ]),
+    };
+    let mut s3a_manifest = manifest();
+    rebind_rules_and_codec(&mut s3a_manifest, s3a_rules, "magic-m3-observation.v1");
+    let s3a_initial = s3a_manifest.initial_identity.clone();
+    let s3a_after = identity(
+        s3a_initial.state_revision.0 + 2,
+        3,
+        EnvironmentLimitCounters {
+            decisions_submitted: 1,
+            accepted_transitions: 1,
+            ..EnvironmentLimitCounters::default()
+        },
+        s3a_initial.execution_identity.clone(),
+    );
+    let s3a_step = ReplayStepV6 {
+        step_index: 0,
+        actor: PlayerId(1),
+        checkpoint_digest_before: s3a_initial.checkpoint_digest.clone(),
+        state_revision_before: s3a_initial.state_revision,
+        response: response(s3a_initial.state_revision.0),
+        accepted: true,
+        state_revision_after: s3a_after.state_revision,
+        full_state_digest_after: s3a_after.full_state_digest.clone(),
+        episode_status_after: s3a_after.episode_status.clone(),
+        environment_limit_counters_after: s3a_after.environment_limit_counters.clone(),
+        checkpoint_digest_after: s3a_after.checkpoint_digest.clone(),
+    };
+    let mut s3a_recorder = ReplayRecorderV6::new(s3a_manifest).unwrap();
+    assert_eq!(
+        s3a_recorder.append(s3a_step),
+        Err(ReplayValidationError::RevisionDiscontinuity),
+        "S3.A retains the one-transition Replay V6 progression"
+    );
+}
+
+#[test]
 fn replay_v6_rejects_v5_schema_and_unknown_fields() {
     let replay = ReplayRecorderV6::new(manifest()).unwrap().export().unwrap();
     let mut v5 = serde_json::to_value(&replay).unwrap();

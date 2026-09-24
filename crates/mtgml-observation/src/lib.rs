@@ -7,6 +7,7 @@ mod error;
 mod information;
 mod knowledge;
 mod m3;
+mod magic_m3;
 mod observation;
 mod observed_event;
 mod player_step;
@@ -23,6 +24,10 @@ pub use knowledge::{
 pub use m3::{
     SyntheticM3BeginningStep, SyntheticM3CombatStep, SyntheticM3EndingStep, SyntheticM3Observation,
     SyntheticM3Priority, SyntheticM3TurnPosition, SYNTHETIC_M3_OBSERVATION_SCHEMA,
+};
+pub use magic_m3::{
+    MagicM3CompletedOrder, MagicM3Observation, MagicM3PendingSbaOrdering,
+    MAGIC_M3_OBSERVATION_SCHEMA,
 };
 pub use observation::ObservationEnvelope;
 pub use observed_event::{

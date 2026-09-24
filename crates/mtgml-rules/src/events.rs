@@ -1,4 +1,6 @@
-use mtgml_model::{DecisionId, GameObjectId, PlayerId, RuleEventId, StateRevision, ZoneKind};
+use mtgml_model::{
+    ContinuationId, DecisionId, GameObjectId, PlayerId, RuleEventId, StateRevision, ZoneKind,
+};
 use mtgml_random::RandomStreamKeyV1;
 use mtgml_state::{
     IdentityMutationV1, KnowledgeAcquisitionCause, KnowledgeAcquisitionReason,
@@ -31,6 +33,18 @@ pub enum AuthoritativeRuleEventKind {
     },
     DecisionCleared {
         decision: DecisionId,
+    },
+    SbaGraveyardOrderChosen {
+        continuation: ContinuationId,
+        owner: PlayerId,
+        top_to_bottom: Vec<GameObjectId>,
+    },
+    StateBasedActionsApplied {
+        actions: Vec<mtgml_state::SbaSelectedActionV1>,
+    },
+    PriorityChanged {
+        from: mtgml_state::PriorityState,
+        to: mtgml_state::PriorityState,
     },
     RandomValueSampled {
         stream: RandomStreamKeyV1,
@@ -98,6 +112,24 @@ impl AuthoritativeRuleEventKind {
             },
             Self::DecisionCleared { decision } => SemanticDeltaOperation::DecisionCleared {
                 decision: *decision,
+            },
+            Self::SbaGraveyardOrderChosen {
+                continuation,
+                owner,
+                top_to_bottom,
+            } => SemanticDeltaOperation::SbaGraveyardOrderChosen {
+                continuation: *continuation,
+                owner: *owner,
+                top_to_bottom: top_to_bottom.clone(),
+            },
+            Self::StateBasedActionsApplied { actions } => {
+                SemanticDeltaOperation::StateBasedActionsApplied {
+                    actions: actions.clone(),
+                }
+            }
+            Self::PriorityChanged { from, to } => SemanticDeltaOperation::PriorityChanged {
+                from: *from,
+                to: *to,
             },
             Self::RandomValueSampled {
                 stream,
@@ -263,6 +295,7 @@ pub fn validate_occurrence_pairing(
             if !matches!(
                 mutation.knowledge,
                 None | Some(KnowledgeMutationV1::UpdateLocation { .. })
+                    | Some(KnowledgeMutationV1::UpdateLocations { .. })
                     | Some(KnowledgeMutationV1::CurrentToHistory { .. })
                     | Some(KnowledgeMutationV1::Invalidate { .. })
             ) {
@@ -299,6 +332,19 @@ pub fn validate_occurrence_pairing(
                 IdentityMutationV1::None => {}
                 IdentityMutationV1::Allocate { .. } => {
                     return Err(OccurrencePairingError::IdentityMismatch)
+                }
+            }
+            if let Some(KnowledgeMutationV1::UpdateLocations { updates }) = &mutation.knowledge {
+                if updates.is_empty()
+                    || matches!(
+                        &mutation.identity,
+                        IdentityMutationV1::Remap { opaque, .. }
+                            if !updates.iter().any(|update| {
+                                update.opaque == *opaque && update.fact.location == transition.to
+                            })
+                    )
+                {
+                    return Err(OccurrencePairingError::KnowledgeMismatch);
                 }
             }
         }

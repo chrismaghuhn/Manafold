@@ -388,6 +388,9 @@ COMMON_NAMED_CONTRACTS = frozenset(
         "replay-manifest.v3",
         "authoritative-replay.v3",
         "synthetic-m3-observation.v1",
+        # Added by M3.S3.A Task 8; this is a new named contract, not an
+        # expansion of the historical Synthetic M3 payload.
+        "magic-m3-observation.v1",
         "replay-manifest.v4",
         "authoritative-replay.v4",
         "replay-manifest.v5",

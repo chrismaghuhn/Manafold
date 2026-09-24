@@ -601,6 +601,10 @@ include!("tests/batch_e.rs");
 include!("tests/batch_f.rs");
 include!("tests/batch_g.rs");
 include!("tests/turn_structure.rs");
+mod magic_observation {
+    use super::*;
+    include!("tests/magic_observation.rs");
+}
 
 mod semantic_catalog {
     #![allow(unused_imports)]
@@ -613,4 +617,9 @@ mod restore_admission {
     use super::*;
     use crate::semantic_catalog_generated::synthetic_legacy_default_semantic_contract_id;
     include!("tests/restore_admission.rs");
+}
+
+mod s3_a_production {
+    use super::*;
+    include!("tests/s3_a_production.rs");
 }

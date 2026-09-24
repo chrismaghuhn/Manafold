@@ -1,10 +1,11 @@
-use mtgml_model::{DecisionId, GameObjectId, PlayerId};
+use mtgml_model::{ContinuationId, DecisionId, GameObjectId, PlayerId};
 use mtgml_random::{RandomStreamCursorV1, RandomStreamKeyV1, RootSeed256};
 use mtgml_state::{
-    BeginningStep, CombatState, EngineState, FoundationCreatureSource, KnowledgeStateV2,
-    ObjectSnapshot, PerspectiveIdentityStateV2, PriorityState, TurnPosition,
+    BeginningStep, CombatState, ContinuationPayloadV2, ContinuationRecordV2, EngineState,
+    FoundationCreatureSource, KnowledgeStateV2, ObjectSnapshot, PerspectiveIdentityStateV2,
+    PriorityState, SbaGraveyardOwnerOrderV1, SbaSelectedActionV1, TurnPosition,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::turn_structure::derive_ordinary_untap_affected_objects;
 use crate::turn_structure::temporal_successor;
@@ -18,7 +19,11 @@ pub(crate) struct SemanticValidationCursor {
     priority: PriorityState,
     combat: Option<CombatState>,
     foundation_sources: BTreeMap<GameObjectId, FoundationCreatureSource>,
+    has_lost: BTreeMap<PlayerId, bool>,
     pending_decision: Option<DecisionId>,
+    sba_continuation: Option<ContinuationRecordV2>,
+    sba_plan: Option<crate::state_based_actions::SbaOrderRoundPlan>,
+    pending_final_sba_order: Option<SbaGraveyardOwnerOrderV1>,
     root_seed: RootSeed256,
     random_counters: BTreeMap<RandomStreamKeyV1, u64>,
     active_player: PlayerId,
@@ -41,11 +46,30 @@ impl SemanticValidationCursor {
             priority: state.core.priority,
             combat: state.combat.clone(),
             foundation_sources: state.foundation_sources.clone(),
+            has_lost: state
+                .core
+                .players
+                .iter()
+                .map(|(player, status)| (*player, status.has_lost))
+                .collect(),
             pending_decision: state
                 .execution
                 .pending_decision
                 .as_ref()
                 .map(|record| record.request.decision_id),
+            sba_continuation: state
+                .execution
+                .continuations
+                .values()
+                .find(|record| {
+                    matches!(
+                        &record.payload,
+                        ContinuationPayloadV2::MagicSbaGraveyardOrderV1 { .. }
+                    )
+                })
+                .cloned(),
+            sba_plan: crate::state_based_actions::derive_bounded_sba_round_plan(state).ok(),
+            pending_final_sba_order: None,
             root_seed: state.random.root_seed,
             random_counters: state
                 .random
@@ -261,6 +285,47 @@ impl SemanticValidationCursor {
                 }
                 self.pending_decision = None;
             }
+            AuthoritativeRuleEventKind::SbaGraveyardOrderChosen {
+                continuation,
+                owner,
+                top_to_bottom,
+            } => self.apply_sba_order_chosen(*continuation, *owner, top_to_bottom)?,
+            AuthoritativeRuleEventKind::StateBasedActionsApplied { actions } => {
+                self.apply_state_based_actions(actions)?
+            }
+            AuthoritativeRuleEventKind::PriorityChanged { from, to } => {
+                if self.priority != *from || from == to {
+                    return Err(TransitionViolation::Priority);
+                }
+                match (*from, *to) {
+                    (
+                        PriorityState::None,
+                        PriorityState::HeldBy {
+                            consecutive_passes: 0,
+                            ..
+                        },
+                    )
+                    | (
+                        PriorityState::HeldBy {
+                            consecutive_passes: 0,
+                            ..
+                        },
+                        PriorityState::HeldBy {
+                            consecutive_passes: 1,
+                            ..
+                        },
+                    )
+                    | (
+                        PriorityState::HeldBy {
+                            consecutive_passes: 1,
+                            ..
+                        },
+                        PriorityState::None,
+                    ) => {}
+                    _ => return Err(TransitionViolation::Priority),
+                }
+                self.priority = *to;
+            }
             AuthoritativeRuleEventKind::RandomValueSampled {
                 stream,
                 bound,
@@ -378,6 +443,227 @@ impl SemanticValidationCursor {
         Ok(())
     }
 
+    fn apply_sba_order_chosen(
+        &mut self,
+        continuation_id: ContinuationId,
+        owner: PlayerId,
+        top_to_bottom: &[GameObjectId],
+    ) -> Result<(), TransitionViolation> {
+        let record = self
+            .sba_continuation
+            .as_ref()
+            .filter(|record| record.id == continuation_id)
+            .ok_or(TransitionViolation::SbaOrder)?;
+        let ContinuationPayloadV2::MagicSbaGraveyardOrderV1 {
+            selected_sba_actions,
+            apnap_owners,
+            next_owner_index,
+            completed_owner_orders,
+            ..
+        } = &record.payload
+        else {
+            return Err(TransitionViolation::SbaOrder);
+        };
+
+        let index =
+            usize::try_from(*next_owner_index).map_err(|_| TransitionViolation::SbaOrder)?;
+        if record.actor != owner
+            || apnap_owners.get(index) != Some(&owner)
+            || completed_owner_orders.len() != index
+            || top_to_bottom.len() < 2
+        {
+            return Err(TransitionViolation::SbaOrder);
+        }
+
+        let mut selected_for_owner = BTreeSet::new();
+        for action in selected_sba_actions {
+            if let SbaSelectedActionV1::ObjectToOwnerGraveyard { object, .. } = action {
+                let snapshot = self
+                    .objects
+                    .get(object)
+                    .ok_or(TransitionViolation::SbaOrder)?;
+                if snapshot.owner == owner {
+                    selected_for_owner.insert(*object);
+                }
+            }
+        }
+        let chosen: BTreeSet<_> = top_to_bottom.iter().copied().collect();
+        if selected_for_owner.len() != top_to_bottom.len()
+            || chosen.len() != top_to_bottom.len()
+            || chosen != selected_for_owner
+        {
+            return Err(TransitionViolation::SbaOrder);
+        }
+
+        let next_index = next_owner_index
+            .checked_add(1)
+            .ok_or(TransitionViolation::SbaOrder)?;
+        let next_actor = apnap_owners
+            .get(usize::try_from(next_index).map_err(|_| TransitionViolation::SbaOrder)?)
+            .copied();
+        let Some(next_actor) = next_actor else {
+            if self.pending_final_sba_order.is_some() {
+                return Err(TransitionViolation::SbaOrder);
+            }
+            self.pending_final_sba_order = Some(SbaGraveyardOwnerOrderV1 {
+                owner,
+                top_to_bottom: top_to_bottom.to_vec(),
+            });
+            return Ok(());
+        };
+        let record = self
+            .sba_continuation
+            .as_mut()
+            .filter(|record| record.id == continuation_id)
+            .ok_or(TransitionViolation::SbaOrder)?;
+        let ContinuationPayloadV2::MagicSbaGraveyardOrderV1 {
+            next_owner_index,
+            completed_owner_orders,
+            ..
+        } = &mut record.payload
+        else {
+            return Err(TransitionViolation::SbaOrder);
+        };
+        completed_owner_orders.push(SbaGraveyardOwnerOrderV1 {
+            owner,
+            top_to_bottom: top_to_bottom.to_vec(),
+        });
+        *next_owner_index = next_index;
+        record.actor = next_actor;
+        record.stage_index =
+            u16::try_from(next_index).map_err(|_| TransitionViolation::SbaOrder)?;
+        Ok(())
+    }
+
+    fn apply_state_based_actions(
+        &mut self,
+        actions: &[SbaSelectedActionV1],
+    ) -> Result<(), TransitionViolation> {
+        let plan = self.sba_plan.clone().ok_or(TransitionViolation::SbaBatch)?;
+        if actions != plan.selected_sba_actions || self.pending_decision.is_some() {
+            return Err(TransitionViolation::SbaBatch);
+        }
+
+        let mut required_orders = BTreeMap::<PlayerId, BTreeSet<GameObjectId>>::new();
+        for action in &plan.selected_sba_actions {
+            if let SbaSelectedActionV1::ObjectToOwnerGraveyard { object, .. } = action {
+                let owner = self
+                    .objects
+                    .get(object)
+                    .ok_or(TransitionViolation::SbaBatch)?
+                    .owner;
+                required_orders.entry(owner).or_default().insert(*object);
+            }
+        }
+        required_orders.retain(|_, objects| objects.len() >= 2);
+        if plan.apnap_owners.is_empty() {
+            if self.sba_continuation.is_some()
+                || self.pending_final_sba_order.is_some()
+                || !required_orders.is_empty()
+            {
+                return Err(TransitionViolation::SbaBatch);
+            }
+        } else {
+            let continuation = self
+                .sba_continuation
+                .as_ref()
+                .ok_or(TransitionViolation::SbaBatch)?;
+            let ContinuationPayloadV2::MagicSbaGraveyardOrderV1 {
+                apnap_owners,
+                next_owner_index,
+                completed_owner_orders,
+                ..
+            } = &continuation.payload
+            else {
+                return Err(TransitionViolation::SbaBatch);
+            };
+            let final_order = self
+                .pending_final_sba_order
+                .as_ref()
+                .ok_or(TransitionViolation::SbaBatch)?;
+            let mut orders = completed_owner_orders.clone();
+            orders.push(final_order.clone());
+            if apnap_owners != &plan.apnap_owners
+                || usize::try_from(*next_owner_index).ok() != Some(completed_owner_orders.len())
+                || orders.len() != apnap_owners.len()
+                || required_orders.len() != apnap_owners.len()
+                || orders
+                    .iter()
+                    .zip(apnap_owners)
+                    .any(|(order, owner)| order.owner != *owner)
+            {
+                return Err(TransitionViolation::SbaBatch);
+            }
+            for order in &orders {
+                let expected = required_orders
+                    .get(&order.owner)
+                    .ok_or(TransitionViolation::SbaBatch)?;
+                let actual: BTreeSet<_> = order.top_to_bottom.iter().copied().collect();
+                if actual.len() != order.top_to_bottom.len() || &actual != expected {
+                    return Err(TransitionViolation::SbaBatch);
+                }
+            }
+        }
+
+        let mut selected_combat_objects = BTreeSet::new();
+        for action in actions {
+            match action {
+                SbaSelectedActionV1::PlayerLoses { player } => {
+                    let lost = self
+                        .has_lost
+                        .get_mut(player)
+                        .ok_or(TransitionViolation::SbaBatch)?;
+                    if *lost || self.life.get(player).is_none_or(|life| *life > 0) {
+                        return Err(TransitionViolation::SbaBatch);
+                    }
+                    *lost = true;
+                }
+                SbaSelectedActionV1::ObjectToOwnerGraveyard { object, .. } => {
+                    selected_combat_objects.insert(*object);
+                }
+            }
+        }
+
+        if let Some(combat) = &mut self.combat {
+            let participant_selected = combat
+                .attackers
+                .iter()
+                .any(|id| selected_combat_objects.contains(id))
+                || combat.blockers.iter().any(|(attacker, blocker)| {
+                    selected_combat_objects.contains(attacker)
+                        || blocker.is_some_and(|id| selected_combat_objects.contains(&id))
+                });
+            if participant_selected
+                && !matches!(
+                    self.position,
+                    TurnPosition::Combat {
+                        step: mtgml_state::CombatStep::CombatDamage
+                    }
+                )
+            {
+                return Err(TransitionViolation::SbaBatch);
+            }
+            if participant_selected {
+                combat
+                    .attackers
+                    .retain(|attacker| !selected_combat_objects.contains(attacker));
+                combat
+                    .blockers
+                    .retain(|attacker, _| !selected_combat_objects.contains(attacker));
+                for blocker in combat.blockers.values_mut() {
+                    if blocker.is_some_and(|object| selected_combat_objects.contains(&object)) {
+                        *blocker = None;
+                    }
+                }
+            }
+        }
+
+        self.sba_continuation = None;
+        self.sba_plan = None;
+        self.pending_final_sba_order = None;
+        Ok(())
+    }
+
     pub(crate) fn validate_final_state(
         &self,
         after: &EngineState,
@@ -391,6 +677,28 @@ impl SemanticValidationCursor {
         {
             return Err(TransitionViolation::UnexplainedMutation);
         }
+        if let Some(expected) = &self.sba_continuation {
+            if after.execution.continuations.get(&expected.id) != Some(expected) {
+                return Err(TransitionViolation::SbaOrder);
+            }
+        }
+        let after_sba_count = after
+            .execution
+            .continuations
+            .values()
+            .filter(|record| {
+                matches!(
+                    &record.payload,
+                    ContinuationPayloadV2::MagicSbaGraveyardOrderV1 { .. }
+                )
+            })
+            .count();
+        if after_sba_count > 1 || (self.pending_decision.is_none() && after_sba_count == 1) {
+            return Err(TransitionViolation::SbaOrder);
+        }
+        if self.pending_final_sba_order.is_some() {
+            return Err(TransitionViolation::SbaBatch);
+        }
         let after_life: BTreeMap<_, _> = after
             .core
             .players
@@ -399,6 +707,15 @@ impl SemanticValidationCursor {
             .collect();
         if self.life != after_life {
             return Err(TransitionViolation::LifeChange);
+        }
+        let after_has_lost: BTreeMap<_, _> = after
+            .core
+            .players
+            .iter()
+            .map(|(player, state)| (*player, state.has_lost))
+            .collect();
+        if self.has_lost != after_has_lost {
+            return Err(TransitionViolation::SbaBatch);
         }
         if self.objects != crate::snapshots::object_snapshots(after)? {
             return Err(TransitionViolation::ObjectTraceIncomplete);

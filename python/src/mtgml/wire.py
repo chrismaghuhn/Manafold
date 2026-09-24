@@ -5,6 +5,7 @@ import json
 from collections.abc import Callable
 from typing import TypeVar
 
+from ._magic_observation_m3 import MagicM3Observation
 from ._observation_m3 import SyntheticM3Observation
 from .canonical import canonical_json_bytes
 from .decision import (
@@ -63,6 +64,7 @@ _DECODERS: dict[str, Callable[[object], object]] = {
     "replay-manifest.v3": ReplayManifestV3.from_wire,
     "authoritative-replay.v3": AuthoritativeReplayV3.from_wire,
     "synthetic-m3-observation.v1": SyntheticM3Observation.from_wire,
+    "magic-m3-observation.v1": MagicM3Observation.from_wire,
     "replay-manifest.v4": ReplayManifestV4.from_wire,
     "authoritative-replay.v4": AuthoritativeReplayV4.from_wire,
     "replay-manifest.v5": ReplayManifestV5.from_wire,

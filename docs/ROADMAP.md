@@ -182,15 +182,54 @@ S3_P0_MERGE_COMMIT = ffc433985f41e6e2980df23a103b5e2358527ea3
 S3_0_AUTHORIZED = YES
 S3_0_IMPLEMENTATION_AUTHORIZED = YES
 S3_0_STARTED = YES
-S3_0_IMPLEMENTATION = COMPLETE_CANDIDATE
-S3_0_EXACT_HEAD_REVIEW = PENDING
-S3_A_AUTHORIZED = NO
-S3_B_AUTHORIZED = NO
+S3_0_COMPLETE = YES
+S3_0_FROZEN = YES
+S3_0_REVIEW_HEAD = aa28f9753225dca0e58e33b0d0356a1cc560aae3
+S3_0_PR = #211
+S3_0_MERGE_COMMIT = 66f3b713787cad89674257f6e0b6448b9fd568f9
+S3_A_AUTHORIZED = YES
+S3_A_IMPLEMENTATION_AUTHORIZED = YES
+S3_A_STARTED = YES
+S3_A_TASK_5 = COMPLETE / REVIEWED
+S3_A_TASK_5_REVIEW_HEAD = 0e56a805136f8ccec7e41d19067ed21df010488d
+S3_A_TASK_6 = COMPLETE / REVIEWED
+S3_A_TASK_6_REVIEW_HEAD = 5711886772e431a80f81bcd099cb5546d327a362
+S3_A_TASK_7 = COMPLETE / REVIEWED
+S3_A_TASK_7_REVIEW_HEAD = eb9c9a92d60bf82bccc0ceeb174ad58e1f8c1d48
+S3_A_TASK_8 = COMPLETE / REVIEWED
+S3_A_TASK_8_REVIEW_HEAD = 8a531c33ced9e532bd90b3870ac088b06924c348
+S3_A_TASK_9A = COMPLETE / REVIEWED
+S3_A_TASK_9A_REVIEW_HEAD = 28ffe32b8acb72c0ec3cca98bcfbd90499827f5b
+S3_A_TASK_9B0 = COMPLETE / REVIEWED
+S3_A_TASK_9B0_REVIEW_HEAD = 8cafb91b121cc2e29f3834ddb1a959a429a20ec4
+S3_A_TASK_9 = COMPLETE / REVIEWED
+S3_A_BLOCK_1 = COMPLETE / REVIEWED
+S3_A_IMPLEMENTATION = COMPLETE / REVIEWED
+S3_A_EXACT_HEAD_REVIEW = PASS
+M3_BLOCK_1 = COMPLETE / REVIEWED
+M3_BLOCK_1_REVIEW_HEAD = 6fc3ff9694aa9d61975929a2d4a1c8006df28014
+S3_A_PRODUCTION_SEMANTIC_CONTRACT_REQUIRED = YES
+S3_A_PRODUCTION_SEMANTIC_CONTRACT_ALLOCATED = YES
+S3_A_PRODUCTION_SEMANTIC_CONTRACT_ID = 51efc0307d9ef8fc4fca46f8ea6e4ea5d5293cb8301c2a7917a590982079020e
+S3_A_LIFECYCLE = specified
+NONTERMINAL_FINAL_ORDER_REFERENCE_PATH = PASS
+S3_B_AUTHORIZED = YES
 S3_C_AUTHORIZED = NO
-S3_A_IMPLEMENTATION_AUTHORIZED = NO
-S3_B_IMPLEMENTATION_AUTHORIZED = NO
+S3_B_IMPLEMENTATION_AUTHORIZED = YES
 S3_C_IMPLEMENTATION_AUTHORIZED = NO
-NEXT_GATE = M3_S3_0_EXACT_HEAD_REVIEW
+MAGIC_RULES_FLOW_INVENTORY_V1 = REVIEWED / FROZEN_PLANNING_INPUT
+MAGIC_RULES_FLOW_INVENTORY_REVIEW_HEAD = 8a440645735fcb17be9470c7a53969860b1d4fad
+M3_MAJOR_SEMANTIC_BLOCKS = 8
+S3_B_STARTED = YES
+S3_B_IMPLEMENTATION = COMPLETE_CANDIDATE
+S3_B_PRODUCTION_SEMANTIC_CONTRACT_REQUIRED = YES
+S3_B_PRODUCTION_SEMANTIC_CONTRACT_ALLOCATED = YES
+S3_B_PRODUCTION_SEMANTIC_CONTRACT_ID = c480cbae69bf0496aff83bb973a859721bfa0f969351b33b3f0b09ee3f7c5498
+BASIC_PRIORITY_LIFECYCLE = specified
+M3_BLOCK_2 = COMPLETE_CANDIDATE
+BLOCK_3_STARTED = NO
+CURRENT_M3_BLOCK = BASIC_PRIORITY_AND_REFERENCE_RESPONSE_INTEGRATION
+NEXT_GATE = M3_BLOCK_2_EXACT_HEAD_REVIEW
 ```
 
 `M2.5 = NOT_CLAIMED / NOT_FROZEN`. Its abandoned census and research
@@ -220,12 +259,16 @@ were still specified and downstream work had not been authorized.
 PR #208 merged S2 at `b67cfdcc0a8e623da52a889ef2ae138a3e4256ac`; exact-head
 verification passed. M3.S2 is complete as an implementation slice, but is not
 covered or certified. S2 authoritative replay remains deferred and required
-before covered. M3.S3 selection/design is complete. S3.P0 implementation is a
-complete and frozen after PR #210 merged at
+before covered. M3.S3 selection/design is complete. S3.P0 is complete and
+frozen after PR #210 merged at
 `ffc433985f41e6e2980df23a103b5e2358527ea3`, following exact-head review of
-`0cd24d1f2cb4183c19fb04ce0c3c827148313a3b`. S3.0 is authorized and started;
-its semantic-neutral shared response transaction is an implementation-complete
-candidate pending exact-head review. S3.A, S3.B, and S3.C remain unauthorized.
+`0cd24d1f2cb4183c19fb04ce0c3c827148313a3b`. S3.0 is complete and frozen.
+PR #211's reviewed source head `aa28f9753225dca0e58e33b0d0356a1cc560aae3`
+merged at `66f3b713787cad89674257f6e0b6448b9fd568f9`. S3.A is authorized and
+started. Block 1 is complete / reviewed. S3.B Basic Priority is implemented
+as a candidate under its distinct generated semantic identity; its capability
+lifecycle remains specified pending exact-head review. Block 3 and S3.C remain
+unstarted / unauthorized.
 
 M3 has started through semantic-neutral P0 infrastructure, T0
 conformance/proof infrastructure, the covered S1 turn-structure capability,

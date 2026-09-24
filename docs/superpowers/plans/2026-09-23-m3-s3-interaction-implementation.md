@@ -56,6 +56,19 @@ There is no `draw-card -> basic-priority` capability edge. `damage-and-life`
 is not an SBA dependency: SBA consumes authoritative life and marked-damage
 facts regardless of which capability produced them.
 
+## Current M3 implementation grouping (2026-09-24)
+
+The user-approved `M3 Block 1 — Finish Bounded S3.A` scope supersedes the
+former implementation split between Task 9B's one-round batch and Task 10's
+fixed-point/identity/durability evidence. The coherent block owns atomic
+no-order and final-Order batches, S2 composition, CombatDamage-only combat
+pruning, terminal outcomes, fixed-point re-derivation, production S3 admission,
+pending-stage restore/fork and available replay evidence. The nonterminal final
+Order Reference path remains blocked until M3 Block 2 implements Basic
+Priority; no implicit pass or forced scheduler work is authorized. Task numbers
+below remain traceability for accepted requirements, not a request to create
+additional planning microtasks.
+
 ## 2. S3.P0 authoritative state identity cut
 
 The S3.A APNAP ordering continuation is authoritative state. Its continuation
@@ -160,10 +173,18 @@ triggers, replacement/prevention, or unsupported permanent families:
 5. Recompute from the resulting workspace until the derived action set is
    empty. Do not return priority between rounds.
 
-If one object qualifies for both zero-toughness and lethal-damage actions, the
-round contains one object-removal action with both applicable causes; it must
-produce one S2 zone transition, one fresh `GameObjectId`, and one OLD-reference
-closure. It must not attempt two incarnation transitions for the same OLD.
+For the current S3.A profile the creature-removal predicates are mutually
+exclusive for one immutable SBA round-start state:
+
+- derived toughness `<= 0` produces exactly `[ZeroToughness]`;
+- derived toughness `> 0` with marked damage `>= toughness` produces exactly
+  `[LethalDamage]`.
+
+An object action therefore carries exactly one of these causes. CR 704.5f and
+704.5g cannot both apply to the same creature in one check. Each selected
+object still produces one S2 zone transition, one fresh `GameObjectId`, and
+one OLD-reference closure; never attempt two incarnation transitions for the
+same OLD.
 
 Terminal status follows Foundation V2 exactly:
 
@@ -260,28 +281,26 @@ continuation-only checkpoint is permitted.
 Stage behavior:
 
 ```text
-no owner needs Order:
-  derive complete round -> apply complete round in one rules product
+no owner needs Order (Task 7):
+  derive complete round -> do not apply it yet; Task 9 owns application
 
-one owner needs Order:
+one owner needs Order (Task 7):
   save complete round -> owner Order Decision
-  accepted response -> validate/store permutation
-  -> apply round, fixed point and following forced work in that response
+  final response remains unaccepted until Task 9 can apply the whole round
 
-both owners need Order:
+both owners need Order (Task 7):
   save complete round -> active-owner Order Decision
   accepted response -> store active order; same ContinuationId;
   -> fresh nonactive-owner Order Decision, no SBA mutation
-  accepted response -> store nonactive order
-  -> apply round, fixed point and following forced work in that response
+  final response remains unaccepted until Task 9 can apply the whole round
 ```
 
-The final Order response's `kernel.apply` completes the entire SBA batch and
-returns at the next real Decision, terminal outcome, or typed unsupported/
-error boundary. Earlier APNAP responses commit only the new stage/Decision.
-They do not move cards or apply player losses. This lets each genuine response
-own the consequences in V6 while every checkpoint remains a valid resumable
-EngineState.
+Historical Task 7 accepted only nonfinal APNAP responses, which committed the
+new stage and next Decision without applying SBA actions. That reviewed boundary
+is superseded by M3 Block 1: the final real Order response now validates the
+answer and applies the complete SBA batch/fixed point atomically in the same
+Rules transition. A no-order round is also applied directly without a fake
+Decision. No final-choice-only checkpoint is introduced.
 
 Exact audit ordering for a staged owner response is:
 
@@ -392,8 +411,8 @@ StateBasedActionsApplied {
 ```
 
 Its closed action variants carry trusted player/object identity and the
-selected cause (`player loses`, `zero toughness`, `lethal marked damage`, or
-both creature causes). Its matching `SemanticDeltaOperation` preserves the
+selected cause (`player loses`, `zero toughness`, or `lethal marked damage`).
+Its matching `SemanticDeltaOperation` preserves the
 complete action batch. `SbaGraveyardOrderChosen` events and the typed
 continuation preserve each player's accepted permutation. Emit the existing
 S2 `ZoneTransition` once per creature action as one atomic rules workspace
@@ -438,6 +457,20 @@ conformance vocabulary; update all affected representations and run the
 repository generator. Never hand-edit generated output.
 
 ## 5. S3.B exact Basic Priority scope
+
+Production Basic Priority uses a distinct generated S3.B semantic identity;
+the S1 turn-structure and S3.A ordered-SBA identities remain unchanged. Its
+exact production capability closure is:
+
+```text
+rules/basic-priority@0.1.0
+rules/state-based-actions-combat@0.1.0
+rules/turn-structure@0.1.0
+rules/zone-incarnation@0.1.0
+```
+
+The S3.B identity uses the existing `magic-m3-observation.v1` codec and adds
+no Draw or Combat capability.
 
 Support only the validated pass-only two-player profile. Before every window:
 
@@ -579,7 +612,10 @@ must preserve this rejection. Preserve ADR-0040 order exactly:
 3. If accepted, no Decision exists, and status is Running, call
    `kernel.advance_forced_progress` exactly once. Merge its complete event
    sequence and recompute one before-to-final `StateDelta` over the whole
-   response transaction.
+   response transaction. The Rules products each advance one revision; their
+   one atomic environment commit may therefore advance `R -> R+2`. Preserve
+   each event's originating revision. One `ReplayStepV6` still contains only
+   the real submitted response; no more than one forced call is permitted.
 4. Validate the complete transition contract.
 5. On semantic rejection, prove checkpoint, status, every counter, replay and
    projected player state equal their before values; commit nothing.
@@ -905,8 +941,9 @@ zone executor changes, continuation production types, lifecycle edits.
 **RED tests:** all Foundation V2 predicates from one round-start state;
 multiple same-owner deaths require a complete owner `Order`; different owners
 are represented simultaneously; APNAP actor order when both owners need
-choices; zero-toughness and lethal causes on one card cause one move; player
-loss plus creature death is one round; both-player loss gets the exact
+choices; zero-toughness and lethal causes are mutually exclusive per-object
+predicates at one round-start state; player loss plus creature death is one
+round; both-player loss gets the exact
 simultaneous-outcome mapping; no zone/life/status mutation happens while an
 Order is pending; no order is chosen from IDs/containers; reject an incomplete
 or duplicate order.
@@ -925,48 +962,60 @@ Decision, state, allocators, history, replay and player bytes.
 
 ### Task 6 — S3.A2 validate typed Magic continuation program
 
-**Allowed files:** `crates/mtgml-state/src/m2_shape/validation.rs`,
-`semantic_cursor.rs` and related state validation; rules continuation tests
-and the authoritative continuation specification. S3.P0 owns payload shape,
-V5 digest encoding and persistence identities.
+**Allowed files:** `crates/mtgml-state/src/m2_shape.rs`,
+`crates/mtgml-state/src/m2_shape/continuation.rs`, related state continuation
+tests, and the narrow Rules-owned read-only SBA semantic validator under
+`crates/mtgml-rules/src/state_based_actions.rs` with its tests. This plan file
+may be updated to record the ownership and restore boundary. S3.P0 owns
+payload shape, V5 digest encoding and persistence identities.
 
 **Forbidden:** changing `SyntheticM2Assembly` meaning, producer/decision
 implementation, Priority/Draw code, implicit stage-local memory, or any
 identity/schema version change.
 
-**RED tests:** Magic payload validates one round plan, APNAP order owners,
-stage cursor and previously collected exact permutations. Reject invalid owner
-order, duplicate/missing/foreign card IDs, malformed cause arrays, current
-actor mismatch, future source revision, missing/mismatched pending Decision,
-continuation ID change and unsupported cross-program payload. Prove V6
-checkpoint, restore and fork retain the payload. Re-derive round applicability
-from the immutable current state and validate that the saved plan is still
-exactly the selected action set; reject stale or partial plans. Keep all V4
-detached KATs byte-identical and validate the V5 continuation KAT added by
-S3.P0.
+**RED tests:** the state layer checks only structural continuation coherence:
+canonical/unique actions and causes, existing referenced players/objects,
+owner grouping, required-order-owner membership, completed-order
+permutations, stage/actor/request coherence, and the `R + 1 + K` revision
+relation. The Rules layer independently re-derives the bounded SBA action set
+from the immutable current state, derives exact APNAP owners, and compares
+both to the saved plan. It rejects stale, missing, extra, or inapplicable
+actions without mutating state. Rules semantics do not move into
+`mtgml-state`.
 
-**Objective:** implement S3.A semantic validation and resume invariants for
-the typed Magic payload introduced by S3.P0. Keep one ContinuationId across stages;
-fresh DecisionId and PlayerDecisionId per response stage. For Magic only,
-the continuation record actor tracks the currently expected owner; Synthetic
+Production checkpoint restore/fork of an SBA continuation is not admissible
+yet: there is no S3 production Magic `SemanticContractId`. Task 6 proves only
+the V5 state/V6 checkpoint representation and retains the explicit production
+S1 restore rejection. Real production restore/fork parity at each Order stage
+is `DEFERRED_REQUIRED` to Task 10, after a separate S3 semantic contract is
+introduced through the generated catalog. Do not make S1 admission accept the
+SBA continuation to satisfy Task 6.
+
+**Objective:** strengthen generic structural resumability in `mtgml-state`
+and add a read-only, Rules-owned semantic plan validator under the fixed S3.A
+conformance-candidate profile. Keep one ContinuationId across stages; fresh
+DecisionId and actor-local PlayerDecisionId per stage. For Magic only, the
+continuation record actor tracks the currently expected APNAP owner; Synthetic
 continuations retain their fixed actor invariant. No continuation without a
 pending Decision is valid checkpoint state.
 
-Use the S3.P0 closed V5 continuation variant and validate its S3.A semantics:
-round-start revision, complete selected actions/causes, APNAP owner list,
-stage cursor, and completed owner permutations must agree with current state
-and the pending Order Decision. No SBA producer exists in this task. The
-FullStateDigestV4 codec remains detached historical evidence; do not edit it.
+Use the S3.P0 closed V5 continuation variant. Do not add a producer, execute
+an Order response, mutate zones/life/status, allocate a production S3
+SemanticContractId, change any digest/checkpoint shape, or edit the historical
+FullStateDigestV4 codec. V5 continuation KATs must remain valid under the
+newly pinned stage revision model.
 
-**Verification:** state validation/continuation/digest suites, checkpoint
-restore/fork tests, old and new digest known-answer vectors, generation/drift
-checks, `cargo fmt --all -- --check`.
+**Verification:** state validation/continuation tests; Rules semantic
+re-derivation tests; the V5 continuation KAT; S1 checkpoint admission
+rejection; Task 5 producer RED remains red; `cargo fmt --all -- --check`.
 
 **Commit boundary:** S3.A continuation semantic validation only; no payload,
 digest or checkpoint type work and no producer.
 
-**HARD STOP:** a local cache, event history, or test-only flag is needed to
-resume the SBA round.
+**HARD STOP:** state-layer code derives Magic SBA semantics; a local cache or
+event history is needed to resume the SBA round; S1 production admission is
+weakened; or production checkpoint restore is claimed without an S3 semantic
+contract.
 
 ### Task 7 — S3.A3 RED/GREEN: Order Decisions and APNAP stages
 
@@ -988,17 +1037,19 @@ creates the next Order Decision; state/zone/status/loss facts remain unchanged.
 Wrong actor, stale response, invalid permutation, identity exhaustion, or
 continuation mismatch rejects atomically.
 
-**Objective:** on the final Order response, validate the unchanged round-start
-facts against the saved round plan, record `SbaGraveyardOrderChosen`, then
-complete the entire batch/fixed point in that same rules transition. This
-keeps every accepted checkpoint valid and gives each response its natural V6
-step.
+**Historical Task 7 objective:** derive and stage a fresh round requiring an
+Order; validate and commit only nonfinal owner answers; preserve the complete
+unapplied batch and advance to the next APNAP owner. M3 Block 1 extends this
+path to atomically apply the final choice and complete batch.
 
-**Verification:** Task 5 RED cases turn green through the actual Decision V2
-protocol; decision/state/rules/conformance suites and replay response binding.
+**Task 7 verification record:** order staging and nonfinal APNAP cases turn
+green through Decision V2; final-order and no-order application were then RED
+for Task 9. M3 Block 1 turns the in-scope batch/product cases GREEN and adds
+production identity, S2 composition and replay evidence.
 
-**Commit boundary:** APNAP Decision/continuation progression, still no S2
-multi-move integration.
+**Commit boundary:** APNAP Decision/continuation progression and trusted
+order-choice audit, still no S2 multi-move integration or final order-only
+acceptance.
 
 **HARD STOP:** any zone/life/status mutation occurs before the last required
 Order response, or any Order request leaks trusted GameObjectId.
@@ -1024,7 +1075,11 @@ shows the selected order. Missing an opaque mapping for any perspective fails
 closed. No visible event sequence is consumed for this current-state field.
 
 **Objective:** add `magic-m3-observation.v1` under existing
-`ObservationEnvelopeV1.payload_codec`. Keep the existing V1 envelope,
+`ObservationEnvelopeV1.payload_codec`. Codec selection is an explicit closed
+projection profile supplied by semantic execution context; it is not inferred
+from `ExecutionProgramV1` or arbitrary state contents. Until the production S3
+semantic contract exists, Magic projection is conformance/testkit-only.
+Keep the existing V1 envelope,
 InformationStateV2, PlayerStepV2, Decision V2 and ObservedEventEnvelopeV2
 shapes. The Magic payload adds a closed `pending_sba_ordering` value with
 APNAP completed orders expressed in each perspective's own `OpaqueObjectId`s
@@ -1033,12 +1088,12 @@ IDs. The trusted `SbaGraveyardOrderChosen` event remains audit/replay
 authority; the public current observation carries the order needed by the
 next chooser.
 
-Bind the codec to the S3 Magic semantic contract in ReplayManifestV6. Preserve
-the SyntheticRulesCompat/S1 `synthetic-m3-observation.v1` codec and bytes.
-Extend V6 schema/validation to admit only the existing codec for its supported
-contract and the Magic codec for the S3 contract; do not broaden arbitrary
-strings. Update the Python projector and all canonical schema/fixture
-representations.
+Preserve and test the existing ReplayManifestV6 contract binding: the
+SyntheticRulesCompat/S1 `synthetic-m3-observation.v1` codec remains unchanged;
+the Magic codec is accepted only with the already-specified SBA capability
+closure in detached identity fixtures. Do not allocate the production S3
+semantic contract or broaden arbitrary strings. Update the Python codec and
+all canonical schema/fixture representations.
 
 **Verification:** observation and PlayerStep suites, paired noninterference
 tests at each APNAP stage, V6 manifest/schema tests, `scripts/run_checks.py
@@ -1052,6 +1107,167 @@ trusted identity leaks, an event-sequence side channel appears, or existing
 S1/Synthetic observation bytes change.
 
 ### Task 9 — S3.A4 ordered S2 composition and atomic SBA application
+
+**Task 9A preparatory seam (authorized separately):** extract the mutation
+inside the existing standalone `execute_selected_zone_transition()` into one
+private S2 workspace primitive. The standalone wrapper continues to own its
+single `R+1` accepted product; the workspace caller owns the candidate
+revision, aggregate event cursor, final delta, and outer transition. Task 9A
+does not derive or apply SBA actions and does not relax standalone OLD
+reference checks.
+
+Task 9B must close the final Order response's current pending Decision and
+`MagicSbaGraveyardOrderV1` continuation inside its uncommitted outer workspace
+before passing selected objects to S2. It may not expose that intermediate
+state or weaken S2's standalone pending-decision rejection.
+
+Task 9B0 resolves the bounded combat-reference design: S3.A may prune selected
+combat references only after the sole normal CombatDamage assignment. The
+current `CombatState` cannot preserve historical blocked status after a blocker
+is removed, so pre-damage participant deaths and stale EndOfCombat removals
+fail closed. Post-damage selected attackers/blockers are pruned only as
+specified by the `StateBasedActionsApplied` actions; no general CombatState
+mutation is licensed.
+
+Task 9B0 freezes the following Task 9B semantic contract before production
+implementation.
+
+#### Atomic batch audit and continuation closure
+
+Add one rule-relevant event and matching delta operation:
+
+```text
+StateBasedActionsApplied { actions: Vec<SbaSelectedActionV1> }
+```
+
+It carries the exact canonical complete action set re-derived from one
+immutable round-start state. Its semantic effects are limited to: mark each
+selected `PlayerLoses` player as lost; authorize selected battlefield
+objects to leave combat under the combat policy below; retire the completed
+Magic SBA continuation; and bind the following exact S2 `ZoneTransition`
+set to the selected object actions. It does not perform zone or perspective
+identity mutation itself.
+
+For a final real Order response, the single accepted transition event order
+is:
+
+```text
+DecisionCleared(old Decision)
+SbaGraveyardOrderChosen(same continuation, final owner, exact order)
+StateBasedActionsApplied(exact complete action set)
+ZoneTransition / PerspectiveOccurrence for each selected creature
+subsequent fixed-point round(s), if any
+terminal status, or the existing supported next-decision boundary
+```
+
+Every event and zone occurrence has the one final candidate revision `R+1`.
+The final order is represented only in a private cursor transient; it is
+never stored as an EngineState continuation stage with all owners complete.
+`StateBasedActionsApplied` consumes that transient together with saved earlier
+orders and retires the cursor continuation. A standalone final
+`SbaGraveyardOrderChosen` without its batch and exact S2 moves is rejected.
+
+The outer scratch response workspace first validates the final response
+against the immutable before-state and captures the trusted order. It then
+clears the old pending Decision and removes the active SBA continuation in
+scratch before calling S2. This is never externally validated or committed
+as an intermediate state and does not weaken standalone S2 reference
+rejection.
+
+For a no-order round, emit `StateBasedActionsApplied` directly, without an
+Order Decision or continuation. An owner with one selected card has its
+unique order; owners with no selected cards have no move.
+
+#### Loss and terminal mapping
+
+`StateBasedActionsApplied(PlayerLoses(player))` is the only current S3.A
+authority for `has_lost: false -> true`. Re-derive the exact action set;
+require each applicable loss exactly once; reject missing, duplicate, extra,
+or spurious loss actions and reject a before-state with `has_lost = true`.
+No `PublicOutcome` string is added as a competing authority.
+
+After the complete batch, one losing player maps to existing
+`TerminalReason::RulesLoss` with canonical PlayerId-sorted Loss/Win outcomes;
+two players losing in the same round map to
+`TerminalReason::SimultaneousOutcome` with canonical Draw outcomes. Terminal
+products have no next Decision. Use the existing EpisodeStatus contract.
+
+#### Bounded combat-reference policy
+
+The bound CR snapshot is the August 7, 2026 Comprehensive Rules artifact
+identified by ADR 0051. CR 506.4 removes a permanent from combat when it
+leaves the battlefield. CR 509.1h separately preserves an attacker's blocked
+status when all blockers leave combat. The current `CombatState` stores live
+attacker/blocker references but has no separate historical blocked bit.
+
+S3.A may prune selected combat references only at
+`TurnPosition::Combat(CombatDamage)`, after the bounded single normal damage
+assignment. Foundation V2 excludes first/double strike and additional damage
+steps, so the removed blocked-status distinction is not consumed by a later
+damage assignment in this bounded slice. At BeginningOfCombat,
+DeclareAttackers, or DeclareBlockers, a selected combat participant fails
+closed. At EndOfCombat, a participant that should have been removed at the
+post-damage SBA check also fails closed; this is not a second SBA opportunity.
+
+At the admitted post-damage boundary, a selected dying attacker is removed
+from `combat.attackers` and its attacker key is removed from `combat.blockers`,
+preserving surviving attacker order. A selected dying blocker is removed from
+its attacker's live blocker reference, represented as `None`. In this context
+only, `None` means “no live blocker reference remains”; it does NOT represent
+general blocked/unblocked history and cannot drive a later combat-damage
+assignment. Preserve the enclosing CombatState/defending player. Any combat
+mutation not derivable from the selected `StateBasedActionsApplied` actions
+rejects. Do not add a general CombatStateChanged event or silently clear
+combat state. A future pre-damage removal feature requires a separately
+reviewed CombatState semantic representation for historical blocked status.
+
+#### Multi-transition contract gate and fixed point
+
+Standalone S2 continues to require exactly one selected ZoneTransition. An
+SBA batch may contain N ZoneTransitions only when exactly one preceding
+`StateBasedActionsApplied` event authorizes them; require a one-to-one mapping
+to every and only `ObjectToOwnerGraveyard` action, with unique OLD and NEW
+incarnations, no duplicate/omitted/extra moves, and exact S2 allocation and
+destination order. No batch event means no multi-move exception.
+
+The round plan and causes are derived from one immutable round-start snapshot.
+Execute each owner's chosen top-to-bottom order in reverse through the single
+S2 workspace. Within the SBA-batch mode of that same S2 authority, one public
+movement occurrence also refreshes all tracked current locations in that
+owner's Graveyard whose trusted top offsets changed. `UpdateLocations` records
+those changes in the same perspective-local visible occurrence as the move;
+it consumes no extra `VisibleSequence`. Standalone S2 keeps its reviewed
+single-move audit product unchanged. The user-approved M3 Block 1 execution grouping combines the
+former Task 9B batch and Task 10 fixed-point/durability scope: Block 1 applies
+the complete batch, re-derives the next action set, and proves stability before
+any priority. If the closed profile ever derives a nonempty next set, it must
+be handled before priority; it cannot be committed as an intermediate state.
+There is no environment scheduler loop, and unsupported Basic Priority is not
+swallowed.
+
+#### Remaining environment limitation
+
+The production response transaction still performs exactly one forced
+progress call after an accepted Running response. With Basic Priority not yet
+implemented, a nonterminal final Order transition that has no next Decision
+hits the existing `BasicPriority` unsupported boundary. Record
+`NONTERMINAL_FINAL_ORDER_ENVIRONMENT_CLOSURE = BLOCKED_UNTIL_S3_B_OR_REVIEWED_TRANSACTION_DISPOSITION`.
+Do not change the response transaction or hide the error in Task 9B0. This
+does not block the Block 1 pending-stage, intermediate-response, terminal
+response, and no-order checkpoint/replay evidence. The only deferred product is
+the nonterminal final-Order Reference response transaction: the shared
+response transaction reaches the missing Basic Priority boundary and leaves
+state/replay unchanged. This remains closed until M3 Block 2; no implicit pass
+or fake response is allowed.
+
+Task 9B0 added future-acceptance witnesses for final one- and two-owner Order
+application, no-order batch application, terminal loss products, post-damage
+combat pruning, and pre-damage/EndOfCombat fail-closed boundaries. The
+user-approved M3 Block 1 turns those in-scope witnesses into active GREEN
+evidence; no-order fresh Combat boundaries are checked independently at
+BeginningOfCombat, DeclareAttackers, DeclareBlockers, and EndOfCombat.
+Standalone-final-order-without-batch and multi-move-without-batch rejection
+are positive negative-contract guards.
 
 **Allowed files:** sole S2 zone-incarnation executor/composition API,
 `crates/mtgml-rules/src/` SBA result builder, events/delta/cursor/contract,
@@ -1092,10 +1308,14 @@ no lifecycle/status promotion.
 **HARD STOP:** S2's single move authority is duplicated, an intermediate move
 is exposed, or final order differs from the player's accepted permutation.
 
-### Task 10 — S3.A5 fixed point, evidence and lifecycle
+### Task 10 — historical task grouping absorbed by M3 Block 1
 
-**Allowed files:** SBA conformance, checkpoint/fork/replay tests and, after
-all evidence passes, only SBA registry/status files.
+The user-approved M3 Block 1 implementation grouping absorbs Task 10's fixed
+point, production S3 identity, checkpoint/restore/fork, and available replay
+proofs into the same coherent S3.A implementation block. This heading remains
+for requirement traceability; it is not a separate implementation task or
+micro-gate. Nonterminal final-Order environment acceptance/replay remains
+blocked for M3 Block 2 Basic Priority.
 
 **Forbidden:** Draw/Priority, changing capability dependencies, S2 coverage
 promotion, certification.
@@ -1106,24 +1326,28 @@ continuation cannot produce priority; restore/fork at each Order stage
 reproduces identical next Decision and completion; replay each real Order
 response and reproduce final batch.
 
-**Objective:** close one- and two-owner order cases; terminal one-player and
-simultaneous-loss products; combined death/loss; exact S2 identities/order;
-noninterference; all atomic rejection surfaces. Prove only the current stage
-actor can project the Order Decision; all candidates use that actor's opaque
-IDs; the nonactive player sees prior public orders only through the
+**Objective (owned by M3 Block 1):** close one- and two-owner order cases;
+terminal one-player and simultaneous-loss products; combined death/loss; exact
+S2 identities/order; noninterference; fixed-point stability; checkpoint/
+restore/fork parity and replay for executable response stages. Prove only the
+current stage actor can project the Order Decision; candidates use that actor's
+opaque IDs; the nonactive player sees prior public orders through the
 Magic-specific current observation required by CR 101.4b; no trusted identity
 or incomplete zone result is exposed. No opponent `ObservedEventEnvelope` or
-VisibleSequence is fabricated for an order-stage update. Final S2 public
-movements disclose the complete authorized result. Only after independent S3.A review update
-`state-based-actions-combat` to `implemented`. Record the S2
-SBA interaction as evidence pending the later independent S2 coverage review.
+VisibleSequence is fabricated for an order-stage update. The nonterminal final
+Order Reference path remains blocked at Basic Priority until M3 Block 2; record
+that limit instead of authorizing an implicit pass. Only after independent S3.A
+review may `state-based-actions-combat` move to `implemented`, if its evidence
+justifies it. Record the S2 SBA interaction as evidence pending the later
+independent S2 coverage review.
 
 **Verification:** rules/conformance/environment test suites,
 `scripts/run_checks.py integration`, `cargo test --workspace --all-features
 --locked`, schema/docs/status/registry checks.
 
-**Commit boundary:** S3.A evidence + its justified implementation lifecycle
-promotion; PR C. No S2 coverage promotion.
+**Commit boundary:** integrated M3 Block 1 implementation/evidence commits;
+no S2 coverage promotion. Capability lifecycle remains `specified` unless the
+independent exact-head review justifies an implementation promotion.
 
 **HARD STOP:** no APNAP Order resume/replay proof, any mutation occurs before
 all orders, or an S2 coverage claim is made here.

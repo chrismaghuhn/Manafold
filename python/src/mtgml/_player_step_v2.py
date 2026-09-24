@@ -104,10 +104,16 @@ class PlayerStepV2:
         revision = self.information_state.state_revision
         cursor = self.information_state.next_visible_sequence
         previous_sequence = None
+        previous_event_revision = None
         for event in self.observed_events:
-            # One accepted transition owns exactly one revision.
-            if event.state_revision != revision:
-                raise WireError("semantic.player_step", "event belongs to a different revision")
+            # A response transaction may commit its Rules response product and
+            # one forced-progress product atomically. Preserve event revisions
+            # while rejecting future or non-monotonic event revisions.
+            if event.state_revision > revision or (
+                previous_event_revision is not None
+                and event.state_revision < previous_event_revision
+            ):
+                raise WireError("semantic.player_step", "event belongs to a future revision")
             # Visible sequences never reach the step's own next-unused cursor.
             if event.sequence >= cursor:
                 raise WireError(
@@ -119,6 +125,7 @@ class PlayerStepV2:
                     "event sequences must be strictly increasing",
                 )
             previous_sequence = event.sequence
+            previous_event_revision = event.state_revision
         if self.next_decision is not None and (
             self.next_decision.actor != self.information_state.perspective
             or self.next_decision.state_revision != revision
