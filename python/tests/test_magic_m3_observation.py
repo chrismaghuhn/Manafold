@@ -4,8 +4,8 @@ import json
 import unittest
 from pathlib import Path
 
-from mtgml.errors import WireError
 from mtgml.canonical import canonical_json_bytes
+from mtgml.errors import WireError
 from mtgml.observation import (
     MAGIC_OBSERVATION_SCHEMA_V1,
     MAGIC_OBSERVATION_SCHEMA_V2,
