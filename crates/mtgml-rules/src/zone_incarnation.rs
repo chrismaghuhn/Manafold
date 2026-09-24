@@ -4,7 +4,7 @@
 //! conformance facade below only translates its closed test vocabulary and
 //! delegates here; it contains no transition behavior.
 
-use mtgml_model::{GameObjectId, StateRevision};
+use mtgml_model::{GameObjectId, RuleEventId, StateRevision};
 use mtgml_state::{validate_engine_state, EngineState, ZoneLocation, ZonePosition, ZoneTransition};
 
 use crate::errors::ZoneIncarnationError;
@@ -102,18 +102,22 @@ fn validate_old_references(
 }
 
 fn emit_perspective_occurrence(
-    before: &EngineState,
+    event_origin: RuleEventId,
+    prior_event_count: usize,
     candidate: &mut EngineState,
     events: &mut Vec<AuthoritativeRuleEvent>,
     lifecycle: PerspectiveLifecycleAuditV1,
     observation: crate::PerspectiveObservationPolicyV1,
 ) -> Result<(), KernelExecutionError> {
     mtgml_state::apply_perspective_lifecycle(candidate, &lifecycle)?;
-    let event_offset =
+    let local_offset =
         u64::try_from(events.len()).map_err(|_| KernelExecutionError::RuleEventIdOverflow)?;
-    let event_id = before
-        .allocators
-        .next_rule_event_id
+    let prior_offset =
+        u64::try_from(prior_event_count).map_err(|_| KernelExecutionError::RuleEventIdOverflow)?;
+    let event_offset = prior_offset
+        .checked_add(local_offset)
+        .ok_or(KernelExecutionError::RuleEventIdOverflow)?;
+    let event_id = event_origin
         .0
         .checked_add(event_offset)
         .ok_or(KernelExecutionError::RuleEventIdOverflow)?;
@@ -128,17 +132,46 @@ fn emit_perspective_occurrence(
     Ok(())
 }
 
-/// The one future implementation point for both selected transition families.
-///
-/// Executes one admitted selected zone transition through the ordinary
-/// accepted-product path. Task-3 lifecycle/reference closures remain owned by
-/// their later integration step; this core executor requires the candidate to
-/// satisfy the existing complete EngineState validator.
+/// Standalone S2 transition wrapper. It owns the one-move revision policy,
+/// complete before/after validation, delta, and accepted product.
 pub(crate) fn execute_selected_zone_transition(
     state: &EngineState,
     request: &SelectedZoneTransitionRequest,
 ) -> Result<TransitionResult, KernelExecutionError> {
     validate_engine_state(state).map_err(KernelExecutionError::BeforeState)?;
+    let revision = StateRevision(
+        state
+            .revision
+            .0
+            .checked_add(1)
+            .ok_or(KernelExecutionError::RevisionOverflow)?,
+    );
+    let mut candidate = state.clone();
+    candidate.revision = revision;
+    let mut events = Vec::new();
+    apply_selected_zone_transition_in_workspace(
+        &mut candidate,
+        request,
+        state.allocators.next_rule_event_id,
+        &mut events,
+    )?;
+    build_accepted_product(state, candidate, events, |_| Ok(()))
+}
+
+/// Apply one selected S2 move to a caller-owned scratch workspace.
+///
+/// The candidate revision and outer event cursor belong to the coordinator.
+/// This primitive never creates a `TransitionResult`, increments revision, or
+/// validates a potentially incomplete intermediate workspace. It stages all
+/// work in a private clone so an error leaves both the candidate and its event
+/// vector untouched.
+pub(crate) fn apply_selected_zone_transition_in_workspace(
+    candidate: &mut EngineState,
+    request: &SelectedZoneTransitionRequest,
+    event_origin: RuleEventId,
+    events: &mut Vec<AuthoritativeRuleEvent>,
+) -> Result<ZoneTransition, KernelExecutionError> {
+    let state = &*candidate;
 
     let old_object =
         state
@@ -359,13 +392,6 @@ pub(crate) fn execute_selected_zone_transition(
         .ok_or(KernelExecutionError::ZoneIncarnation(
             ZoneIncarnationError::ObjectNotLive,
         ))?;
-    next.revision = StateRevision(
-        state
-            .revision
-            .0
-            .checked_add(1)
-            .ok_or(KernelExecutionError::RevisionOverflow)?,
-    );
     next.zones.objects.insert(
         new_object_id,
         mtgml_state::GameObject {
@@ -397,14 +423,20 @@ pub(crate) fn execute_selected_zone_transition(
         last_known,
         new_snapshot,
     };
+    let prior_event_count =
+        u64::try_from(events.len()).map_err(|_| KernelExecutionError::RuleEventIdOverflow)?;
+    let event_id = event_origin
+        .0
+        .checked_add(prior_event_count)
+        .ok_or(KernelExecutionError::RuleEventIdOverflow)?;
     let event = AuthoritativeRuleEvent {
-        event_id: state.allocators.next_rule_event_id,
+        event_id: mtgml_model::RuleEventId(event_id),
         state_revision: next.revision,
         event: AuthoritativeRuleEventKind::ZoneTransition {
             transition: Box::new(transition.clone()),
         },
     };
-    let mut events = vec![event];
+    let mut staged_events = vec![event];
     let new_object = new_object_id;
     let to_location = transition.to.clone();
     match request.kind {
@@ -455,9 +487,10 @@ pub(crate) fn execute_selected_zone_transition(
                     },
                 };
                 emit_perspective_occurrence(
-                    state,
+                    event_origin,
+                    events.len(),
                     &mut next,
-                    &mut events,
+                    &mut staged_events,
                     lifecycle,
                     crate::PerspectiveObservationPolicyV1::MovedInSight {
                         from_zone: transition.from.zone,
@@ -552,10 +585,19 @@ pub(crate) fn execute_selected_zone_transition(
                     knowledge: knowledge_mutation,
                 },
             };
-            emit_perspective_occurrence(state, &mut next, &mut events, lifecycle, observation)?;
+            emit_perspective_occurrence(
+                event_origin,
+                events.len(),
+                &mut next,
+                &mut staged_events,
+                lifecycle,
+                observation,
+            )?;
         }
     }
-    build_accepted_product(state, next, events, |_| Ok(()))
+    *candidate = next;
+    events.extend(staged_events);
+    Ok(transition)
 }
 
 /// Closed family vocabulary available only when the conformance testkit feature

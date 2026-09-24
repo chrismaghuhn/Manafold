@@ -203,3 +203,7 @@ include!("tests/batch_f.rs");
 include!("tests/turn_structure.rs");
 include!("tests/magic_turn_structure.rs");
 include!("tests/state_based_actions.rs");
+mod zone_incarnation_tests {
+    use super::*;
+    include!("tests/zone_incarnation.rs");
+}

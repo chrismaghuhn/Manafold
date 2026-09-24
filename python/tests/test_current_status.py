@@ -72,11 +72,11 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("FOUNDATION_V2 = ACCEPTED_HARDENED_M3_SCOPE", readme)
         self.assertIn("**M3 plan status:** `ACCEPTED`", readme)
         self.assertIn("**Task 14:** `COMPLETE` — `S1_EXACT_HEAD_VERIFICATION = PASS`", readme)
-        self.assertIn("**Next gate:** `M3_S3_A_TASK_8_EXACT_HEAD_REVIEW`", readme)
+        self.assertIn("**Next gate:** `M3_S3_A_TASK_9A_EXACT_HEAD_REVIEW`", readme)
         self.assertIn("**S3.P0:** `COMPLETE / FROZEN`", readme)
         self.assertIn("**S3.0:** `COMPLETE / FROZEN`", readme)
         self.assertIn(
-            "**S3.A:** Tasks 5, 6, and 7 complete / reviewed; Task 8 Magic APNAP observation codec is a candidate pending exact-head review; S3.A implementation remains incomplete",
+            "**S3.A:** Tasks 5–8 complete / reviewed; Task 9A S2 composition seam is a candidate pending exact-head review; Task 9 SBA application is not complete",
             readme,
         )
         self.assertIn("S3.B/C are not authorized", readme)
@@ -251,13 +251,15 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("S3_A_TASK_6_REVIEW_HEAD = 5711886772e431a80f81bcd099cb5546d327a362", roadmap)
         self.assertIn("S3_A_TASK_7 = COMPLETE / REVIEWED", roadmap)
         self.assertIn("S3_A_TASK_7_REVIEW_HEAD = eb9c9a92d60bf82bccc0ceeb174ad58e1f8c1d48", roadmap)
-        self.assertIn("S3_A_TASK_8 = COMPLETE_CANDIDATE", roadmap)
-        self.assertIn("S3_A_TASK_8_EXACT_HEAD_REVIEW = PENDING", roadmap)
+        self.assertIn("S3_A_TASK_8 = COMPLETE / REVIEWED", roadmap)
+        self.assertIn("S3_A_TASK_8_REVIEW_HEAD = 8a531c33ced9e532bd90b3870ac088b06924c348", roadmap)
+        self.assertIn("S3_A_TASK_9A = COMPLETE_CANDIDATE", roadmap)
+        self.assertIn("S3_A_TASK_9 = NOT_COMPLETE", roadmap)
         self.assertIn("S3_A_IMPLEMENTATION = NOT_COMPLETE", roadmap)
         self.assertIn("S3_A_EXACT_HEAD_REVIEW = PENDING", roadmap)
         self.assertIn("S3_A_PRODUCTION_SEMANTIC_CONTRACT_REQUIRED = YES", roadmap)
         self.assertIn("S3_A_PRODUCTION_SEMANTIC_CONTRACT_ALLOCATED = NO", roadmap)
-        self.assertIn("NEXT_GATE = M3_S3_A_TASK_8_EXACT_HEAD_REVIEW", roadmap)
+        self.assertIn("NEXT_GATE = M3_S3_A_TASK_9A_EXACT_HEAD_REVIEW", roadmap)
         self.assertIn("S3_A_IMPLEMENTATION_AUTHORIZED = YES", roadmap)
         self.assertIn("S3_B_AUTHORIZED = NO", roadmap)
         self.assertIn("S3_C_AUTHORIZED = NO", roadmap)

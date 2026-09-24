@@ -1079,6 +1079,32 @@ S1/Synthetic observation bytes change.
 
 ### Task 9 — S3.A4 ordered S2 composition and atomic SBA application
 
+**Task 9A preparatory seam (authorized separately):** extract the mutation
+inside the existing standalone `execute_selected_zone_transition()` into one
+private S2 workspace primitive. The standalone wrapper continues to own its
+single `R+1` accepted product; the workspace caller owns the candidate
+revision, aggregate event cursor, final delta, and outer transition. Task 9A
+does not derive or apply SBA actions and does not relax standalone OLD
+reference checks.
+
+Task 9B must close the final Order response's current pending Decision and
+`MagicSbaGraveyardOrderV1` continuation inside its uncommitted outer workspace
+before passing selected objects to S2. It may not expose that intermediate
+state or weaken S2's standalone pending-decision rejection.
+
+Combat reference closure is currently `BLOCKED_FOR_DESIGN`: the standalone S2
+executor rejects a selected object still referenced in `CombatState`, and the
+current authoritative event/delta/cursor vocabulary has no typed combatant
+removal audit that explains clearing that reference atomically. Task 9B must
+resolve this with an accepted semantic audit design before moving combat
+participants; it must not silently edit `CombatState`.
+
+The production environment also does not yet close a nonterminal final Order
+response: shared response execution performs one forced-progress call, whose
+current S1 boundary rejects absent Basic Priority. Record this as
+`DEFERRED / BLOCKED` for Task 10 restore/replay/lifecycle claims. Task 9A
+does not change the response transaction or swallow the unsupported boundary.
+
 **Allowed files:** sole S2 zone-incarnation executor/composition API,
 `crates/mtgml-rules/src/` SBA result builder, events/delta/cursor/contract,
 and conformance fixtures.
