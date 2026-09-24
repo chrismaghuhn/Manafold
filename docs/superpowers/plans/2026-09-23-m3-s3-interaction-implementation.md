@@ -260,28 +260,27 @@ continuation-only checkpoint is permitted.
 Stage behavior:
 
 ```text
-no owner needs Order:
-  derive complete round -> apply complete round in one rules product
+no owner needs Order (Task 7):
+  derive complete round -> do not apply it yet; Task 9 owns application
 
-one owner needs Order:
+one owner needs Order (Task 7):
   save complete round -> owner Order Decision
-  accepted response -> validate/store permutation
-  -> apply round, fixed point and following forced work in that response
+  final response remains unaccepted until Task 9 can apply the whole round
 
-both owners need Order:
+both owners need Order (Task 7):
   save complete round -> active-owner Order Decision
   accepted response -> store active order; same ContinuationId;
   -> fresh nonactive-owner Order Decision, no SBA mutation
-  accepted response -> store nonactive order
-  -> apply round, fixed point and following forced work in that response
+  final response remains unaccepted until Task 9 can apply the whole round
 ```
 
-The final Order response's `kernel.apply` completes the entire SBA batch and
-returns at the next real Decision, terminal outcome, or typed unsupported/
-error boundary. Earlier APNAP responses commit only the new stage/Decision.
-They do not move cards or apply player losses. This lets each genuine response
-own the consequences in V6 while every checkpoint remains a valid resumable
-EngineState.
+Task 7 accepts only nonfinal APNAP responses, which commit the new stage and
+next Decision without applying SBA actions. A one-owner response or the last
+owner's response is not accepted as an order-only state: Task 9 must validate
+that answer and apply the complete SBA batch/fixed point atomically in the
+same rules transition. A round requiring no Order is likewise left unapplied
+until Task 9. This prevents a final-choice checkpoint from existing without
+its consequences.
 
 Exact audit ordering for a staged owner response is:
 
@@ -1000,17 +999,19 @@ creates the next Order Decision; state/zone/status/loss facts remain unchanged.
 Wrong actor, stale response, invalid permutation, identity exhaustion, or
 continuation mismatch rejects atomically.
 
-**Objective:** on the final Order response, validate the unchanged round-start
-facts against the saved round plan, record `SbaGraveyardOrderChosen`, then
-complete the entire batch/fixed point in that same rules transition. This
-keeps every accepted checkpoint valid and gives each response its natural V6
-step.
+**Objective:** derive and stage a fresh round requiring an Order; validate and
+commit only nonfinal owner answers; preserve the complete unapplied batch and
+advance to the next APNAP owner. The one-owner and final-owner responses stay
+unaccepted until Task 9 owns their atomic choice-plus-batch transition.
 
-**Verification:** Task 5 RED cases turn green through the actual Decision V2
-protocol; decision/state/rules/conformance suites and replay response binding.
+**Verification:** order staging and nonfinal APNAP Task 5 cases turn green
+through Decision V2; final-order and no-order SBA application cases remain
+RED for Task 9. Run decision/state/rules/conformance suites and replay response
+binding.
 
-**Commit boundary:** APNAP Decision/continuation progression, still no S2
-multi-move integration.
+**Commit boundary:** APNAP Decision/continuation progression and trusted
+order-choice audit, still no S2 multi-move integration or final order-only
+acceptance.
 
 **HARD STOP:** any zone/life/status mutation occurs before the last required
 Order response, or any Order request leaks trusted GameObjectId.

@@ -1239,3 +1239,72 @@ fn first_owner_order_only_advances_the_same_round_to_the_next_apnap_owner() {
         }
     );
 }
+
+#[test]
+fn task7_one_owner_final_order_waits_for_task9_atomic_application() {
+    let state = state_with_pending_order();
+    let before = state.clone();
+    let request = state
+        .execution
+        .pending_decision
+        .as_ref()
+        .unwrap()
+        .request
+        .clone();
+    let response = DecisionResponseV2 {
+        schema_version: DECISION_RESPONSE_V2_SCHEMA.into(),
+        player_decision_id: request.player_decision_id,
+        state_revision: request.state_revision,
+        answer: DecisionAnswerV2::Order {
+            candidate_ids: vec![CandidateIdV1(1), CandidateIdV1(0)],
+        },
+    };
+    assert!(response
+        .validate_for(&request.project_player_request().unwrap())
+        .is_ok());
+    let mut kernel = magic_kernel();
+    let result = kernel.apply(&state, P1, &response);
+    assert_eq!(state, before, "the final-order RED must preserve its input");
+    assert!(
+        matches!(
+            result,
+            Err(mtgml_rules::KernelExecutionError::UnsupportedStagePath)
+        ),
+        "the Task-7 order path should identify the deferred Task-9 boundary: {result:?}"
+    );
+}
+
+#[test]
+fn task7_second_owner_final_order_waits_for_task9_atomic_application() {
+    let state = state_with_second_owner_order();
+    let before = state.clone();
+    let request = state
+        .execution
+        .pending_decision
+        .as_ref()
+        .unwrap()
+        .request
+        .clone();
+    assert_eq!(request.actor, P2);
+    let response = DecisionResponseV2 {
+        schema_version: DECISION_RESPONSE_V2_SCHEMA.into(),
+        player_decision_id: request.player_decision_id,
+        state_revision: request.state_revision,
+        answer: DecisionAnswerV2::Order {
+            candidate_ids: vec![CandidateIdV1(1), CandidateIdV1(0)],
+        },
+    };
+    assert!(response
+        .validate_for(&request.project_player_request().unwrap())
+        .is_ok());
+    let mut kernel = magic_kernel();
+    let result = kernel.apply(&state, P2, &response);
+    assert_eq!(state, before, "the final-order RED must preserve its input");
+    assert!(
+        matches!(
+            result,
+            Err(mtgml_rules::KernelExecutionError::UnsupportedStagePath)
+        ),
+        "the Task-7 order path should identify the deferred Task-9 boundary: {result:?}"
+    );
+}
