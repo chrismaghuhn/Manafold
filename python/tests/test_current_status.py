@@ -92,8 +92,8 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             readme,
         )
         self.assertIn(
-            "Block 4 remains blocked on the source-closure mismatch; Declare Blockers and later "
-            "blocks have not started",
+            "Block 4 supplies a Combat Phase + Declare Attackers implementation candidate; "
+            "Declare Blockers and later blocks have not started",
             readme,
         )
         self.assertNotIn("M3_S1_AUTHORIZATION_DECISION", readme)
@@ -560,13 +560,11 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertEqual(combat_phase["lifecycle"], "specified")
         self.assertTrue(combat_phase["implementation_paths"])
         self.assertEqual(combat_phase["conformance_cases"], [])
-        self.assertIn("blocked by the accepted Foundation V2 source closure", combat_phase["notes"])
+        self.assertIn("independent exact-head review pending", combat_phase["notes"])
         self.assertEqual(declare_attackers["lifecycle"], "specified")
         self.assertTrue(declare_attackers["implementation_paths"])
         self.assertEqual(declare_attackers["conformance_cases"], [])
-        self.assertIn(
-            "blocked by the accepted Foundation V2 source closure", declare_attackers["notes"]
-        )
+        self.assertIn("independent exact-head review pending", declare_attackers["notes"])
 
         for entry in other_entries:
             with self.subTest(capability=entry["key"]):

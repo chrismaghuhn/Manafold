@@ -100,7 +100,7 @@
       "information_risk": "medium",
       "key": "rules/combat-phase",
       "lifecycle": "specified",
-      "notes": "Bounded combat phase progression candidate is present; required source-less Battlefield mixed-state evidence is blocked by the accepted Foundation V2 source closure. Lifecycle remains specified; coverage and certification are not claimed.",
+      "notes": "Bounded combat phase progression implementation candidate is present; independent exact-head review pending. Source-less Battlefield states remain rejected by the accepted Foundation V2 closure. Lifecycle remains specified; coverage and certification are not claimed.",
       "owners": [
         "combat"
       ],
@@ -134,7 +134,7 @@
       "information_risk": "high",
       "key": "rules/declare-attackers",
       "lifecycle": "specified",
-      "notes": "Bounded attacker decision and commitment candidate is present; required source-less Battlefield mixed-state evidence is blocked by the accepted Foundation V2 source closure. Lifecycle remains specified; coverage and certification are not claimed.",
+      "notes": "Bounded attacker decision and commitment implementation candidate is present; independent exact-head review pending. Source-less Battlefield states remain rejected by the accepted Foundation V2 closure. Lifecycle remains specified; coverage and certification are not claimed.",
       "owners": [
         "combat"
       ],

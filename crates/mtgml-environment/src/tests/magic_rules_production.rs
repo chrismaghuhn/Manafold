@@ -130,6 +130,22 @@ fn stable_combat_state() -> mtgml_state::EngineState {
 
 fn three_attacker_combat_state() -> mtgml_state::EngineState {
     let mut state = stable_combat_state();
+    add_creature(&mut state, 4, P1, [3, 4]);
+    add_creature(&mut state, 5, P1, [4, 5]);
+    for object in [GameObjectId(3), GameObjectId(4), GameObjectId(5)] {
+        state.foundation_sources.get_mut(&object).unwrap().base_characteristics =
+            BaseCharacteristics::Simple {
+                power: 2,
+                toughness: 2,
+            };
+    }
+    state.allocators.next_object_id = GameObjectId(6);
+    mtgml_state::validate_engine_state(&state).unwrap();
+    state
+}
+
+fn mixed_attacker_eligibility_state() -> mtgml_state::EngineState {
+    let mut state = stable_combat_state();
     state.core.turn_number = 2;
     add_creature(&mut state, 4, P1, [3, 4]);
     add_creature(&mut state, 5, P1, [4, 5]);
@@ -142,6 +158,7 @@ fn three_attacker_combat_state() -> mtgml_state::EngineState {
                 toughness: 2,
             };
     }
+    state.zones.objects.get_mut(&GameObjectId(4)).unwrap().tapped = true;
     state.foundation_sources.get_mut(&GameObjectId(5)).unwrap().control_history =
         ControlHistory::DuringTurn {
             turn_number: 1,
@@ -178,7 +195,6 @@ fn three_attacker_decision_represents_each_legal_subset_once() {
         p2.submit(current_select_one_response(&nonactive)).unwrap();
     }
     let pending = controller.checkpoint().unwrap();
-    assert!(!pending.state.foundation_sources.contains_key(&GameObjectId(2)));
     let request = p1.visible_decision().unwrap().unwrap();
     assert_eq!(request.candidates.len(), 3);
     assert_eq!(
@@ -234,6 +250,78 @@ fn three_attacker_decision_represents_each_legal_subset_once() {
         assert_eq!(fork.export_replay().unwrap().steps.len(), 1);
     }
     assert_eq!(represented.len(), 8);
+}
+
+#[test]
+fn admitted_mixed_attacker_fixture_exposes_exactly_continuously_controlled_untapped_creatures() {
+    let state = mixed_attacker_eligibility_state();
+    mtgml_state::validate_engine_state(&state).unwrap();
+    for object in 1..=7 {
+        let id = GameObjectId(object);
+        if state.zones.locations[&id].zone == mtgml_model::ZoneKind::Battlefield {
+            let source = &state.foundation_sources[&id];
+            assert_eq!(source.source_kind, FoundationSourceKind::Creature);
+            assert!(matches!(source.base_characteristics, BaseCharacteristics::Simple { .. }));
+            assert_eq!(source.marked_damage, 0);
+            assert!(matches!(
+                source.control_history,
+                ControlHistory::BeforeTurnStart { .. } | ControlHistory::DuringTurn { .. }
+            ));
+        }
+    }
+
+    let controller = TrustedEnvironmentController::new(combat_backend(state));
+    controller.execute_forced_progress().unwrap();
+    let p1 = controller.bind_player(P1).unwrap();
+    let p2 = controller.bind_player(P2).unwrap();
+    for _ in 0..2 {
+        let active = p1.visible_decision().unwrap().unwrap();
+        p1.submit(current_select_one_response(&active)).unwrap();
+        let nonactive = p2.visible_decision().unwrap().unwrap();
+        p2.submit(current_select_one_response(&nonactive)).unwrap();
+    }
+
+    let checkpoint = controller.checkpoint().unwrap();
+    let decision = p1.visible_decision().unwrap().unwrap();
+    let candidates: Vec<_> = decision.candidates.iter().map(|candidate| {
+        let mtgml_decision::CandidateIntent::SelectObject { object } = candidate.intent else {
+            panic!("attacker candidate must identify an object");
+        };
+        checkpoint.state.perspective_identities.players[&P1].opaque_to_object[&object]
+    }).collect();
+    assert_eq!(candidates, vec![GameObjectId(3), GameObjectId(5)]);
+}
+
+#[test]
+fn source_less_battlefield_object_is_rejected_at_admission_without_mutation() {
+    let mut unsupported = stable_combat_state();
+    add_creature(&mut unsupported, 8, P1, [8, 8]);
+    unsupported.foundation_sources.remove(&GameObjectId(8));
+    unsupported.allocators.next_object_id = GameObjectId(9);
+    let before = unsupported.clone();
+
+    let mut replay = s3_replay_config();
+    replay.scenario_id = "rules/declare-attackers@0.1.0:unsupported-source".into();
+    replay.schemas.observation_payload_codec =
+        mtgml_observation::MAGIC_OBSERVATION_SCHEMA_V2.into();
+    let admission = ReferenceEnvironmentBackend::new(ReferenceEnvironmentConfig {
+        state: unsupported.clone(),
+        status: EpisodeStatus::Running,
+        limit_counters: EnvironmentLimitCounters::default(),
+        codec: CheckpointCodecIdentity {
+            codec_id: CHECKPOINT_CODEC_ID_V6.into(),
+            semantic_version: CHECKPOINT_CODEC_SEMANTIC_VERSION_V6.into(),
+        },
+        execution_identity: ReferenceEnvironmentBackend::magic_combat_attackers_execution_identity(),
+        replay,
+    });
+    assert!(admission.is_err());
+    assert_eq!(unsupported, before, "rejected admission must not mutate EngineState");
+    assert!(unsupported.execution.pending_decision.is_none());
+    assert!(unsupported.execution.continuations.is_empty());
+    assert!(unsupported.combat.is_none());
+    assert_eq!(unsupported.allocators.next_object_id, GameObjectId(9));
+    assert!(admission.is_err(), "rejected admission creates no replay backend");
 }
 
 #[test]

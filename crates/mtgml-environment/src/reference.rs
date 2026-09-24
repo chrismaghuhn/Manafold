@@ -632,14 +632,15 @@ impl EnvironmentBackend for ReferenceEnvironmentBackend {
         response: DecisionResponseV2,
     ) -> Result<PlayerStepV2, PlayerEndpointError> {
         self.require_player(perspective)?;
-        let s3_magic = self.execution_identity == magic_state_based_actions_execution_identity()
+        let bounded_magic_profile = self.execution_identity
+            == magic_state_based_actions_execution_identity()
             || self.execution_identity == magic_basic_priority_execution_identity()
             || self.execution_identity == magic_draw_execution_identity();
-        let s3_magic =
-            s3_magic || self.execution_identity == magic_combat_attackers_execution_identity();
+        let bounded_magic_profile = bounded_magic_profile
+            || self.execution_identity == magic_combat_attackers_execution_identity();
         let code = if !matches!(self.status, EpisodeStatus::Running) {
             Some(mtgml_observation::PlayerSubmissionCodeV1::EpisodeClosed)
-        } else if !s3_magic {
+        } else if !bounded_magic_profile {
             Some(mtgml_observation::PlayerSubmissionCodeV1::UnavailableDecision)
         } else if let Some(pending) = self.state.execution.pending_decision.as_ref() {
             if pending.request.actor != perspective {
