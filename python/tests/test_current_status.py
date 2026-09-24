@@ -64,7 +64,8 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         )
         self.assertIn("**PR #208:** `MERGED`; `S2_EXACT_HEAD_VERIFICATION = PASS`", readme)
         self.assertIn(
-            "**S2 authoritative replay:** Draw \u00d7 S2 has a Block 3 Replay V6 candidate witness; "
+            "**S2 authoritative replay:** Draw \u00d7 S2 has a Block 3 "
+            "Replay V6 candidate witness; "
             "overall S2 replay coverage remains `DEFERRED_REQUIRED / BLOCKED_FOR_COVERED`",
             readme,
         )
