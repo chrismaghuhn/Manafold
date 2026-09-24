@@ -1092,18 +1092,139 @@ Task 9B must close the final Order response's current pending Decision and
 before passing selected objects to S2. It may not expose that intermediate
 state or weaken S2's standalone pending-decision rejection.
 
-Combat reference closure is currently `BLOCKED_FOR_DESIGN`: the standalone S2
-executor rejects a selected object still referenced in `CombatState`, and the
-current authoritative event/delta/cursor vocabulary has no typed combatant
-removal audit that explains clearing that reference atomically. Task 9B must
-resolve this with an accepted semantic audit design before moving combat
-participants; it must not silently edit `CombatState`.
+Task 9B0 resolves the bounded combat-reference design: S3.A may prune selected
+combat references only after the sole normal CombatDamage assignment. The
+current `CombatState` cannot preserve historical blocked status after a blocker
+is removed, so pre-damage participant deaths and stale EndOfCombat removals
+fail closed. Post-damage selected attackers/blockers are pruned only as
+specified by the `StateBasedActionsApplied` actions; no general CombatState
+mutation is licensed.
 
-The production environment also does not yet close a nonterminal final Order
-response: shared response execution performs one forced-progress call, whose
-current S1 boundary rejects absent Basic Priority. Record this as
-`DEFERRED / BLOCKED` for Task 10 restore/replay/lifecycle claims. Task 9A
-does not change the response transaction or swallow the unsupported boundary.
+Task 9B0 freezes the following Task 9B semantic contract before production
+implementation.
+
+#### Atomic batch audit and continuation closure
+
+Add one rule-relevant event and matching delta operation:
+
+```text
+StateBasedActionsApplied { actions: Vec<SbaSelectedActionV1> }
+```
+
+It carries the exact canonical complete action set re-derived from one
+immutable round-start state. Its semantic effects are limited to: mark each
+selected `PlayerLoses` player as lost; authorize selected battlefield
+objects to leave combat under the combat policy below; retire the completed
+Magic SBA continuation; and bind the following exact S2 `ZoneTransition`
+set to the selected object actions. It does not perform zone or perspective
+identity mutation itself.
+
+For a final real Order response, the single accepted transition event order
+is:
+
+```text
+DecisionCleared(old Decision)
+SbaGraveyardOrderChosen(same continuation, final owner, exact order)
+StateBasedActionsApplied(exact complete action set)
+ZoneTransition / PerspectiveOccurrence for each selected creature
+subsequent fixed-point round(s), if any
+terminal status, or the existing supported next-decision boundary
+```
+
+Every event and zone occurrence has the one final candidate revision `R+1`.
+The final order is represented only in a private cursor transient; it is
+never stored as an EngineState continuation stage with all owners complete.
+`StateBasedActionsApplied` consumes that transient together with saved earlier
+orders and retires the cursor continuation. A standalone final
+`SbaGraveyardOrderChosen` without its batch and exact S2 moves is rejected.
+
+The outer scratch response workspace first validates the final response
+against the immutable before-state and captures the trusted order. It then
+clears the old pending Decision and removes the active SBA continuation in
+scratch before calling S2. This is never externally validated or committed
+as an intermediate state and does not weaken standalone S2 reference
+rejection.
+
+For a no-order round, emit `StateBasedActionsApplied` directly, without an
+Order Decision or continuation. An owner with one selected card has its
+unique order; owners with no selected cards have no move.
+
+#### Loss and terminal mapping
+
+`StateBasedActionsApplied(PlayerLoses(player))` is the only current S3.A
+authority for `has_lost: false -> true`. Re-derive the exact action set;
+require each applicable loss exactly once; reject missing, duplicate, extra,
+or spurious loss actions and reject a before-state with `has_lost = true`.
+No `PublicOutcome` string is added as a competing authority.
+
+After the complete batch, one losing player maps to existing
+`TerminalReason::RulesLoss` with canonical PlayerId-sorted Loss/Win outcomes;
+two players losing in the same round map to
+`TerminalReason::SimultaneousOutcome` with canonical Draw outcomes. Terminal
+products have no next Decision. Use the existing EpisodeStatus contract.
+
+#### Bounded combat-reference policy
+
+The bound CR snapshot is the August 7, 2026 Comprehensive Rules artifact
+identified by ADR 0051. CR 506.4 removes a permanent from combat when it
+leaves the battlefield. CR 509.1h separately preserves an attacker's blocked
+status when all blockers leave combat. The current `CombatState` stores live
+attacker/blocker references but has no separate historical blocked bit.
+
+S3.A may prune selected combat references only at
+`TurnPosition::Combat(CombatDamage)`, after the bounded single normal damage
+assignment. Foundation V2 excludes first/double strike and additional damage
+steps, so the removed blocked-status distinction is not consumed by a later
+damage assignment in this bounded slice. At BeginningOfCombat,
+DeclareAttackers, or DeclareBlockers, a selected combat participant fails
+closed. At EndOfCombat, a participant that should have been removed at the
+post-damage SBA check also fails closed; this is not a second SBA opportunity.
+
+At the admitted post-damage boundary, a selected dying attacker is removed
+from `combat.attackers` and its attacker key is removed from `combat.blockers`,
+preserving surviving attacker order. A selected dying blocker is removed from
+its attacker's live blocker reference, represented as `None`. In this context
+only, `None` means “no live blocker reference remains”; it does NOT represent
+general blocked/unblocked history and cannot drive a later combat-damage
+assignment. Preserve the enclosing CombatState/defending player. Any combat
+mutation not derivable from the selected `StateBasedActionsApplied` actions
+rejects. Do not add a general CombatStateChanged event or silently clear
+combat state. A future pre-damage removal feature requires a separately
+reviewed CombatState semantic representation for historical blocked status.
+
+#### Multi-transition contract gate and fixed point
+
+Standalone S2 continues to require exactly one selected ZoneTransition. An
+SBA batch may contain N ZoneTransitions only when exactly one preceding
+`StateBasedActionsApplied` event authorizes them; require a one-to-one mapping
+to every and only `ObjectToOwnerGraveyard` action, with unique OLD and NEW
+incarnations, no duplicate/omitted/extra moves, and exact S2 allocation and
+destination order. No batch event means no multi-move exception.
+
+The round plan and causes are derived from one immutable round-start snapshot.
+Execute each owner's chosen top-to-bottom order in reverse through the single
+S2 workspace. Task 9B applies one complete nonempty round; Task 10 proves the
+full fixed point. The next round is derived from its completed result and is
+applied before any priority. No Decision appears between fixed-point rounds,
+except a new typed APNAP Order continuation when the next round requires an
+actual order.
+
+#### Remaining environment limitation
+
+The production response transaction still performs exactly one forced
+progress call after an accepted Running response. With Basic Priority not yet
+implemented, a nonterminal final Order transition that has no next Decision
+hits the existing `BasicPriority` unsupported boundary. Record
+`NONTERMINAL_FINAL_ORDER_ENVIRONMENT_CLOSURE = BLOCKED_UNTIL_S3_B_OR_REVIEWED_TRANSACTION_DISPOSITION`.
+Do not change the response transaction or hide the error in Task 9B0. This
+blocks production replay/restore/lifecycle claims until Task 10 disposition.
+
+Task 9B0 adds ignored/future-acceptance RED witnesses for final one- and
+two-owner Order application, no-order batch application, terminal loss
+products, post-damage combat pruning, and pre-damage/EndOfCombat fail-closed
+boundaries. Existing one-/two-player loss producer REDs remain expected.
+Standalone-final-order-without-batch and multi-move-without-batch rejection
+are positive negative-contract guards.
 
 **Allowed files:** sole S2 zone-incarnation executor/composition API,
 `crates/mtgml-rules/src/` SBA result builder, events/delta/cursor/contract,

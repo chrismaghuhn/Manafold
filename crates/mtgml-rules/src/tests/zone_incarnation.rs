@@ -339,3 +339,59 @@ fn s2_workspace_composes_two_moves_at_one_revision_and_reverse_inserts_order() {
     assert_eq!(events, events_before_failure);
     assert_eq!(state, authoritative_before);
 }
+
+#[test]
+fn multiple_s2_moves_without_an_sba_batch_are_rejected_by_the_outer_contract() {
+    let mut state = battlefield_state_with_existing_graveyard();
+    remove_object_tracking(&mut state, GameObjectId(1));
+    let second_old = GameObjectId(5);
+    state.zones.objects.insert(
+        second_old,
+        GameObject {
+            id: second_old,
+            physical_card: Some(PhysicalCardId(5)),
+            card_definition: CardDefinitionId(5),
+            owner: PlayerId(1),
+            controller: PlayerId(1),
+            tapped: false,
+            face_down: false,
+        },
+    );
+    state.zones.locations.insert(
+        second_old,
+        zone_location(
+            ZoneKind::Battlefield,
+            None,
+            ZonePosition::Unordered,
+            VisibilityPartition::Public,
+        ),
+    );
+    state.allocators.next_object_id = GameObjectId(6);
+    mtgml_state::validate_engine_state(&state).unwrap();
+
+    let mut scratch = state.clone();
+    scratch.revision = StateRevision(1);
+    let mut events = Vec::new();
+    let event_origin = state.allocators.next_rule_event_id;
+    apply_selected_zone_transition_in_workspace(
+        &mut scratch,
+        &battlefield_graveyard_request(second_old),
+        event_origin,
+        &mut events,
+    )
+    .unwrap();
+    apply_selected_zone_transition_in_workspace(
+        &mut scratch,
+        &battlefield_graveyard_request(GameObjectId(1)),
+        event_origin,
+        &mut events,
+    )
+    .unwrap();
+
+    assert!(matches!(
+        crate::product::build_accepted_product(&state, scratch, events, |_| Ok(())),
+        Err(KernelExecutionError::TransitionContract(
+            crate::TransitionViolation::ZoneTransition
+        ))
+    ));
+}

@@ -21,11 +21,13 @@ use mtgml_decision::{
 };
 use mtgml_model::{
     CandidateIdV1, DecisionId, EpisodeStatus, ExecutionProgramV1, GameObjectId, OpaqueObjectId,
-    PlayerDecisionIdV1, PlayerId, PlayerOutcome, PlayerResult, StateRevision, TerminalReason,
-    ZoneKind,
+    PlayerDecisionIdV1, PlayerId, PlayerOutcome, PlayerResult, RuleEventId, StateRevision,
+    TerminalReason, ZoneKind,
 };
 use mtgml_random::RootSeed256;
-use mtgml_rules::{AuthoritativeRuleEventKind, ProgramKernelV1, TransitionResult};
+use mtgml_rules::{
+    AuthoritativeRuleEvent, AuthoritativeRuleEventKind, ProgramKernelV1, TransitionResult,
+};
 use mtgml_state::{
     construct_synthetic_engine_state, validate_engine_state, BaseCharacteristics,
     ContinuationPayloadV2, ContinuationRecordV2, ControlHistory, EngineState,
@@ -1787,4 +1789,616 @@ fn task7_missing_actor_opaque_identity_fails_before_stage_creation() {
         Err(mtgml_rules::KernelExecutionError::UnsupportedStagePath)
     ));
     assert_eq!(state, before);
+}
+
+#[test]
+fn final_order_event_without_the_sba_batch_is_rejected() {
+    let before = state_with_pending_order();
+    let request = before
+        .execution
+        .pending_decision
+        .as_ref()
+        .unwrap()
+        .request
+        .clone();
+    let continuation = request.continuation_id.unwrap();
+    let mut after = before.clone();
+    after.revision = StateRevision(before.revision.0 + 1);
+    after.execution.pending_decision = None;
+    after.execution.continuations.remove(&continuation);
+    after.allocators.next_rule_event_id = RuleEventId(before.allocators.next_rule_event_id.0 + 2);
+    let events = vec![
+        AuthoritativeRuleEvent {
+            event_id: before.allocators.next_rule_event_id,
+            state_revision: after.revision,
+            event: AuthoritativeRuleEventKind::DecisionCleared {
+                decision: request.decision_id,
+            },
+        },
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(before.allocators.next_rule_event_id.0 + 1),
+            state_revision: after.revision,
+            event: AuthoritativeRuleEventKind::SbaGraveyardOrderChosen {
+                continuation,
+                owner: P1,
+                top_to_bottom: vec![GameObjectId(1), GameObjectId(2)],
+            },
+        },
+    ];
+    let audit = events
+        .iter()
+        .map(|event| event.event.semantic_delta())
+        .collect();
+    let delta = mtgml_state::StateDelta::between(&before, &after, audit).unwrap();
+    let product = TransitionResult {
+        accepted: true,
+        next_decision: None,
+        status: EpisodeStatus::Running,
+        next_state: after,
+        delta,
+        events,
+    };
+    assert!(mtgml_rules::validate_transition_contract(&before, &product).is_err());
+}
+
+fn order_stage_at_combat(
+    step: mtgml_state::CombatStep,
+    creature_specs: &[CreatureSpec],
+    combat: mtgml_state::CombatState,
+    selected_objects: &[u64],
+) -> EngineState {
+    let mut state = state_with(creature_specs, [40, 40]);
+    state.core.position = mtgml_state::TurnPosition::Combat { step };
+    state.combat = Some(combat);
+    let actions = selected_objects
+        .iter()
+        .map(|object| object_action(*object, vec![SbaObjectCauseV1::ZeroToughness]))
+        .collect();
+    state_with_order_stage(state, actions, vec![P1], P1, 0, Vec::new(), (1, 1, 0))
+}
+
+fn combat_order_answer(state: &EngineState) -> DecisionResponseV2 {
+    let candidates = state
+        .execution
+        .pending_decision
+        .as_ref()
+        .unwrap()
+        .request
+        .candidates
+        .len();
+    current_order_response(
+        state,
+        (0..candidates)
+            .map(|candidate| CandidateIdV1(candidate as u32))
+            .collect(),
+    )
+}
+
+fn assert_atomic_sba_batch_shape(
+    before: &EngineState,
+    transition: &TransitionResult,
+    expected_actions: &[SbaSelectedActionV1],
+) {
+    assert!(transition.accepted);
+    assert_eq!(
+        transition.next_state.revision,
+        StateRevision(before.revision.0 + 1)
+    );
+    assert_eq!(
+        transition.delta.apply(before).unwrap(),
+        transition.next_state
+    );
+    assert!(transition
+        .events
+        .iter()
+        .all(|event| event.state_revision == transition.next_state.revision));
+    let kinds = transition
+        .events
+        .iter()
+        .map(|event| {
+            serde_json::to_value(&event.event).unwrap()["kind"]
+                .as_str()
+                .unwrap()
+                .to_owned()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        &kinds[..3],
+        [
+            "decision_cleared",
+            "sba_graveyard_order_chosen",
+            "state_based_actions_applied"
+        ]
+    );
+    let batch = transition
+        .events
+        .iter()
+        .find_map(|event| {
+            let value = serde_json::to_value(&event.event).ok()?;
+            (value["kind"] == "state_based_actions_applied").then_some(value)
+        })
+        .expect("one typed StateBasedActionsApplied event is required");
+    assert_eq!(
+        batch["actions"],
+        serde_json::to_value(expected_actions).unwrap()
+    );
+    assert!(transition.next_state.execution.pending_decision.is_none());
+    assert!(transition.next_state.execution.continuations.is_empty());
+}
+
+fn mutate_batch_actions_and_require_rejection(
+    before: &EngineState,
+    accepted: &TransitionResult,
+    mutate: impl FnOnce(&mut Vec<serde_json::Value>),
+) {
+    let mut product = accepted.clone();
+    let index = product
+        .events
+        .iter()
+        .position(|event| {
+            serde_json::to_value(&event.event)
+                .is_ok_and(|value| value["kind"] == "state_based_actions_applied")
+        })
+        .expect("accepted product has StateBasedActionsApplied");
+    let mut raw = serde_json::to_value(&product.events[index].event).unwrap();
+    let actions = raw["actions"].as_array_mut().unwrap();
+    mutate(actions);
+    product.events[index].event = serde_json::from_value(raw).unwrap();
+    product.delta = mtgml_state::StateDelta::between(
+        before,
+        &product.next_state,
+        product
+            .events
+            .iter()
+            .map(|event| event.event.semantic_delta())
+            .collect(),
+    )
+    .unwrap();
+    assert!(
+        mtgml_rules::validate_transition_contract(before, &product).is_err(),
+        "missing, extra, duplicate, or reordered SBA actions must be rejected"
+    );
+}
+
+fn rebind_test_transition_product(before: &EngineState, product: &mut TransitionResult) {
+    for (index, event) in product.events.iter_mut().enumerate() {
+        event.event_id = RuleEventId(before.allocators.next_rule_event_id.0 + index as u64);
+    }
+    product.next_state.allocators.next_rule_event_id =
+        RuleEventId(before.allocators.next_rule_event_id.0 + product.events.len() as u64);
+    product.delta = mtgml_state::StateDelta::between(
+        before,
+        &product.next_state,
+        product
+            .events
+            .iter()
+            .map(|event| event.event.semantic_delta())
+            .collect(),
+    )
+    .unwrap();
+}
+
+#[test]
+#[ignore = "Task 9B0 acceptance RED: final one-owner choice plus atomic SBA batch is not implemented"]
+fn task9b_final_one_owner_order_emits_batch_and_exact_s2_moves() {
+    let before = state_with_pending_order();
+    let actions = match &before.execution.continuations[&mtgml_model::ContinuationId(1)].payload {
+        ContinuationPayloadV2::MagicSbaGraveyardOrderV1 {
+            selected_sba_actions,
+            ..
+        } => selected_sba_actions.clone(),
+        _ => unreachable!(),
+    };
+    let response = current_order_response(&before, vec![CandidateIdV1(1), CandidateIdV1(0)]);
+    let transition = magic_kernel()
+        .apply(&before, P1, &response)
+        .expect("final Order response must atomically apply the whole SBA round");
+    assert_atomic_sba_batch_shape(&before, &transition, &actions);
+    for perspective in [P1, P2] {
+        let start = before.knowledge.players[&perspective]
+            .next_visible_sequence
+            .0;
+        let sequences = transition
+            .events
+            .iter()
+            .filter_map(|event| match &event.event {
+                AuthoritativeRuleEventKind::PerspectiveOccurrence { lifecycle, .. }
+                    if lifecycle.perspective == perspective =>
+                {
+                    Some(lifecycle.sequence.0)
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(sequences, vec![start, start + 1]);
+        assert_eq!(
+            transition.next_state.knowledge.players[&perspective]
+                .next_visible_sequence
+                .0,
+            start + 2
+        );
+        for old in [GameObjectId(1), GameObjectId(2)] {
+            let opaque = before.perspective_identities.players[&perspective].object_to_opaque[&old];
+            let new = transition
+                .events
+                .iter()
+                .find_map(|event| match &event.event {
+                    AuthoritativeRuleEventKind::ZoneTransition { transition }
+                        if transition.old_object == old =>
+                    {
+                        Some(transition.new_object)
+                    }
+                    _ => None,
+                })
+                .unwrap();
+            let after_identity =
+                &transition.next_state.perspective_identities.players[&perspective];
+            assert_eq!(after_identity.object_to_opaque.get(&new), Some(&opaque));
+            assert!(!after_identity.object_to_opaque.contains_key(&old));
+        }
+    }
+    let mut missing_move = transition.clone();
+    let index = missing_move
+        .events
+        .iter()
+        .position(|event| {
+            matches!(
+                event.event,
+                AuthoritativeRuleEventKind::ZoneTransition { .. }
+            )
+        })
+        .unwrap();
+    missing_move.events.remove(index);
+    rebind_test_transition_product(&before, &mut missing_move);
+    assert!(mtgml_rules::validate_transition_contract(&before, &missing_move).is_err());
+
+    let mut duplicate_move = transition.clone();
+    let move_event = duplicate_move
+        .events
+        .iter()
+        .find(|event| {
+            matches!(
+                event.event,
+                AuthoritativeRuleEventKind::ZoneTransition { .. }
+            )
+        })
+        .unwrap()
+        .clone();
+    duplicate_move.events.push(move_event);
+    rebind_test_transition_product(&before, &mut duplicate_move);
+    assert!(mtgml_rules::validate_transition_contract(&before, &duplicate_move).is_err());
+
+    mutate_batch_actions_and_require_rejection(&before, &transition, |actions| {
+        actions.pop();
+    });
+    mutate_batch_actions_and_require_rejection(&before, &transition, |actions| {
+        let duplicate = actions[0].clone();
+        actions.push(duplicate);
+    });
+    mutate_batch_actions_and_require_rejection(&before, &transition, |actions| {
+        actions.reverse();
+    });
+    let mut unexplained_loss = transition.clone();
+    unexplained_loss
+        .next_state
+        .core
+        .players
+        .get_mut(&P1)
+        .unwrap()
+        .has_lost = true;
+    unexplained_loss.delta = mtgml_state::StateDelta::between(
+        &before,
+        &unexplained_loss.next_state,
+        unexplained_loss
+            .events
+            .iter()
+            .map(|event| event.event.semantic_delta())
+            .collect(),
+    )
+    .unwrap();
+    assert!(mtgml_rules::validate_transition_contract(&before, &unexplained_loss).is_err());
+    let moved = transition
+        .events
+        .iter()
+        .filter(|event| {
+            matches!(
+                event.event,
+                AuthoritativeRuleEventKind::ZoneTransition { .. }
+            )
+        })
+        .count();
+    assert_eq!(moved, 2);
+}
+
+#[test]
+#[ignore = "Task 9B0 acceptance RED: final APNAP choice plus atomic SBA batch is not implemented"]
+fn task9b_final_second_owner_order_preserves_apnap_audit_and_applies_batch() {
+    let before = state_with_second_owner_order();
+    let actions = match &before.execution.continuations[&mtgml_model::ContinuationId(1)].payload {
+        ContinuationPayloadV2::MagicSbaGraveyardOrderV1 {
+            selected_sba_actions,
+            ..
+        } => selected_sba_actions.clone(),
+        _ => unreachable!(),
+    };
+    let response = current_order_response(&before, vec![CandidateIdV1(1), CandidateIdV1(0)]);
+    let transition = magic_kernel()
+        .apply(&before, P2, &response)
+        .expect("final APNAP Order response must atomically apply the whole round");
+    assert_atomic_sba_batch_shape(&before, &transition, &actions);
+    assert_eq!(
+        serde_json::to_value(&transition.events[1].event).unwrap()["owner"],
+        serde_json::to_value(P2).unwrap()
+    );
+}
+
+#[test]
+#[ignore = "Task 9B0 acceptance RED: no-order SBA batch producer is not implemented"]
+fn task9b_no_order_round_emits_exact_batch_and_one_zone_move() {
+    let before = state_with(
+        &[CreatureSpec {
+            owner: P1,
+            toughness: 0,
+            marked_damage: 0,
+        }],
+        [40, 40],
+    );
+    let expected = vec![object_action(1, vec![SbaObjectCauseV1::ZeroToughness])];
+    let transition = advance_sba(&before, "Task 9B0 no-order batch");
+    assert!(transition.next_decision.is_none());
+    let batch = transition.events.iter().find_map(|event| {
+        let value = serde_json::to_value(&event.event).ok()?;
+        (value["kind"] == "state_based_actions_applied").then_some(value)
+    });
+    assert_eq!(
+        batch.unwrap()["actions"],
+        serde_json::to_value(expected).unwrap()
+    );
+    assert_eq!(
+        transition
+            .events
+            .iter()
+            .filter(|event| matches!(
+                event.event,
+                AuthoritativeRuleEventKind::ZoneTransition { .. }
+            ))
+            .count(),
+        1
+    );
+}
+
+#[test]
+#[ignore = "Task 9B0 acceptance RED: PlayerLoses batch and terminal RulesLoss are not implemented"]
+fn task9b_one_player_loss_sets_has_lost_and_terminal_rules_loss() {
+    let before = state_with(&[], [0, 40]);
+    let transition = advance_sba(&before, "Task 9B0 one-player terminal loss");
+    assert!(transition.next_state.core.players[&P1].has_lost);
+    assert_eq!(
+        transition.status,
+        EpisodeStatus::Terminal {
+            reason: TerminalReason::RulesLoss,
+            players: vec![
+                PlayerOutcome {
+                    player: P1,
+                    result: PlayerResult::Loss
+                },
+                PlayerOutcome {
+                    player: P2,
+                    result: PlayerResult::Win
+                },
+            ],
+        }
+    );
+    assert!(transition.next_decision.is_none());
+    mutate_batch_actions_and_require_rejection(&before, &transition, |actions| {
+        actions.retain(|action| action["kind"] != "player_loses");
+    });
+}
+
+#[test]
+#[ignore = "Task 9B0 acceptance RED: simultaneous PlayerLoses batch and draw are not implemented"]
+fn task9b_simultaneous_losses_set_both_flags_and_terminal_draw() {
+    let before = state_with(&[], [0, 0]);
+    let transition = advance_sba(&before, "Task 9B0 simultaneous terminal draw");
+    assert!(transition.next_state.core.players[&P1].has_lost);
+    assert!(transition.next_state.core.players[&P2].has_lost);
+    assert_eq!(
+        transition.status,
+        EpisodeStatus::Terminal {
+            reason: TerminalReason::SimultaneousOutcome,
+            players: vec![
+                PlayerOutcome {
+                    player: P1,
+                    result: PlayerResult::Draw
+                },
+                PlayerOutcome {
+                    player: P2,
+                    result: PlayerResult::Draw
+                },
+            ],
+        }
+    );
+    assert!(transition.next_decision.is_none());
+}
+
+#[test]
+#[ignore = "Task 9B0 acceptance RED: post-damage SBA combat pruning is not implemented"]
+fn task9b_post_damage_dying_blocker_prunes_live_reference_to_none() {
+    let before = order_stage_at_combat(
+        mtgml_state::CombatStep::CombatDamage,
+        &[
+            CreatureSpec {
+                owner: P1,
+                toughness: 2,
+                marked_damage: 0,
+            },
+            CreatureSpec {
+                owner: P1,
+                toughness: 0,
+                marked_damage: 0,
+            },
+            CreatureSpec {
+                owner: P1,
+                toughness: 0,
+                marked_damage: 0,
+            },
+        ],
+        mtgml_state::CombatState {
+            defending_player: P2,
+            attackers: vec![GameObjectId(1)],
+            blockers: BTreeMap::from([(GameObjectId(1), Some(GameObjectId(2)))]),
+        },
+        &[2, 3],
+    );
+    let response = combat_order_answer(&before);
+    let transition = magic_kernel()
+        .apply(&before, P1, &response)
+        .expect("post-damage selected deaths must close combat references atomically");
+    let combat = transition.next_state.combat.as_ref().unwrap();
+    assert_eq!(combat.attackers, vec![GameObjectId(1)]);
+    assert_eq!(combat.blockers, BTreeMap::from([(GameObjectId(1), None)]));
+    assert!(transition.events.iter().any(|event| {
+        serde_json::to_value(&event.event)
+            .is_ok_and(|value| value["kind"] == "state_based_actions_applied")
+    }));
+}
+
+#[test]
+#[ignore = "Task 9B0 acceptance RED: post-damage SBA attacker pruning is not implemented"]
+fn task9b_post_damage_dying_attacker_is_removed_with_its_blocker_key() {
+    let before = order_stage_at_combat(
+        mtgml_state::CombatStep::CombatDamage,
+        &[
+            CreatureSpec {
+                owner: P1,
+                toughness: 0,
+                marked_damage: 0,
+            },
+            CreatureSpec {
+                owner: P1,
+                toughness: 0,
+                marked_damage: 0,
+            },
+        ],
+        mtgml_state::CombatState {
+            defending_player: P2,
+            attackers: vec![GameObjectId(1)],
+            blockers: BTreeMap::from([(GameObjectId(1), None)]),
+        },
+        &[1, 2],
+    );
+    let transition = magic_kernel()
+        .apply(&before, P1, &combat_order_answer(&before))
+        .expect("post-damage attacker deaths must atomically prune their combat entry");
+    let combat = transition.next_state.combat.as_ref().unwrap();
+    assert!(combat.attackers.is_empty());
+    assert!(combat.blockers.is_empty());
+}
+
+#[test]
+#[ignore = "Task 9B0 policy RED: pre-damage combat-participant SBA must fail closed"]
+fn task9b_pre_damage_combat_participant_continuation_fails_closed() {
+    for step in [
+        mtgml_state::CombatStep::BeginningOfCombat,
+        mtgml_state::CombatStep::DeclareAttackers,
+        mtgml_state::CombatStep::DeclareBlockers,
+    ] {
+        let state = order_stage_at_combat(
+            step,
+            &[
+                CreatureSpec {
+                    owner: P1,
+                    toughness: 2,
+                    marked_damage: 0,
+                },
+                CreatureSpec {
+                    owner: P1,
+                    toughness: 0,
+                    marked_damage: 0,
+                },
+                CreatureSpec {
+                    owner: P1,
+                    toughness: 0,
+                    marked_damage: 0,
+                },
+            ],
+            mtgml_state::CombatState {
+                defending_player: P2,
+                attackers: vec![GameObjectId(1)],
+                blockers: BTreeMap::from([(GameObjectId(1), Some(GameObjectId(2)))]),
+            },
+            &[2, 3],
+        );
+        assert_eq!(
+            magic_kernel().validate_s3_a_conformance_continuation(&state),
+            Err(mtgml_rules::SbaContinuationValidationError::UnsupportedSbaProfile),
+            "combat participant death before damage assignment must remain unsupported"
+        );
+    }
+}
+
+#[test]
+#[ignore = "Task 9B0 policy RED: EndOfCombat is not a second SBA combat-removal gate"]
+fn task9b_end_of_combat_stale_combat_participant_fails_closed() {
+    let state = order_stage_at_combat(
+        mtgml_state::CombatStep::EndOfCombat,
+        &[
+            CreatureSpec {
+                owner: P1,
+                toughness: 2,
+                marked_damage: 0,
+            },
+            CreatureSpec {
+                owner: P1,
+                toughness: 0,
+                marked_damage: 0,
+            },
+            CreatureSpec {
+                owner: P1,
+                toughness: 0,
+                marked_damage: 0,
+            },
+        ],
+        mtgml_state::CombatState {
+            defending_player: P2,
+            attackers: vec![GameObjectId(1)],
+            blockers: BTreeMap::from([(GameObjectId(1), Some(GameObjectId(2)))]),
+        },
+        &[2, 3],
+    );
+    assert_eq!(
+        magic_kernel().validate_s3_a_conformance_continuation(&state),
+        Err(mtgml_rules::SbaContinuationValidationError::UnsupportedSbaProfile)
+    );
+}
+
+#[test]
+fn task9b_unexplained_combat_state_mutation_remains_rejected() {
+    let mut before = state_with_pending_two_owner_order();
+    before.core.position = mtgml_state::TurnPosition::Combat {
+        step: mtgml_state::CombatStep::CombatDamage,
+    };
+    before.combat = Some(mtgml_state::CombatState {
+        defending_player: P2,
+        attackers: vec![GameObjectId(1)],
+        blockers: BTreeMap::from([(GameObjectId(1), Some(GameObjectId(3)))]),
+    });
+    validate_engine_state(&before).unwrap();
+    let response = current_order_response(&before, vec![CandidateIdV1(1), CandidateIdV1(0)]);
+    let mut transition = magic_kernel().apply(&before, P1, &response).unwrap();
+    transition.next_state.combat = None;
+    transition.delta = mtgml_state::StateDelta::between(
+        &before,
+        &transition.next_state,
+        transition
+            .events
+            .iter()
+            .map(|event| event.event.semantic_delta())
+            .collect(),
+    )
+    .unwrap();
+    assert!(matches!(
+        mtgml_rules::validate_transition_contract(&before, &transition),
+        Err(mtgml_rules::TransitionViolation::UnexplainedMutation)
+    ));
 }
