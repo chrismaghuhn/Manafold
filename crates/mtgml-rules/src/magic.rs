@@ -180,96 +180,6 @@ impl MagicRulesKernel {
     }
 }
 
-#[cfg(test)]
-mod attacker_eligibility_tests {
-    use super::*;
-    use mtgml_model::{CardDefinitionId, GameObjectId, OpaqueObjectId, PhysicalCardId};
-    use mtgml_state::{
-        construct_synthetic_engine_state, BaseCharacteristics, ControlHistory,
-        FoundationCreatureSource, FoundationSourceKind, GameObject, SyntheticResetInputs,
-        SyntheticV4Setup, VisibilityPartition, ZoneLocation, ZonePosition,
-    };
-
-    #[test]
-    fn candidate_derivation_excludes_a_battlefield_object_without_creature_source() {
-        let p1 = PlayerId(1);
-        let p2 = PlayerId(2);
-        let mut state = construct_synthetic_engine_state(SyntheticResetInputs {
-            players: [p1, p2],
-            root_seed: mtgml_random::RootSeed256::from_lower_hex(&"11".repeat(32)).unwrap(),
-            setup: SyntheticV4Setup::synthetic_compatibility(),
-        })
-        .unwrap();
-        state.core.position = TurnPosition::Combat {
-            step: mtgml_state::CombatStep::DeclareAttackers,
-        };
-        let location = ZoneLocation {
-            zone: ZoneKind::Battlefield,
-            player: None,
-            position: ZonePosition::Unordered,
-            visibility: VisibilityPartition::Public,
-            partition: None,
-        };
-        let eligible = state.allocators.next_object_id;
-        let opaque = state.perspective_identities.players[&p1].next_opaque_object_id;
-        state.zones.objects.insert(
-            eligible,
-            GameObject {
-                id: eligible,
-                physical_card: Some(PhysicalCardId(eligible.0)),
-                card_definition: CardDefinitionId(eligible.0),
-                owner: p1,
-                controller: p1,
-                tapped: false,
-                face_down: false,
-            },
-        );
-        state.zones.locations.insert(eligible, location.clone());
-        state.foundation_sources.insert(
-            eligible,
-            FoundationCreatureSource {
-                source_kind: FoundationSourceKind::Creature,
-                base_characteristics: BaseCharacteristics::Simple {
-                    power: 2,
-                    toughness: 2,
-                },
-                marked_damage: 0,
-                control_history: ControlHistory::BeforeTurnStart {
-                    turn_number: state.core.turn_number,
-                },
-            },
-        );
-        let identity = state.perspective_identities.players.get_mut(&p1).unwrap();
-        identity.object_to_opaque.insert(eligible, opaque);
-        identity.opaque_to_object.insert(opaque, eligible);
-        identity.next_opaque_object_id = OpaqueObjectId(opaque.0 + 1);
-
-        let unsupported = GameObjectId(eligible.0 + 1);
-        state.zones.objects.insert(
-            unsupported,
-            GameObject {
-                id: unsupported,
-                physical_card: Some(PhysicalCardId(unsupported.0)),
-                card_definition: CardDefinitionId(unsupported.0),
-                owner: p1,
-                controller: p1,
-                tapped: false,
-                face_down: false,
-            },
-        );
-        state.zones.locations.insert(unsupported, location);
-
-        // The pure eligibility predicate never mistakes a source-less object
-        // for an attacker. The enclosing SBA profile still fails closed on
-        // this world because a Battlefield object lacks the required source
-        // facts; no player Decision can be created from it.
-        assert_eq!(
-            MagicRulesKernel::derive_eligible_attackers(&state).unwrap(),
-            vec![(opaque, eligible)]
-        );
-    }
-}
-
 impl RulesKernel for MagicRulesKernel {
     /// Trusted response execution entry point.
     ///
@@ -2045,5 +1955,95 @@ impl MagicRulesKernel {
             workspace.core.position = to;
             Ok(())
         })
+    }
+}
+
+#[cfg(test)]
+mod attacker_eligibility_tests {
+    use super::*;
+    use mtgml_model::{CardDefinitionId, GameObjectId, OpaqueObjectId, PhysicalCardId};
+    use mtgml_state::{
+        construct_synthetic_engine_state, BaseCharacteristics, ControlHistory,
+        FoundationCreatureSource, FoundationSourceKind, GameObject, SyntheticResetInputs,
+        SyntheticV4Setup, VisibilityPartition, ZoneLocation, ZonePosition,
+    };
+
+    #[test]
+    fn candidate_derivation_excludes_a_battlefield_object_without_creature_source() {
+        let p1 = PlayerId(1);
+        let p2 = PlayerId(2);
+        let mut state = construct_synthetic_engine_state(SyntheticResetInputs {
+            players: [p1, p2],
+            root_seed: mtgml_random::RootSeed256::from_lower_hex(&"11".repeat(32)).unwrap(),
+            setup: SyntheticV4Setup::synthetic_compatibility(),
+        })
+        .unwrap();
+        state.core.position = TurnPosition::Combat {
+            step: mtgml_state::CombatStep::DeclareAttackers,
+        };
+        let location = ZoneLocation {
+            zone: ZoneKind::Battlefield,
+            player: None,
+            position: ZonePosition::Unordered,
+            visibility: VisibilityPartition::Public,
+            partition: None,
+        };
+        let eligible = state.allocators.next_object_id;
+        let opaque = state.perspective_identities.players[&p1].next_opaque_object_id;
+        state.zones.objects.insert(
+            eligible,
+            GameObject {
+                id: eligible,
+                physical_card: Some(PhysicalCardId(eligible.0)),
+                card_definition: CardDefinitionId(eligible.0),
+                owner: p1,
+                controller: p1,
+                tapped: false,
+                face_down: false,
+            },
+        );
+        state.zones.locations.insert(eligible, location.clone());
+        state.foundation_sources.insert(
+            eligible,
+            FoundationCreatureSource {
+                source_kind: FoundationSourceKind::Creature,
+                base_characteristics: BaseCharacteristics::Simple {
+                    power: 2,
+                    toughness: 2,
+                },
+                marked_damage: 0,
+                control_history: ControlHistory::BeforeTurnStart {
+                    turn_number: state.core.turn_number,
+                },
+            },
+        );
+        let identity = state.perspective_identities.players.get_mut(&p1).unwrap();
+        identity.object_to_opaque.insert(eligible, opaque);
+        identity.opaque_to_object.insert(opaque, eligible);
+        identity.next_opaque_object_id = OpaqueObjectId(opaque.0 + 1);
+
+        let unsupported = GameObjectId(eligible.0 + 1);
+        state.zones.objects.insert(
+            unsupported,
+            GameObject {
+                id: unsupported,
+                physical_card: Some(PhysicalCardId(unsupported.0)),
+                card_definition: CardDefinitionId(unsupported.0),
+                owner: p1,
+                controller: p1,
+                tapped: false,
+                face_down: false,
+            },
+        );
+        state.zones.locations.insert(unsupported, location);
+
+        // The pure eligibility predicate never mistakes a source-less object
+        // for an attacker. The enclosing SBA profile still fails closed on
+        // this world because a Battlefield object lacks the required source
+        // facts; no player Decision can be created from it.
+        assert_eq!(
+            MagicRulesKernel::derive_eligible_attackers(&state).unwrap(),
+            vec![(opaque, eligible)]
+        );
     }
 }
