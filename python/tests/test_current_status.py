@@ -286,9 +286,7 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("M3_BLOCK_1_REVIEW_HEAD = 6fc3ff9694aa9d61975929a2d4a1c8006df28014", roadmap)
         self.assertIn("M3_BLOCK_2 = COMPLETE / FINAL ACCEPTANCE PASS / MERGED", roadmap)
         self.assertIn("M3_BLOCK_3 = COMPLETE_CANDIDATE", roadmap)
-        self.assertIn(
-            "CURRENT_M3_BLOCK = DRAW_AND_S2_REPLAY_INTERACTION", roadmap
-        )
+        self.assertIn("CURRENT_M3_BLOCK = DRAW_AND_S2_REPLAY_INTERACTION", roadmap)
         self.assertIn("BLOCK_3_STARTED = YES", roadmap)
         self.assertIn("S3_C_AUTHORIZED = YES", roadmap)
         self.assertIn("S3_C_IMPLEMENTATION_AUTHORIZED = YES", roadmap)
@@ -425,9 +423,7 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         )
         draw_card = next(entry for entry in entries if entry["key"] == "rules/draw-card")
         other_entries = [
-            entry
-            for entry in entries
-            if entry not in (turn_structure, zone_incarnation, draw_card)
+            entry for entry in entries if entry not in (turn_structure, zone_incarnation, draw_card)
         ]
 
         self.assertEqual(turn_structure["version"], "0.1.0")
