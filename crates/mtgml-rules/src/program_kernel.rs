@@ -213,14 +213,17 @@ pub fn validate_runtime_state_for_contract(
             let profile = magic_execution_profile(semantic_contract_id)
                 .ok_or(KernelExecutionError::UnsupportedStagePath)?;
             mtgml_state::validate_engine_state(state).map_err(KernelExecutionError::BeforeState)?;
+            if profile.is_turn_structure_only_profile() {
+                let _ = validate_turn_structure_support(state)
+                    .map_err(KernelExecutionError::TurnStructure)?;
+                return Ok(());
+            }
             if matches!(
                 state.core.position,
                 mtgml_state::TurnPosition::Beginning {
                     step: mtgml_state::BeginningStep::Draw
                 }
-            ) && (profile.allows_state_based_actions_combat_0_1_0()
-                || profile.allows_basic_priority_0_1_0())
-                && !profile.allows_draw_card_0_1_0()
+            ) && !profile.allows_draw_card_0_1_0()
             {
                 return Err(KernelExecutionError::UnsupportedStagePath);
             }
@@ -232,11 +235,6 @@ pub fn validate_runtime_state_for_contract(
             }
             if profile.allows_state_based_actions_combat_0_1_0() {
                 return validate_state_based_actions_runtime_state(state, status);
-            }
-            if profile.allows_turn_structure_0_1_0() {
-                let _ = validate_turn_structure_support(state)
-                    .map_err(KernelExecutionError::TurnStructure)?;
-                return Ok(());
             }
             Err(KernelExecutionError::UnsupportedStagePath)
         }

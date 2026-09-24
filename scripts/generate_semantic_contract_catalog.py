@@ -152,6 +152,12 @@ impl MagicExecutionProfile {
     pub(crate) fn allows_draw_card_0_1_0(&self) -> bool {
         self.draw_card_0_1_0
     }
+    pub(crate) fn is_turn_structure_only_profile(&self) -> bool {
+        self.allows_turn_structure_0_1_0()
+            && !self.allows_state_based_actions_combat_0_1_0()
+            && !self.allows_basic_priority_0_1_0()
+            && !self.allows_draw_card_0_1_0()
+    }
 }
 #[cfg(test)]
 pub(crate) fn test_only_magic_execution_profile(

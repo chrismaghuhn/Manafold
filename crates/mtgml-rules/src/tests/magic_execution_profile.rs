@@ -22,6 +22,10 @@ fn assert_profile(
         ),
         expected_capabilities,
     );
+    assert_eq!(
+        profile.is_turn_structure_only_profile(),
+        expected_capabilities == (true, false, false, false),
+    );
 }
 
 #[test]
