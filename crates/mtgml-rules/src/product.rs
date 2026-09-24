@@ -14,8 +14,18 @@ use crate::transition::TransitionResult;
 /// product before returning it for atomic commit.
 pub(crate) fn build_accepted_product(
     state: &EngineState,
+    next: EngineState,
+    events: Vec<AuthoritativeRuleEvent>,
+    mutate: impl FnOnce(&mut EngineState) -> Result<(), KernelExecutionError>,
+) -> Result<TransitionResult, KernelExecutionError> {
+    build_accepted_product_with_status(state, next, events, EpisodeStatus::Running, mutate)
+}
+
+pub(crate) fn build_accepted_product_with_status(
+    state: &EngineState,
     mut next: EngineState,
     events: Vec<AuthoritativeRuleEvent>,
+    status: EpisodeStatus,
     mutate: impl FnOnce(&mut EngineState) -> Result<(), KernelExecutionError>,
 ) -> Result<TransitionResult, KernelExecutionError> {
     let next_rule_event_id = state
@@ -39,7 +49,7 @@ pub(crate) fn build_accepted_product(
             .pending_decision
             .as_ref()
             .map(|record| record.request.clone()),
-        status: EpisodeStatus::Running,
+        status,
         next_state: next,
         delta,
         events,

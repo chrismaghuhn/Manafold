@@ -9,7 +9,8 @@ use std::collections::BTreeMap;
 use mtgml_model::{PlayerId, ZoneKind};
 use mtgml_state::{
     validate_engine_state, BaseCharacteristics, ContinuationPayloadV2, EngineState, FormatState,
-    FoundationSourceKind, PriorityState, SbaObjectCauseV1, SbaSelectedActionV1, TurnPosition,
+    FoundationSourceKind, PriorityState, SbaGraveyardOwnerOrderV1, SbaObjectCauseV1,
+    SbaSelectedActionV1, TurnPosition,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,6 +27,85 @@ pub enum SbaContinuationValidationError {
 pub(crate) struct SbaOrderRoundPlan {
     pub(crate) selected_sba_actions: Vec<SbaSelectedActionV1>,
     pub(crate) apnap_owners: Vec<PlayerId>,
+}
+
+/// Resolve only already-authorized owner permutations into deterministic S2
+/// invocation order. This never chooses a player's order: multi-card groups
+/// require the exact persisted/accepted permutation; singleton groups have a
+/// unique order. S2 inserts at top, so each chosen top-to-bottom group is
+/// returned in reverse invocation order.
+pub(crate) fn ordered_sba_objects_for_s2(
+    state: &EngineState,
+    plan: &SbaOrderRoundPlan,
+    orders: &[SbaGraveyardOwnerOrderV1],
+) -> Result<Vec<mtgml_model::GameObjectId>, SbaContinuationValidationError> {
+    let mut groups = BTreeMap::<PlayerId, Vec<mtgml_model::GameObjectId>>::new();
+    for action in &plan.selected_sba_actions {
+        if let SbaSelectedActionV1::ObjectToOwnerGraveyard { object, .. } = action {
+            let owner = state
+                .zones
+                .objects
+                .get(object)
+                .ok_or(SbaContinuationValidationError::UnsupportedSbaProfile)?
+                .owner;
+            groups.entry(owner).or_default().push(*object);
+        }
+    }
+
+    let mut explicit = BTreeMap::new();
+    for order in orders {
+        if explicit
+            .insert(order.owner, order.top_to_bottom.clone())
+            .is_some()
+        {
+            return Err(SbaContinuationValidationError::SelectedActionSetMismatch);
+        }
+    }
+    let required: std::collections::BTreeSet<_> = groups
+        .iter()
+        .filter_map(|(owner, objects)| (objects.len() >= 2).then_some(*owner))
+        .collect();
+    let plan_owners: std::collections::BTreeSet<_> = plan.apnap_owners.iter().copied().collect();
+    let explicit_owners: std::collections::BTreeSet<_> = explicit.keys().copied().collect();
+    if plan_owners.len() != plan.apnap_owners.len()
+        || required != plan_owners
+        || explicit.len() != plan.apnap_owners.len()
+        || explicit_owners != plan_owners
+    {
+        return Err(SbaContinuationValidationError::ApnapOwnersMismatch);
+    }
+
+    let mut owners = Vec::new();
+    if groups.contains_key(&state.core.active_player) {
+        owners.push(state.core.active_player);
+    }
+    owners.extend(
+        groups
+            .keys()
+            .copied()
+            .filter(|owner| *owner != state.core.active_player),
+    );
+    let mut invocation_order = Vec::new();
+    for owner in owners {
+        let objects = groups
+            .get(&owner)
+            .ok_or(SbaContinuationValidationError::UnsupportedSbaProfile)?;
+        let top_to_bottom = if objects.len() >= 2 {
+            let chosen = explicit
+                .get(&owner)
+                .ok_or(SbaContinuationValidationError::ApnapOwnersMismatch)?;
+            let expected: std::collections::BTreeSet<_> = objects.iter().copied().collect();
+            let actual: std::collections::BTreeSet<_> = chosen.iter().copied().collect();
+            if actual.len() != chosen.len() || actual != expected {
+                return Err(SbaContinuationValidationError::SelectedActionSetMismatch);
+            }
+            chosen.as_slice()
+        } else {
+            objects.as_slice()
+        };
+        invocation_order.extend(top_to_bottom.iter().rev().copied());
+    }
+    Ok(invocation_order)
 }
 
 pub(crate) fn validate_sba_order_continuation(
@@ -66,11 +146,44 @@ pub(crate) fn derive_bounded_sba_round_plan(
     validate_engine_state(state)
         .map_err(|_| SbaContinuationValidationError::UnsupportedSbaProfile)?;
     let selected_sba_actions = derive_bounded_sba_actions(state)?;
+    validate_selected_combat_boundary(state, &selected_sba_actions)?;
     let apnap_owners = derive_order_owners(state, &selected_sba_actions);
     Ok(SbaOrderRoundPlan {
         selected_sba_actions,
         apnap_owners,
     })
+}
+
+fn validate_selected_combat_boundary(
+    state: &EngineState,
+    actions: &[SbaSelectedActionV1],
+) -> Result<(), SbaContinuationValidationError> {
+    let Some(combat) = &state.combat else {
+        return Ok(());
+    };
+    let selected = actions.iter().filter_map(|action| match action {
+        SbaSelectedActionV1::ObjectToOwnerGraveyard { object, .. } => Some(*object),
+        SbaSelectedActionV1::PlayerLoses { .. } => None,
+    });
+    let selected: std::collections::BTreeSet<_> = selected.collect();
+    let participant_selected = combat
+        .attackers
+        .iter()
+        .any(|object| selected.contains(object))
+        || combat.blockers.iter().any(|(attacker, blocker)| {
+            selected.contains(attacker) || blocker.is_some_and(|object| selected.contains(&object))
+        });
+    if participant_selected
+        && !matches!(
+            state.core.position,
+            TurnPosition::Combat {
+                step: mtgml_state::CombatStep::CombatDamage
+            }
+        )
+    {
+        return Err(SbaContinuationValidationError::UnsupportedSbaProfile);
+    }
+    Ok(())
 }
 
 /// Proves the closed S3.A semantic support profile before Foundation source
@@ -80,12 +193,19 @@ pub(crate) fn derive_bounded_sba_round_plan(
 pub(crate) fn validate_s3_a_support_profile(
     state: &EngineState,
 ) -> Result<(), SbaContinuationValidationError> {
+    validate_s3_a_state_profile(state, false)
+}
+
+pub(crate) fn validate_s3_a_state_profile(
+    state: &EngineState,
+    allow_lost_players: bool,
+) -> Result<(), SbaContinuationValidationError> {
     if state.core.players.len() != 2
         || !state.core.players.contains_key(&state.core.active_player)
         || !matches!(state.format, FormatState::None)
         || !matches!(state.core.priority, PriorityState::None)
         || !is_supported_sba_boundary(state.core.position)
-        || state.core.players.values().any(|player| player.has_lost)
+        || (!allow_lost_players && state.core.players.values().any(|player| player.has_lost))
         || !state.execution.effects.is_empty()
         || !state.execution.waiting_triggers.is_empty()
         || !state.execution.delayed_effects.is_empty()
@@ -174,7 +294,7 @@ fn is_supported_sba_boundary(position: TurnPosition) -> bool {
     }
 }
 
-fn derive_bounded_sba_actions(
+pub(crate) fn derive_bounded_sba_actions(
     state: &EngineState,
 ) -> Result<Vec<SbaSelectedActionV1>, SbaContinuationValidationError> {
     let mut actions = state

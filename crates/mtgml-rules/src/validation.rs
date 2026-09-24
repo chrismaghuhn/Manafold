@@ -49,6 +49,8 @@ pub enum TransitionViolation {
     DecisionEvent,
     #[error("SBA Graveyard Order event does not match the active continuation stage")]
     SbaOrder,
+    #[error("StateBasedActionsApplied does not match the selected complete SBA round")]
+    SbaBatch,
     #[error("an accepted response reused the consumed decision identity")]
     DecisionIdentityReused,
     #[error("randomness event sequence does not match checkpointed stream state")]

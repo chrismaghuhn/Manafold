@@ -83,6 +83,13 @@ pub enum KnowledgeMutationV1 {
         opaque: OpaqueObjectId,
         fact: KnownLocationFactV2,
     },
+    /// Atomically refresh several known current locations observed within
+    /// one public occurrence, such as a Graveyard insertion that shifts the
+    /// trusted top offsets of previously known members. Every fact binds to
+    /// the enclosing single VisibleSequence.
+    UpdateLocations {
+        updates: Vec<KnowledgeLocationUpdateV1>,
+    },
     /// Destination becomes unknown while distinguishability persists: the
     /// current fact moves to history and the record stays active. An observed
     /// incarnation change may authorize a definition refresh in the same
@@ -99,6 +106,13 @@ pub enum KnowledgeMutationV1 {
         reason: KnowledgeInvalidationReason,
         invalidation_provenance: KnowledgeAcquisitionReason,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct KnowledgeLocationUpdateV1 {
+    pub opaque: OpaqueObjectId,
+    pub fact: KnownLocationFactV2,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
@@ -277,6 +291,26 @@ pub fn apply_lifecycle_to_player(
             }
             record.known_location = Some(fact.clone());
         }
+        Some(KnowledgeMutationV1::UpdateLocations { updates }) => {
+            if updates.is_empty()
+                || updates
+                    .windows(2)
+                    .any(|pair| pair[0].opaque >= pair[1].opaque)
+            {
+                return Err(LifecycleApplicationError::InvalidState);
+            }
+            for update in updates {
+                ensure_bound_provenance(&update.fact.provenance, audit.sequence)?;
+                let record = knowledge
+                    .active
+                    .get_mut(&update.opaque)
+                    .ok_or(LifecycleApplicationError::UnknownKnowledge)?;
+                if let Some(current) = record.known_location.take() {
+                    record.historical_locations.push(current);
+                }
+                record.known_location = Some(update.fact.clone());
+            }
+        }
         Some(KnowledgeMutationV1::CurrentToHistory {
             opaque,
             observed_definition,
@@ -355,6 +389,13 @@ pub fn apply_perspective_lifecycle(
         {
             return Err(LifecycleApplicationError::InvalidState)
         }
+        Some(KnowledgeMutationV1::UpdateLocations { updates })
+            if updates
+                .iter()
+                .any(|update| !declared_player(update.fact.location.player)) =>
+        {
+            return Err(LifecycleApplicationError::InvalidState)
+        }
         _ => {}
     }
     let mut candidate_knowledge = state
@@ -390,6 +431,15 @@ pub fn apply_perspective_lifecycle(
             return Err(LifecycleApplicationError::InvalidState)
         }
         _ => {}
+    }
+    if let Some(KnowledgeMutationV1::UpdateLocations { updates }) = &audit.mutation.knowledge {
+        if updates.iter().any(|update| {
+            !candidate_identity
+                .opaque_to_object
+                .contains_key(&update.opaque)
+        }) {
+            return Err(LifecycleApplicationError::InvalidState);
+        }
     }
     state
         .knowledge

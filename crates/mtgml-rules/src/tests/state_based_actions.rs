@@ -6,6 +6,30 @@ fn sba_upkeep_state() -> EngineState {
     let mut state = synthetic_state();
     state.execution.pending_decision = None;
     state.execution.continuations.clear();
+    let battlefield: Vec<_> = state
+        .zones
+        .locations
+        .iter()
+        .filter_map(|(object, location)| {
+            (location.zone == mtgml_model::ZoneKind::Battlefield).then_some(*object)
+        })
+        .collect();
+    for object in battlefield {
+        state.foundation_sources.insert(
+            object,
+            mtgml_state::FoundationCreatureSource {
+                source_kind: mtgml_state::FoundationSourceKind::Creature,
+                base_characteristics: mtgml_state::BaseCharacteristics::Simple {
+                    power: 2,
+                    toughness: 2,
+                },
+                marked_damage: 0,
+                control_history: mtgml_state::ControlHistory::BeforeTurnStart {
+                    turn_number: 1,
+                },
+            },
+        );
+    }
     state.core.position = mtgml_state::TurnPosition::Beginning {
         step: mtgml_state::BeginningStep::Upkeep,
     };
@@ -442,6 +466,13 @@ fn task6_sba_profile_rejects_non_physical_objects_and_live_ability_mappings() {
 fn magic_rules_state_based_actions_round_is_missing_before_priority() {
     let mut state = sba_upkeep_state();
     state.core.players.get_mut(&PlayerId(1)).unwrap().life = 0;
+    let plan = crate::state_based_actions::derive_bounded_sba_round_plan(&state)
+        .expect("bounded zero-life state must derive its exact SBA action");
+    assert_eq!(
+        plan.selected_sba_actions,
+        vec![mtgml_state::SbaSelectedActionV1::PlayerLoses { player: PlayerId(1) }]
+    );
+    assert!(plan.apnap_owners.is_empty());
     let before = state.clone();
     let mut kernel = crate::magic::MagicRulesKernel::s3_a_conformance_candidate();
     let result = kernel.advance_forced_progress(&state);
@@ -512,6 +543,54 @@ fn production_s1_contract_state_based_actions_boundary_remains_frozen() {
     assert_eq!(state, before);
 }
 
+#[test]
+fn production_s3_a_identity_is_distinct_and_executes_the_reviewed_sba_scope() {
+    let mut state = sba_upkeep_state();
+    state.core.players.get_mut(&PlayerId(1)).unwrap().life = 0;
+    let s3_id = crate::semantic_execution_generated::
+        magic_s3_a_ordered_sba_0_1_0_semantic_contract_id();
+    assert_ne!(
+        s3_id,
+        crate::semantic_execution_generated::magic_turn_structure_0_1_0_semantic_contract_id(),
+        "S3.A must not reinterpret the historical S1 semantic identity"
+    );
+    assert!(crate::validate_runtime_state_for_contract(
+        mtgml_model::ExecutionProgramV1::MagicRules,
+        s3_id.clone(),
+        &state,
+        &mtgml_model::EpisodeStatus::Running,
+    )
+    .is_ok());
+    let before = state.clone();
+    let mut s3 = crate::ProgramKernelV1::for_admitted_execution(
+        mtgml_model::ExecutionProgramV1::MagicRules,
+        s3_id,
+    )
+    .expect("generated production S3.A identity admits its exact profile");
+    let transition = s3
+        .advance_forced_progress(&state)
+        .expect("production S3.A executes its declared loss batch");
+    assert_eq!(state, before);
+    assert!(transition.accepted);
+    assert!(transition.next_state.core.players[&PlayerId(1)].has_lost);
+    assert!(transition.events.iter().any(|event| matches!(
+        event.event,
+        crate::AuthoritativeRuleEventKind::StateBasedActionsApplied { .. }
+    )));
+
+    let mut s1 = crate::ProgramKernelV1::for_admitted_execution(
+        mtgml_model::ExecutionProgramV1::MagicRules,
+        crate::semantic_execution_generated::magic_turn_structure_0_1_0_semantic_contract_id(),
+    )
+    .unwrap();
+    assert!(matches!(
+        s1.advance_forced_progress(&state),
+        Err(crate::KernelExecutionError::UnsupportedRulesBoundary(
+            crate::UnsupportedRulesBoundary::BasicPriority
+        ))
+    ));
+}
+
 fn fresh_no_order_combat_death_at(step: mtgml_state::CombatStep) -> EngineState {
     let mut state = two_same_owner_deaths_at_upkeep();
     let mtgml_state::BaseCharacteristics::Simple { power, .. } = state.foundation_sources
@@ -556,7 +635,6 @@ fn assert_fresh_no_order_combat_boundary_rejects(step: mtgml_state::CombatStep) 
 }
 
 #[test]
-#[ignore = "Task 9B0 FIX-01 RED: no-order BeginningOfCombat participant must fail closed"]
 fn task9b_no_order_beginning_of_combat_fail_closed() {
     assert_fresh_no_order_combat_boundary_rejects(
         mtgml_state::CombatStep::BeginningOfCombat,
@@ -564,7 +642,6 @@ fn task9b_no_order_beginning_of_combat_fail_closed() {
 }
 
 #[test]
-#[ignore = "Task 9B0 FIX-01 RED: no-order DeclareAttackers participant must fail closed"]
 fn task9b_no_order_declare_attackers_fail_closed() {
     assert_fresh_no_order_combat_boundary_rejects(
         mtgml_state::CombatStep::DeclareAttackers,
@@ -572,7 +649,6 @@ fn task9b_no_order_declare_attackers_fail_closed() {
 }
 
 #[test]
-#[ignore = "Task 9B0 FIX-01 RED: no-order DeclareBlockers participant must fail closed"]
 fn task9b_no_order_declare_blockers_fail_closed() {
     assert_fresh_no_order_combat_boundary_rejects(
         mtgml_state::CombatStep::DeclareBlockers,
@@ -580,7 +656,6 @@ fn task9b_no_order_declare_blockers_fail_closed() {
 }
 
 #[test]
-#[ignore = "Task 9B0 FIX-01 RED: no-order EndOfCombat participant must fail closed"]
 fn task9b_no_order_end_of_combat_fail_closed() {
     assert_fresh_no_order_combat_boundary_rejects(mtgml_state::CombatStep::EndOfCombat);
 }

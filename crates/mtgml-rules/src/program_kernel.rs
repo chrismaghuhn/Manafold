@@ -11,8 +11,9 @@
 //! is not a production admission route.
 //!
 //! Production Magic admission: `for_admitted_execution` receives the
-//! semantic contract ID after the V5 catalog confirms support for the exact
-//! contract. Only that production constructor uses `magic_execution_profile()`.
+//! semantic contract ID after the V6 catalog confirms support for the exact
+//! S1 or S3.A contract. Only that production constructor uses
+//! `magic_execution_profile()`.
 //! The testkit constructor uses a fixed prospective profile without any
 //! SemanticContractId.
 
@@ -23,7 +24,10 @@ use crate::turn_structure::validate_turn_structure_support;
 use crate::{KernelExecutionError, RulesKernel, TransitionResult};
 use mtgml_decision::DecisionResponseV2;
 use mtgml_model::PlayerId;
-use mtgml_model::{ExecutionProgramV1, SemanticContractIdV1};
+use mtgml_model::{
+    EpisodeStatus, ExecutionProgramV1, PlayerOutcome, PlayerResult, SemanticContractIdV1,
+    TerminalReason,
+};
 use mtgml_state::EngineState;
 
 /// Opaque public kernel adapter. Production construction flows through
@@ -173,9 +177,10 @@ impl ProgramKernelV1 {
 /// `EngineState` remains free of execution-program identity; program-awareness
 /// lives here, in the rules layer.
 ///
-/// For MagicRules: state admission only — generic EngineState validation
-/// followed by S1 profile validation. Kernel execution of S1 semantics
-/// requires V6 admission via `ProgramKernelV1::for_admitted_execution`.
+/// For MagicRules: legacy program-only validation remains the exact S1
+/// validator. Production S1/S3.A restore admission uses
+/// `validate_runtime_state_for_contract` so the content-addressed identity
+/// selects one exact profile.
 pub fn validate_runtime_state(
     program_kind: ExecutionProgramV1,
     state: &EngineState,
@@ -189,4 +194,138 @@ pub fn validate_runtime_state(
             Ok(())
         }
     }
+}
+
+/// Contract-aware restore admission. The old program-only validator remains
+/// frozen as the S1 entry point; production S3.A admission is selected only
+/// by its distinct generated SemanticContractId.
+pub fn validate_runtime_state_for_contract(
+    program_kind: ExecutionProgramV1,
+    semantic_contract_id: SemanticContractIdV1,
+    state: &EngineState,
+    status: &EpisodeStatus,
+) -> Result<(), KernelExecutionError> {
+    match program_kind {
+        ExecutionProgramV1::SyntheticRulesCompat => validate_runtime_state(program_kind, state),
+        ExecutionProgramV1::MagicRules => {
+            let profile = magic_execution_profile(semantic_contract_id)
+                .ok_or(KernelExecutionError::UnsupportedStagePath)?;
+            mtgml_state::validate_engine_state(state).map_err(KernelExecutionError::BeforeState)?;
+            if profile.allows_turn_structure_0_1_0() {
+                let _ = validate_turn_structure_support(state)
+                    .map_err(KernelExecutionError::TurnStructure)?;
+                return Ok(());
+            }
+            if profile.allows_state_based_actions_combat_0_1_0() {
+                return validate_s3_a_runtime_state(state, status);
+            }
+            Err(KernelExecutionError::UnsupportedStagePath)
+        }
+    }
+}
+
+fn validate_s3_a_runtime_state(
+    state: &EngineState,
+    status: &EpisodeStatus,
+) -> Result<(), KernelExecutionError> {
+    if matches!(
+        state.core.position,
+        mtgml_state::TurnPosition::Beginning {
+            step: mtgml_state::BeginningStep::Untap
+        }
+    ) {
+        if !matches!(
+            status,
+            EpisodeStatus::Running | EpisodeStatus::Truncated { .. }
+        ) || state.core.players.values().any(|player| player.has_lost)
+            || state.execution.pending_decision.is_some()
+            || !state.execution.continuations.is_empty()
+        {
+            return Err(KernelExecutionError::UnsupportedStagePath);
+        }
+        let _ =
+            validate_turn_structure_support(state).map_err(KernelExecutionError::TurnStructure)?;
+        return Ok(());
+    }
+    crate::state_based_actions::validate_s3_a_state_profile(state, true)
+        .map_err(|_| KernelExecutionError::UnsupportedStagePath)?;
+    let lost: Vec<_> = state
+        .core
+        .players
+        .iter()
+        .filter_map(|(player, value)| value.has_lost.then_some(*player))
+        .collect();
+    match status {
+        EpisodeStatus::Running | EpisodeStatus::Truncated { .. } => {
+            if !lost.is_empty() {
+                return Err(KernelExecutionError::UnsupportedStagePath);
+            }
+        }
+        EpisodeStatus::Terminal { reason, players } => {
+            if state.execution.pending_decision.is_some()
+                || !state.execution.continuations.is_empty()
+                || state.core.players.iter().any(|(player, value)| {
+                    value.has_lost != (value.life <= 0)
+                        || (value.has_lost && !lost.contains(player))
+                })
+            {
+                return Err(KernelExecutionError::UnsupportedStagePath);
+            }
+            let expected = if lost.len() == 1 {
+                let loser = lost[0];
+                Some((
+                    TerminalReason::RulesLoss,
+                    state
+                        .core
+                        .players
+                        .keys()
+                        .copied()
+                        .map(|player| PlayerOutcome {
+                            player,
+                            result: if player == loser {
+                                PlayerResult::Loss
+                            } else {
+                                PlayerResult::Win
+                            },
+                        })
+                        .collect::<Vec<_>>(),
+                ))
+            } else if lost.len() == 2 {
+                Some((
+                    TerminalReason::SimultaneousOutcome,
+                    state
+                        .core
+                        .players
+                        .keys()
+                        .copied()
+                        .map(|player| PlayerOutcome {
+                            player,
+                            result: PlayerResult::Draw,
+                        })
+                        .collect::<Vec<_>>(),
+                ))
+            } else {
+                None
+            }
+            .ok_or(KernelExecutionError::UnsupportedStagePath)?;
+            if *reason != expected.0 || *players != expected.1 {
+                return Err(KernelExecutionError::UnsupportedStagePath);
+            }
+        }
+    }
+    if let Some(continuation) = state.execution.continuations.values().next() {
+        if !matches!(
+            continuation.payload,
+            mtgml_state::ContinuationPayloadV2::MagicSbaGraveyardOrderV1 { .. }
+        ) {
+            return Err(KernelExecutionError::UnsupportedStagePath);
+        }
+        crate::state_based_actions::validate_sba_order_continuation(state)
+            .map_err(|_| KernelExecutionError::UnsupportedStagePath)?;
+    } else if state.execution.pending_decision.is_some()
+        || !state.execution.continuations.is_empty()
+    {
+        return Err(KernelExecutionError::UnsupportedStagePath);
+    }
+    Ok(())
 }

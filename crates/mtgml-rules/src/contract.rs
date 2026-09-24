@@ -4,10 +4,9 @@ use mtgml_state::{
     validate_engine_state, BeginningStep, EndingStep, EngineState, GameObject, IdentityMutationV1,
     KnowledgeAcquisitionCause, KnowledgeAcquisitionReason, KnowledgeHistoryChannel,
     KnowledgeMutationV1, KnownLocationFactV2, PerspectiveIdentityRecordV2,
-    PerspectiveLifecycleAuditV1, PerspectiveLifecycleMutationV1, TurnPosition, VisibilityPartition,
-    ZoneLocation, ZonePosition, ZoneTransition,
+    PerspectiveLifecycleAuditV1, PerspectiveLifecycleMutationV1, SbaSelectedActionV1, TurnPosition,
+    VisibilityPartition, ZoneLocation, ZonePosition, ZoneTransition,
 };
-#[cfg(any(test, feature = "m3-conformance-testkit"))]
 use mtgml_state::{ContinuationPayloadV2, ContinuationRecordV2, SbaGraveyardOwnerOrderV1};
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -229,6 +228,14 @@ fn validate_s2_zone_transition_product(
     before: &EngineState,
     result: &TransitionResult,
 ) -> Result<(), TransitionViolation> {
+    if result.events.iter().any(|event| {
+        matches!(
+            event.event,
+            AuthoritativeRuleEventKind::StateBasedActionsApplied { .. }
+        )
+    }) {
+        return validate_sba_batch_product(before, result);
+    }
     let transitions: Vec<_> = result
         .events
         .iter()
@@ -498,6 +505,271 @@ fn validate_s2_zone_transition_product(
             } if actual_lifecycle == lifecycle && actual_observation == observation => {}
             _ => return Err(TransitionViolation::OccurrencePairing),
         }
+    }
+    Ok(())
+}
+
+fn validate_sba_batch_product(
+    before: &EngineState,
+    result: &TransitionResult,
+) -> Result<(), TransitionViolation> {
+    let batches: Vec<_> = result
+        .events
+        .iter()
+        .enumerate()
+        .filter_map(|(index, event)| match &event.event {
+            AuthoritativeRuleEventKind::StateBasedActionsApplied { actions } => {
+                Some((index, actions))
+            }
+            _ => None,
+        })
+        .collect();
+    if batches.len() != 1 {
+        return Err(TransitionViolation::SbaBatch);
+    }
+    let (batch_index, actions) = batches[0];
+    let plan = crate::state_based_actions::derive_bounded_sba_round_plan(before)
+        .map_err(|_| TransitionViolation::SbaBatch)?;
+    if actions != &plan.selected_sba_actions || actions.is_empty() {
+        return Err(TransitionViolation::SbaBatch);
+    }
+
+    let mut orders = Vec::new();
+    let continuation_id = if let Some(continuation) = magic_sba_order_continuation(before) {
+        if batch_index != 2 {
+            return Err(TransitionViolation::SbaBatch);
+        }
+        crate::state_based_actions::validate_sba_order_continuation(before)
+            .map_err(|_| TransitionViolation::SbaBatch)?;
+        let ContinuationPayloadV2::MagicSbaGraveyardOrderV1 {
+            completed_owner_orders,
+            ..
+        } = &continuation.payload
+        else {
+            return Err(TransitionViolation::SbaBatch);
+        };
+        orders = completed_owner_orders.clone();
+        let (decision, order) = match result.events.get(..batch_index) {
+            Some(
+                [crate::events::AuthoritativeRuleEvent {
+                    event: AuthoritativeRuleEventKind::DecisionCleared { decision },
+                    ..
+                }, crate::events::AuthoritativeRuleEvent {
+                    event:
+                        AuthoritativeRuleEventKind::SbaGraveyardOrderChosen {
+                            continuation: chosen_continuation,
+                            owner,
+                            top_to_bottom,
+                        },
+                    ..
+                }],
+            ) if *chosen_continuation == continuation.id => (
+                *decision,
+                SbaGraveyardOwnerOrderV1 {
+                    owner: *owner,
+                    top_to_bottom: top_to_bottom.clone(),
+                },
+            ),
+            _ => return Err(TransitionViolation::SbaBatch),
+        };
+        if before
+            .execution
+            .pending_decision
+            .as_ref()
+            .map(|pending| pending.request.decision_id)
+            != Some(decision)
+        {
+            return Err(TransitionViolation::SbaBatch);
+        }
+        orders.push(order);
+        Some(continuation.id)
+    } else {
+        if batch_index != 0
+            || before.execution.pending_decision.is_some()
+            || !before.execution.continuations.is_empty()
+        {
+            return Err(TransitionViolation::SbaBatch);
+        }
+        None
+    };
+    if continuation_id.is_none() && !plan.apnap_owners.is_empty() {
+        return Err(TransitionViolation::SbaBatch);
+    }
+    let invocation_order =
+        crate::state_based_actions::ordered_sba_objects_for_s2(before, &plan, &orders)
+            .map_err(|_| TransitionViolation::SbaBatch)?;
+
+    let zone_event_index = result
+        .events
+        .iter()
+        .position(|event| {
+            matches!(
+                event.event,
+                AuthoritativeRuleEventKind::ZoneTransition { .. }
+            )
+        })
+        .unwrap_or(result.events.len());
+    if zone_event_index < batch_index + 1 {
+        return Err(TransitionViolation::SbaBatch);
+    }
+    let prefix_len = if continuation_id.is_some() { 3 } else { 1 };
+    if zone_event_index < prefix_len || result.events.len() < prefix_len {
+        return Err(TransitionViolation::SbaBatch);
+    }
+    let mut expected_events = result.events[..prefix_len].to_vec();
+    let mut candidate = before.clone();
+    candidate.revision = result.next_state.revision;
+    candidate.execution.pending_decision = None;
+    if let Some(continuation) = continuation_id {
+        candidate.execution.continuations.remove(&continuation);
+    }
+    let selected_objects: BTreeSet<_> = actions
+        .iter()
+        .filter_map(|action| match action {
+            SbaSelectedActionV1::ObjectToOwnerGraveyard { object, .. } => Some(*object),
+            SbaSelectedActionV1::PlayerLoses { .. } => None,
+        })
+        .collect();
+    for action in actions {
+        if let SbaSelectedActionV1::PlayerLoses { player } = action {
+            let status = candidate
+                .core
+                .players
+                .get_mut(player)
+                .ok_or(TransitionViolation::SbaBatch)?;
+            if status.life > 0 || status.has_lost {
+                return Err(TransitionViolation::SbaBatch);
+            }
+            status.has_lost = true;
+        }
+    }
+    if let Some(combat) = &mut candidate.combat {
+        let participant_selected = combat
+            .attackers
+            .iter()
+            .any(|object| selected_objects.contains(object))
+            || combat.blockers.iter().any(|(attacker, blocker)| {
+                selected_objects.contains(attacker)
+                    || blocker.is_some_and(|object| selected_objects.contains(&object))
+            });
+        if participant_selected
+            && !matches!(
+                before.core.position,
+                TurnPosition::Combat {
+                    step: mtgml_state::CombatStep::CombatDamage
+                }
+            )
+        {
+            return Err(TransitionViolation::SbaBatch);
+        }
+        if participant_selected {
+            combat
+                .attackers
+                .retain(|attacker| !selected_objects.contains(attacker));
+            combat
+                .blockers
+                .retain(|attacker, _| !selected_objects.contains(attacker));
+            for blocker in combat.blockers.values_mut() {
+                if blocker.is_some_and(|object| selected_objects.contains(&object)) {
+                    *blocker = None;
+                }
+            }
+        }
+    }
+    for object in invocation_order {
+        let owner = candidate
+            .zones
+            .objects
+            .get(&object)
+            .ok_or(TransitionViolation::SbaBatch)?
+            .owner;
+        let from = candidate
+            .zones
+            .locations
+            .get(&object)
+            .cloned()
+            .ok_or(TransitionViolation::SbaBatch)?;
+        let to = ZoneLocation {
+            zone: ZoneKind::Graveyard,
+            player: Some(owner),
+            position: ZonePosition::Top { offset: 0 },
+            visibility: VisibilityPartition::Public,
+            partition: None,
+        };
+        crate::zone_incarnation::apply_selected_zone_transition_in_sba_batch_workspace(
+            &mut candidate,
+            &crate::zone_incarnation::SelectedZoneTransitionRequest {
+                object,
+                kind: crate::zone_incarnation::SelectedZoneTransitionKind::BattlefieldToOwnerGraveyard,
+                claimed_from: from,
+                claimed_to: to,
+            },
+            before.allocators.next_rule_event_id,
+            &mut expected_events,
+        )
+        .map_err(|_| TransitionViolation::ZoneTransition)?;
+    }
+    if expected_events != result.events {
+        return Err(TransitionViolation::SbaBatch);
+    }
+    candidate.allocators.next_rule_event_id = mtgml_model::RuleEventId(
+        before
+            .allocators
+            .next_rule_event_id
+            .0
+            .checked_add(
+                u64::try_from(result.events.len())
+                    .map_err(|_| TransitionViolation::EventIdentity)?,
+            )
+            .ok_or(TransitionViolation::EventIdentity)?,
+    );
+    if candidate != result.next_state {
+        return Err(TransitionViolation::SbaBatch);
+    }
+
+    let losers: Vec<_> = actions
+        .iter()
+        .filter_map(|action| match action {
+            SbaSelectedActionV1::PlayerLoses { player } => Some(*player),
+            SbaSelectedActionV1::ObjectToOwnerGraveyard { .. } => None,
+        })
+        .collect();
+    let expected_status = match losers.as_slice() {
+        [] => EpisodeStatus::Running,
+        [loser] => EpisodeStatus::Terminal {
+            reason: mtgml_model::TerminalReason::RulesLoss,
+            players: before
+                .core
+                .players
+                .keys()
+                .copied()
+                .map(|player| mtgml_model::PlayerOutcome {
+                    player,
+                    result: if player == *loser {
+                        mtgml_model::PlayerResult::Loss
+                    } else {
+                        mtgml_model::PlayerResult::Win
+                    },
+                })
+                .collect(),
+        },
+        _ if losers.len() == before.core.players.len() => EpisodeStatus::Terminal {
+            reason: mtgml_model::TerminalReason::SimultaneousOutcome,
+            players: before
+                .core
+                .players
+                .keys()
+                .copied()
+                .map(|player| mtgml_model::PlayerOutcome {
+                    player,
+                    result: mtgml_model::PlayerResult::Draw,
+                })
+                .collect(),
+        },
+        _ => return Err(TransitionViolation::SbaBatch),
+    };
+    if result.status != expected_status || result.next_decision.is_some() {
+        return Err(TransitionViolation::SbaBatch);
     }
     Ok(())
 }
@@ -853,13 +1125,19 @@ fn validate_accepted_progression(
     // Blanket mutation check. active_player and turn_number changes
     // are already validated above for Cleanup boundaries. All other
     // fields must not change for any accepted transition.
+    let has_sba_application = result.events.iter().any(|event| {
+        matches!(
+            event.event,
+            AuthoritativeRuleEventKind::StateBasedActionsApplied { .. }
+        )
+    });
     if (before.core.active_player != after.core.active_player
         || before.core.turn_number != after.core.turn_number)
         && !is_cleanup_boundary
         || before.core.priority != after.core.priority
         || before.core.players.len() != after.core.players.len()
-        || has_lost_changed
-        || before.combat != after.combat
+        || (has_lost_changed && !has_sba_application)
+        || (before.combat != after.combat && !has_sba_application)
     {
         return Err(TransitionViolation::UnexplainedMutation);
     }
@@ -881,7 +1159,6 @@ fn validate_accepted_progression(
     Ok(())
 }
 
-#[cfg(any(test, feature = "m3-conformance-testkit"))]
 fn magic_sba_order_continuation(state: &EngineState) -> Option<&ContinuationRecordV2> {
     state.execution.continuations.values().find(|record| {
         matches!(
@@ -891,7 +1168,6 @@ fn magic_sba_order_continuation(state: &EngineState) -> Option<&ContinuationReco
     })
 }
 
-#[cfg(any(test, feature = "m3-conformance-testkit"))]
 fn validate_sba_order_stage_world(
     before: &EngineState,
     after: &EngineState,
@@ -959,7 +1235,6 @@ fn validate_sba_order_stage_world(
     Ok(())
 }
 
-#[cfg(any(test, feature = "m3-conformance-testkit"))]
 fn validate_sba_order_transition(
     before: &EngineState,
     result: &TransitionResult,
@@ -1043,7 +1318,52 @@ fn validate_sba_order_transition(
             );
             validate_sba_order_stage_world(before, after, first_owner, next_continuation, 1)
         }
-        (Some(_), None) => Err(TransitionViolation::SbaOrder),
+        (Some(before_continuation), None) => {
+            if !has_order_event
+                || result.events.len() < 3
+                || !matches!(
+                    &result.events[0].event,
+                    Event::DecisionCleared { decision }
+                        if before.execution.pending_decision.as_ref().is_some_and(|pending|
+                            pending.request.decision_id == *decision)
+                )
+                || !matches!(
+                    &result.events[2].event,
+                    Event::StateBasedActionsApplied { .. }
+                )
+                || after.execution.pending_decision.is_some()
+                || after.execution.continuations.values().any(|record| {
+                    matches!(
+                        record.payload,
+                        ContinuationPayloadV2::MagicSbaGraveyardOrderV1 { .. }
+                    )
+                })
+            {
+                return Err(TransitionViolation::SbaOrder);
+            }
+            let Event::SbaGraveyardOrderChosen {
+                continuation,
+                owner,
+                ..
+            } = &result.events[1].event
+            else {
+                return Err(TransitionViolation::SbaOrder);
+            };
+            let ContinuationPayloadV2::MagicSbaGraveyardOrderV1 {
+                apnap_owners,
+                next_owner_index,
+                ..
+            } = &before_continuation.payload
+            else {
+                return Err(TransitionViolation::SbaOrder);
+            };
+            if *continuation != before_continuation.id
+                || apnap_owners.get(*next_owner_index as usize) != Some(owner)
+            {
+                return Err(TransitionViolation::SbaOrder);
+            }
+            Ok(())
+        }
         (Some(before_continuation), Some(after_continuation)) => {
             if !has_order_event
                 || result.events.len() != 3
@@ -1308,6 +1628,17 @@ pub fn validate_transition_contract(
                             resolves(Some(record_post.clone()), opaque, &transition.new_object)
                                 && fact.location == transition.to
                         }
+                        KnowledgeMutationV1::UpdateLocations { updates } => {
+                            !updates.is_empty()
+                                && updates
+                                    .windows(2)
+                                    .all(|pair| pair[0].opaque < pair[1].opaque)
+                                && updates.iter().all(|update| {
+                                    record_post.opaque_to_object.contains_key(&update.opaque)
+                                        && update.fact.location.zone == transition.to.zone
+                                        && update.fact.location.player == transition.to.player
+                                })
+                        }
                         KnowledgeMutationV1::Invalidate { opaque, .. } => {
                             resolves(record_pre, opaque, &transition.old_object)
                                 || resolves(
@@ -1340,7 +1671,6 @@ pub fn validate_transition_contract(
     }
     cursor.validate_final_state(&result.next_state)?;
 
-    #[cfg(any(test, feature = "m3-conformance-testkit"))]
     if result.accepted {
         validate_sba_order_transition(before, result)?;
     }

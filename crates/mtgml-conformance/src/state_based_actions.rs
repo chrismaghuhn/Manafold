@@ -1360,7 +1360,7 @@ fn first_owner_order_only_advances_the_same_round_to_the_next_apnap_owner() {
 }
 
 #[test]
-fn task7_one_owner_final_order_waits_for_task9_atomic_application() {
+fn task9b_one_owner_final_order_applies_in_one_rules_transition() {
     let state = state_with_pending_order();
     let before = state.clone();
     let request = state
@@ -1382,19 +1382,21 @@ fn task7_one_owner_final_order_waits_for_task9_atomic_application() {
         .validate_for(&request.project_player_request().unwrap())
         .is_ok());
     let mut kernel = magic_kernel();
-    let result = kernel.apply(&state, P1, &response);
-    assert_eq!(state, before, "the final-order RED must preserve its input");
-    assert!(
-        matches!(
-            result,
-            Err(mtgml_rules::KernelExecutionError::UnsupportedStagePath)
-        ),
-        "the Task-7 order path should identify the deferred Task-9 boundary: {result:?}"
-    );
+    let transition = kernel
+        .apply(&state, P1, &response)
+        .expect("the final order and complete SBA batch share one transition");
+    assert_eq!(state, before, "the rules input fixture remains immutable");
+    assert!(transition.accepted);
+    assert!(transition.next_decision.is_none());
+    assert!(transition.next_state.execution.continuations.is_empty());
+    assert!(transition.events.iter().any(|event| matches!(
+        event.event,
+        AuthoritativeRuleEventKind::StateBasedActionsApplied { .. }
+    )));
 }
 
 #[test]
-fn task7_second_owner_final_order_waits_for_task9_atomic_application() {
+fn task9b_second_owner_final_order_applies_in_one_rules_transition() {
     let state = state_with_second_owner_order();
     let before = state.clone();
     let request = state
@@ -1417,19 +1419,21 @@ fn task7_second_owner_final_order_waits_for_task9_atomic_application() {
         .validate_for(&request.project_player_request().unwrap())
         .is_ok());
     let mut kernel = magic_kernel();
-    let result = kernel.apply(&state, P2, &response);
-    assert_eq!(state, before, "the final-order RED must preserve its input");
-    assert!(
-        matches!(
-            result,
-            Err(mtgml_rules::KernelExecutionError::UnsupportedStagePath)
-        ),
-        "the Task-7 order path should identify the deferred Task-9 boundary: {result:?}"
-    );
+    let transition = kernel
+        .apply(&state, P2, &response)
+        .expect("the final APNAP order and complete SBA batch share one transition");
+    assert_eq!(state, before, "the rules input fixture remains immutable");
+    assert!(transition.accepted);
+    assert!(transition.next_decision.is_none());
+    assert!(transition.next_state.execution.continuations.is_empty());
+    assert!(transition.events.iter().any(|event| matches!(
+        event.event,
+        AuthoritativeRuleEventKind::StateBasedActionsApplied { .. }
+    )));
 }
 
 #[test]
-fn task7_no_order_sba_batch_is_deferred_to_task9() {
+fn task9b_no_order_sba_batch_is_applied_without_a_fake_decision() {
     let state = state_with(
         &[CreatureSpec {
             owner: P1,
@@ -1440,11 +1444,19 @@ fn task7_no_order_sba_batch_is_deferred_to_task9() {
     );
     let before = state.clone();
     let mut kernel = magic_kernel();
-    assert!(matches!(
-        kernel.advance_forced_progress(&state),
-        Err(mtgml_rules::KernelExecutionError::UnsupportedStagePath)
-    ));
-    assert_eq!(state, before, "Task 7 must not apply a no-order SBA batch");
+    let transition = kernel
+        .advance_forced_progress(&state)
+        .expect("the no-order round is applied as one complete batch");
+    assert_eq!(
+        state, before,
+        "forced progress must leave its input immutable"
+    );
+    assert!(transition.accepted);
+    assert!(transition.next_decision.is_none());
+    assert!(transition.events.iter().any(|event| matches!(
+        event.event,
+        AuthoritativeRuleEventKind::StateBasedActionsApplied { .. }
+    )));
 }
 
 fn current_order_response(
@@ -1979,7 +1991,6 @@ fn rebind_test_transition_product(before: &EngineState, product: &mut Transition
 }
 
 #[test]
-#[ignore = "Task 9B0 acceptance RED: final one-owner choice plus atomic SBA batch is not implemented"]
 fn task9b_final_one_owner_order_emits_batch_and_exact_s2_moves() {
     let before = state_with_pending_order();
     let actions = match &before.execution.continuations[&mtgml_model::ContinuationId(1)].payload {
@@ -2017,6 +2028,33 @@ fn task9b_final_one_owner_order_emits_batch_and_exact_s2_moves() {
                 .0,
             start + 2
         );
+        let reindex_updates = transition
+            .events
+            .iter()
+            .find_map(|event| match &event.event {
+                AuthoritativeRuleEventKind::PerspectiveOccurrence { lifecycle, .. }
+                    if lifecycle.perspective == perspective =>
+                {
+                    match &lifecycle.mutation.knowledge {
+                        Some(mtgml_state::KnowledgeMutationV1::UpdateLocations { updates })
+                            if updates.len() == 2 =>
+                        {
+                            Some(updates)
+                        }
+                        _ => None,
+                    }
+                }
+                _ => None,
+            })
+            .expect("second Graveyard insertion audits the shifted tracked member");
+        let offsets: std::collections::BTreeSet<_> = reindex_updates
+            .iter()
+            .map(|update| match update.fact.location.position {
+                mtgml_state::ZonePosition::Top { offset } => offset,
+                _ => panic!("Graveyard knowledge update must retain top offset"),
+            })
+            .collect();
+        assert_eq!(offsets, std::collections::BTreeSet::from([0, 1]));
         for old in [GameObjectId(1), GameObjectId(2)] {
             let opaque = before.perspective_identities.players[&perspective].object_to_opaque[&old];
             let new = transition
@@ -2111,7 +2149,28 @@ fn task9b_final_one_owner_order_emits_batch_and_exact_s2_moves() {
 }
 
 #[test]
-#[ignore = "Task 9B0 acceptance RED: final APNAP choice plus atomic SBA batch is not implemented"]
+fn task9b_late_s2_member_failure_discards_the_entire_scratch_batch() {
+    let mut before = state_with_pending_order();
+    before.allocators.next_object_id = GameObjectId(u64::MAX - 1);
+    validate_engine_state(&before)
+        .expect("near-exhausted object allocator remains a valid before-state");
+    let fingerprint = before.clone();
+    let response = current_order_response(&before, vec![CandidateIdV1(1), CandidateIdV1(0)]);
+    let result = magic_kernel().apply(&before, P1, &response);
+    assert!(
+        matches!(
+            result,
+            Err(mtgml_rules::KernelExecutionError::IdentityAllocation(_))
+        ),
+        "the later S2 member must fail at checked object allocation: {result:?}"
+    );
+    assert_eq!(
+        before, fingerprint,
+        "no first move, identity, knowledge, or allocator change escapes"
+    );
+}
+
+#[test]
 fn task9b_final_second_owner_order_preserves_apnap_audit_and_applies_batch() {
     let before = state_with_second_owner_order();
     let actions = match &before.execution.continuations[&mtgml_model::ContinuationId(1)].payload {
@@ -2133,7 +2192,6 @@ fn task9b_final_second_owner_order_preserves_apnap_audit_and_applies_batch() {
 }
 
 #[test]
-#[ignore = "Task 9B0 acceptance RED: no-order SBA batch producer is not implemented"]
 fn task9b_no_order_round_emits_exact_batch_and_one_zone_move() {
     let before = state_with(
         &[CreatureSpec {
@@ -2168,7 +2226,6 @@ fn task9b_no_order_round_emits_exact_batch_and_one_zone_move() {
 }
 
 #[test]
-#[ignore = "Task 9B0 FIX-01 RED: no-order post-CombatDamage SBA application is not implemented"]
 fn task9b_no_order_post_damage_application_prunes_one_blocker_and_moves_it() {
     let mut before = state_with(
         &[
@@ -2229,7 +2286,6 @@ fn task9b_no_order_post_damage_application_prunes_one_blocker_and_moves_it() {
 }
 
 #[test]
-#[ignore = "Task 9B0 acceptance RED: PlayerLoses batch and terminal RulesLoss are not implemented"]
 fn task9b_one_player_loss_sets_has_lost_and_terminal_rules_loss() {
     let before = state_with(&[], [0, 40]);
     let transition = advance_sba(&before, "Task 9B0 one-player terminal loss");
@@ -2257,7 +2313,6 @@ fn task9b_one_player_loss_sets_has_lost_and_terminal_rules_loss() {
 }
 
 #[test]
-#[ignore = "Task 9B0 acceptance RED: simultaneous PlayerLoses batch and draw are not implemented"]
 fn task9b_simultaneous_losses_set_both_flags_and_terminal_draw() {
     let before = state_with(&[], [0, 0]);
     let transition = advance_sba(&before, "Task 9B0 simultaneous terminal draw");
@@ -2283,7 +2338,6 @@ fn task9b_simultaneous_losses_set_both_flags_and_terminal_draw() {
 }
 
 #[test]
-#[ignore = "Task 9B0 acceptance RED: post-damage SBA combat pruning is not implemented"]
 fn task9b_post_damage_dying_blocker_prunes_live_reference_to_none() {
     let before = order_stage_at_combat(
         mtgml_state::CombatStep::CombatDamage,
@@ -2325,7 +2379,6 @@ fn task9b_post_damage_dying_blocker_prunes_live_reference_to_none() {
 }
 
 #[test]
-#[ignore = "Task 9B0 acceptance RED: post-damage SBA attacker pruning is not implemented"]
 fn task9b_post_damage_dying_attacker_is_removed_with_its_blocker_key() {
     let before = order_stage_at_combat(
         mtgml_state::CombatStep::CombatDamage,
@@ -2357,7 +2410,6 @@ fn task9b_post_damage_dying_attacker_is_removed_with_its_blocker_key() {
 }
 
 #[test]
-#[ignore = "Task 9B0 policy RED: pre-damage combat-participant SBA must fail closed"]
 fn task9b_pre_damage_combat_participant_continuation_fails_closed() {
     for step in [
         mtgml_state::CombatStep::BeginningOfCombat,
@@ -2399,7 +2451,6 @@ fn task9b_pre_damage_combat_participant_continuation_fails_closed() {
 }
 
 #[test]
-#[ignore = "Task 9B0 policy RED: EndOfCombat is not a second SBA combat-removal gate"]
 fn task9b_end_of_combat_stale_combat_participant_fails_closed() {
     let state = order_stage_at_combat(
         mtgml_state::CombatStep::EndOfCombat,

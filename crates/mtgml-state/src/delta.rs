@@ -40,6 +40,9 @@ pub enum SemanticDeltaOperation {
         owner: PlayerId,
         top_to_bottom: Vec<GameObjectId>,
     },
+    StateBasedActionsApplied {
+        actions: Vec<crate::SbaSelectedActionV1>,
+    },
     RandomValueSampled {
         stream: RandomStreamKeyV1,
         bound: u64,

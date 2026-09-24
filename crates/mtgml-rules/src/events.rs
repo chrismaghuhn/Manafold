@@ -39,6 +39,9 @@ pub enum AuthoritativeRuleEventKind {
         owner: PlayerId,
         top_to_bottom: Vec<GameObjectId>,
     },
+    StateBasedActionsApplied {
+        actions: Vec<mtgml_state::SbaSelectedActionV1>,
+    },
     RandomValueSampled {
         stream: RandomStreamKeyV1,
         bound: u64,
@@ -115,6 +118,11 @@ impl AuthoritativeRuleEventKind {
                 owner: *owner,
                 top_to_bottom: top_to_bottom.clone(),
             },
+            Self::StateBasedActionsApplied { actions } => {
+                SemanticDeltaOperation::StateBasedActionsApplied {
+                    actions: actions.clone(),
+                }
+            }
             Self::RandomValueSampled {
                 stream,
                 bound,
@@ -279,6 +287,7 @@ pub fn validate_occurrence_pairing(
             if !matches!(
                 mutation.knowledge,
                 None | Some(KnowledgeMutationV1::UpdateLocation { .. })
+                    | Some(KnowledgeMutationV1::UpdateLocations { .. })
                     | Some(KnowledgeMutationV1::CurrentToHistory { .. })
                     | Some(KnowledgeMutationV1::Invalidate { .. })
             ) {
@@ -315,6 +324,19 @@ pub fn validate_occurrence_pairing(
                 IdentityMutationV1::None => {}
                 IdentityMutationV1::Allocate { .. } => {
                     return Err(OccurrencePairingError::IdentityMismatch)
+                }
+            }
+            if let Some(KnowledgeMutationV1::UpdateLocations { updates }) = &mutation.knowledge {
+                if updates.is_empty()
+                    || matches!(
+                        &mutation.identity,
+                        IdentityMutationV1::Remap { opaque, .. }
+                            if !updates.iter().any(|update| {
+                                update.opaque == *opaque && update.fact.location == transition.to
+                            })
+                    )
+                {
+                    return Err(OccurrencePairingError::KnowledgeMismatch);
                 }
             }
         }

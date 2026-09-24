@@ -45,7 +45,7 @@ pub use knowledge::{
 };
 pub use lifecycle::{
     advance_identity_record, apply_lifecycle_to_player, apply_perspective_lifecycle,
-    IdentityMutationV1, KnowledgeMutationV1, LifecycleApplicationError,
+    IdentityMutationV1, KnowledgeLocationUpdateV1, KnowledgeMutationV1, LifecycleApplicationError,
     PerspectiveLifecycleAuditV1, PerspectiveLifecycleMutationV1,
 };
 pub use m2_shape::{
