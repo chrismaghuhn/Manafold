@@ -16,10 +16,21 @@
 use std::collections::BTreeMap;
 
 use mtgml_decision::DecisionResponseV2;
+#[cfg(any(test, feature = "m3-conformance-testkit"))]
+use mtgml_decision::{
+    AuthoritativeCandidateV2, CandidateIntent, CandidateOrderingV1, DecisionAnswerV2,
+    DecisionDomainV2, DecisionVisibility, EngineCandidateBinding,
+};
+#[cfg(any(test, feature = "m3-conformance-testkit"))]
+use mtgml_model::{CandidateIdV1, DecisionId};
 use mtgml_model::{PlayerId, RuleEventId, StateRevision, VisibleSequence};
 use mtgml_state::{
     validate_engine_state, BeginningStep, EndingStep, EngineState, PerspectiveLifecycleAuditV1,
     PerspectiveLifecycleMutationV1, TurnPosition,
+};
+#[cfg(any(test, feature = "m3-conformance-testkit"))]
+use mtgml_state::{
+    ContinuationPayloadV2, ContinuationRecordV2, PendingDecisionRecordV2, SbaGraveyardOwnerOrderV1,
 };
 
 use crate::errors::KernelExecutionError;
@@ -68,7 +79,7 @@ impl MagicKernelProfile {
             #[cfg(test)]
             Self::UnitTest(profile) => profile.allows_turn_structure_0_1_0(),
             #[cfg(any(test, feature = "m3-conformance-testkit"))]
-            Self::S3AConformanceCandidate => true,
+            Self::S3AConformanceCandidate => false,
         }
     }
 }
@@ -125,35 +136,407 @@ impl MagicRulesKernel {
 impl RulesKernel for MagicRulesKernel {
     /// Trusted response execution entry point.
     ///
-    /// S1 has no player decision surface: every `DecisionResponseV2` is
-    /// rejected without inspecting its contents, and without mutating the input
-    /// `&EngineState`.
+    /// Admitted S1 has no player Decision surface and rejects every response
+    /// without inspecting or mutating it. The fixed non-production S3.A
+    /// candidate accepts only a nonfinal SBA Order stage; its final Order
+    /// remains unaccepted until Task 9 can apply the complete round atomically.
     fn apply(
         &mut self,
-        _state: &EngineState,
-        _trusted_actor: PlayerId,
-        _response: &DecisionResponseV2,
+        state: &EngineState,
+        trusted_actor: PlayerId,
+        response: &DecisionResponseV2,
     ) -> Result<TransitionResult, KernelExecutionError> {
+        #[cfg(any(test, feature = "m3-conformance-testkit"))]
+        if matches!(self.profile, MagicKernelProfile::S3AConformanceCandidate) {
+            return self.apply_s3_a_order_response(state, trusted_actor, response);
+        }
+        let _ = (state, trusted_actor, response);
         Err(KernelExecutionError::UnsupportedPlayerResponse)
+    }
+}
+
+#[cfg(any(test, feature = "m3-conformance-testkit"))]
+impl MagicRulesKernel {
+    fn advance_s3_a_order_stage(
+        &mut self,
+        state: &EngineState,
+    ) -> Result<TransitionResult, KernelExecutionError> {
+        validate_engine_state(state).map_err(KernelExecutionError::BeforeState)?;
+        if state.execution.pending_decision.is_some() || !state.execution.continuations.is_empty() {
+            return Err(KernelExecutionError::UnsupportedStagePath);
+        }
+        let plan = crate::state_based_actions::derive_bounded_sba_round_plan(state)
+            .map_err(|_| KernelExecutionError::UnsupportedStagePath)?;
+        if plan.selected_sba_actions.is_empty() {
+            return Err(KernelExecutionError::UnsupportedRulesBoundary(
+                UnsupportedRulesBoundary::BasicPriority,
+            ));
+        }
+        // Automatic no-order application is reserved for Task 9, where it can
+        // share the final atomic S2/fixed-point rules product.
+        let Some(actor) = plan.apnap_owners.first().copied() else {
+            return Err(KernelExecutionError::UnsupportedStagePath);
+        };
+
+        let continuation_id = state.allocators.next_continuation_id;
+        let next_continuation = continuation_id
+            .0
+            .checked_add(1)
+            .ok_or(KernelExecutionError::Exhaustion("continuation"))?;
+        let identity = crate::decision_stage::fresh_stage_identity(state, actor)?;
+        let candidates = Self::s3_a_order_candidates(state, &plan.selected_sba_actions, actor)?;
+        let cardinality = u32::try_from(candidates.len())
+            .map_err(|_| KernelExecutionError::Exhaustion("order_cardinality"))?;
+        let request = mtgml_decision::AuthoritativeDecisionRequestV2 {
+            decision_id: identity.decision_id,
+            player_decision_id: identity.player_decision_id,
+            state_revision: identity.revision,
+            actor,
+            visibility: DecisionVisibility::ActingPlayerOnly,
+            decision: DecisionDomainV2::Order {
+                minimum: cardinality,
+                maximum: cardinality,
+            },
+            candidates,
+            continuation_id: Some(continuation_id),
+        };
+        let payload = ContinuationPayloadV2::MagicSbaGraveyardOrderV1 {
+            round_start_revision: state.revision,
+            selected_sba_actions: plan.selected_sba_actions,
+            apnap_owners: plan.apnap_owners,
+            next_owner_index: 0,
+            completed_owner_orders: Vec::new(),
+        };
+        let continuation = ContinuationRecordV2 {
+            id: continuation_id,
+            actor,
+            created_at_revision: identity.revision,
+            stage_index: payload.stage_index(),
+            payload,
+        };
+        let event = Self::s3_a_bound_event(
+            state,
+            0,
+            identity.revision,
+            AuthoritativeRuleEventKind::DecisionCreated {
+                decision: identity.decision_id,
+            },
+        )?;
+
+        let mut next = state.clone();
+        next.revision = identity.revision;
+        build_accepted_product(state, next, vec![event], |workspace| {
+            workspace.execution.pending_decision = Some(PendingDecisionRecordV2 { request });
+            workspace
+                .execution
+                .continuations
+                .insert(continuation_id, continuation);
+            workspace.allocators.next_decision_id = DecisionId(
+                identity
+                    .decision_id
+                    .0
+                    .checked_add(1)
+                    .ok_or(KernelExecutionError::Exhaustion("decision"))?,
+            );
+            workspace.allocators.next_continuation_id =
+                mtgml_model::ContinuationId(next_continuation);
+            crate::decision_stage::advance_player_allocator(
+                workspace,
+                actor,
+                identity.player_decision_id,
+            )?;
+            Ok(())
+        })
+    }
+
+    fn apply_s3_a_order_response(
+        &mut self,
+        state: &EngineState,
+        trusted_actor: PlayerId,
+        response: &DecisionResponseV2,
+    ) -> Result<TransitionResult, KernelExecutionError> {
+        validate_engine_state(state).map_err(KernelExecutionError::BeforeState)?;
+        let Some(pending) = state.execution.pending_decision.as_ref() else {
+            return crate::decision_stage::rejected(state);
+        };
+        let request = &pending.request;
+        let Ok(visible_request) = request.project_player_request() else {
+            return crate::decision_stage::rejected(state);
+        };
+        if trusted_actor != request.actor
+            || response.validate_for(&visible_request).is_err()
+            || response.state_revision != state.revision
+        {
+            return crate::decision_stage::rejected(state);
+        }
+        let DecisionAnswerV2::Order { candidate_ids } = &response.answer else {
+            return crate::decision_stage::rejected(state);
+        };
+        let Some(continuation_id) = request.continuation_id else {
+            return crate::decision_stage::rejected(state);
+        };
+        crate::state_based_actions::validate_sba_order_continuation(state)
+            .map_err(|_| KernelExecutionError::UnsupportedStagePath)?;
+        let continuation = state
+            .execution
+            .continuations
+            .get(&continuation_id)
+            .cloned()
+            .ok_or(KernelExecutionError::UnsupportedStagePath)?;
+        let ContinuationPayloadV2::MagicSbaGraveyardOrderV1 {
+            selected_sba_actions,
+            apnap_owners,
+            next_owner_index,
+            ..
+        } = &continuation.payload
+        else {
+            return Err(KernelExecutionError::UnsupportedStagePath);
+        };
+        let owner = *apnap_owners
+            .get(*next_owner_index as usize)
+            .ok_or(KernelExecutionError::UnsupportedStagePath)?;
+        if owner != trusted_actor || owner != request.actor {
+            return crate::decision_stage::rejected(state);
+        }
+
+        let top_to_bottom = Self::s3_a_resolve_order_answer(
+            state,
+            request,
+            owner,
+            selected_sba_actions,
+            candidate_ids,
+        )?;
+        let next_index = next_owner_index
+            .checked_add(1)
+            .ok_or(KernelExecutionError::Exhaustion("continuation_stage"))?;
+        let Some(next_owner) = apnap_owners
+            .get(
+                usize::try_from(next_index)
+                    .map_err(|_| KernelExecutionError::Exhaustion("continuation_stage"))?,
+            )
+            .copied()
+        else {
+            // The last choice cannot commit as an order-only checkpoint.
+            // Task 9 must pair it with the complete SBA application.
+            return Err(KernelExecutionError::UnsupportedStagePath);
+        };
+
+        let identity = crate::decision_stage::fresh_stage_identity(state, next_owner)?;
+        let candidates = Self::s3_a_order_candidates(state, selected_sba_actions, next_owner)?;
+        let cardinality = u32::try_from(candidates.len())
+            .map_err(|_| KernelExecutionError::Exhaustion("order_cardinality"))?;
+        let next_request = mtgml_decision::AuthoritativeDecisionRequestV2 {
+            decision_id: identity.decision_id,
+            player_decision_id: identity.player_decision_id,
+            state_revision: identity.revision,
+            actor: next_owner,
+            visibility: DecisionVisibility::ActingPlayerOnly,
+            decision: DecisionDomainV2::Order {
+                minimum: cardinality,
+                maximum: cardinality,
+            },
+            candidates,
+            continuation_id: Some(continuation_id),
+        };
+        let next_decision = DecisionId(
+            identity
+                .decision_id
+                .0
+                .checked_add(1)
+                .ok_or(KernelExecutionError::Exhaustion("decision"))?,
+        );
+        let events = vec![
+            Self::s3_a_bound_event(
+                state,
+                0,
+                identity.revision,
+                AuthoritativeRuleEventKind::DecisionCleared {
+                    decision: request.decision_id,
+                },
+            )?,
+            Self::s3_a_bound_event(
+                state,
+                1,
+                identity.revision,
+                AuthoritativeRuleEventKind::SbaGraveyardOrderChosen {
+                    continuation: continuation_id,
+                    owner,
+                    top_to_bottom: top_to_bottom.clone(),
+                },
+            )?,
+            Self::s3_a_bound_event(
+                state,
+                2,
+                identity.revision,
+                AuthoritativeRuleEventKind::DecisionCreated {
+                    decision: identity.decision_id,
+                },
+            )?,
+        ];
+
+        let mut next = state.clone();
+        next.revision = identity.revision;
+        build_accepted_product(state, next, events, |workspace| {
+            workspace.execution.pending_decision = Some(PendingDecisionRecordV2 {
+                request: next_request,
+            });
+            let record = workspace
+                .execution
+                .continuations
+                .get_mut(&continuation_id)
+                .ok_or(KernelExecutionError::UnsupportedStagePath)?;
+            let ContinuationPayloadV2::MagicSbaGraveyardOrderV1 {
+                next_owner_index,
+                completed_owner_orders,
+                ..
+            } = &mut record.payload
+            else {
+                return Err(KernelExecutionError::UnsupportedStagePath);
+            };
+            completed_owner_orders.push(SbaGraveyardOwnerOrderV1 {
+                owner,
+                top_to_bottom,
+            });
+            *next_owner_index = next_index;
+            record.actor = next_owner;
+            record.stage_index = u16::try_from(next_index)
+                .map_err(|_| KernelExecutionError::Exhaustion("continuation_stage"))?;
+            workspace.allocators.next_decision_id = next_decision;
+            crate::decision_stage::advance_player_allocator(
+                workspace,
+                next_owner,
+                identity.player_decision_id,
+            )?;
+            Ok(())
+        })
+    }
+
+    fn s3_a_order_candidates(
+        state: &EngineState,
+        selected_actions: &[mtgml_state::SbaSelectedActionV1],
+        actor: PlayerId,
+    ) -> Result<Vec<AuthoritativeCandidateV2>, KernelExecutionError> {
+        let identity = state
+            .perspective_identities
+            .players
+            .get(&actor)
+            .ok_or(KernelExecutionError::UnsupportedStagePath)?;
+        let mut candidates = Vec::new();
+        for action in selected_actions {
+            let mtgml_state::SbaSelectedActionV1::ObjectToOwnerGraveyard { object, .. } = action
+            else {
+                continue;
+            };
+            let game_object = state
+                .zones
+                .objects
+                .get(object)
+                .ok_or(KernelExecutionError::UnsupportedStagePath)?;
+            if game_object.owner != actor {
+                continue;
+            }
+            let opaque = identity
+                .object_to_opaque
+                .get(object)
+                .copied()
+                .ok_or(KernelExecutionError::UnsupportedStagePath)?;
+            candidates.push((
+                CandidateIntent::SelectObject { object: opaque },
+                EngineCandidateBinding::SelectObject { object: *object },
+            ));
+        }
+        let ordered = CandidateOrderingV1::assign_dense(candidates)
+            .map_err(|_| KernelExecutionError::UnsupportedStagePath)?;
+        if ordered.len() < 2 {
+            return Err(KernelExecutionError::UnsupportedStagePath);
+        }
+        Ok(ordered)
+    }
+
+    fn s3_a_resolve_order_answer(
+        state: &EngineState,
+        request: &mtgml_decision::AuthoritativeDecisionRequestV2,
+        owner: PlayerId,
+        selected_actions: &[mtgml_state::SbaSelectedActionV1],
+        candidate_ids: &[CandidateIdV1],
+    ) -> Result<Vec<mtgml_model::GameObjectId>, KernelExecutionError> {
+        let identity = state
+            .perspective_identities
+            .players
+            .get(&owner)
+            .ok_or(KernelExecutionError::UnsupportedStagePath)?;
+        let mut resolved = Vec::with_capacity(candidate_ids.len());
+        for candidate_id in candidate_ids {
+            let candidate_index = usize::try_from(candidate_id.0)
+                .map_err(|_| KernelExecutionError::UnsupportedStagePath)?;
+            let candidate = request
+                .candidates
+                .get(candidate_index)
+                .filter(|candidate| candidate.candidate_id == *candidate_id)
+                .ok_or(KernelExecutionError::UnsupportedStagePath)?;
+            let (
+                CandidateIntent::SelectObject { object: opaque },
+                EngineCandidateBinding::SelectObject { object },
+            ) = (&candidate.visible_intent, &candidate.trusted_binding)
+            else {
+                return Err(KernelExecutionError::UnsupportedStagePath);
+            };
+            if identity.opaque_to_object.get(opaque) != Some(object)
+                || identity.object_to_opaque.get(object) != Some(opaque)
+                || !selected_actions.iter().any(|action| {
+                    matches!(
+                        action,
+                        mtgml_state::SbaSelectedActionV1::ObjectToOwnerGraveyard {
+                            object: selected,
+                            ..
+                        } if selected == object
+                    )
+                })
+            {
+                return Err(KernelExecutionError::UnsupportedStagePath);
+            }
+            resolved.push(*object);
+        }
+        Ok(resolved)
+    }
+
+    fn s3_a_bound_event(
+        state: &EngineState,
+        offset: u64,
+        revision: StateRevision,
+        event: AuthoritativeRuleEventKind,
+    ) -> Result<AuthoritativeRuleEvent, KernelExecutionError> {
+        Ok(AuthoritativeRuleEvent {
+            event_id: RuleEventId(
+                state
+                    .allocators
+                    .next_rule_event_id
+                    .0
+                    .checked_add(offset)
+                    .ok_or(KernelExecutionError::RuleEventIdOverflow)?,
+            ),
+            state_revision: revision,
+            event,
+        })
     }
 }
 
 impl MagicRulesKernel {
     /// Rules-owned forced-progress shell.
     ///
-    /// The profile gate checks both the turn-structure capability and the
-    /// exact admitted semantic identity before any S1 semantics execute.
-    /// This prevents a capability bit from authorizing a different contract.
-    ///
-    /// Validates the S1 supported-state profile, then classifies the current
-    /// temporal position. The Untap position executes ordinary untap and
-    /// advances to Upkeep; every other position is classified at its
-    /// downstream boundary and returns a typed `Err`. No state mutation
-    /// occurs on any rejection path.
+    /// The fixed non-production S3.A candidate takes its separate typed SBA
+    /// Order staging path. Admitted S1 validates its exact execution profile,
+    /// then classifies the current temporal position: Untap advances to
+    /// Upkeep, and downstream boundaries remain typed failures. No production
+    /// S1 accepted state set changes here.
     pub(crate) fn advance_forced_progress(
         &mut self,
         state: &EngineState,
     ) -> Result<TransitionResult, KernelExecutionError> {
+        #[cfg(any(test, feature = "m3-conformance-testkit"))]
+        if matches!(self.profile, MagicKernelProfile::S3AConformanceCandidate) {
+            return self.advance_s3_a_order_stage(state);
+        }
         if !self.profile.allows_s1_turn_structure() {
             return Err(KernelExecutionError::UnsupportedStagePath);
         }

@@ -1,4 +1,6 @@
-use mtgml_model::{DecisionId, GameObjectId, PlayerId, RuleEventId, StateRevision, ZoneKind};
+use mtgml_model::{
+    ContinuationId, DecisionId, GameObjectId, PlayerId, RuleEventId, StateRevision, ZoneKind,
+};
 use mtgml_random::RandomStreamKeyV1;
 use mtgml_state::{
     IdentityMutationV1, KnowledgeAcquisitionCause, KnowledgeAcquisitionReason,
@@ -31,6 +33,11 @@ pub enum AuthoritativeRuleEventKind {
     },
     DecisionCleared {
         decision: DecisionId,
+    },
+    SbaGraveyardOrderChosen {
+        continuation: ContinuationId,
+        owner: PlayerId,
+        top_to_bottom: Vec<GameObjectId>,
     },
     RandomValueSampled {
         stream: RandomStreamKeyV1,
@@ -98,6 +105,15 @@ impl AuthoritativeRuleEventKind {
             },
             Self::DecisionCleared { decision } => SemanticDeltaOperation::DecisionCleared {
                 decision: *decision,
+            },
+            Self::SbaGraveyardOrderChosen {
+                continuation,
+                owner,
+                top_to_bottom,
+            } => SemanticDeltaOperation::SbaGraveyardOrderChosen {
+                continuation: *continuation,
+                owner: *owner,
+                top_to_bottom: top_to_bottom.clone(),
             },
             Self::RandomValueSampled {
                 stream,

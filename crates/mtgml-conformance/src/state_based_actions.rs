@@ -25,7 +25,7 @@ use mtgml_model::{
     ZoneKind,
 };
 use mtgml_random::RootSeed256;
-use mtgml_rules::{ProgramKernelV1, TransitionResult};
+use mtgml_rules::{AuthoritativeRuleEventKind, ProgramKernelV1, TransitionResult};
 use mtgml_state::{
     construct_synthetic_engine_state, validate_engine_state, BaseCharacteristics,
     ContinuationPayloadV2, ContinuationRecordV2, ControlHistory, EngineState,
@@ -453,6 +453,51 @@ fn simultaneous_round_preserves_all_actions_while_apnap_order_is_pending() {
         ],
     );
     assert_eq!(actions.len(), 4);
+}
+
+#[test]
+fn apnap_initial_order_decision_uses_the_active_player_first() {
+    let mut before = state_with(
+        &[
+            CreatureSpec {
+                owner: P1,
+                toughness: 0,
+                marked_damage: 0,
+            },
+            CreatureSpec {
+                owner: P1,
+                toughness: 0,
+                marked_damage: 0,
+            },
+            CreatureSpec {
+                owner: P2,
+                toughness: 0,
+                marked_damage: 0,
+            },
+            CreatureSpec {
+                owner: P2,
+                toughness: 0,
+                marked_damage: 0,
+            },
+        ],
+        [40, 40],
+    );
+    before.core.active_player = P2;
+    validate_engine_state(&before).unwrap();
+    let transition = advance_sba(&before, "P2-active APNAP staging");
+    assert_pending_order(
+        &before,
+        &transition,
+        P2,
+        &[P2, P1],
+        &[GameObjectId(3), GameObjectId(4)],
+        &[
+            object_action(1, vec![SbaObjectCauseV1::ZeroToughness]),
+            object_action(2, vec![SbaObjectCauseV1::ZeroToughness]),
+            object_action(3, vec![SbaObjectCauseV1::ZeroToughness]),
+            object_action(4, vec![SbaObjectCauseV1::ZeroToughness]),
+        ],
+    );
 }
 
 #[test]
@@ -1184,6 +1229,27 @@ fn first_owner_order_only_advances_the_same_round_to_the_next_apnap_owner() {
         .events
         .iter()
         .all(|event| event.state_revision == StateRevision(2)));
+    assert_eq!(transition.events.len(), 3);
+    assert!(matches!(
+        &transition.events[0].event,
+        AuthoritativeRuleEventKind::DecisionCleared { decision }
+            if *decision == first_request.decision_id
+    ));
+    assert!(matches!(
+        &transition.events[1].event,
+        AuthoritativeRuleEventKind::SbaGraveyardOrderChosen {
+            continuation,
+            owner,
+            top_to_bottom,
+        } if Some(*continuation) == first_request.continuation_id
+            && *owner == P1
+            && *top_to_bottom == vec![GameObjectId(1), GameObjectId(2)]
+    ));
+    assert!(matches!(
+        &transition.events[2].event,
+        AuthoritativeRuleEventKind::DecisionCreated { decision }
+            if Some(*decision) == transition.next_decision.as_ref().map(|request| request.decision_id)
+    ));
     assert_eq!(transition.next_state.zones, before.zones);
     assert_eq!(transition.next_state.core.players, before.core.players);
     assert_eq!(
@@ -1201,6 +1267,19 @@ fn first_owner_order_only_advances_the_same_round_to_the_next_apnap_owner() {
     assert_eq!(second_request.actor, P2);
     assert_eq!(second_request.decision_id, DecisionId(3));
     assert_eq!(second_request.player_decision_id, PlayerDecisionIdV1(2));
+    assert_eq!(
+        transition.next_state.perspective_identities.players[&P1].next_player_decision_id,
+        before.perspective_identities.players[&P1].next_player_decision_id
+    );
+    assert_eq!(
+        transition.next_state.perspective_identities.players[&P2]
+            .next_player_decision_id
+            .0,
+        before.perspective_identities.players[&P2]
+            .next_player_decision_id
+            .0
+            + 1
+    );
     assert_eq!(
         second_request.continuation_id,
         first_request.continuation_id
@@ -1238,6 +1317,32 @@ fn first_owner_order_only_advances_the_same_round_to_the_next_apnap_owner() {
             }],
         }
     );
+
+    assert_eq!(
+        transition.delta.audit,
+        transition
+            .events
+            .iter()
+            .map(|event| event.event.semantic_delta())
+            .collect::<Vec<_>>()
+    );
+
+    let mut wrong_owner_event = transition.clone();
+    let AuthoritativeRuleEventKind::SbaGraveyardOrderChosen { owner, .. } =
+        &mut wrong_owner_event.events[1].event
+    else {
+        unreachable!()
+    };
+    *owner = P2;
+    wrong_owner_event.delta.audit = wrong_owner_event
+        .events
+        .iter()
+        .map(|event| event.event.semantic_delta())
+        .collect();
+    assert!(matches!(
+        mtgml_rules::validate_transition_contract(&before, &wrong_owner_event),
+        Err(mtgml_rules::TransitionViolation::SbaOrder)
+    ));
 }
 
 #[test]
@@ -1307,4 +1412,367 @@ fn task7_second_owner_final_order_waits_for_task9_atomic_application() {
         ),
         "the Task-7 order path should identify the deferred Task-9 boundary: {result:?}"
     );
+}
+
+#[test]
+fn task7_no_order_sba_batch_is_deferred_to_task9() {
+    let state = state_with(
+        &[CreatureSpec {
+            owner: P1,
+            toughness: 0,
+            marked_damage: 0,
+        }],
+        [40, 40],
+    );
+    let before = state.clone();
+    let mut kernel = magic_kernel();
+    assert!(matches!(
+        kernel.advance_forced_progress(&state),
+        Err(mtgml_rules::KernelExecutionError::UnsupportedStagePath)
+    ));
+    assert_eq!(state, before, "Task 7 must not apply a no-order SBA batch");
+}
+
+fn current_order_response(
+    state: &EngineState,
+    candidate_ids: Vec<CandidateIdV1>,
+) -> DecisionResponseV2 {
+    let request = &state
+        .execution
+        .pending_decision
+        .as_ref()
+        .expect("Order fixture has a pending Decision")
+        .request;
+    DecisionResponseV2 {
+        schema_version: DECISION_RESPONSE_V2_SCHEMA.into(),
+        player_decision_id: request.player_decision_id,
+        state_revision: request.state_revision,
+        answer: DecisionAnswerV2::Order { candidate_ids },
+    }
+}
+
+fn assert_rejected_order_without_mutation(
+    state: &EngineState,
+    trusted_actor: PlayerId,
+    response: &DecisionResponseV2,
+) {
+    let before = state.clone();
+    let digest = state.digest().unwrap();
+    let mut kernel = magic_kernel();
+    let result = kernel.apply(state, trusted_actor, response);
+    assert_eq!(state, &before);
+    assert_eq!(state.digest().unwrap(), digest);
+    let transition = result.expect("player-caused Order error is a semantic rejection");
+    assert!(!transition.accepted);
+    assert_eq!(transition.next_state, before);
+}
+
+#[test]
+fn task7_order_actor_identity_answer_family_and_stale_revision_reject_atomically() {
+    let state = state_with_pending_two_owner_order();
+    let valid = current_order_response(&state, vec![CandidateIdV1(1), CandidateIdV1(0)]);
+    assert_rejected_order_without_mutation(&state, P2, &valid);
+
+    let mut stale = valid.clone();
+    stale.state_revision = StateRevision(0);
+    assert_rejected_order_without_mutation(&state, P1, &stale);
+
+    let mut wrong_player_decision = valid.clone();
+    wrong_player_decision.player_decision_id = PlayerDecisionIdV1(999);
+    assert_rejected_order_without_mutation(&state, P1, &wrong_player_decision);
+
+    let mut wrong_answer_family = valid;
+    wrong_answer_family.answer = DecisionAnswerV2::SelectOne {
+        candidate_id: CandidateIdV1(0),
+    };
+    assert_rejected_order_without_mutation(&state, P1, &wrong_answer_family);
+
+    let unknown_candidate =
+        current_order_response(&state, vec![CandidateIdV1(99), CandidateIdV1(0)]);
+    assert_rejected_order_without_mutation(&state, P1, &unknown_candidate);
+}
+
+#[test]
+fn task7_order_revalidates_saved_plan_and_continuation_binding() {
+    let state = state_with_pending_two_owner_order();
+    let response = current_order_response(&state, vec![CandidateIdV1(1), CandidateIdV1(0)]);
+
+    let mut stale_plan = state.clone();
+    stale_plan
+        .foundation_sources
+        .get_mut(&GameObjectId(1))
+        .unwrap()
+        .base_characteristics = BaseCharacteristics::Simple {
+        power: 2,
+        toughness: 2,
+    };
+    validate_engine_state(&stale_plan).unwrap();
+    let before = stale_plan.clone();
+    let digest = stale_plan.digest().unwrap();
+    let mut kernel = magic_kernel();
+    assert!(matches!(
+        kernel.apply(&stale_plan, P1, &response),
+        Err(mtgml_rules::KernelExecutionError::UnsupportedStagePath)
+    ));
+    assert_eq!(stale_plan, before);
+    assert_eq!(stale_plan.digest().unwrap(), digest);
+
+    let mut wrong_continuation = state.clone();
+    wrong_continuation
+        .execution
+        .pending_decision
+        .as_mut()
+        .unwrap()
+        .request
+        .continuation_id = Some(mtgml_model::ContinuationId(99));
+    let before = wrong_continuation.clone();
+    let mut kernel = magic_kernel();
+    assert!(matches!(
+        kernel.apply(&wrong_continuation, P1, &response),
+        Err(mtgml_rules::KernelExecutionError::BeforeState(_))
+    ));
+    assert_eq!(wrong_continuation, before);
+
+    let mut wrong_current_actor = state.clone();
+    wrong_current_actor
+        .execution
+        .continuations
+        .values_mut()
+        .next()
+        .unwrap()
+        .actor = P2;
+    let before = wrong_current_actor.clone();
+    let mut kernel = magic_kernel();
+    assert!(matches!(
+        kernel.apply(&wrong_current_actor, P1, &response),
+        Err(mtgml_rules::KernelExecutionError::BeforeState(_))
+    ));
+    assert_eq!(wrong_current_actor, before);
+}
+
+#[test]
+fn task7_intermediate_stage_identity_exhaustion_rejects_without_mutation() {
+    use mtgml_model::RuleEventId;
+
+    let response = current_order_response(
+        &state_with_pending_two_owner_order(),
+        vec![CandidateIdV1(1), CandidateIdV1(0)],
+    );
+    let mut decision = state_with_pending_two_owner_order();
+    decision.allocators.next_decision_id = DecisionId(u64::MAX);
+    mtgml_state::validate_engine_state(&decision).unwrap();
+    assert_order_exhaustion(&decision, &response, |error| {
+        matches!(
+            error,
+            mtgml_rules::KernelExecutionError::Exhaustion("decision")
+        )
+    });
+
+    let mut player_decision = state_with_pending_two_owner_order();
+    player_decision
+        .perspective_identities
+        .players
+        .get_mut(&P2)
+        .unwrap()
+        .next_player_decision_id = PlayerDecisionIdV1(u64::MAX);
+    mtgml_state::validate_engine_state(&player_decision).unwrap();
+    assert_order_exhaustion(&player_decision, &response, |error| {
+        matches!(
+            error,
+            mtgml_rules::KernelExecutionError::Exhaustion("player_decision")
+        )
+    });
+
+    let mut event = state_with_pending_two_owner_order();
+    event.allocators.next_rule_event_id = RuleEventId(u64::MAX - 2);
+    mtgml_state::validate_engine_state(&event).unwrap();
+    assert_order_exhaustion(&event, &response, |error| {
+        matches!(
+            error,
+            mtgml_rules::KernelExecutionError::RuleEventIdOverflow
+        )
+    });
+
+    let mut revision = state_with_pending_two_owner_order();
+    let continuation = revision
+        .execution
+        .continuations
+        .values_mut()
+        .next()
+        .unwrap();
+    continuation.created_at_revision = StateRevision(u64::MAX);
+    let ContinuationPayloadV2::MagicSbaGraveyardOrderV1 {
+        round_start_revision,
+        ..
+    } = &mut continuation.payload
+    else {
+        unreachable!()
+    };
+    *round_start_revision = StateRevision(u64::MAX - 1);
+    revision.revision = StateRevision(u64::MAX);
+    revision
+        .execution
+        .pending_decision
+        .as_mut()
+        .unwrap()
+        .request
+        .state_revision = StateRevision(u64::MAX);
+    mtgml_state::validate_engine_state(&revision).unwrap();
+    let revision_response =
+        current_order_response(&revision, vec![CandidateIdV1(1), CandidateIdV1(0)]);
+    assert_order_exhaustion(&revision, &revision_response, |error| {
+        matches!(error, mtgml_rules::KernelExecutionError::RevisionOverflow)
+    });
+}
+
+fn assert_order_exhaustion(
+    state: &EngineState,
+    response: &DecisionResponseV2,
+    expected: impl FnOnce(&mtgml_rules::KernelExecutionError) -> bool,
+) {
+    let before = state.clone();
+    let digest = state.digest().unwrap();
+    let mut kernel = magic_kernel();
+    let error = kernel
+        .apply(state, P1, response)
+        .expect_err("exhausted stage identity must fail before commit");
+    assert!(expected(&error), "unexpected exhaustion surface: {error:?}");
+    assert_eq!(state, &before);
+    assert_eq!(state.digest().unwrap(), digest);
+}
+
+#[test]
+fn task7_initial_stage_identity_exhaustion_fails_before_decision_creation() {
+    use mtgml_model::RuleEventId;
+
+    let state_with_order = || {
+        state_with(
+            &[
+                CreatureSpec {
+                    owner: P1,
+                    toughness: 0,
+                    marked_damage: 0,
+                },
+                CreatureSpec {
+                    owner: P1,
+                    toughness: 0,
+                    marked_damage: 0,
+                },
+            ],
+            [40, 40],
+        )
+    };
+    let assert_failure =
+        |state: &EngineState, expected: fn(&mtgml_rules::KernelExecutionError) -> bool| {
+            let before = state.clone();
+            let digest = state.digest().unwrap();
+            let mut kernel = magic_kernel();
+            let error = kernel
+                .advance_forced_progress(state)
+                .expect_err("initial Order stage identity exhaustion must fail closed");
+            assert!(expected(&error), "unexpected exhaustion surface: {error:?}");
+            assert_eq!(state, &before);
+            assert_eq!(state.digest().unwrap(), digest);
+        };
+
+    let mut decision = state_with_order();
+    decision.allocators.next_decision_id = DecisionId(u64::MAX);
+    mtgml_state::validate_engine_state(&decision).unwrap();
+    assert_failure(&decision, |error| {
+        matches!(
+            error,
+            mtgml_rules::KernelExecutionError::Exhaustion("decision")
+        )
+    });
+
+    let mut continuation = state_with_order();
+    continuation.allocators.next_continuation_id = mtgml_model::ContinuationId(u64::MAX);
+    mtgml_state::validate_engine_state(&continuation).unwrap();
+    assert_failure(&continuation, |error| {
+        matches!(
+            error,
+            mtgml_rules::KernelExecutionError::Exhaustion("continuation")
+        )
+    });
+
+    let mut player_decision = state_with_order();
+    player_decision
+        .perspective_identities
+        .players
+        .get_mut(&P1)
+        .unwrap()
+        .next_player_decision_id = PlayerDecisionIdV1(u64::MAX);
+    mtgml_state::validate_engine_state(&player_decision).unwrap();
+    assert_failure(&player_decision, |error| {
+        matches!(
+            error,
+            mtgml_rules::KernelExecutionError::Exhaustion("player_decision")
+        )
+    });
+
+    let mut event = state_with_order();
+    event.allocators.next_rule_event_id = RuleEventId(u64::MAX);
+    mtgml_state::validate_engine_state(&event).unwrap();
+    assert_failure(&event, |error| {
+        matches!(
+            error,
+            mtgml_rules::KernelExecutionError::RuleEventIdOverflow
+        )
+    });
+
+    let mut revision = state_with_order();
+    revision.revision = StateRevision(u64::MAX);
+    mtgml_state::validate_engine_state(&revision).unwrap();
+    assert_failure(&revision, |error| {
+        matches!(error, mtgml_rules::KernelExecutionError::RevisionOverflow)
+    });
+}
+
+#[test]
+fn task7_missing_actor_opaque_identity_fails_before_stage_creation() {
+    let mut state = state_with(
+        &[
+            CreatureSpec {
+                owner: P1,
+                toughness: 0,
+                marked_damage: 0,
+            },
+            CreatureSpec {
+                owner: P1,
+                toughness: 0,
+                marked_damage: 0,
+            },
+        ],
+        [40, 40],
+    );
+    let opaque = state
+        .perspective_identities
+        .players
+        .get_mut(&P1)
+        .unwrap()
+        .object_to_opaque
+        .remove(&GameObjectId(1))
+        .unwrap();
+    state
+        .perspective_identities
+        .players
+        .get_mut(&P1)
+        .unwrap()
+        .opaque_to_object
+        .remove(&opaque);
+    state
+        .knowledge
+        .players
+        .get_mut(&P1)
+        .unwrap()
+        .active
+        .remove(&opaque);
+    validate_engine_state(&state).unwrap();
+    let before = state.clone();
+    let mut kernel = magic_kernel();
+    assert!(matches!(
+        kernel.advance_forced_progress(&state),
+        Err(mtgml_rules::KernelExecutionError::UnsupportedStagePath)
+    ));
+    assert_eq!(state, before);
 }

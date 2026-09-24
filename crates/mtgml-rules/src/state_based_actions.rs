@@ -13,12 +13,19 @@ use mtgml_state::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)] // Used by the non-default conformance-testkit adapter.
 pub enum SbaContinuationValidationError {
     NotS3AConformanceCandidate,
     NoActiveSbaContinuation,
     UnsupportedSbaProfile,
     SelectedActionSetMismatch,
     ApnapOwnersMismatch,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SbaOrderRoundPlan {
+    pub(crate) selected_sba_actions: Vec<SbaSelectedActionV1>,
+    pub(crate) apnap_owners: Vec<PlayerId>,
 }
 
 pub(crate) fn validate_sba_order_continuation(
@@ -37,22 +44,33 @@ pub(crate) fn validate_sba_order_continuation(
         return Err(SbaContinuationValidationError::NoActiveSbaContinuation);
     };
 
-    validate_s3_a_support_profile(state)?;
-    validate_engine_state(state)
-        .map_err(|_| SbaContinuationValidationError::UnsupportedSbaProfile)?;
-
-    let current_actions = derive_bounded_sba_actions(state)?;
-    if &current_actions != selected_sba_actions {
+    let current_plan = derive_bounded_sba_round_plan(state)?;
+    if current_plan.selected_sba_actions != *selected_sba_actions {
         return Err(SbaContinuationValidationError::SelectedActionSetMismatch);
     }
 
-    let required_owners = derive_order_owners(state, &current_actions);
-    if &required_owners != apnap_owners
-        || required_owners.get(*next_owner_index as usize) != Some(&continuation.actor)
+    if current_plan.apnap_owners != *apnap_owners
+        || current_plan.apnap_owners.get(*next_owner_index as usize) != Some(&continuation.actor)
     {
         return Err(SbaContinuationValidationError::ApnapOwnersMismatch);
     }
     Ok(())
+}
+
+/// Sole derivation entry for both fresh SBA ordering stages and saved-plan
+/// revalidation. The result contains no cached or caller-supplied facts.
+pub(crate) fn derive_bounded_sba_round_plan(
+    state: &EngineState,
+) -> Result<SbaOrderRoundPlan, SbaContinuationValidationError> {
+    validate_s3_a_support_profile(state)?;
+    validate_engine_state(state)
+        .map_err(|_| SbaContinuationValidationError::UnsupportedSbaProfile)?;
+    let selected_sba_actions = derive_bounded_sba_actions(state)?;
+    let apnap_owners = derive_order_owners(state, &selected_sba_actions);
+    Ok(SbaOrderRoundPlan {
+        selected_sba_actions,
+        apnap_owners,
+    })
 }
 
 /// Proves the closed S3.A semantic support profile before Foundation source

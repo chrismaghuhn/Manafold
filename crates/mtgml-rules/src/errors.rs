@@ -61,7 +61,7 @@ pub enum KernelExecutionError {
     PerspectiveLifecycle(#[from] mtgml_state::LifecycleApplicationError),
     #[error("{0} identity space is exhausted")]
     Exhaustion(&'static str),
-    #[error("engine-offered stage path is unsupported in the current synthetic protocol")]
+    #[error("engine-offered decision stage path is unsupported in the active rules profile")]
     UnsupportedStagePath,
     #[error("zone-incarnation request rejected: {0}")]
     ZoneIncarnation(ZoneIncarnationError),

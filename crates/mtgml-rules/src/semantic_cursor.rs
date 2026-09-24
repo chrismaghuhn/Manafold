@@ -1,10 +1,11 @@
-use mtgml_model::{DecisionId, GameObjectId, PlayerId};
+use mtgml_model::{ContinuationId, DecisionId, GameObjectId, PlayerId};
 use mtgml_random::{RandomStreamCursorV1, RandomStreamKeyV1, RootSeed256};
 use mtgml_state::{
-    BeginningStep, CombatState, EngineState, FoundationCreatureSource, KnowledgeStateV2,
-    ObjectSnapshot, PerspectiveIdentityStateV2, PriorityState, TurnPosition,
+    BeginningStep, CombatState, ContinuationPayloadV2, ContinuationRecordV2, EngineState,
+    FoundationCreatureSource, KnowledgeStateV2, ObjectSnapshot, PerspectiveIdentityStateV2,
+    PriorityState, SbaGraveyardOwnerOrderV1, SbaSelectedActionV1, TurnPosition,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::turn_structure::derive_ordinary_untap_affected_objects;
 use crate::turn_structure::temporal_successor;
@@ -19,6 +20,7 @@ pub(crate) struct SemanticValidationCursor {
     combat: Option<CombatState>,
     foundation_sources: BTreeMap<GameObjectId, FoundationCreatureSource>,
     pending_decision: Option<DecisionId>,
+    sba_continuation: Option<ContinuationRecordV2>,
     root_seed: RootSeed256,
     random_counters: BTreeMap<RandomStreamKeyV1, u64>,
     active_player: PlayerId,
@@ -46,6 +48,17 @@ impl SemanticValidationCursor {
                 .pending_decision
                 .as_ref()
                 .map(|record| record.request.decision_id),
+            sba_continuation: state
+                .execution
+                .continuations
+                .values()
+                .find(|record| {
+                    matches!(
+                        &record.payload,
+                        ContinuationPayloadV2::MagicSbaGraveyardOrderV1 { .. }
+                    )
+                })
+                .cloned(),
             root_seed: state.random.root_seed,
             random_counters: state
                 .random
@@ -261,6 +274,11 @@ impl SemanticValidationCursor {
                 }
                 self.pending_decision = None;
             }
+            AuthoritativeRuleEventKind::SbaGraveyardOrderChosen {
+                continuation,
+                owner,
+                top_to_bottom,
+            } => self.apply_sba_order_chosen(*continuation, *owner, top_to_bottom)?,
             AuthoritativeRuleEventKind::RandomValueSampled {
                 stream,
                 bound,
@@ -378,6 +396,91 @@ impl SemanticValidationCursor {
         Ok(())
     }
 
+    fn apply_sba_order_chosen(
+        &mut self,
+        continuation_id: ContinuationId,
+        owner: PlayerId,
+        top_to_bottom: &[GameObjectId],
+    ) -> Result<(), TransitionViolation> {
+        let record = self
+            .sba_continuation
+            .as_ref()
+            .filter(|record| record.id == continuation_id)
+            .ok_or(TransitionViolation::SbaOrder)?;
+        let ContinuationPayloadV2::MagicSbaGraveyardOrderV1 {
+            selected_sba_actions,
+            apnap_owners,
+            next_owner_index,
+            completed_owner_orders,
+            ..
+        } = &record.payload
+        else {
+            return Err(TransitionViolation::SbaOrder);
+        };
+
+        let index =
+            usize::try_from(*next_owner_index).map_err(|_| TransitionViolation::SbaOrder)?;
+        if record.actor != owner
+            || apnap_owners.get(index) != Some(&owner)
+            || completed_owner_orders.len() != index
+            || top_to_bottom.len() < 2
+        {
+            return Err(TransitionViolation::SbaOrder);
+        }
+
+        let mut selected_for_owner = BTreeSet::new();
+        for action in selected_sba_actions {
+            if let SbaSelectedActionV1::ObjectToOwnerGraveyard { object, .. } = action {
+                let snapshot = self
+                    .objects
+                    .get(object)
+                    .ok_or(TransitionViolation::SbaOrder)?;
+                if snapshot.owner == owner {
+                    selected_for_owner.insert(*object);
+                }
+            }
+        }
+        let chosen: BTreeSet<_> = top_to_bottom.iter().copied().collect();
+        if selected_for_owner.len() != top_to_bottom.len()
+            || chosen.len() != top_to_bottom.len()
+            || chosen != selected_for_owner
+        {
+            return Err(TransitionViolation::SbaOrder);
+        }
+
+        let next_index = next_owner_index
+            .checked_add(1)
+            .ok_or(TransitionViolation::SbaOrder)?;
+        let next_actor = apnap_owners
+            .get(usize::try_from(next_index).map_err(|_| TransitionViolation::SbaOrder)?)
+            .copied()
+            // Task 7 accepts only intermediate order stages. The final choice
+            // is owned by Task 9's atomic choice-plus-SBA transition.
+            .ok_or(TransitionViolation::SbaOrder)?;
+        let record = self
+            .sba_continuation
+            .as_mut()
+            .filter(|record| record.id == continuation_id)
+            .ok_or(TransitionViolation::SbaOrder)?;
+        let ContinuationPayloadV2::MagicSbaGraveyardOrderV1 {
+            next_owner_index,
+            completed_owner_orders,
+            ..
+        } = &mut record.payload
+        else {
+            return Err(TransitionViolation::SbaOrder);
+        };
+        completed_owner_orders.push(SbaGraveyardOwnerOrderV1 {
+            owner,
+            top_to_bottom: top_to_bottom.to_vec(),
+        });
+        *next_owner_index = next_index;
+        record.actor = next_actor;
+        record.stage_index =
+            u16::try_from(next_index).map_err(|_| TransitionViolation::SbaOrder)?;
+        Ok(())
+    }
+
     pub(crate) fn validate_final_state(
         &self,
         after: &EngineState,
@@ -390,6 +493,11 @@ impl SemanticValidationCursor {
             || self.foundation_sources != after.foundation_sources
         {
             return Err(TransitionViolation::UnexplainedMutation);
+        }
+        if let Some(expected) = &self.sba_continuation {
+            if after.execution.continuations.get(&expected.id) != Some(expected) {
+                return Err(TransitionViolation::SbaOrder);
+            }
         }
         let after_life: BTreeMap<_, _> = after
             .core

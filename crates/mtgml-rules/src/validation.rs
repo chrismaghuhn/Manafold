@@ -47,6 +47,8 @@ pub enum TransitionViolation {
     TapChange,
     #[error("decision event sequence does not compose to the final state")]
     DecisionEvent,
+    #[error("SBA Graveyard Order event does not match the active continuation stage")]
+    SbaOrder,
     #[error("an accepted response reused the consumed decision identity")]
     DecisionIdentityReused,
     #[error("randomness event sequence does not match checkpointed stream state")]

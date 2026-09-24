@@ -7,6 +7,8 @@ use mtgml_state::{
     PerspectiveLifecycleAuditV1, PerspectiveLifecycleMutationV1, TurnPosition, VisibilityPartition,
     ZoneLocation, ZonePosition, ZoneTransition,
 };
+#[cfg(any(test, feature = "m3-conformance-testkit"))]
+use mtgml_state::{ContinuationPayloadV2, ContinuationRecordV2, SbaGraveyardOwnerOrderV1};
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::convert::TryFrom;
@@ -879,6 +881,276 @@ fn validate_accepted_progression(
     Ok(())
 }
 
+#[cfg(any(test, feature = "m3-conformance-testkit"))]
+fn magic_sba_order_continuation(state: &EngineState) -> Option<&ContinuationRecordV2> {
+    state.execution.continuations.values().find(|record| {
+        matches!(
+            &record.payload,
+            ContinuationPayloadV2::MagicSbaGraveyardOrderV1 { .. }
+        )
+    })
+}
+
+#[cfg(any(test, feature = "m3-conformance-testkit"))]
+fn validate_sba_order_stage_world(
+    before: &EngineState,
+    after: &EngineState,
+    actor_with_new_request: PlayerId,
+    expected_next_continuation: mtgml_model::ContinuationId,
+    expected_event_count: u64,
+) -> Result<(), TransitionViolation> {
+    if after.revision.0
+        != before
+            .revision
+            .0
+            .checked_add(1)
+            .ok_or(TransitionViolation::RevisionDidNotAdvance)?
+        || before.core != after.core
+        || before.combat != after.combat
+        || before.foundation_sources != after.foundation_sources
+        || before.zones != after.zones
+        || before.random != after.random
+        || before.knowledge != after.knowledge
+        || before.format != after.format
+        || before.execution.effects != after.execution.effects
+        || before.execution.waiting_triggers != after.execution.waiting_triggers
+        || before.execution.delayed_effects != after.execution.delayed_effects
+    {
+        return Err(TransitionViolation::SbaOrder);
+    }
+
+    let mut expected_allocators = before.allocators.clone();
+    expected_allocators.next_decision_id = mtgml_model::DecisionId(
+        before
+            .allocators
+            .next_decision_id
+            .0
+            .checked_add(1)
+            .ok_or(TransitionViolation::DecisionProgression)?,
+    );
+    expected_allocators.next_continuation_id = expected_next_continuation;
+    expected_allocators.next_rule_event_id = mtgml_model::RuleEventId(
+        before
+            .allocators
+            .next_rule_event_id
+            .0
+            .checked_add(expected_event_count)
+            .ok_or(TransitionViolation::EventIdentity)?,
+    );
+    if after.allocators != expected_allocators {
+        return Err(TransitionViolation::SbaOrder);
+    }
+
+    let mut expected_identities = before.perspective_identities.clone();
+    let expected_actor_identity = expected_identities
+        .players
+        .get_mut(&actor_with_new_request)
+        .ok_or(TransitionViolation::DecisionProgression)?;
+    expected_actor_identity.next_player_decision_id = mtgml_model::PlayerDecisionIdV1(
+        expected_actor_identity
+            .next_player_decision_id
+            .0
+            .checked_add(1)
+            .ok_or(TransitionViolation::DecisionProgression)?,
+    );
+    if after.perspective_identities != expected_identities {
+        return Err(TransitionViolation::SbaOrder);
+    }
+    Ok(())
+}
+
+#[cfg(any(test, feature = "m3-conformance-testkit"))]
+fn validate_sba_order_transition(
+    before: &EngineState,
+    result: &TransitionResult,
+) -> Result<(), TransitionViolation> {
+    use crate::events::AuthoritativeRuleEventKind as Event;
+    let after = &result.next_state;
+    let before_record = magic_sba_order_continuation(before);
+    let after_record = magic_sba_order_continuation(after);
+    let has_order_event = result
+        .events
+        .iter()
+        .any(|event| matches!(&event.event, Event::SbaGraveyardOrderChosen { .. }));
+
+    match (before_record, after_record) {
+        (None, None) => {
+            if has_order_event {
+                return Err(TransitionViolation::SbaOrder);
+            }
+            Ok(())
+        }
+        (None, Some(after_continuation)) => {
+            if before.execution.pending_decision.is_some()
+                || !before.execution.continuations.is_empty()
+                || result.events.len() != 1
+                || !matches!(
+                    &result.events[0].event,
+                    Event::DecisionCreated { decision }
+                        if after.execution.pending_decision.as_ref().is_some_and(|pending|
+                            pending.request.decision_id == *decision)
+                )
+                || !matches!(result.status, EpisodeStatus::Running)
+            {
+                return Err(TransitionViolation::SbaOrder);
+            }
+            let ContinuationPayloadV2::MagicSbaGraveyardOrderV1 {
+                round_start_revision,
+                selected_sba_actions,
+                apnap_owners,
+                next_owner_index,
+                completed_owner_orders,
+            } = &after_continuation.payload
+            else {
+                return Err(TransitionViolation::SbaOrder);
+            };
+            let plan = crate::state_based_actions::derive_bounded_sba_round_plan(before)
+                .map_err(|_| TransitionViolation::SbaOrder)?;
+            let first_owner = *plan
+                .apnap_owners
+                .first()
+                .ok_or(TransitionViolation::SbaOrder)?;
+            let pending = after
+                .execution
+                .pending_decision
+                .as_ref()
+                .ok_or(TransitionViolation::SbaOrder)?;
+            let request = &pending.request;
+            let expected_continuation = before.allocators.next_continuation_id;
+            if after.execution.continuations.len() != 1
+                || after_continuation.id != expected_continuation
+                || after_continuation.actor != first_owner
+                || after_continuation.created_at_revision != after.revision
+                || after_continuation.stage_index != 0
+                || *round_start_revision != before.revision
+                || *selected_sba_actions != plan.selected_sba_actions
+                || *apnap_owners != plan.apnap_owners
+                || *next_owner_index != 0
+                || !completed_owner_orders.is_empty()
+                || request.continuation_id != Some(expected_continuation)
+                || request.actor != first_owner
+                || request.visibility != mtgml_decision::DecisionVisibility::ActingPlayerOnly
+                || request.decision_id != before.allocators.next_decision_id
+                || request.state_revision != after.revision
+            {
+                return Err(TransitionViolation::SbaOrder);
+            }
+            let next_continuation = mtgml_model::ContinuationId(
+                expected_continuation
+                    .0
+                    .checked_add(1)
+                    .ok_or(TransitionViolation::AllocatorProgression)?,
+            );
+            validate_sba_order_stage_world(before, after, first_owner, next_continuation, 1)
+        }
+        (Some(_), None) => Err(TransitionViolation::SbaOrder),
+        (Some(before_continuation), Some(after_continuation)) => {
+            if !has_order_event
+                || result.events.len() != 3
+                || !matches!(
+                    &result.events[0].event,
+                    Event::DecisionCleared { decision }
+                        if before.execution.pending_decision.as_ref().is_some_and(|pending|
+                            pending.request.decision_id == *decision)
+                )
+                || !matches!(&result.events[2].event, Event::DecisionCreated { .. })
+                || !matches!(result.status, EpisodeStatus::Running)
+            {
+                return Err(TransitionViolation::SbaOrder);
+            }
+            let Event::SbaGraveyardOrderChosen {
+                continuation,
+                owner,
+                top_to_bottom,
+            } = &result.events[1].event
+            else {
+                return Err(TransitionViolation::SbaOrder);
+            };
+            let ContinuationPayloadV2::MagicSbaGraveyardOrderV1 {
+                round_start_revision: before_round_start,
+                selected_sba_actions: before_actions,
+                apnap_owners: before_owners,
+                next_owner_index: before_index,
+                completed_owner_orders: before_orders,
+            } = &before_continuation.payload
+            else {
+                return Err(TransitionViolation::SbaOrder);
+            };
+            let ContinuationPayloadV2::MagicSbaGraveyardOrderV1 {
+                round_start_revision: after_round_start,
+                selected_sba_actions: after_actions,
+                apnap_owners: after_owners,
+                next_owner_index: after_index,
+                completed_owner_orders: _after_orders,
+            } = &after_continuation.payload
+            else {
+                return Err(TransitionViolation::SbaOrder);
+            };
+            let old_index =
+                usize::try_from(*before_index).map_err(|_| TransitionViolation::SbaOrder)?;
+            let expected_owner = *before_owners
+                .get(old_index)
+                .ok_or(TransitionViolation::SbaOrder)?;
+            let next_index = before_index
+                .checked_add(1)
+                .ok_or(TransitionViolation::SbaOrder)?;
+            let next_actor = *before_owners
+                .get(usize::try_from(next_index).map_err(|_| TransitionViolation::SbaOrder)?)
+                .ok_or(TransitionViolation::SbaOrder)?;
+            let before_pending = before
+                .execution
+                .pending_decision
+                .as_ref()
+                .ok_or(TransitionViolation::SbaOrder)?;
+            let after_pending = after
+                .execution
+                .pending_decision
+                .as_ref()
+                .ok_or(TransitionViolation::SbaOrder)?;
+            let expected_order = SbaGraveyardOwnerOrderV1 {
+                owner: expected_owner,
+                top_to_bottom: top_to_bottom.clone(),
+            };
+            let mut expected_continuation = before_continuation.clone();
+            let ContinuationPayloadV2::MagicSbaGraveyardOrderV1 {
+                next_owner_index,
+                completed_owner_orders,
+                ..
+            } = &mut expected_continuation.payload
+            else {
+                unreachable!()
+            };
+            completed_owner_orders.push(expected_order);
+            *next_owner_index = next_index;
+            expected_continuation.actor = next_actor;
+            expected_continuation.stage_index =
+                u16::try_from(next_index).map_err(|_| TransitionViolation::SbaOrder)?;
+
+            if *continuation != before_continuation.id
+                || *owner != expected_owner
+                || before_orders.len() != old_index
+                || *after_round_start != *before_round_start
+                || *after_actions != *before_actions
+                || *after_owners != *before_owners
+                || *after_index != next_index
+                || after_continuation != &expected_continuation
+                || after.execution.continuations.len() != 1
+                || before_pending.request.continuation_id != Some(before_continuation.id)
+                || after_pending.request.continuation_id != Some(before_continuation.id)
+                || after_pending.request.actor != next_actor
+                || after_pending.request.decision_id == before_pending.request.decision_id
+                || after_pending.request.state_revision != after.revision
+                || !matches!(result.events[2].event, Event::DecisionCreated { decision }
+                    if decision == after_pending.request.decision_id)
+            {
+                return Err(TransitionViolation::SbaOrder);
+            }
+            let expected_next_continuation = before.allocators.next_continuation_id;
+            validate_sba_order_stage_world(before, after, next_actor, expected_next_continuation, 3)
+        }
+    }
+}
+
 pub fn validate_transition_contract(
     before: &EngineState,
     result: &TransitionResult,
@@ -1067,6 +1339,11 @@ pub fn validate_transition_contract(
         }
     }
     cursor.validate_final_state(&result.next_state)?;
+
+    #[cfg(any(test, feature = "m3-conformance-testkit"))]
+    if result.accepted {
+        validate_sba_order_transition(before, result)?;
+    }
 
     let event_count =
         u64::try_from(result.events.len()).map_err(|_| TransitionViolation::EventIdentity)?;

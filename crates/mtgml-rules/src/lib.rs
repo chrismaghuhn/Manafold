@@ -1,6 +1,7 @@
 //! Authoritative events and exact, compositional transition validation.
 
 mod contract;
+mod decision_stage;
 mod errors;
 mod events;
 #[cfg(feature = "m2-conformance-fixtures")]
