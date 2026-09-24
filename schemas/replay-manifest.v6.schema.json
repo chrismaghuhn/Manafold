@@ -35,10 +35,42 @@
         "required": ["semantic_contract"]
       },
       "then": {
-        "properties": {
-          "schemas": {
-            "properties": {
-              "observation_payload_codec": {"const": "magic-m3-observation.v1"}
+        "if": {
+          "properties": {
+            "semantic_contract": {
+              "properties": {
+                "rules_manifest": {
+                  "properties": {
+                    "capability_closure": {
+                      "contains": {
+                        "properties": {"key": {"const": "rules/combat-phase"}},
+                        "required": ["key"]
+                      }
+                    }
+                  },
+                  "required": ["capability_closure"]
+                }
+              },
+              "required": ["rules_manifest"]
+            }
+          },
+          "required": ["semantic_contract"]
+        },
+        "then": {
+          "properties": {
+            "schemas": {
+              "properties": {
+                "observation_payload_codec": {"const": "magic-combat-observation.v2"}
+              }
+            }
+          }
+        },
+        "else": {
+          "properties": {
+            "schemas": {
+              "properties": {
+                "observation_payload_codec": {"const": "magic-m3-observation.v1"}
+              }
             }
           }
         }
@@ -414,7 +446,7 @@
           "const": "observation-envelope.v1"
         },
         "observation_payload_codec": {
-          "enum": ["synthetic-m3-observation.v1", "magic-m3-observation.v1"]
+          "enum": ["synthetic-m3-observation.v1", "magic-m3-observation.v1", "magic-combat-observation.v2"]
         },
         "information_state": {
           "const": "information-state-envelope.v2"

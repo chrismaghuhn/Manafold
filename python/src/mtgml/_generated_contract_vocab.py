@@ -63,6 +63,7 @@ STABLE_WIRE_ERROR_CODES = frozenset(
         "semantic.decision",
         "semantic.decision_response",
         "semantic.magic_m3_observation",
+        "semantic.magic_combat_observation",
         "semantic.observation",
         "semantic.information_state",
         "semantic.observed_event",

@@ -27,6 +27,12 @@ from ._magic_observation import (
     MagicObservation,
     MagicPendingSbaOrdering,
 )
+from ._magic_combat_observation import (
+    MAGIC_OBSERVATION_SCHEMA_V2,
+    MagicCombatBlockerAssignmentV2,
+    MagicCombatParticipationV2,
+    MagicObservationV2,
+)
 from ._observation_v1 import (
     INFORMATION_STATE_SCHEMA,
     OBSERVATION_SCHEMA,
@@ -71,6 +77,7 @@ __all__ = [
     "INFORMATION_STATE_SCHEMA",
     "INFORMATION_STATE_SCHEMA_V2",
     "MAGIC_OBSERVATION_SCHEMA_V1",
+    "MAGIC_OBSERVATION_SCHEMA_V2",
     "OBSERVATION_SCHEMA",
     "OBSERVED_EVENT_KINDS",
     "OBSERVED_EVENT_SCHEMA_V2",
@@ -88,7 +95,10 @@ __all__ = [
     "InformationStateDigestInputV2",
     "InformationStateEnvelope",
     "MagicCompletedOrder",
+    "MagicCombatBlockerAssignmentV2",
+    "MagicCombatParticipationV2",
     "MagicObservation",
+    "MagicObservationV2",
     "MagicPendingSbaOrdering",
     "ObservationEnvelope",
     "ObservedEventEnvelope",

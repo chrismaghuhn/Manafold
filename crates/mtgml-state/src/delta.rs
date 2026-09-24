@@ -62,6 +62,12 @@ pub enum SemanticDeltaOperation {
         from: TurnPosition,
         to: TurnPosition,
     },
+    AttackersDeclared {
+        defending_player: PlayerId,
+        attackers: Vec<GameObjectId>,
+    },
+    CombatEnded,
+    EmptyCombatStepsSkipped,
     UntapCompleted {
         affected_objects: Vec<GameObjectId>,
     },

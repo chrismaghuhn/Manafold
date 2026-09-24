@@ -91,7 +91,10 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             "exact-head review pending",
             readme,
         )
-        self.assertIn("Combat and later blocks have not started", readme)
+        self.assertIn(
+            "Block 4 remains blocked on the source-closure mismatch; Declare Blockers and later blocks have not started",
+            readme,
+        )
         self.assertNotIn("M3_S1_AUTHORIZATION_DECISION", readme)
         self.assertNotIn("M3_T0_CLOSURE_STATUS_SYNC_EXACT_HEAD_REVIEW", readme)
         self.assertIn(
@@ -423,8 +426,15 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             entry for entry in entries if entry["key"] == "rules/zone-incarnation"
         )
         draw_card = next(entry for entry in entries if entry["key"] == "rules/draw-card")
+        combat_phase = next(entry for entry in entries if entry["key"] == "rules/combat-phase")
+        declare_attackers = next(
+            entry for entry in entries if entry["key"] == "rules/declare-attackers"
+        )
         other_entries = [
-            entry for entry in entries if entry not in (turn_structure, zone_incarnation, draw_card)
+            entry
+            for entry in entries
+            if entry
+            not in (turn_structure, zone_incarnation, draw_card, combat_phase, declare_attackers)
         ]
 
         self.assertEqual(turn_structure["version"], "0.1.0")
@@ -545,6 +555,15 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             ],
         )
         self.assertIn("lifecycle remains specified", draw_card["notes"])
+
+        self.assertEqual(combat_phase["lifecycle"], "specified")
+        self.assertTrue(combat_phase["implementation_paths"])
+        self.assertEqual(combat_phase["conformance_cases"], [])
+        self.assertIn("blocked by the accepted Foundation V2 source closure", combat_phase["notes"])
+        self.assertEqual(declare_attackers["lifecycle"], "specified")
+        self.assertTrue(declare_attackers["implementation_paths"])
+        self.assertEqual(declare_attackers["conformance_cases"], [])
+        self.assertIn("blocked by the accepted Foundation V2 source closure", declare_attackers["notes"])
 
         for entry in other_entries:
             with self.subTest(capability=entry["key"]):

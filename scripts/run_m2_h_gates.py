@@ -391,6 +391,8 @@ COMMON_NAMED_CONTRACTS = frozenset(
         # Added by M3.S3.A Task 8; this is a new named contract, not an
         # expansion of the historical Synthetic M3 payload.
         "magic-m3-observation.v1",
+        # Block 4 successor codec carries perspective-local public combat.
+        "magic-combat-observation.v2",
         "replay-manifest.v4",
         "authoritative-replay.v4",
         "replay-manifest.v5",

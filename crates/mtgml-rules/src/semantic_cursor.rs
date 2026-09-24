@@ -21,6 +21,7 @@ pub(crate) struct SemanticValidationCursor {
     foundation_sources: BTreeMap<GameObjectId, FoundationCreatureSource>,
     has_lost: BTreeMap<PlayerId, bool>,
     pending_decision: Option<DecisionId>,
+    attacker_taps_pending: Option<BTreeSet<GameObjectId>>,
     sba_continuation: Option<ContinuationRecordV2>,
     sba_plan: Option<crate::state_based_actions::SbaOrderRoundPlan>,
     pending_final_sba_order: Option<SbaGraveyardOwnerOrderV1>,
@@ -57,6 +58,7 @@ impl SemanticValidationCursor {
                 .pending_decision
                 .as_ref()
                 .map(|record| record.request.decision_id),
+            attacker_taps_pending: None,
             sba_continuation: state
                 .execution
                 .continuations
@@ -89,6 +91,18 @@ impl SemanticValidationCursor {
         event: &crate::events::AuthoritativeRuleEventKind,
     ) -> Result<(), TransitionViolation> {
         use crate::events::AuthoritativeRuleEventKind;
+        if self.attacker_taps_pending.is_some()
+            && !matches!(event, AuthoritativeRuleEventKind::ObjectTapped { .. })
+        {
+            if self
+                .attacker_taps_pending
+                .as_ref()
+                .is_some_and(|pending| !pending.is_empty())
+            {
+                return Err(TransitionViolation::Combat);
+            }
+            self.attacker_taps_pending = None;
+        }
         match event {
             AuthoritativeRuleEventKind::ZoneTransition { transition } => {
                 let current = self
@@ -265,6 +279,11 @@ impl SemanticValidationCursor {
                 *current = *to;
             }
             AuthoritativeRuleEventKind::ObjectTapped { object, from, to } => {
+                if let Some(expected) = &mut self.attacker_taps_pending {
+                    if from != &false || to != &true || !expected.remove(object) {
+                        return Err(TransitionViolation::Combat);
+                    }
+                }
                 let current = self
                     .objects
                     .get_mut(object)
@@ -372,6 +391,81 @@ impl SemanticValidationCursor {
                     return Err(TransitionViolation::TurnStructure);
                 }
                 self.position = *to;
+            }
+            AuthoritativeRuleEventKind::AttackersDeclared {
+                defending_player,
+                attackers,
+            } => {
+                let unique_defender = self
+                    .life
+                    .keys()
+                    .copied()
+                    .find(|player| *player != self.active_player)
+                    .ok_or(TransitionViolation::Combat)?;
+                if self.position
+                    != (TurnPosition::Combat {
+                        step: mtgml_state::CombatStep::DeclareAttackers,
+                    })
+                    || self.combat.is_some()
+                    || *defending_player != unique_defender
+                    || attackers.windows(2).any(|pair| pair[0] >= pair[1])
+                    || attackers.iter().any(|attacker| {
+                        let object = self.objects.get(attacker);
+                        let source = self.foundation_sources.get(attacker);
+                        !matches!(
+                            (object, source),
+                            (Some(object), Some(source))
+                                if object.location.zone == mtgml_model::ZoneKind::Battlefield
+                                    && object.controller == self.active_player
+                                    && !object.tapped
+                                    && !object.face_down
+                                    && source.source_kind == mtgml_state::FoundationSourceKind::Creature
+                                    && matches!(source.base_characteristics, mtgml_state::BaseCharacteristics::Simple { .. })
+                                    && match source.control_history {
+                                        mtgml_state::ControlHistory::BeforeTurnStart { turn_number } => turn_number <= self.turn_number,
+                                        mtgml_state::ControlHistory::DuringTurn { turn_number, .. } => turn_number < self.turn_number,
+                                    }
+                        )
+                    })
+                {
+                    return Err(TransitionViolation::Combat);
+                }
+                self.combat = Some(mtgml_state::CombatState {
+                    defending_player: *defending_player,
+                    attackers: attackers.clone(),
+                    blockers: attackers.iter().map(|attacker| (*attacker, None)).collect(),
+                });
+                self.attacker_taps_pending = Some(attackers.iter().copied().collect());
+            }
+            AuthoritativeRuleEventKind::CombatEnded => {
+                if self.position
+                    != (TurnPosition::Combat {
+                        step: mtgml_state::CombatStep::EndOfCombat,
+                    })
+                    || !self
+                        .combat
+                        .as_ref()
+                        .is_some_and(|combat| combat.attackers.is_empty())
+                {
+                    return Err(TransitionViolation::Combat);
+                }
+                self.combat = None;
+            }
+            AuthoritativeRuleEventKind::EmptyCombatStepsSkipped => {
+                if self.position
+                    != (TurnPosition::Combat {
+                        step: mtgml_state::CombatStep::DeclareAttackers,
+                    })
+                    || !self
+                        .combat
+                        .as_ref()
+                        .is_some_and(|combat| combat.attackers.is_empty())
+                {
+                    return Err(TransitionViolation::Combat);
+                }
+                self.position = TurnPosition::Combat {
+                    step: mtgml_state::CombatStep::EndOfCombat,
+                };
             }
             AuthoritativeRuleEventKind::UntapCompleted { affected_objects } => {
                 if !matches!(
@@ -674,6 +768,10 @@ impl SemanticValidationCursor {
             || self.priority != after.core.priority
             || self.combat != after.combat
             || self.foundation_sources != after.foundation_sources
+            || self
+                .attacker_taps_pending
+                .as_ref()
+                .is_some_and(|pending| !pending.is_empty())
         {
             return Err(TransitionViolation::UnexplainedMutation);
         }

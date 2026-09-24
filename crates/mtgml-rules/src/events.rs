@@ -61,6 +61,12 @@ pub enum AuthoritativeRuleEventKind {
         from: TurnPosition,
         to: TurnPosition,
     },
+    AttackersDeclared {
+        defending_player: PlayerId,
+        attackers: Vec<GameObjectId>,
+    },
+    CombatEnded,
+    EmptyCombatStepsSkipped,
     UntapCompleted {
         affected_objects: Vec<GameObjectId>,
     },
@@ -153,6 +159,15 @@ impl AuthoritativeRuleEventKind {
                 from: *from,
                 to: *to,
             },
+            Self::AttackersDeclared {
+                defending_player,
+                attackers,
+            } => SemanticDeltaOperation::AttackersDeclared {
+                defending_player: *defending_player,
+                attackers: attackers.clone(),
+            },
+            Self::CombatEnded => SemanticDeltaOperation::CombatEnded,
+            Self::EmptyCombatStepsSkipped => SemanticDeltaOperation::EmptyCombatStepsSkipped,
             Self::UntapCompleted { affected_objects } => SemanticDeltaOperation::UntapCompleted {
                 affected_objects: affected_objects.clone(),
             },

@@ -81,10 +81,18 @@ revision progression. The S3.B replay revision bound is `+2`; it does not
 authorize a forced-progress loop. No event-as-input, implicit pass, or
 synthetic response is introduced.
 
+The exact `magic_combat_attackers_0_1_0` contract uses the new
+`magic-combat-observation.v2` payload codec. Its response plus one forced
+progress product has a `+2` revision bound. The combat closure does not widen
+the bounds of historical contracts or permit another forced-progress pass.
+
 The V6 manifest binds the observation payload codec. Existing producers retain
 `synthetic-m3-observation.v1`; `magic-m3-observation.v1` is admitted only for a
 semantic rules closure containing the selected SBA capability. The observation
 envelope and information-state digest identities remain unchanged.
+The `magic-m3-observation.v1` payload remains unchanged and contains no combat
+participation. The successor combat payload carries public combat state using
+perspective-local opaque object IDs.
 
 `FullStateDigestV4`, Checkpoint V5 and Replay V5 retain their exact historical
 meaning and bytes. V4 digest and V5 checkpoint/replay artifacts are never

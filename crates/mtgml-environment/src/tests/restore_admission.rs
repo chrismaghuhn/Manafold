@@ -116,7 +116,7 @@ fn magic_identity() -> ExecutionIdentityV1 {
     }
 }
 
-fn s1_valid_state() -> EngineState {
+pub(super) fn s1_valid_state() -> EngineState {
     let mut state =
         construct_synthetic_engine_state(SyntheticResetInputs {
             players: [PlayerId(1), PlayerId(2)],
