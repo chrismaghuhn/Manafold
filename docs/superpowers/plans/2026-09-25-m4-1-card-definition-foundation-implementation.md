@@ -403,20 +403,26 @@ After all source edits and fixture generation:
 3. Run repository schema validation, fixture/golden validation, repository
    integrity, Rust source structure, documentation/register/link validation,
    and maintainer-artifact checks that own any changed representations.
-4. Run `just check-fast`, `just check`, and `just check-all` because this
-   slice adds persistent identity and cross-crate content contracts. If a
-   gate is unavailable or blocked, report its exact status and cause; do not
-   infer PASS from narrower checks.
-5. Run the repository's archive/reproducibility check after all source and
-   fixture changes; make no further source changes afterward except the
-   implementation evidence record if that artifact is explicitly excluded
-   from the archive contract.
-6. Require hosted `PR Fast`, `PR Integration`, and stable aggregate
-   `manafold-pr-gate` on the exact implementation head before accepting the
-   implementation.
+4. Run `just check-fast`.
+5. Run `just check`.
+6. Run `just check-all` because this slice adds persistent identity and
+   cross-crate content contracts.
+7. Run `just release-candidate` as its own required gate. `check-all` does
+   not substitute for this command. The release-candidate result must contain
+   no `NOT_RUN` or `FAIL`. If any required gate is technically blocked or
+   unavailable, report it as `BLOCKED` or `NOT_RUN`; no narrower or
+   substitute suite may be relabeled as its PASS.
+8. After all source and fixture changes, run the repository archive and
+   reproducibility check. Make no further source changes afterward except an
+   implementation evidence record explicitly excluded from the archive
+   contract.
+9. Run `git diff --check` and confirm the committed source worktree is clean.
+10. Require hosted `PR Fast`, `PR Integration`, and stable aggregate
+    `manafold-pr-gate` on the exact implementation head before accepting the
+    implementation.
 
-Do not run soak, performance, search, gameplay benchmark, or release-candidate
-work merely to inflate evidence. M4.1 adds no playable game.
+Do not run soak, performance, search, or gameplay benchmarks merely to
+inflate evidence. M4.1 adds no playable game.
 
 ## 7. Test matrix ownership
 
@@ -468,12 +474,17 @@ Keep a single implementation PR but use small reviewable commits in this
 order, squashing only if the repository's PR policy requires it and without
 losing RED evidence from the test history:
 
-1. `test: add M4.1 content identity and validation RED fixtures`
-2. `feat: add closed CardDefinition foundation types`
-3. `feat: add canonical content contract identity and catalog closure`
-4. `feat: add fail-closed content preflight and registry closure adapter`
-5. `docs: publish normative CardDefinition and content identity contracts`
+1. `docs: publish normative M4.1 content and digest contracts`
+2. `test: add M4.1 content identity and validation RED fixtures`
+3. `feat: add closed CardDefinition foundation types`
+4. `feat: add canonical content contract identity and catalog closure`
+5. `feat: add fail-closed content preflight and registry closure adapter`
 6. `test: close M4.1 determinism and non-regression evidence`
+
+This order is binding: normative persistent/wire contracts land before RED
+fixtures, and RED evidence lands before any producer or preflight
+implementation. Do not commit production implementation ahead of its
+normative contract or failing evidence.
 
 Each commit stays within M4.1. Do not update #221/#222 automatically or
 change their milestone status. Issue updates, implementation PR creation, and
