@@ -1104,6 +1104,13 @@
       "path": "docs/reviews/m3-final-closure-2026-09-25.md",
       "role": "process",
       "stability": "provisional"
+    },
+    {
+      "change_process": "documentation-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/research/2026-09-25-m4-versioned-contract-growth-audit.md",
+      "role": "process",
+      "stability": "provisional"
     }
   ],
   "schema_version": "normative-document-register.v1"
