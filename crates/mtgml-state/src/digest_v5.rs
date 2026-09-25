@@ -104,6 +104,34 @@ pub(crate) fn calculate_full_state_digest_v5_for_state(
 pub(crate) fn full_state_digest_input_v5(
     state: &EngineState,
 ) -> Result<FullStateDigestInputV5, StateDigestError> {
+    // Keep this destructure exhaustive: adding an authoritative EngineState
+    // field must make the V5 digest mapping fail to compile until reviewed.
+    let EngineState {
+        revision,
+        core,
+        combat,
+        foundation_sources,
+        zones,
+        allocators,
+        execution,
+        random,
+        knowledge,
+        perspective_identities,
+        format,
+    } = state;
+    let _digest_reviewed_fields = (
+        revision,
+        core,
+        combat,
+        foundation_sources,
+        zones,
+        allocators,
+        execution,
+        random,
+        knowledge,
+        perspective_identities,
+        format,
+    );
     crate::validation::validate_engine_state(state)
         .map_err(|_| StateDigestError::StateInvariant)?;
     Ok(FullStateDigestInputV5 {
