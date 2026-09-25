@@ -53,6 +53,42 @@ fn duplicate_face_identity_is_rejected() {
 }
 
 #[test]
+fn duplicate_and_conflicting_definition_ids_have_distinct_failures() {
+    let mut duplicate = minimal_manifest();
+    duplicate.definitions.push(duplicate.definitions[0].clone());
+    assert_eq!(
+        validate_content_manifest_v1(&duplicate),
+        Err(mtgml_card_ir::ContentValidationErrorV1::DuplicateDefinitionId)
+    );
+
+    let mut conflict = minimal_manifest();
+    let mut conflicting_definition = conflict.definitions[0].clone();
+    conflicting_definition.faces[0].base_characteristics.name =
+        "Different rule-relevant name".to_owned();
+    conflict.definitions.push(conflicting_definition);
+    assert_eq!(
+        validate_content_manifest_v1(&conflict),
+        Err(mtgml_card_ir::ContentValidationErrorV1::IdentityConflict)
+    );
+}
+
+#[test]
+fn unknown_definition_reference_relation_has_its_own_error_class() {
+    let mut manifest = minimal_manifest();
+    manifest.definitions[0]
+        .definition_references
+        .push(DefinitionReferenceV1 {
+            relation: "unreviewed_relation".to_owned(),
+            target: CardDefinitionId(2),
+            target_face_key: None,
+        });
+    assert_eq!(
+        validate_content_manifest_v1(&manifest),
+        Err(mtgml_card_ir::ContentValidationErrorV1::UnknownReferenceRelation)
+    );
+}
+
+#[test]
 fn content_manifest_encoding_matches_the_normative_known_answer() {
     let bytes = mtgml_card_ir::encode_content_manifest_v1(&minimal_manifest()).unwrap();
     let expected = include_bytes!("../../../persistence/golden/content-contract-minimal-v1.cbor");
@@ -170,6 +206,49 @@ fn verified_catalog_is_content_scoped_and_provenance_excluded_from_digest() {
     );
     assert_eq!(calculate_content_contract_id_v1(&bytes).unwrap(), id);
     assert!(VerifiedContentCatalogV1::build_from_bytes(&bytes, &id, &provenance).is_ok());
+}
+
+#[test]
+fn provenance_membership_and_identity_must_match_exactly() {
+    let manifest = minimal_manifest();
+    let bytes = encode_content_manifest_v1(&manifest).unwrap();
+    let id = calculate_content_contract_id_v1(&bytes).unwrap();
+    let other_id = ContentContractIdV1::parse("11".repeat(32)).unwrap();
+    let mut missing = provenance_catalog(&id, &[CardDefinitionId(1)]);
+    missing.records.clear();
+    let mut duplicate = provenance_catalog(&id, &[CardDefinitionId(1)]);
+    duplicate.records.push(duplicate.records[0].clone());
+    let extra = provenance_catalog(&id, &[CardDefinitionId(1), CardDefinitionId(2)]);
+    let wrong_content = provenance_catalog(&other_id, &[CardDefinitionId(1)]);
+    let wrong_definition = provenance_catalog(&id, &[CardDefinitionId(2)]);
+
+    for provenance in [missing, duplicate, extra, wrong_content, wrong_definition] {
+        assert_eq!(
+            VerifiedContentCatalogV1::build(&bytes, &id, provenance),
+            Err(mtgml_card_ir::CatalogBuildErrorV1::ProvenanceCatalogMismatch)
+        );
+    }
+}
+
+#[test]
+fn catalog_preflight_checks_manifest_and_identity_before_provenance() {
+    let malformed_payload = [0xff];
+    let malformed_provenance = [0xff];
+    let claimed_id = ContentContractIdV1::parse("00".repeat(32)).unwrap();
+    assert!(matches!(
+        VerifiedContentCatalogV1::build_from_bytes(
+            &malformed_payload,
+            &claimed_id,
+            &malformed_provenance,
+        ),
+        Err(mtgml_card_ir::CatalogBuildErrorV1::InvalidManifest(_))
+    ));
+
+    let payload = encode_content_manifest_v1(&minimal_manifest()).unwrap();
+    assert_eq!(
+        VerifiedContentCatalogV1::build_from_bytes(&payload, &claimed_id, &malformed_provenance,),
+        Err(mtgml_card_ir::CatalogBuildErrorV1::ContentIdentityMismatch)
+    );
 }
 
 #[test]
@@ -336,6 +415,43 @@ fn strict_cbor_decoder_rejects_profile_variants_arity_order_and_trailing_data() 
 }
 
 #[test]
+fn unknown_closed_mana_variant_has_a_typed_error() {
+    use mtgml_persistence::cbor::{self, Value};
+
+    let mut value = cbor::decode_canonical(include_bytes!(
+        "../../../persistence/golden/content-contract-minimal-v1.cbor"
+    ))
+    .unwrap();
+    let Value::Array(root) = &mut value else {
+        unreachable!()
+    };
+    let Value::Array(definitions) = &mut root[2] else {
+        unreachable!()
+    };
+    let Value::Array(definition) = &mut definitions[0] else {
+        unreachable!()
+    };
+    let Value::Array(faces) = &mut definition[2] else {
+        unreachable!()
+    };
+    let Value::Array(face) = &mut faces[0] else {
+        unreachable!()
+    };
+    let Value::Array(characteristics) = &mut face[1] else {
+        unreachable!()
+    };
+    characteristics[1] = Value::Array(vec![Value::Array(vec![
+        Value::Text("snow".to_owned()),
+        Value::Null,
+    ])]);
+    let bytes = cbor::encode_canonical(&value).unwrap();
+    assert_eq!(
+        decode_content_manifest_v1(&bytes),
+        Err(mtgml_card_ir::ContentValidationErrorV1::UnknownFieldOrVariant)
+    );
+}
+
+#[test]
 fn test_only_profile_bodies_change_manifest_bytes_without_minting_identity() {
     use mtgml_persistence::cbor::{self, Value};
 
@@ -393,11 +509,112 @@ fn content_id_changes_with_rule_relevant_definition_data_and_mismatch_cannot_bui
     let manifest = minimal_manifest();
     let original = encode_content_manifest_v1(&manifest).unwrap();
     let original_id = calculate_content_contract_id_v1(&original).unwrap();
-    let mut changed = manifest;
+
+    let mut variants = Vec::new();
+    let mut mutate = |change: fn(&mut ContentContractManifestV1)| {
+        let mut changed = manifest.clone();
+        change(&mut changed);
+        variants.push(changed);
+    };
+    mutate(|value| value.definitions[0].card_definition_id = CardDefinitionId(2));
+    mutate(|value| {
+        let characteristics = value.definitions[0].faces[0].base_characteristics.clone();
+        value.definitions[0].faces.push(FaceDefinitionV1 {
+            face_key: FaceKey(1),
+            base_characteristics: characteristics,
+        })
+    });
+    mutate(|value| value.definitions[0].faces[0].base_characteristics.name = "Changed".to_owned());
+    mutate(|value| {
+        value.definitions[0].faces[0].base_characteristics.mana_cost =
+            Some(vec![PrintedManaSymbolV1::White])
+    });
+    mutate(|value| {
+        value.definitions[0].faces[0]
+            .base_characteristics
+            .color_indicator = vec![ManaColorV1::Red]
+    });
+    mutate(|value| {
+        value.definitions[0].faces[0]
+            .base_characteristics
+            .type_line
+            .supertypes = vec!["Legendary".to_owned()]
+    });
+    mutate(|value| {
+        value.definitions[0].faces[0]
+            .base_characteristics
+            .type_line
+            .card_types = vec!["Artifact".to_owned()]
+    });
+    mutate(|value| {
+        value.definitions[0].faces[0]
+            .base_characteristics
+            .type_line
+            .subtypes = vec!["FixtureType".to_owned()]
+    });
+    mutate(|value| {
+        value.definitions[0].faces[0]
+            .base_characteristics
+            .power_toughness = Some((2, 3))
+    });
+    mutate(|value| value.definitions[0].faces[0].base_characteristics.loyalty = Some(3));
+    mutate(|value| value.definitions[0].faces[0].base_characteristics.defense = Some(4));
+    mutate(|value| {
+        value.definitions[0].ability_identities = vec![mtgml_card_ir::AbilityIdentityV1 {
+            ability_key: mtgml_card_ir::AbilityKey(1),
+            face_key: FaceKey(0),
+        }]
+    });
+    mutate(|value| {
+        let characteristics = value.definitions[0].faces[0].base_characteristics.clone();
+        value.definitions[0].faces.push(FaceDefinitionV1 {
+            face_key: FaceKey(1),
+            base_characteristics: characteristics,
+        });
+        value.definitions[0].ability_identities = vec![mtgml_card_ir::AbilityIdentityV1 {
+            ability_key: mtgml_card_ir::AbilityKey(1),
+            face_key: FaceKey(1),
+        }];
+    });
+    mutate(|value| {
+        value.definitions[0].ability_identities = vec![mtgml_card_ir::AbilityIdentityV1 {
+            ability_key: mtgml_card_ir::AbilityKey(2),
+            face_key: FaceKey(0),
+        }]
+    });
+    mutate(|value| {
+        value.definitions[0].definition_references = vec![DefinitionReferenceV1 {
+            relation: "required_definition".to_owned(),
+            target: CardDefinitionId(2),
+            target_face_key: None,
+        }]
+    });
+    mutate(|value| {
+        value.definitions[0].definition_references = vec![DefinitionReferenceV1 {
+            relation: "required_definition".to_owned(),
+            target: CardDefinitionId(2),
+            target_face_key: Some(FaceKey(0)),
+        }]
+    });
+    mutate(|value| {
+        value.definitions[0].explicit_additional_requirements =
+            vec![mtgml_model::CapabilityRequirementV1 {
+                key: "rules/basic-priority".to_owned(),
+                version: "0.1.0".to_owned(),
+            }]
+    });
+
+    for changed in variants {
+        let changed_bytes = encode_content_manifest_v1(&changed).unwrap();
+        let changed_id = calculate_content_contract_id_v1(&changed_bytes).unwrap();
+        assert_ne!(original, changed_bytes);
+        assert_ne!(original_id, changed_id);
+    }
+
+    let mut changed = manifest.clone();
     changed.definitions[0].faces[0].base_characteristics.name = "Changed".to_owned();
     let changed_bytes = encode_content_manifest_v1(&changed).unwrap();
     let changed_id = calculate_content_contract_id_v1(&changed_bytes).unwrap();
-    assert_ne!(original_id, changed_id);
     assert!(VerifiedContentCatalogV1::build(
         &original,
         &changed_id,

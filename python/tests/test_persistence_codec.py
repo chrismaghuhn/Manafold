@@ -36,6 +36,20 @@ class PersistenceCodecTests(unittest.TestCase):
                 payload = (golden / entry["path"]).read_bytes()
                 if entry["contract"] == "canonical-cbor.v1":
                     self.assertEqual(decode_canonical(payload), ["input.v1", 7])
+                elif entry["contract"] == "content-contract.v1":
+                    self.assertEqual(encode_canonical(decode_canonical(payload)), payload)
+                    envelope = encode_envelope(
+                        "mtgml.content-contract.v1",
+                        "content-contract-manifest.v1",
+                        payload,
+                    )
+                    self.assertEqual(hashlib.sha256(envelope).hexdigest(), entry["sha256"])
+                    self.assertEqual(
+                        entry["sha256"],
+                        "105a083f417293333532c3ffed1d96c13f74664c3bbaf64e8fad995918fb5a4a",
+                    )
+                elif entry["contract"] == "content-provenance.v1":
+                    self.assertEqual(encode_canonical(decode_canonical(payload)), payload)
                 else:
                     reference, decoded = decode_envelope(payload)
                     self.assertEqual(decoded, bytes.fromhex("8268696e7075742e763107"))

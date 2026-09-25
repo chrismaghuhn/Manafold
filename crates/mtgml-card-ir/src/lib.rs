@@ -168,6 +168,16 @@ pub struct ProvenanceCatalogV1 {
 pub enum ContentValidationErrorV1 {
     #[error("manifest schema or envelope version is unknown")]
     UnknownEnvelopeVersion,
+    #[error("the closed envelope contains an unknown field or variant")]
+    UnknownFieldOrVariant,
+    #[error("a semantic profile is not known to this validator")]
+    UnknownSemanticProfile,
+    #[error("the definition reference relation is not part of the closed contract")]
+    UnknownReferenceRelation,
+    #[error("the definition identity conflicts with an earlier rule-relevant definition")]
+    IdentityConflict,
+    #[error("the profiled body variant is not known to this validator")]
+    UnknownProfileBodyVariant,
     #[error("definitions are not in unique ascending identity order")]
     DuplicateDefinitionId,
     #[error("face identity is invalid or noncanonical")]
@@ -194,21 +204,25 @@ pub fn validate_content_manifest_v1(
     if manifest.schema_version != CONTENT_CONTRACT_MANIFEST_V1 {
         return Err(ContentValidationErrorV1::UnknownEnvelopeVersion);
     }
-    let mut previous_id = None;
+    let mut previous: Option<&CardDefinitionEnvelopeV1> = None;
     for definition in &manifest.definitions {
         if definition.envelope_version != CARD_DEFINITION_ENVELOPE_V1 {
             return Err(ContentValidationErrorV1::UnknownEnvelopeVersion);
         }
-        match previous_id {
-            Some(previous) if previous == definition.card_definition_id.0 => {
-                return Err(ContentValidationErrorV1::DuplicateDefinitionId)
+        match previous {
+            Some(prior) if prior.card_definition_id == definition.card_definition_id => {
+                return Err(if prior == definition {
+                    ContentValidationErrorV1::DuplicateDefinitionId
+                } else {
+                    ContentValidationErrorV1::IdentityConflict
+                });
             }
-            Some(previous) if previous > definition.card_definition_id.0 => {
-                return Err(ContentValidationErrorV1::DuplicateDefinitionId)
+            Some(prior) if prior.card_definition_id > definition.card_definition_id => {
+                return Err(ContentValidationErrorV1::InvalidLocalIdentity);
             }
             _ => {}
         }
-        previous_id = Some(definition.card_definition_id.0);
+        previous = Some(definition);
         validate_definition(definition)?;
     }
     Ok(())
@@ -299,7 +313,7 @@ fn validate_references(
     let mut previous = None;
     for reference in references {
         if reference.relation != "required_definition" {
-            return Err(ContentValidationErrorV1::InvalidDefinitionReference);
+            return Err(ContentValidationErrorV1::UnknownReferenceRelation);
         }
         let key = (
             reference.target.0,
@@ -687,7 +701,7 @@ fn mana_symbol_from_value(value: Value) -> Result<PrintedManaSymbolV1, ContentVa
             }
             Ok(PrintedManaSymbolV1::Hybrid(a, b))
         }
-        _ => Err(ContentValidationErrorV1::InvalidCharacteristic),
+        _ => Err(ContentValidationErrorV1::UnknownFieldOrVariant),
     }
 }
 
@@ -698,7 +712,7 @@ fn binding_from_value(value: Value) -> Result<CardSemanticBindingV1, ContentVali
             Ok(CardSemanticBindingV1::UnprofiledV1)
         }
         "profiled" => Err(ContentValidationErrorV1::ProfiledBindingNotAdmitted),
-        _ => Err(ContentValidationErrorV1::InvalidSemanticBinding),
+        _ => Err(ContentValidationErrorV1::UnknownSemanticProfile),
     }
 }
 
@@ -961,9 +975,17 @@ impl VerifiedContentCatalogV1 {
         supplied_content_contract_id: &mtgml_model::ContentContractIdV1,
         canonical_provenance: &[u8],
     ) -> Result<Self, CatalogBuildErrorV1> {
+        let manifest = decode_content_manifest_v1(canonical_payload)
+            .map_err(CatalogBuildErrorV1::InvalidManifest)?;
+        let actual_id = calculate_content_contract_id_v1(canonical_payload).map_err(|_| {
+            CatalogBuildErrorV1::InvalidManifest(ContentValidationErrorV1::MalformedEnvelope)
+        })?;
+        if &actual_id != supplied_content_contract_id {
+            return Err(CatalogBuildErrorV1::ContentIdentityMismatch);
+        }
         let provenance = decode_provenance_catalog_v1(canonical_provenance)
             .map_err(|_| CatalogBuildErrorV1::ProvenanceCatalogMismatch)?;
-        Self::build(canonical_payload, supplied_content_contract_id, provenance)
+        Self::from_verified_parts(manifest, actual_id, provenance)
     }
 
     pub fn build(
@@ -979,6 +1001,14 @@ impl VerifiedContentCatalogV1 {
         if &actual_id != supplied_content_contract_id {
             return Err(CatalogBuildErrorV1::ContentIdentityMismatch);
         }
+        Self::from_verified_parts(manifest, actual_id, provenance)
+    }
+
+    fn from_verified_parts(
+        manifest: ContentContractManifestV1,
+        actual_id: mtgml_model::ContentContractIdV1,
+        provenance: ProvenanceCatalogV1,
+    ) -> Result<Self, CatalogBuildErrorV1> {
         validate_provenance_catalog(&manifest, &actual_id, &provenance)
             .map_err(|_| CatalogBuildErrorV1::ProvenanceCatalogMismatch)?;
         let definitions = manifest
