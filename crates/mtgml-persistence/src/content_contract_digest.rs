@@ -39,10 +39,11 @@ pub fn calculate_content_contract_id_v1(
         canonical_payload,
     )?;
     let bytes = envelope::hash_envelope(&envelope);
-    let text = bytes
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
+    let mut text = String::with_capacity(64);
+    for byte in bytes {
+        use std::fmt::Write as _;
+        write!(&mut text, "{byte:02x}").expect("writing to String cannot fail");
+    }
     ContentContractIdV1::parse(text).map_err(|_| PersistenceDecodeErrorV1::SemanticValidation)
 }
 

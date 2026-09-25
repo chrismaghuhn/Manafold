@@ -145,6 +145,7 @@ dependencies = [
  "mtgml-model",
  "mtgml-persistence",
  "serde",
+ "serde_json",
  "thiserror",
 ]
 

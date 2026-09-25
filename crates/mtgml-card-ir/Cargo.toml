@@ -8,4 +8,5 @@ rust-version.workspace = true
 mtgml-model = { path = "../mtgml-model" }
 mtgml-persistence = { path = "../mtgml-persistence" }
 serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true

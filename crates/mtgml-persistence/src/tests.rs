@@ -615,6 +615,11 @@ fn persisted_positive_fixture_manifest_matches_rust_bytes_and_meaning() {
                     "105a083f417293333532c3ffed1d96c13f74664c3bbaf64e8fad995918fb5a4a"
                 );
             }
+            ("content-provenance.v1", "content-provenance-minimal-v1.cbor") => {
+                let value = cbor::decode_canonical(&bytes).unwrap();
+                assert_eq!(cbor::encode_canonical(&value).unwrap(), bytes);
+                assert!(fixture.sha256.is_none());
+            }
             other => panic!("unknown positive persistence fixture {other:?}"),
         }
     }

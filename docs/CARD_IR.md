@@ -47,13 +47,14 @@ M0.2 intentionally does not freeze:
 - copy/copiable-value representation;
 - native-executor calling convention.
 
-These are driven by a future reviewed deck closure and M3 authority cases. The existing Rust enum is illustrative scaffolding, not a support claim.
+These are driven by a future reviewed content scope and rules-authority
+cases. The former Rust enum was illustrative scaffolding, not a support claim.
 
 M4.1 freezes only the closed immutable content foundation. It does not
-execute content or define a general Magic semantic language. The existing
-`ExperimentalEffect` scaffold has no compatibility entitlement and is
-removed or quarantined by its implementation contract; it is not promoted by
-renaming it.
+execute content or define a general Magic semantic language. The former
+`ExperimentalEffect` scaffold had no compatibility entitlement and has been
+removed; its variants were not promoted or renamed. The first executable
+profile and first real selected content belong to M4.2.
 
 ## Maintainer rule
 

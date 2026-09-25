@@ -6,18 +6,22 @@
 use mtgml_model::{CapabilityRequirementV1, CardDefinitionId};
 use mtgml_persistence::cbor::{self, Value};
 use mtgml_persistence::content_contract_digest::calculate_content_contract_id_v1;
-use serde::{Deserialize, Serialize};
 use thiserror::Error;
+
+pub mod preflight;
+pub use preflight::{
+    construct_gameplay_from_content, content_validation_only, ContentAuthorizationV1,
+    ContentPreflightErrorV1, ContentValidationReportV1, NoExecutableProfileAdmitted,
+    RequiredCapabilityLifecycleV1,
+};
 
 pub const CARD_DEFINITION_ENVELOPE_V1: &str = "card-definition-envelope.v1";
 pub const CONTENT_CONTRACT_MANIFEST_V1: &str = "content-contract-manifest.v1";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct FaceKey(pub u32);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct AbilityKey(pub u32);
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -59,15 +63,13 @@ impl CardSemanticProfileId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContentContractManifestV1 {
     pub schema_version: String,
     pub definitions: Vec<CardDefinitionEnvelopeV1>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CardDefinitionEnvelopeV1 {
     pub envelope_version: String,
     pub card_definition_id: CardDefinitionId,
@@ -78,30 +80,26 @@ pub struct CardDefinitionEnvelopeV1 {
     pub explicit_additional_requirements: Vec<CapabilityRequirementV1>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FaceDefinitionV1 {
     pub face_key: FaceKey,
     pub base_characteristics: BaseCharacteristicsV1,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AbilityIdentityV1 {
     pub ability_key: AbilityKey,
     pub face_key: FaceKey,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeLineV1 {
     pub supertypes: Vec<String>,
     pub card_types: Vec<String>,
     pub subtypes: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BaseCharacteristicsV1 {
     pub name: String,
     pub mana_cost: Option<Vec<PrintedManaSymbolV1>>,
@@ -112,8 +110,7 @@ pub struct BaseCharacteristicsV1 {
     pub defense: Option<i32>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ManaColorV1 {
     White,
     Blue,
@@ -122,8 +119,7 @@ pub enum ManaColorV1 {
     Green,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "variant", content = "value", rename_all = "snake_case")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PrintedManaSymbolV1 {
     Generic(u32),
     White,
@@ -135,22 +131,19 @@ pub enum PrintedManaSymbolV1 {
     Hybrid(ManaColorV1, ManaColorV1),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "variant", rename_all = "snake_case")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CardSemanticBindingV1 {
     UnprofiledV1,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DefinitionReferenceV1 {
     pub relation: String,
     pub target: CardDefinitionId,
     pub target_face_key: Option<FaceKey>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceProvenanceV1 {
     pub source_snapshot_id: String,
     pub source_record_id: String,
@@ -158,16 +151,14 @@ pub struct SourceProvenanceV1 {
     pub source_record_digest: [u8; 32],
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DefinitionProvenanceRecordV1 {
     pub content_contract_id: mtgml_model::ContentContractIdV1,
     pub card_definition_id: CardDefinitionId,
     pub source_provenance: SourceProvenanceV1,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProvenanceCatalogV1 {
     pub schema_version: String,
     pub records: Vec<DefinitionProvenanceRecordV1>,
@@ -965,6 +956,16 @@ pub struct VerifiedContentCatalogV1 {
 }
 
 impl VerifiedContentCatalogV1 {
+    pub fn build_from_bytes(
+        canonical_payload: &[u8],
+        supplied_content_contract_id: &mtgml_model::ContentContractIdV1,
+        canonical_provenance: &[u8],
+    ) -> Result<Self, CatalogBuildErrorV1> {
+        let provenance = decode_provenance_catalog_v1(canonical_provenance)
+            .map_err(|_| CatalogBuildErrorV1::ProvenanceCatalogMismatch)?;
+        Self::build(canonical_payload, supplied_content_contract_id, provenance)
+    }
+
     pub fn build(
         canonical_payload: &[u8],
         supplied_content_contract_id: &mtgml_model::ContentContractIdV1,
