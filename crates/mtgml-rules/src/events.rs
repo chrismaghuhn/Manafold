@@ -23,6 +23,15 @@ pub enum AuthoritativeRuleEventKind {
         from: i64,
         to: i64,
     },
+    CombatDamageDealt {
+        assignments: Vec<mtgml_state::DamageAssignmentV1>,
+    },
+    CombatDamageStepCompleted,
+    MarkedDamageChanged {
+        creature: GameObjectId,
+        from: u64,
+        to: u64,
+    },
     ObjectTapped {
         object: GameObjectId,
         from: bool,
@@ -111,6 +120,17 @@ impl AuthoritativeRuleEventKind {
                 from: *from,
                 to: *to,
             },
+            Self::CombatDamageDealt { assignments } => SemanticDeltaOperation::CombatDamageDealt {
+                assignments: assignments.clone(),
+            },
+            Self::CombatDamageStepCompleted => SemanticDeltaOperation::CombatDamageStepCompleted,
+            Self::MarkedDamageChanged { creature, from, to } => {
+                SemanticDeltaOperation::MarkedDamageChanged {
+                    creature: *creature,
+                    from: *from,
+                    to: *to,
+                }
+            }
             Self::ObjectTapped { object, from, to } => SemanticDeltaOperation::ObjectTapped {
                 object: *object,
                 from: *from,

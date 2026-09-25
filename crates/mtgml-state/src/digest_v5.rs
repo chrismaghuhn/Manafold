@@ -219,11 +219,27 @@ fn combat_value(state: &EngineState) -> Value {
         .blockers
         .iter()
         .map(|(attacker, blocker)| array([u(attacker.0), optional(blocker.map(|id| u(id.0)))]));
-    array([
-        u(combat.defending_player.0),
-        array(combat.attackers.iter().map(|object| u(object.0))),
-        array(blockers),
-    ])
+    let live_blocked: std::collections::BTreeSet<_> = combat
+        .blockers
+        .iter()
+        .filter_map(|(attacker, blocker)| blocker.map(|_| *attacker))
+        .collect();
+    let attackers = array(combat.attackers.iter().map(|object| u(object.0)));
+    let blockers = array(blockers);
+    if !combat.damage_step_completed && combat.blocked_attackers == live_blocked {
+        // Preserve FullStateDigestV5 for every CombatState representable by
+        // the pre-Block-6 fields. The extended form below is emitted only
+        // when blocked history or completed-damage state adds information.
+        array([u(combat.defending_player.0), attackers, blockers])
+    } else {
+        array([
+            u(combat.defending_player.0),
+            attackers,
+            blockers,
+            array(combat.blocked_attackers.iter().map(|object| u(object.0))),
+            Value::Bool(combat.damage_step_completed),
+        ])
+    }
 }
 
 fn foundation_sources_value(state: &EngineState) -> Value {

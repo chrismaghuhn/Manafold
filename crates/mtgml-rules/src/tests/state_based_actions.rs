@@ -321,6 +321,8 @@ fn task6_sba_profile_allows_bounded_combat_damage_boundary() {
     state.combat = Some(mtgml_state::CombatState {
         defending_player: PlayerId(2),
         attackers: vec![GameObjectId(1)],
+        damage_step_completed: false,
+        blocked_attackers: std::collections::BTreeSet::from([GameObjectId(1)]),
         blockers: std::collections::BTreeMap::from([(GameObjectId(1), None)]),
     });
     mtgml_state::validate_engine_state(&state).unwrap();
@@ -608,6 +610,8 @@ fn fresh_no_order_combat_death_at(step: mtgml_state::CombatStep) -> EngineState 
     state.combat = Some(mtgml_state::CombatState {
         defending_player: PlayerId(2),
         attackers: vec![GameObjectId(1)],
+        damage_step_completed: step == mtgml_state::CombatStep::EndOfCombat,
+        blocked_attackers: std::collections::BTreeSet::from([GameObjectId(1)]),
         blockers: std::collections::BTreeMap::from([(
             GameObjectId(1),
             Some(GameObjectId(2)),

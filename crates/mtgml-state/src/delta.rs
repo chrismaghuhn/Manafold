@@ -24,6 +24,15 @@ pub enum SemanticDeltaOperation {
         from: i64,
         to: i64,
     },
+    CombatDamageDealt {
+        assignments: Vec<crate::DamageAssignmentV1>,
+    },
+    CombatDamageStepCompleted,
+    MarkedDamageChanged {
+        creature: GameObjectId,
+        from: u64,
+        to: u64,
+    },
     ObjectTapped {
         object: GameObjectId,
         from: bool,

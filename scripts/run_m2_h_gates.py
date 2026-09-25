@@ -396,6 +396,8 @@ COMMON_NAMED_CONTRACTS = frozenset(
         "magic-combat-observation.v2",
         # Block 5 successor records bounded public blocker assignments.
         "magic-combat-observation.v3",
+        # Block 6 successor adds public life and marked damage.
+        "magic-combat-observation.v4",
         "replay-manifest.v4",
         "authoritative-replay.v4",
         "replay-manifest.v5",

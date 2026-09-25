@@ -128,6 +128,10 @@ impl MagicKernelProfile {
     fn allows_combat_blockers(&self) -> bool {
         matches!(self, Self::Admitted(profile) if profile.allows_combat_blockers_0_1_0())
     }
+
+    fn allows_combat_damage(&self) -> bool {
+        matches!(self, Self::Admitted(profile) if profile.allows_combat_damage_0_1_0())
+    }
 }
 
 impl MagicRulesKernel {
@@ -375,6 +379,106 @@ impl MagicRulesKernel {
         }
     }
 
+    pub(crate) fn validate_combat_damage_runtime_state(
+        state: &EngineState,
+        status: &EpisodeStatus,
+    ) -> Result<(), KernelExecutionError> {
+        if !matches!(
+            state.core.position,
+            TurnPosition::Combat {
+                step: mtgml_state::CombatStep::CombatDamage | mtgml_state::CombatStep::EndOfCombat
+            }
+        ) {
+            return Err(KernelExecutionError::UnsupportedStagePath);
+        }
+        crate::combat_damage::validate_combat_damage_state(state)
+            .map_err(|_| KernelExecutionError::UnsupportedStagePath)?;
+        if let EpisodeStatus::Terminal { .. } = status {
+            return if state.core.priority == mtgml_state::PriorityState::None
+                && state.execution.pending_decision.is_none()
+                && state
+                    .combat
+                    .as_ref()
+                    .is_some_and(|combat| combat.damage_step_completed)
+                && state.core.players.values().any(|player| player.has_lost)
+            {
+                Ok(())
+            } else {
+                Err(KernelExecutionError::UnsupportedStagePath)
+            };
+        }
+        if !matches!(status, EpisodeStatus::Running) {
+            return Err(KernelExecutionError::UnsupportedStagePath);
+        }
+        if let Some(pending) = state.execution.pending_decision.as_ref() {
+            if matches!(pending.request.decision, DecisionDomainV2::Order { .. }) {
+                if state.core.priority != mtgml_state::PriorityState::None
+                    || state
+                        .combat
+                        .as_ref()
+                        .is_none_or(|combat| !combat.damage_step_completed)
+                    || pending.request.state_revision != state.revision
+                    || pending.request.continuation_id.is_none()
+                {
+                    return Err(KernelExecutionError::UnsupportedStagePath);
+                }
+                crate::state_based_actions::validate_sba_order_continuation(state)
+                    .map_err(|_| KernelExecutionError::UnsupportedStagePath)?;
+                let plan = crate::state_based_actions::derive_bounded_sba_round_plan(state)
+                    .map_err(|_| KernelExecutionError::UnsupportedStagePath)?;
+                let expected = Self::state_based_actions_order_candidates(
+                    state,
+                    &plan.selected_sba_actions,
+                    pending.request.actor,
+                )?;
+                let count = u32::try_from(expected.len())
+                    .map_err(|_| KernelExecutionError::Exhaustion("order_cardinality"))?;
+                if pending.request.candidates != expected
+                    || !matches!(pending.request.decision, DecisionDomainV2::Order { minimum, maximum } if minimum == count && maximum == count)
+                    || pending.request.project_player_request().is_err()
+                {
+                    return Err(KernelExecutionError::UnsupportedStagePath);
+                }
+                return Ok(());
+            }
+            if state.core.priority == mtgml_state::PriorityState::None {
+                return Err(KernelExecutionError::UnsupportedStagePath);
+            }
+        }
+        if state.core.priority == mtgml_state::PriorityState::None {
+            if state.core.position
+                == (TurnPosition::Combat {
+                    step: mtgml_state::CombatStep::CombatDamage,
+                })
+                && state.combat.as_ref().is_none_or(|combat| {
+                    combat.attackers.is_empty() || combat.damage_step_completed
+                })
+            {
+                return Err(KernelExecutionError::UnsupportedStagePath);
+            }
+            let plan = crate::state_based_actions::derive_bounded_sba_round_plan(state)
+                .map_err(|_| KernelExecutionError::UnsupportedStagePath)?;
+            if !plan.selected_sba_actions.is_empty() || !plan.apnap_owners.is_empty() {
+                return Err(KernelExecutionError::UnsupportedStagePath);
+            }
+            Ok(())
+        } else {
+            if state.core.position
+                == (TurnPosition::Combat {
+                    step: mtgml_state::CombatStep::CombatDamage,
+                })
+                && state
+                    .combat
+                    .as_ref()
+                    .is_none_or(|combat| !combat.damage_step_completed)
+            {
+                return Err(KernelExecutionError::UnsupportedStagePath);
+            }
+            crate::basic_priority::validate_pass_only_state_with_combat_damage(state, true)
+                .map_err(|_| KernelExecutionError::UnsupportedStagePath)
+        }
+    }
+
     pub(crate) fn validate_declared_blocker_combat_runtime_support(
         state: &EngineState,
     ) -> Result<(), KernelExecutionError> {
@@ -400,6 +504,11 @@ impl MagicRulesKernel {
             return Err(KernelExecutionError::UnsupportedStagePath);
         }
         let assigned: Vec<_> = combat.blockers.values().flatten().copied().collect();
+        let assigned_attackers: std::collections::BTreeSet<_> = combat
+            .blockers
+            .iter()
+            .filter_map(|(attacker, blocker)| blocker.map(|_| *attacker))
+            .collect();
         if assigned.len() > 1
             || assigned
                 .iter()
@@ -407,6 +516,7 @@ impl MagicRulesKernel {
                 .collect::<std::collections::BTreeSet<_>>()
                 .len()
                 != assigned.len()
+            || assigned_attackers != combat.blocked_attackers
         {
             return Err(KernelExecutionError::UnsupportedStagePath);
         }
@@ -417,6 +527,7 @@ impl MagicRulesKernel {
             for blocker in combat.blockers.values_mut() {
                 *blocker = None;
             }
+            combat.blocked_attackers.clear();
         }
         let support = Self::validate_blocker_declaration_support(&predeclaration)?;
         if assigned
@@ -864,6 +975,9 @@ impl MagicRulesKernel {
                 combat
                     .blockers
                     .insert(assignment.attacker, assignment.blocker);
+                if assignment.blocker.is_some() {
+                    combat.blocked_attackers.insert(assignment.attacker);
+                }
             }
         }
         let sba_plan = crate::state_based_actions::derive_bounded_sba_round_plan(&declared_state)
@@ -1035,6 +1149,9 @@ impl MagicRulesKernel {
                 combat
                     .blockers
                     .insert(assignment.attacker, assignment.blocker);
+                if assignment.blocker.is_some() {
+                    combat.blocked_attackers.insert(assignment.attacker);
+                }
             }
             Ok(())
         })?;
@@ -1181,6 +1298,8 @@ impl MagicRulesKernel {
                 defending_player,
                 blockers: selected.iter().map(|object| (*object, None)).collect(),
                 attackers: selected,
+                damage_step_completed: false,
+                blocked_attackers: std::collections::BTreeSet::new(),
             });
             for object in candidate_ids.iter().filter_map(|candidate_id| {
                 usize::try_from(candidate_id.0)
@@ -1229,8 +1348,17 @@ impl MagicRulesKernel {
                 step: mtgml_state::CombatStep::DeclareBlockers,
             } if self.profile.allows_combat_blockers() => self.advance_blocker_declaration(state),
             TurnPosition::Combat {
+                step: mtgml_state::CombatStep::CombatDamage,
+            } if self.profile.allows_combat_damage() => self.advance_combat_damage(state),
+            TurnPosition::Combat {
                 step: mtgml_state::CombatStep::EndOfCombat,
-            } => crate::basic_priority::open_combat_priority_window(state),
+            } => {
+                if self.profile.allows_combat_damage() {
+                    crate::basic_priority::open_combat_damage_priority_window(state)
+                } else {
+                    crate::basic_priority::open_combat_priority_window(state)
+                }
+            }
             _ => Err(KernelExecutionError::UnsupportedStagePath),
         }
     }
@@ -1309,6 +1437,114 @@ impl MagicRulesKernel {
         Ok(result)
     }
 
+    fn advance_combat_damage(
+        &mut self,
+        state: &EngineState,
+    ) -> Result<TransitionResult, KernelExecutionError> {
+        Self::validate_combat_damage_runtime_state(state, &EpisodeStatus::Running)?;
+        let assignments =
+            crate::combat_damage::derive_assignments(state).map_err(|error| match error {
+                crate::combat_damage::CombatDamageError::Unsupported => {
+                    KernelExecutionError::UnsupportedStagePath
+                }
+                crate::combat_damage::CombatDamageError::Exhaustion => {
+                    KernelExecutionError::Exhaustion("combat_damage")
+                }
+            })?;
+        let mutations = crate::combat_damage::derive_mutations(state, &assignments).map_err(
+            |error| match error {
+                crate::combat_damage::CombatDamageError::Unsupported => {
+                    KernelExecutionError::UnsupportedStagePath
+                }
+                crate::combat_damage::CombatDamageError::Exhaustion => {
+                    KernelExecutionError::Exhaustion("combat_damage")
+                }
+            },
+        )?;
+        let revision = crate::decision_stage::next_revision(state)?;
+        let mut events = Vec::with_capacity(
+            usize::from(!assignments.is_empty())
+                + mutations.player_life.len()
+                + mutations.creature_marks.len()
+                + 1,
+        );
+        if !assignments.is_empty() {
+            events.push(AuthoritativeRuleEventKind::CombatDamageDealt {
+                assignments: assignments.clone(),
+            });
+        }
+        events.extend(mutations.player_life.iter().map(|(player, from, to)| {
+            AuthoritativeRuleEventKind::LifeChanged {
+                player: *player,
+                from: *from,
+                to: *to,
+            }
+        }));
+        events.extend(mutations.creature_marks.iter().map(|(creature, from, to)| {
+            AuthoritativeRuleEventKind::MarkedDamageChanged {
+                creature: *creature,
+                from: *from,
+                to: *to,
+            }
+        }));
+        events.push(AuthoritativeRuleEventKind::CombatDamageStepCompleted);
+        let events = events
+            .into_iter()
+            .enumerate()
+            .map(|(offset, event)| {
+                let offset =
+                    u64::try_from(offset).map_err(|_| KernelExecutionError::RuleEventIdOverflow)?;
+                crate::basic_priority::bound_event(state, offset, revision, event)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut next = state.clone();
+        next.revision = revision;
+        let damage = build_accepted_product(state, next, events, |workspace| {
+            for (player, from, to) in &mutations.player_life {
+                let current = workspace
+                    .core
+                    .players
+                    .get_mut(player)
+                    .ok_or(KernelExecutionError::UnsupportedStagePath)?;
+                if current.life != *from {
+                    return Err(KernelExecutionError::UnsupportedStagePath);
+                }
+                current.life = *to;
+            }
+            for (creature, from, to) in &mutations.creature_marks {
+                let current = workspace
+                    .foundation_sources
+                    .get_mut(creature)
+                    .ok_or(KernelExecutionError::UnsupportedStagePath)?;
+                if current.marked_damage != *from {
+                    return Err(KernelExecutionError::UnsupportedStagePath);
+                }
+                current.marked_damage = *to;
+            }
+            workspace
+                .combat
+                .as_mut()
+                .ok_or(KernelExecutionError::UnsupportedStagePath)?
+                .damage_step_completed = true;
+            Ok(())
+        })?;
+
+        let followup = self.advance_state_based_actions_fixed_point(&damage.next_state)?;
+        let needs_order_response = followup
+            .next_decision
+            .as_ref()
+            .is_some_and(|request| matches!(request.decision, DecisionDomainV2::Order { .. }));
+        let result = if needs_order_response {
+            crate::product::compose_sequential_products(state, damage, followup)
+        } else {
+            crate::product::compose_atomic_products(state, damage, followup)
+        }?;
+        validate_engine_state(&result.next_state).map_err(KernelExecutionError::AfterState)?;
+        crate::validate_transition_contract(state, &result)
+            .map_err(KernelExecutionError::TransitionContract)?;
+        Ok(result)
+    }
+
     fn advance_state_based_actions_fixed_point(
         &mut self,
         state: &EngineState,
@@ -1360,6 +1596,15 @@ impl MagicRulesKernel {
                         }
                     ) {
                     crate::basic_priority::open_combat_blocker_priority_window(state)
+                } else if self.profile.allows_combat_damage()
+                    && matches!(
+                        state.core.position,
+                        TurnPosition::Combat {
+                            step: mtgml_state::CombatStep::CombatDamage
+                        }
+                    )
+                {
+                    crate::basic_priority::open_combat_damage_priority_window(state)
                 } else if self.profile.allows_combat_attackers()
                     && matches!(state.core.position, TurnPosition::Combat { .. })
                 {
@@ -1533,7 +1778,8 @@ impl MagicRulesKernel {
                 .ok_or(KernelExecutionError::UnsupportedStagePath)?;
             events.push(Self::state_based_actions_bound_event(
                 state,
-                events.len() as u64,
+                u64::try_from(events.len())
+                    .map_err(|_| KernelExecutionError::RuleEventIdOverflow)?,
                 revision,
                 AuthoritativeRuleEventKind::DecisionCleared {
                     decision: pending.request.decision_id,
@@ -1541,7 +1787,8 @@ impl MagicRulesKernel {
             )?);
             events.push(Self::state_based_actions_bound_event(
                 state,
-                events.len() as u64,
+                u64::try_from(events.len())
+                    .map_err(|_| KernelExecutionError::RuleEventIdOverflow)?,
                 revision,
                 AuthoritativeRuleEventKind::SbaGraveyardOrderChosen {
                     continuation: *continuation_id,
@@ -1552,7 +1799,7 @@ impl MagicRulesKernel {
         }
         events.push(Self::state_based_actions_bound_event(
             state,
-            events.len() as u64,
+            u64::try_from(events.len()).map_err(|_| KernelExecutionError::RuleEventIdOverflow)?,
             revision,
             AuthoritativeRuleEventKind::StateBasedActionsApplied {
                 actions: selected_sba_actions.clone(),
@@ -1663,6 +1910,9 @@ impl MagicRulesKernel {
                 combat
                     .blockers
                     .retain(|attacker, _| !selected_objects.contains(attacker));
+                combat
+                    .blocked_attackers
+                    .retain(|attacker| !selected_objects.contains(attacker));
                 for blocker in combat.blockers.values_mut() {
                     if blocker.is_some_and(|object| selected_objects.contains(&object)) {
                         *blocker = None;
@@ -1726,7 +1976,33 @@ impl MagicRulesKernel {
         }
 
         if open_priority_if_stable && matches!(status, EpisodeStatus::Running) {
-            crate::basic_priority::validate_pass_only_state(&candidate, false)?;
+            if self.profile.allows_combat_damage()
+                && matches!(
+                    candidate.core.position,
+                    TurnPosition::Combat {
+                        step: mtgml_state::CombatStep::CombatDamage
+                    }
+                )
+            {
+                crate::basic_priority::validate_pass_only_state_with_combat_damage(
+                    &candidate, false,
+                )?;
+            } else if self.profile.allows_combat_blockers()
+                && candidate.core.position
+                    == (TurnPosition::Combat {
+                        step: mtgml_state::CombatStep::DeclareBlockers,
+                    })
+            {
+                crate::basic_priority::validate_pass_only_state_with_blockers(&candidate, false)?;
+            } else if self.profile.allows_combat_attackers()
+                && matches!(candidate.core.position, TurnPosition::Combat { .. })
+            {
+                crate::basic_priority::validate_pass_only_state_with_combat(
+                    &candidate, false, true,
+                )?;
+            } else {
+                crate::basic_priority::validate_pass_only_state(&candidate, false)?;
+            }
             let actor = candidate.core.active_player;
             let identity = crate::decision_stage::fresh_stage_identity(state, actor)?;
             let request = crate::basic_priority::make_pass_request(
@@ -1974,7 +2250,17 @@ impl MagicRulesKernel {
         if state.execution.pending_decision.is_none() {
             return crate::decision_stage::rejected(state);
         }
-        if self.profile.allows_combat_blockers()
+        if self.profile.allows_combat_damage()
+            && matches!(
+                state.core.position,
+                TurnPosition::Combat {
+                    step: mtgml_state::CombatStep::CombatDamage
+                        | mtgml_state::CombatStep::EndOfCombat
+                }
+            )
+        {
+            crate::basic_priority::validate_pass_only_state_with_combat_damage(state, true)?;
+        } else if self.profile.allows_combat_blockers()
             && state.core.position
                 == (TurnPosition::Combat {
                     step: mtgml_state::CombatStep::DeclareBlockers,

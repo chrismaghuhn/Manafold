@@ -22,6 +22,7 @@
     "information-state-envelope.v2.schema.json",
     "magic-combat-observation.v2.schema.json",
     "magic-combat-observation.v3.schema.json",
+    "magic-combat-observation.v4.schema.json",
     "magic-m3-observation.v1.schema.json",
     "observation-envelope.v1.schema.json",
     "observed-event-envelope.v1.schema.json",

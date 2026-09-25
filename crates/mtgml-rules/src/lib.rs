@@ -1,6 +1,7 @@
 //! Authoritative events and exact, compositional transition validation.
 
 mod basic_priority;
+mod combat_damage;
 mod contract;
 mod decision_stage;
 mod errors;

@@ -20,6 +20,10 @@ use crate::semantic_catalog_generated::{
     magic_combat_blockers_0_1_0_rules_manifest,
     magic_combat_blockers_0_1_0_semantic_contract_id,
     magic_combat_blockers_0_1_0_semantic_manifest,
+    magic_combat_damage_0_1_0_rules_contract_id,
+    magic_combat_damage_0_1_0_rules_manifest,
+    magic_combat_damage_0_1_0_semantic_contract_id,
+    magic_combat_damage_0_1_0_semantic_manifest,
     magic_turn_structure_0_1_0_rules_contract_id,
     magic_turn_structure_0_1_0_rules_manifest,
     magic_turn_structure_0_1_0_semantic_contract_id,
@@ -117,7 +121,7 @@ fn known_meaning_is_distinct_from_supported_execution() {
 #[test]
 fn production_catalog_contains_exactly_generated_material() {
     let catalog = RuntimeSemanticCatalog::production();
-    assert_eq!(catalog.entry_count(), 7, "Synthetic, frozen S1, S3.A/B/C, combat, and combat+blockers identities");
+    assert_eq!(catalog.entry_count(), 8, "Synthetic, frozen S1, S3.A/B/C, combat, blockers, and damage identities");
 
     let syn_id = synthetic_legacy_default_semantic_contract_id();
     let syn_entry = catalog.resolve(&syn_id).unwrap();
@@ -260,6 +264,40 @@ fn production_catalog_contains_exactly_generated_material() {
     ]);
     assert!(catalog.supported(&blockers_id, ExecutionProgramV1::MagicRules));
     assert_ne!(blockers_id, combat_id);
+
+    let damage_id = magic_combat_damage_0_1_0_semantic_contract_id();
+    let damage_entry = catalog.resolve(&damage_id).unwrap();
+    assert_eq!(damage_entry.manifest.rules_contract_id, magic_combat_damage_0_1_0_rules_contract_id());
+    assert_eq!(damage_entry.manifest, magic_combat_damage_0_1_0_semantic_manifest());
+    assert_eq!(damage_entry.rules_manifest, magic_combat_damage_0_1_0_rules_manifest());
+    assert_eq!(
+        damage_id.as_str(),
+        "58c55b0f08f045da01e81c595a00cc63dc75361efeb83be7e5e82064ae85805e"
+    );
+    assert_eq!(
+        damage_entry
+            .rules_manifest
+            .capability_closure
+            .as_ref()
+            .unwrap()
+            .iter()
+            .map(|item| item.key.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "rules/basic-priority",
+            "rules/combat-damage",
+            "rules/combat-phase",
+            "rules/damage-and-life",
+            "rules/declare-attackers",
+            "rules/declare-blockers",
+            "rules/draw-card",
+            "rules/state-based-actions-combat",
+            "rules/turn-structure",
+            "rules/zone-incarnation",
+        ]
+    );
+    assert!(catalog.supported(&damage_id, ExecutionProgramV1::MagicRules));
+    assert_ne!(damage_id, blockers_id);
 }
 
 #[test]

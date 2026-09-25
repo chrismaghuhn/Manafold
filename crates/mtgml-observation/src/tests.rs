@@ -55,6 +55,34 @@ fn magic_combat_observation_v3_rejects_an_object_as_attacker_and_blocker() {
 }
 
 #[test]
+fn magic_combat_observation_v4_golden_preserves_life_marks_and_blocked_history() {
+    let observation: MagicObservationV4 = serde_json::from_str(include_str!(
+        "../../../wire/golden/magic-combat-observation.v4.json"
+    ))
+    .unwrap();
+    observation.validate().unwrap();
+    assert_eq!(observation.player_life[1].life, 17);
+    assert_eq!(observation.marked_damage[0].amount, "2");
+    assert_eq!(
+        observation.combat.as_ref().unwrap().blockers[0].status,
+        MagicBlockedStatusV4::Blocked
+    );
+}
+
+#[test]
+fn magic_combat_observation_v4_rejects_inconsistent_unblocked_relation() {
+    let mut observation: MagicObservationV4 = serde_json::from_str(include_str!(
+        "../../../wire/golden/magic-combat-observation.v4.json"
+    ))
+    .unwrap();
+    observation.combat.as_mut().unwrap().blockers[0].status = MagicBlockedStatusV4::Unblocked;
+    assert_eq!(
+        observation.validate(),
+        Err(ObservationValidationError::ObservationPayload)
+    );
+}
+
+#[test]
 fn observed_event_text_fields_are_closed_like_python_and_schema() {
     let empty_label = ObservedEventEnvelope {
         schema_version: OBSERVED_EVENT_SCHEMA.into(),

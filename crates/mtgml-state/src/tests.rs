@@ -11,7 +11,7 @@ use mtgml_random::{
     RandomStreamKindV1, RootSeed256,
 };
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::engine_state_shape::EngineStateShapeViolation;
 

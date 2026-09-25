@@ -25,6 +25,7 @@ const SYNTHETIC_OBSERVATION_CODEC: &str = "synthetic-m3-observation.v1";
 const MAGIC_OBSERVATION_CODEC: &str = "magic-m3-observation.v1";
 const COMBAT_OBSERVATION_CODEC: &str = "magic-combat-observation.v2";
 const COMBAT_BLOCKERS_OBSERVATION_CODEC: &str = "magic-combat-observation.v3";
+const COMBAT_DAMAGE_OBSERVATION_CODEC: &str = "magic-combat-observation.v4";
 const SBA_CAPABILITY_KEY: &str = "rules/state-based-actions-combat";
 const SBA_CAPABILITY_VERSION: &str = "0.1.0";
 const BASIC_PRIORITY_CAPABILITY_KEY: &str = "rules/basic-priority";
@@ -42,7 +43,8 @@ fn forced_progress_revision_budget(
     if execution.program_kind != mtgml_model::ExecutionProgramV1::MagicRules
         || (observation_codec != MAGIC_OBSERVATION_CODEC
             && observation_codec != COMBAT_OBSERVATION_CODEC
-            && observation_codec != COMBAT_BLOCKERS_OBSERVATION_CODEC)
+            && observation_codec != COMBAT_BLOCKERS_OBSERVATION_CODEC
+            && observation_codec != COMBAT_DAMAGE_OBSERVATION_CODEC)
         || !matches!(
             &rules.rules_authority,
             RulesAuthorityV1::ComprehensiveRules { .. }
@@ -85,6 +87,18 @@ fn forced_progress_revision_budget(
         TURN_STRUCTURE_CAPABILITY_KEY,
         ZONE_INCARNATION_CAPABILITY_KEY,
     ];
+    let expected_combat_damage = [
+        BASIC_PRIORITY_CAPABILITY_KEY,
+        "rules/combat-damage",
+        "rules/combat-phase",
+        "rules/damage-and-life",
+        DECLARE_ATTACKERS_CAPABILITY_KEY,
+        DECLARE_BLOCKERS_CAPABILITY_KEY,
+        DRAW_CARD_CAPABILITY_KEY,
+        SBA_CAPABILITY_KEY,
+        TURN_STRUCTURE_CAPABILITY_KEY,
+        ZONE_INCARNATION_CAPABILITY_KEY,
+    ];
     if observation_codec == COMBAT_OBSERVATION_CODEC
         && closure.len() == expected_combat.len()
         && closure
@@ -102,6 +116,17 @@ fn forced_progress_revision_budget(
             .all(|(actual, key)| actual.key == key && actual.version == SBA_CAPABILITY_VERSION)
     {
         return Some(1);
+    }
+    if observation_codec == COMBAT_DAMAGE_OBSERVATION_CODEC
+        && closure.len() == expected_combat_damage.len()
+        && closure
+            .iter()
+            .zip(expected_combat_damage)
+            .all(|(actual, key)| actual.key == key && actual.version == SBA_CAPABILITY_VERSION)
+    {
+        // The accepted closing pass can force a damage product and one SBA
+        // Order Decision product inside the same response transaction.
+        return Some(2);
     }
     if closure.len() == expected.len()
         && closure
@@ -166,12 +191,33 @@ fn observation_codec_supported(rules: &RulesContractManifestV1, codec: &str) -> 
                 .zip(expected)
                 .all(|(actual, key)| actual.key == key && actual.version == SBA_CAPABILITY_VERSION)
     });
-    let magic_v1_admitted = magic_semantics_admitted && !combat_closure && !blocker_closure;
+    let damage_closure = rules.capability_closure.as_ref().is_some_and(|closure| {
+        let expected = [
+            BASIC_PRIORITY_CAPABILITY_KEY,
+            "rules/combat-damage",
+            "rules/combat-phase",
+            "rules/damage-and-life",
+            DECLARE_ATTACKERS_CAPABILITY_KEY,
+            DECLARE_BLOCKERS_CAPABILITY_KEY,
+            DRAW_CARD_CAPABILITY_KEY,
+            SBA_CAPABILITY_KEY,
+            TURN_STRUCTURE_CAPABILITY_KEY,
+            ZONE_INCARNATION_CAPABILITY_KEY,
+        ];
+        closure.len() == expected.len()
+            && closure
+                .iter()
+                .zip(expected)
+                .all(|(actual, key)| actual.key == key && actual.version == SBA_CAPABILITY_VERSION)
+    });
+    let magic_v1_admitted =
+        magic_semantics_admitted && !combat_closure && !blocker_closure && !damage_closure;
     matches!(
         (magic_v1_admitted, codec),
         (true, MAGIC_OBSERVATION_CODEC) | (false, SYNTHETIC_OBSERVATION_CODEC)
     ) || (combat_closure && codec == COMBAT_OBSERVATION_CODEC)
         || (blocker_closure && codec == COMBAT_BLOCKERS_OBSERVATION_CODEC)
+        || (damage_closure && codec == COMBAT_DAMAGE_OBSERVATION_CODEC)
 }
 
 fn validate_status_for_players(

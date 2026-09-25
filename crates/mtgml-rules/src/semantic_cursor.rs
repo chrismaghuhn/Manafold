@@ -14,6 +14,10 @@ use crate::validation::TransitionViolation;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SemanticValidationCursor {
     life: BTreeMap<PlayerId, i64>,
+    pending_damage_life: BTreeMap<PlayerId, (i64, i64)>,
+    pending_damage_marks: BTreeMap<GameObjectId, (u64, u64)>,
+    pending_damage_active: bool,
+    damage_dealt_event_seen: bool,
     objects: BTreeMap<GameObjectId, ObjectSnapshot>,
     position: TurnPosition,
     priority: PriorityState,
@@ -42,6 +46,10 @@ impl SemanticValidationCursor {
                 .iter()
                 .map(|(player, player_state)| (*player, player_state.life))
                 .collect(),
+            pending_damage_life: BTreeMap::new(),
+            pending_damage_marks: BTreeMap::new(),
+            pending_damage_active: false,
+            damage_dealt_event_seen: false,
             objects: crate::snapshots::object_snapshots(state)?,
             position: state.core.position,
             priority: state.core.priority,
@@ -86,11 +94,167 @@ impl SemanticValidationCursor {
         })
     }
 
+    fn expected_combat_damage_assignments(
+        &self,
+    ) -> Result<Vec<mtgml_state::DamageAssignmentV1>, TransitionViolation> {
+        if self.position
+            != (TurnPosition::Combat {
+                step: mtgml_state::CombatStep::CombatDamage,
+            })
+            || self.priority != PriorityState::None
+            || self.pending_decision.is_some()
+        {
+            return Err(TransitionViolation::Combat);
+        }
+        let combat = self.combat.as_ref().ok_or(TransitionViolation::Combat)?;
+        if combat.damage_step_completed
+            || combat.attackers.is_empty()
+            || combat.attackers.len() > 8
+            || combat.attackers.windows(2).any(|pair| pair[0] >= pair[1])
+            || combat.blockers.len() != combat.attackers.len()
+            || combat.blockers.keys().copied().collect::<BTreeSet<_>>()
+                != combat.attackers.iter().copied().collect()
+            || combat.blockers.values().flatten().count() > 1
+        {
+            return Err(TransitionViolation::Combat);
+        }
+        let power = |object: GameObjectId| -> Result<Option<u64>, TransitionViolation> {
+            let snapshot = self
+                .objects
+                .get(&object)
+                .ok_or(TransitionViolation::Combat)?;
+            if snapshot.location.zone != mtgml_model::ZoneKind::Battlefield || snapshot.face_down {
+                return Err(TransitionViolation::Combat);
+            }
+            let source = self
+                .foundation_sources
+                .get(&object)
+                .ok_or(TransitionViolation::Combat)?;
+            let mtgml_state::BaseCharacteristics::Simple { power, .. } =
+                source.base_characteristics;
+            if source.source_kind != mtgml_state::FoundationSourceKind::Creature || power < 0 {
+                return Err(TransitionViolation::Combat);
+            }
+            if power == 0 {
+                Ok(None)
+            } else {
+                Ok(Some(
+                    u64::try_from(power).map_err(|_| TransitionViolation::Combat)?,
+                ))
+            }
+        };
+        let mut assignments = Vec::new();
+        for attacker in &combat.attackers {
+            let blocker = combat
+                .blockers
+                .get(attacker)
+                .ok_or(TransitionViolation::Combat)?;
+            let blocked = combat.blocked_attackers.contains(attacker);
+            if !blocked && blocker.is_some() {
+                return Err(TransitionViolation::Combat);
+            }
+            if blocked && blocker.is_none() {
+                continue;
+            }
+            let recipient = if blocked {
+                mtgml_state::DamageRecipientV1::Creature {
+                    object: blocker.ok_or(TransitionViolation::Combat)?,
+                }
+            } else {
+                mtgml_state::DamageRecipientV1::Player {
+                    player: combat.defending_player,
+                }
+            };
+            if let Some(amount) = power(*attacker)? {
+                assignments.push(mtgml_state::DamageAssignmentV1 {
+                    source: *attacker,
+                    recipient,
+                    amount,
+                });
+            }
+            if let Some(blocker) = blocker {
+                if let Some(amount) = power(*blocker)? {
+                    assignments.push(mtgml_state::DamageAssignmentV1 {
+                        source: *blocker,
+                        recipient: mtgml_state::DamageRecipientV1::Creature { object: *attacker },
+                        amount,
+                    });
+                }
+            }
+        }
+        Ok(assignments)
+    }
+
+    fn derive_cursor_sba_plan(
+        &self,
+    ) -> Result<crate::state_based_actions::SbaOrderRoundPlan, TransitionViolation> {
+        let mut actions = self
+            .life
+            .iter()
+            .filter_map(|(player, life)| {
+                (*life <= 0).then_some(SbaSelectedActionV1::PlayerLoses { player: *player })
+            })
+            .collect::<Vec<_>>();
+        let mut object_actions = Vec::new();
+        let mut owner_counts = BTreeMap::<PlayerId, usize>::new();
+        for (object, snapshot) in &self.objects {
+            if snapshot.location.zone != mtgml_model::ZoneKind::Battlefield {
+                continue;
+            }
+            let source = self
+                .foundation_sources
+                .get(object)
+                .ok_or(TransitionViolation::SbaBatch)?;
+            let mtgml_state::BaseCharacteristics::Simple { toughness, .. } =
+                source.base_characteristics;
+            let mut causes = Vec::new();
+            if toughness <= 0 {
+                causes.push(mtgml_state::SbaObjectCauseV1::ZeroToughness);
+            }
+            if toughness > 0 && source.marked_damage >= toughness as u64 {
+                causes.push(mtgml_state::SbaObjectCauseV1::LethalDamage);
+            }
+            if !causes.is_empty() {
+                object_actions.push(SbaSelectedActionV1::ObjectToOwnerGraveyard {
+                    object: *object,
+                    causes,
+                });
+                *owner_counts.entry(snapshot.owner).or_default() += 1;
+            }
+        }
+        actions.extend(object_actions);
+        let mut apnap_owners = Vec::new();
+        if owner_counts
+            .get(&self.active_player)
+            .copied()
+            .unwrap_or_default()
+            >= 2
+        {
+            apnap_owners.push(self.active_player);
+        }
+        apnap_owners.extend(owner_counts.into_iter().filter_map(|(owner, count)| {
+            (owner != self.active_player && count >= 2).then_some(owner)
+        }));
+        Ok(crate::state_based_actions::SbaOrderRoundPlan {
+            selected_sba_actions: actions,
+            apnap_owners,
+        })
+    }
+
     pub(crate) fn apply(
         &mut self,
         event: &crate::events::AuthoritativeRuleEventKind,
     ) -> Result<(), TransitionViolation> {
         use crate::events::AuthoritativeRuleEventKind;
+        if (!self.pending_damage_life.is_empty() || !self.pending_damage_marks.is_empty())
+            && !matches!(
+                event,
+                AuthoritativeRuleEventKind::LifeChanged { .. }
+                    | AuthoritativeRuleEventKind::MarkedDamageChanged { .. }
+            )
+        {
+            return Err(TransitionViolation::Combat);
+        }
         if self.attacker_taps_pending.is_some()
             && !matches!(event, AuthoritativeRuleEventKind::ObjectTapped { .. })
         {
@@ -276,7 +440,111 @@ impl SemanticValidationCursor {
                 if from == to || *current != *from {
                     return Err(TransitionViolation::LifeChange);
                 }
+                if self.pending_damage_active {
+                    if self.pending_damage_life.remove(player) != Some((*from, *to)) {
+                        return Err(TransitionViolation::Combat);
+                    }
+                } else if self.position
+                    == (TurnPosition::Combat {
+                        step: mtgml_state::CombatStep::CombatDamage,
+                    })
+                {
+                    return Err(TransitionViolation::Combat);
+                }
                 *current = *to;
+                self.pending_damage_active =
+                    !self.pending_damage_life.is_empty() || !self.pending_damage_marks.is_empty();
+                if !self.pending_damage_active && self.damage_dealt_event_seen {
+                    self.sba_plan = Some(self.derive_cursor_sba_plan()?);
+                }
+            }
+            AuthoritativeRuleEventKind::CombatDamageDealt { assignments } => {
+                if !self.pending_damage_life.is_empty() || !self.pending_damage_marks.is_empty() {
+                    return Err(TransitionViolation::Combat);
+                }
+                let expected = self.expected_combat_damage_assignments()?;
+                if assignments.is_empty()
+                    || *assignments != expected
+                    || self.damage_dealt_event_seen
+                {
+                    return Err(TransitionViolation::Combat);
+                }
+                self.damage_dealt_event_seen = true;
+                self.pending_damage_active = true;
+                let mut player_totals = BTreeMap::<PlayerId, u64>::new();
+                let mut creature_totals = BTreeMap::<GameObjectId, u64>::new();
+                for assignment in assignments {
+                    match assignment.recipient {
+                        mtgml_state::DamageRecipientV1::Player { player } => {
+                            let total = player_totals.entry(player).or_default();
+                            *total = total
+                                .checked_add(assignment.amount)
+                                .ok_or(TransitionViolation::Combat)?;
+                        }
+                        mtgml_state::DamageRecipientV1::Creature { object } => {
+                            let total = creature_totals.entry(object).or_default();
+                            *total = total
+                                .checked_add(assignment.amount)
+                                .ok_or(TransitionViolation::Combat)?;
+                        }
+                    }
+                }
+                for (player, amount) in player_totals {
+                    let before = *self.life.get(&player).ok_or(TransitionViolation::Combat)?;
+                    let amount = i64::try_from(amount).map_err(|_| TransitionViolation::Combat)?;
+                    let after = before
+                        .checked_sub(amount)
+                        .ok_or(TransitionViolation::Combat)?;
+                    self.pending_damage_life.insert(player, (before, after));
+                }
+                for (object, amount) in creature_totals {
+                    let source = self
+                        .foundation_sources
+                        .get(&object)
+                        .ok_or(TransitionViolation::Combat)?;
+                    let after = source
+                        .marked_damage
+                        .checked_add(amount)
+                        .ok_or(TransitionViolation::Combat)?;
+                    self.pending_damage_marks
+                        .insert(object, (source.marked_damage, after));
+                }
+            }
+            AuthoritativeRuleEventKind::CombatDamageStepCompleted => {
+                if self.pending_damage_active
+                    || !self.pending_damage_life.is_empty()
+                    || !self.pending_damage_marks.is_empty()
+                {
+                    return Err(TransitionViolation::Combat);
+                }
+                let expected = self.expected_combat_damage_assignments()?;
+                if expected.is_empty() == self.damage_dealt_event_seen {
+                    return Err(TransitionViolation::Combat);
+                }
+                let combat = self.combat.as_mut().ok_or(TransitionViolation::Combat)?;
+                if combat.damage_step_completed {
+                    return Err(TransitionViolation::Combat);
+                }
+                combat.damage_step_completed = true;
+                self.damage_dealt_event_seen = false;
+            }
+            AuthoritativeRuleEventKind::MarkedDamageChanged { creature, from, to } => {
+                let source = self
+                    .foundation_sources
+                    .get_mut(creature)
+                    .ok_or(TransitionViolation::Combat)?;
+                if from == to
+                    || source.marked_damage != *from
+                    || self.pending_damage_marks.remove(creature) != Some((*from, *to))
+                {
+                    return Err(TransitionViolation::Combat);
+                }
+                source.marked_damage = *to;
+                self.pending_damage_active =
+                    !self.pending_damage_life.is_empty() || !self.pending_damage_marks.is_empty();
+                if !self.pending_damage_active && self.damage_dealt_event_seen {
+                    self.sba_plan = Some(self.derive_cursor_sba_plan()?);
+                }
             }
             AuthoritativeRuleEventKind::ObjectTapped { object, from, to } => {
                 if let Some(expected) = &mut self.attacker_taps_pending {
@@ -433,6 +701,8 @@ impl SemanticValidationCursor {
                 self.combat = Some(mtgml_state::CombatState {
                     defending_player: *defending_player,
                     attackers: attackers.clone(),
+                    damage_step_completed: false,
+                    blocked_attackers: std::collections::BTreeSet::new(),
                     blockers: attackers.iter().map(|attacker| (*attacker, None)).collect(),
                 });
                 self.attacker_taps_pending = Some(attackers.iter().copied().collect());
@@ -465,6 +735,7 @@ impl SemanticValidationCursor {
                 let mut seen_blockers = BTreeSet::new();
                 for assignment in assignments {
                     if let Some(blocker) = assignment.blocker {
+                        combat.blocked_attackers.insert(assignment.attacker);
                         let object = self
                             .objects
                             .get(&blocker)
@@ -497,10 +768,7 @@ impl SemanticValidationCursor {
                     != (TurnPosition::Combat {
                         step: mtgml_state::CombatStep::EndOfCombat,
                     })
-                    || !self
-                        .combat
-                        .as_ref()
-                        .is_some_and(|combat| combat.attackers.is_empty())
+                    || self.combat.is_none()
                 {
                     return Err(TransitionViolation::Combat);
                 }
@@ -799,6 +1067,9 @@ impl SemanticValidationCursor {
                 combat
                     .blockers
                     .retain(|attacker, _| !selected_combat_objects.contains(attacker));
+                combat
+                    .blocked_attackers
+                    .retain(|attacker| !selected_combat_objects.contains(attacker));
                 for blocker in combat.blockers.values_mut() {
                     if blocker.is_some_and(|object| selected_combat_objects.contains(&object)) {
                         *blocker = None;
@@ -823,6 +1094,10 @@ impl SemanticValidationCursor {
             || self.priority != after.core.priority
             || self.combat != after.combat
             || self.foundation_sources != after.foundation_sources
+            || self.pending_damage_active
+            || !self.pending_damage_life.is_empty()
+            || !self.pending_damage_marks.is_empty()
+            || self.damage_dealt_event_seen
             || self
                 .attacker_taps_pending
                 .as_ref()

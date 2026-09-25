@@ -33,6 +33,15 @@ from ._magic_combat_observation_v3 import (
     MagicCombatParticipationV3,
     MagicObservationV3,
 )
+from ._magic_combat_observation_v4 import (
+    MAGIC_OBSERVATION_SCHEMA_V4,
+    MagicBlockedStatusV4,
+    MagicCombatBlockerAssignmentV4,
+    MagicCombatParticipationV4,
+    MagicMarkedDamageV4,
+    MagicObservationV4,
+    MagicPlayerLifeV4,
+)
 from ._magic_observation import (
     MAGIC_OBSERVATION_SCHEMA_V1,
     MagicCompletedOrder,
@@ -85,6 +94,7 @@ __all__ = [
     "MAGIC_OBSERVATION_SCHEMA_V1",
     "MAGIC_OBSERVATION_SCHEMA_V2",
     "MAGIC_OBSERVATION_SCHEMA_V3",
+    "MAGIC_OBSERVATION_SCHEMA_V4",
     "OBSERVATION_SCHEMA",
     "OBSERVED_EVENT_KINDS",
     "OBSERVED_EVENT_SCHEMA_V2",
@@ -109,6 +119,12 @@ __all__ = [
     "MagicObservation",
     "MagicObservationV2",
     "MagicObservationV3",
+    "MagicObservationV4",
+    "MagicBlockedStatusV4",
+    "MagicCombatBlockerAssignmentV4",
+    "MagicCombatParticipationV4",
+    "MagicMarkedDamageV4",
+    "MagicPlayerLifeV4",
     "MagicPendingSbaOrdering",
     "ObservationEnvelope",
     "ObservedEventEnvelope",

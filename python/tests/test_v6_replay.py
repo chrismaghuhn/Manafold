@@ -85,6 +85,18 @@ def schema_codec_cases() -> list[tuple[str, dict[str, object], object, str, bool
         {"key": "rules/turn-structure", "version": "0.1.0"},
         {"key": "rules/zone-incarnation", "version": "0.1.0"},
     ]
+    combat_damage_closure = [
+        {"key": "rules/basic-priority", "version": "0.1.0"},
+        {"key": "rules/combat-damage", "version": "0.1.0"},
+        {"key": "rules/combat-phase", "version": "0.1.0"},
+        {"key": "rules/damage-and-life", "version": "0.1.0"},
+        {"key": "rules/declare-attackers", "version": "0.1.0"},
+        {"key": "rules/declare-blockers", "version": "0.1.0"},
+        {"key": "rules/draw-card", "version": "0.1.0"},
+        {"key": "rules/state-based-actions-combat", "version": "0.1.0"},
+        {"key": "rules/turn-structure", "version": "0.1.0"},
+        {"key": "rules/zone-incarnation", "version": "0.1.0"},
+    ]
     return [
         (
             "synthetic",
@@ -126,6 +138,20 @@ def schema_codec_cases() -> list[tuple[str, dict[str, object], object, str, bool
             cr,
             combat_blockers_closure,
             "magic-combat-observation.v2",
+            False,
+        ),
+        (
+            "cr_combat_damage",
+            cr,
+            combat_damage_closure,
+            "magic-combat-observation.v4",
+            True,
+        ),
+        (
+            "cr_combat_damage_wrong_codec",
+            cr,
+            combat_damage_closure,
+            "magic-combat-observation.v3",
             False,
         ),
         (

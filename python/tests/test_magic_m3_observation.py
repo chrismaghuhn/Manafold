@@ -10,6 +10,7 @@ from mtgml.observation import (
     MAGIC_OBSERVATION_SCHEMA_V1,
     MAGIC_OBSERVATION_SCHEMA_V2,
     MAGIC_OBSERVATION_SCHEMA_V3,
+    MAGIC_OBSERVATION_SCHEMA_V4,
 )
 from mtgml.wire import decode_canonical, encode_canonical
 
@@ -55,6 +56,26 @@ class MagicObservationTests(unittest.TestCase):
         value["combat"]["blockers"][0]["blocker"] = "7"
         with self.assertRaises(WireError):
             decode_canonical(MAGIC_OBSERVATION_SCHEMA_V3, canonical_json_bytes(value))
+
+    def test_v4_payload_roundtrips_life_marks_and_durable_block_status(self) -> None:
+        payload = (
+            (ROOT / ".." / "wire" / "golden" / "magic-combat-observation.v4.json")
+            .read_bytes()
+            .strip()
+        )
+        value = decode_canonical(MAGIC_OBSERVATION_SCHEMA_V4, payload)
+        self.assertEqual(encode_canonical(value), payload)
+        self.assertEqual(value.player_life[1].life, 17)
+        self.assertEqual(value.marked_damage[0].amount, "2")
+        self.assertEqual(value.combat.blockers[0].status, "blocked")
+
+    def test_v4_rejects_unblocked_attacker_with_a_live_blocker(self) -> None:
+        value = json.loads(
+            (ROOT / ".." / "wire" / "golden" / "magic-combat-observation.v4.json").read_bytes()
+        )
+        value["combat"]["blockers"][0]["status"] = "unblocked"
+        with self.assertRaises(WireError):
+            decode_canonical(MAGIC_OBSERVATION_SCHEMA_V4, canonical_json_bytes(value))
 
     def test_golden_magic_payloads_roundtrip_and_keep_perspective_local_ids(self) -> None:
         names = (

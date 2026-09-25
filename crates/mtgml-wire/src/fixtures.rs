@@ -6,8 +6,8 @@ use mtgml_decision::{
 use mtgml_model::EpisodeStatus;
 use mtgml_observation::{
     InformationStateEnvelope, MagicObservation, MagicObservationV2, MagicObservationV3,
-    ObservationEnvelope, ObservedEventEnvelope, ObservedEventEnvelopeV2, PlayerInformationStateV2,
-    PlayerStep, PlayerStepV2, SyntheticObservation,
+    MagicObservationV4, ObservationEnvelope, ObservedEventEnvelope, ObservedEventEnvelopeV2,
+    PlayerInformationStateV2, PlayerStep, PlayerStepV2, SyntheticObservation,
 };
 use mtgml_replay::{
     AuthoritativeReplayV1, AuthoritativeReplayV2, AuthoritativeReplayV3, AuthoritativeReplayV4,
@@ -131,6 +131,7 @@ fn decode_named(contract: &str, bytes: &[u8]) -> Result<(), WireError> {
         "magic-m3-observation.v1" => decode_canonical::<MagicObservation>(bytes).map(drop),
         "magic-combat-observation.v2" => decode_canonical::<MagicObservationV2>(bytes).map(drop),
         "magic-combat-observation.v3" => decode_canonical::<MagicObservationV3>(bytes).map(drop),
+        "magic-combat-observation.v4" => decode_canonical::<MagicObservationV4>(bytes).map(drop),
         _ => Err(WireError::new(
             "fixture.unknown_contract",
             format!("unknown fixture contract {contract}"),

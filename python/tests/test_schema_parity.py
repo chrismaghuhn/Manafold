@@ -142,6 +142,7 @@ class SchemaParityTests(unittest.TestCase):
             "magic-m3-observation.v1": "magic-m3-observation.v1.schema.json",
             "magic-combat-observation.v2": "magic-combat-observation.v2.schema.json",
             "magic-combat-observation.v3": "magic-combat-observation.v3.schema.json",
+            "magic-combat-observation.v4": "magic-combat-observation.v4.schema.json",
             "synthetic-m3-observation.v1": "synthetic-m3-observation.v1.schema.json",
             "replay-manifest.v4": "replay-manifest.v4.schema.json",
             "authoritative-replay.v4": "authoritative-replay.v4.schema.json",

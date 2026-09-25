@@ -627,6 +627,8 @@ mod tests {
         state.combat = Some(CombatState {
             defending_player: PlayerId(42),
             attackers: vec![GameObjectId(1)],
+            damage_step_completed: false,
+            blocked_attackers: std::collections::BTreeSet::new(),
             blockers: std::collections::BTreeMap::new(),
         });
         assert!(matches!(
