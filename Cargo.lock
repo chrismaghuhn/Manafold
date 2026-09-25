@@ -240,7 +240,6 @@ name = "mtgml-random"
 version = "0.2.2"
 dependencies = [
  "hmac",
- "mtgml-model",
  "serde",
  "serde_json",
  "sha2",
