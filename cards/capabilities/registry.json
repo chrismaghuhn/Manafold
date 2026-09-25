@@ -8,16 +8,24 @@
       ],
       "benchmark_scenarios": [],
       "category": "core_rule",
-      "conformance_cases": [],
+      "conformance_cases": [
+        "basic_priority_first_pass_transfers_and_second_advances_one_step",
+        "production_basic_priority_active_priority_and_after_first_pass_restore_fork_and_replay",
+        "foundation_v2_exact_turn_composition_closes_through_p2_draw"
+      ],
       "dependencies": [
         "rules/state-based-actions-combat",
         "rules/turn-structure"
       ],
-      "implementation_paths": [],
+      "implementation_paths": [
+        "crates/mtgml-rules/src/basic_priority.rs",
+        "crates/mtgml-rules/src/magic.rs",
+        "crates/mtgml-environment/src/tests/magic_rules_production.rs"
+      ],
       "information_risk": "medium",
       "key": "rules/basic-priority",
-      "lifecycle": "specified",
-      "notes": "Specified only; no implementation, conformance, benchmark, coverage, or certification evidence is claimed.",
+      "lifecycle": "covered",
+      "notes": "Covered for the bounded Foundation V2 M3 scope by the listed executable cases and cumulative interaction evidence. Unsupported behavior reaches a fail closed boundary. No certification, card, deck, format, Commander, broad Magic, or playability support is claimed.",
       "owners": [
         "priority"
       ],
@@ -34,7 +42,12 @@
       ],
       "benchmark_scenarios": [],
       "category": "core_rule",
-      "conformance_cases": [],
+      "conformance_cases": [
+        "bounded_turn_cleanup_resets_marks_and_hands_off_through_next_upkeep",
+        "bounded_cleanup_restore_rejects_active_hand_eight_atomically",
+        "bounded_cleanup_restore_rejects_sba_unstable_state_without_clearing_damage",
+        "foundation_v2_exact_turn_composition_closes_through_p2_draw"
+      ],
       "dependencies": [
         "rules/turn-structure"
       ],
@@ -49,8 +62,8 @@
       ],
       "information_risk": "high",
       "key": "rules/cleanup-reset",
-      "lifecycle": "specified",
-      "notes": "Block 7 implementation candidate; lifecycle remains specified pending independent exact-head review. Coverage and certification are not claimed.",
+      "lifecycle": "covered",
+      "notes": "Covered for the bounded Foundation V2 M3 scope by the listed executable cases and cumulative interaction evidence. Unsupported behavior reaches a fail closed boundary. No certification, card, deck, format, Commander, broad Magic, or playability support is claimed.",
       "owners": [
         "turn"
       ],
@@ -66,7 +79,13 @@
       ],
       "benchmark_scenarios": [],
       "category": "core_rule",
-      "conformance_cases": [],
+      "conformance_cases": [
+        "combat_damage_simultaneously_marks_and_performs_post_damage_sba",
+        "combat_damage_two_lethal_creatures_leave_from_one_sba_snapshot",
+        "combat_damage_multiple_and_mixed_attackers_are_complete_and_simultaneous",
+        "combat_damage_pending_checkpoint_restore_and_fork_reproduce_forced_product",
+        "foundation_v2_exact_turn_composition_closes_through_p2_draw"
+      ],
       "dependencies": [
         "rules/declare-blockers",
         "rules/damage-and-life",
@@ -86,8 +105,8 @@
       ],
       "information_risk": "high",
       "key": "rules/combat-damage",
-      "lifecycle": "specified",
-      "notes": "Block 6 implementation candidate; lifecycle remains specified pending independent exact-head review. Coverage and certification are not claimed.",
+      "lifecycle": "covered",
+      "notes": "Covered for the bounded Foundation V2 M3 scope by the listed executable cases and cumulative interaction evidence. Unsupported behavior reaches a fail closed boundary. No certification, card, deck, format, Commander, broad Magic, or playability support is claimed.",
       "owners": [
         "combat"
       ],
@@ -104,7 +123,11 @@
       ],
       "benchmark_scenarios": [],
       "category": "core_rule",
-      "conformance_cases": [],
+      "conformance_cases": [
+        "combat_phase_reaches_explicit_attacker_choice_and_commits_public_participation",
+        "explicit_empty_attack_skips_blockers_and_damage_then_ends_combat",
+        "foundation_v2_exact_turn_composition_closes_through_p2_draw"
+      ],
       "dependencies": [
         "rules/basic-priority",
         "rules/turn-structure"
@@ -116,12 +139,13 @@
         "crates/mtgml-environment/src/reference.rs",
         "crates/mtgml-environment/src/player_projection.rs",
         "crates/mtgml-observation/src/magic_observation.rs",
-        "crates/mtgml-replay/src/v6.rs"
+        "crates/mtgml-replay/src/v6.rs",
+        "crates/mtgml-environment/src/tests/magic_rules_production.rs"
       ],
       "information_risk": "medium",
       "key": "rules/combat-phase",
-      "lifecycle": "specified",
-      "notes": "Bounded combat phase progression implementation candidate is present; independent exact-head review pending. Source-less Battlefield states remain rejected by the accepted Foundation V2 closure. Lifecycle remains specified; coverage and certification are not claimed.",
+      "lifecycle": "covered",
+      "notes": "Covered for the bounded Foundation V2 M3 scope by the listed executable cases and cumulative interaction evidence. Unsupported behavior reaches a fail closed boundary. No certification, card, deck, format, Commander, broad Magic, or playability support is claimed.",
       "owners": [
         "combat"
       ],
@@ -137,7 +161,12 @@
       ],
       "benchmark_scenarios": [],
       "category": "core_rule",
-      "conformance_cases": [],
+      "conformance_cases": [
+        "three_attacker_decision_represents_each_legal_subset_once",
+        "zero_eligible_attackers_still_require_an_explicit_empty_response",
+        "nine_eligible_attackers_fail_before_decision_without_mutation",
+        "foundation_v2_exact_turn_composition_closes_through_p2_draw"
+      ],
       "dependencies": [
         "rules/combat-phase"
       ],
@@ -150,12 +179,13 @@
         "crates/mtgml-environment/src/player_projection.rs",
         "crates/mtgml-observation/src/magic_observation.rs",
         "python/src/mtgml/_magic_combat_observation.py",
-        "crates/mtgml-replay/src/v6.rs"
+        "crates/mtgml-replay/src/v6.rs",
+        "crates/mtgml-environment/src/tests/magic_rules_production.rs"
       ],
       "information_risk": "high",
       "key": "rules/declare-attackers",
-      "lifecycle": "specified",
-      "notes": "Bounded attacker decision and commitment implementation candidate is present; independent exact-head review pending. Source-less Battlefield states remain rejected by the accepted Foundation V2 closure. Lifecycle remains specified; coverage and certification are not claimed.",
+      "lifecycle": "covered",
+      "notes": "Covered for the bounded Foundation V2 M3 scope by the listed executable cases and cumulative interaction evidence. Unsupported behavior reaches a fail closed boundary. No certification, card, deck, format, Commander, broad Magic, or playability support is claimed.",
       "owners": [
         "combat"
       ],
@@ -171,7 +201,13 @@
       ],
       "benchmark_scenarios": [],
       "category": "core_rule",
-      "conformance_cases": [],
+      "conformance_cases": [
+        "one_blocker_three_attacker_choice_space_is_exactly_four_assignments",
+        "zero_eligible_blockers_uses_deterministic_empty_assignment_without_decision",
+        "more_than_one_eligible_blocker_rejects_before_decision_without_mutation",
+        "blocker_decision_restore_fork_and_replay_v6_are_exact",
+        "foundation_v2_exact_turn_composition_closes_through_p2_draw"
+      ],
       "dependencies": [
         "rules/declare-attackers"
       ],
@@ -189,12 +225,13 @@
         "crates/mtgml-replay/src/v6.rs",
         "python/src/mtgml/_magic_combat_observation_v3.py",
         "python/src/mtgml/_replay_v6.py",
-        "schemas/magic-combat-observation.v3.schema.json"
+        "schemas/magic-combat-observation.v3.schema.json",
+        "crates/mtgml-environment/src/tests/magic_rules_production.rs"
       ],
       "information_risk": "high",
       "key": "rules/declare-blockers",
-      "lifecycle": "specified",
-      "notes": "Bounded blocker assignment implementation candidate is present; lifecycle remains specified and independent exact-head review is pending. More than one eligible blocker still fails closed before Decision creation; coverage and certification are not claimed.",
+      "lifecycle": "covered",
+      "notes": "Covered for the bounded Foundation V2 M3 scope by the listed executable cases and cumulative interaction evidence. Unsupported behavior reaches a fail closed boundary. No certification, card, deck, format, Commander, broad Magic, or playability support is claimed.",
       "owners": [
         "combat"
       ],
@@ -210,7 +247,12 @@
       ],
       "benchmark_scenarios": [],
       "category": "core_rule",
-      "conformance_cases": [],
+      "conformance_cases": [
+        "combat_damage_unblocked_assignment_is_typed_public_and_replay_exact",
+        "combat_damage_simultaneously_marks_and_performs_post_damage_sba",
+        "zero_power_has_no_damage_event_and_lethal_player_damage_has_no_priority",
+        "foundation_v2_exact_turn_composition_closes_through_p2_draw"
+      ],
       "dependencies": [],
       "implementation_paths": [
         "crates/mtgml-state/src/damage.rs",
@@ -220,12 +262,13 @@
         "crates/mtgml-rules/src/events.rs",
         "crates/mtgml-rules/src/semantic_cursor.rs",
         "crates/mtgml-environment/src/player_projection.rs",
-        "crates/mtgml-observation/src/magic_observation.rs"
+        "crates/mtgml-observation/src/magic_observation.rs",
+        "crates/mtgml-environment/src/tests/magic_rules_production.rs"
       ],
       "information_risk": "high",
       "key": "rules/damage-and-life",
-      "lifecycle": "specified",
-      "notes": "Block 6 implementation candidate; lifecycle remains specified pending independent exact-head review. Coverage and certification are not claimed.",
+      "lifecycle": "covered",
+      "notes": "Covered for the bounded Foundation V2 M3 scope by the listed executable cases and cumulative interaction evidence. Unsupported behavior reaches a fail closed boundary. No certification, card, deck, format, Commander, broad Magic, or playability support is claimed.",
       "owners": [
         "damage"
       ],
@@ -242,15 +285,26 @@
       ],
       "benchmark_scenarios": [],
       "category": "core_rule",
-      "conformance_cases": [],
+      "conformance_cases": [
+        "production_state_based_actions_identity_is_distinct_and_executes_the_reviewed_sba_scope",
+        "task9b_no_order_post_damage_application_prunes_one_blocker_and_moves_it",
+        "task9b_one_player_loss_sets_has_lost_and_terminal_rules_loss",
+        "task9b_simultaneous_losses_set_both_flags_and_terminal_draw",
+        "foundation_v2_exact_turn_composition_closes_through_p2_draw"
+      ],
       "dependencies": [
         "rules/zone-incarnation"
       ],
-      "implementation_paths": [],
+      "implementation_paths": [
+        "crates/mtgml-rules/src/state_based_actions.rs",
+        "crates/mtgml-rules/src/zone_incarnation.rs",
+        "crates/mtgml-environment/src/reference.rs",
+        "crates/mtgml-environment/src/tests/magic_rules_production.rs"
+      ],
       "information_risk": "high",
       "key": "rules/state-based-actions-combat",
-      "lifecycle": "specified",
-      "notes": "Specified only; the combat suffix bounds the SBA subset; no implementation, conformance, benchmark, coverage, or certification evidence is claimed.",
+      "lifecycle": "covered",
+      "notes": "Covered for the bounded Foundation V2 M3 scope by the listed executable cases and cumulative interaction evidence. Unsupported behavior reaches a fail closed boundary. No certification, card, deck, format, Commander, broad Magic, or playability support is claimed.",
       "owners": [
         "state_based_actions"
       ],
@@ -285,8 +339,8 @@
       ],
       "information_risk": "high",
       "key": "rules/draw-card",
-      "lifecycle": "specified",
-      "notes": "Bounded ordinary Draw implementation and Block 3 candidate evidence are present; lifecycle remains specified pending exact-head review. Coverage and certification are not claimed.",
+      "lifecycle": "covered",
+      "notes": "Covered for the bounded Foundation V2 M3 scope by the listed executable cases and cumulative interaction evidence. Unsupported behavior reaches a fail closed boundary. No certification, card, deck, format, Commander, broad Magic, or playability support is claimed.",
       "owners": [
         "turn"
       ],
@@ -326,7 +380,9 @@
         "s1.catalog.wrong-closure",
         "s1.catalog.program-pairing",
         "s1.observation.temporal-fields",
-        "s1.observation.public-untap"
+        "s1.observation.public-untap",
+        "production_basic_priority_end_step_two_pass_reference_replay_closes_through_cleanup",
+        "complete_bounded_turn_runs_from_untap_through_cleanup_with_explicit_endpoints"
       ],
       "dependencies": [],
       "implementation_paths": [
@@ -342,7 +398,7 @@
       "information_risk": "low",
       "key": "rules/turn-structure",
       "lifecycle": "covered",
-      "notes": "Covered for the bounded M3.S1 turn-structure scope by reviewed Section-19 conformance and interaction evidence; certification, card, deck, format, Commander, playability, and downstream capability support are not claimed.",
+      "notes": "Covered for the bounded Foundation V2 M3 scope by the listed executable cases and cumulative interaction evidence. Unsupported behavior reaches a fail closed boundary. No certification, card, deck, format, Commander, broad Magic, or playability support is claimed.",
       "owners": [
         "turn"
       ],
@@ -400,8 +456,8 @@
       ],
       "information_risk": "high",
       "key": "rules/zone-incarnation",
-      "lifecycle": "implemented",
-      "notes": "Implemented for the bounded M3.S2 selected physical-card profiles: admitted Battlefield to owner Graveyard and exact owner Library top to owner Hand. Other families and unsupported profiles fail closed. AUTHORITATIVE_REPLAY = DEFERRED_REQUIRED / BLOCKED_FOR_COVERED; covered, certified, card, deck, format, Commander, and playability support are not claimed.",
+      "lifecycle": "covered",
+      "notes": "Covered for the bounded Foundation V2 M3 scope by the listed executable cases and cumulative interaction evidence. Unsupported behavior reaches a fail closed boundary. No certification, card, deck, format, Commander, broad Magic, or playability support is claimed.",
       "owners": [
         "zones_identity"
       ],

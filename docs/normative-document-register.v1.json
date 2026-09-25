@@ -1076,6 +1076,13 @@
       "path": "docs/reviews/m3-block7-retroactive-red-characterization-2026-09-25.md",
       "role": "process",
       "stability": "provisional"
+    },
+    {
+      "change_process": "documentation-pr",
+      "owner_role": "maintainer",
+      "path": "docs/reviews/m3-final-closure-2026-09-25.md",
+      "role": "process",
+      "stability": "provisional"
     }
   ],
   "schema_version": "normative-document-register.v1"
