@@ -273,21 +273,6 @@ impl RulesKernel for MagicRulesKernel {
                 {
                     return Err(KernelExecutionError::UnsupportedStagePath);
                 }
-                if matches!(
-                    state.core.position,
-                    TurnPosition::Beginning {
-                        step: BeginningStep::Draw
-                    } | TurnPosition::PostcombatMain
-                ) && matches!(
-                    state.core.priority,
-                    mtgml_state::PriorityState::HeldBy {
-                        consecutive_passes: 1,
-                        ..
-                    }
-                ) && !self.profile.allows_cleanup_reset()
-                {
-                    return Err(KernelExecutionError::UnsupportedStagePath);
-                }
                 return self.apply_priority_response(state, trusted_actor, response);
             }
         }
@@ -297,6 +282,19 @@ impl RulesKernel for MagicRulesKernel {
 }
 
 impl MagicRulesKernel {
+    pub(crate) fn authorize_response_progress(
+        &self,
+        before: &EngineState,
+        result: &TransitionResult,
+    ) -> Result<(), crate::TransitionViolation> {
+        if !self.profile.allows_cleanup_reset()
+            && crate::contract::is_second_pass_priority_progress_composition(before, result)
+        {
+            return Err(crate::TransitionViolation::RevisionDidNotAdvance);
+        }
+        Ok(())
+    }
+
     pub(crate) fn validate_combat_runtime_state(
         state: &EngineState,
         status: &EpisodeStatus,

@@ -170,6 +170,20 @@ impl ProgramKernelV1 {
             ProgramKernelInner::Magic(kernel) => kernel.advance_forced_progress(state),
         }
     }
+
+    /// Contract-aware admission for a forced product that closes an accepted
+    /// player response. Magic uses this seam to preserve historical profile
+    /// behavior while authorizing the cumulative bounded-turn continuation.
+    pub fn authorize_response_progress(
+        &self,
+        before: &EngineState,
+        result: &TransitionResult,
+    ) -> Result<(), crate::TransitionViolation> {
+        match &self.inner {
+            ProgramKernelInner::SyntheticLegacy(_) => Ok(()),
+            ProgramKernelInner::Magic(kernel) => kernel.authorize_response_progress(before, result),
+        }
+    }
 }
 
 /// Program-aware runtime-state validation boundary (spec §8).

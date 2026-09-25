@@ -4297,6 +4297,149 @@ fn complete_bounded_turn_runs_from_untap_through_cleanup_with_explicit_endpoints
 }
 
 #[test]
+fn historical_s3c_draw_second_pass_program_kernel_behavior_is_preserved() {
+    let mut kernel = mtgml_rules::ProgramKernelV1::for_admitted_execution(
+        mtgml_model::ExecutionProgramV1::MagicRules,
+        ReferenceEnvironmentBackend::magic_draw_execution_identity().semantic_contract_id,
+    )
+    .unwrap();
+    let upkeep = kernel
+        .advance_forced_progress(&stable_draw_state_at_upkeep())
+        .unwrap();
+    let p2_first = current_authoritative_select_one_response(upkeep.next_decision.as_ref().unwrap());
+    let p1_priority = kernel.apply(&upkeep.next_state, P2, &p2_first).unwrap();
+    let p1_first = current_authoritative_select_one_response(p1_priority.next_decision.as_ref().unwrap());
+    let draw_boundary = kernel.apply(&p1_priority.next_state, P1, &p1_first).unwrap();
+    let draw_open = kernel.advance_forced_progress(&draw_boundary.next_state).unwrap();
+    let p2_draw_pass = current_authoritative_select_one_response(draw_open.next_decision.as_ref().unwrap());
+    let p1_draw_priority = kernel.apply(&draw_open.next_state, P2, &p2_draw_pass).unwrap();
+    let p1_draw_pass = current_authoritative_select_one_response(p1_draw_priority.next_decision.as_ref().unwrap());
+    let before = &p1_draw_priority.next_state;
+    let pending_before = before.execution.pending_decision.as_ref().unwrap();
+    let old_priority = before.core.priority;
+    let old_position = before.core.position;
+    let closed = kernel.apply(before, P1, &p1_draw_pass).unwrap();
+
+    assert!(closed.accepted);
+    assert_eq!(closed.next_state.core.position, TurnPosition::PrecombatMain);
+    assert_eq!(closed.next_state.core.priority, mtgml_state::PriorityState::None);
+    assert_eq!(closed.next_state.revision.0, before.revision.0 + 1);
+    assert!(closed.next_decision.is_none());
+    assert!(matches!(closed.status, EpisodeStatus::Running));
+    assert_eq!(closed.events.len(), 3);
+    assert_eq!(closed.delta.before_revision, before.revision);
+    assert_eq!(closed.delta.after_revision, closed.next_state.revision);
+    assert_eq!(closed.delta.apply(before).unwrap(), closed.next_state);
+    assert!(matches!(closed.events[0].event, mtgml_rules::AuthoritativeRuleEventKind::DecisionCleared { decision } if decision == pending_before.request.decision_id));
+    assert!(matches!(closed.events[1].event, mtgml_rules::AuthoritativeRuleEventKind::PriorityChanged { from, to } if from == old_priority && to == mtgml_state::PriorityState::None));
+    assert!(matches!(closed.events[2].event, mtgml_rules::AuthoritativeRuleEventKind::TurnPositionChanged { from, to } if from == old_position && to == TurnPosition::PrecombatMain));
+}
+
+#[test]
+fn historical_combat_damage_second_postcombat_pass_program_kernel_behavior_is_preserved() {
+    let mut kernel = mtgml_rules::ProgramKernelV1::for_admitted_execution(
+        mtgml_model::ExecutionProgramV1::MagicRules,
+        ReferenceEnvironmentBackend::magic_combat_damage_execution_identity().semantic_contract_id,
+    )
+    .unwrap();
+    let opened = kernel
+        .advance_forced_progress(&stable_state_at(TurnPosition::PostcombatMain))
+        .unwrap();
+    let p1_first = current_authoritative_select_one_response(opened.next_decision.as_ref().unwrap());
+    let p2_priority = kernel.apply(&opened.next_state, P1, &p1_first).unwrap();
+    let p2_second = current_authoritative_select_one_response(p2_priority.next_decision.as_ref().unwrap());
+    let before = &p2_priority.next_state;
+    let pending_before = before.execution.pending_decision.as_ref().unwrap();
+    let old_priority = before.core.priority;
+    let old_position = before.core.position;
+    let closed = kernel.apply(before, P2, &p2_second).unwrap();
+
+    assert!(closed.accepted);
+    assert_eq!(
+        closed.next_state.core.position,
+        TurnPosition::Ending {
+            step: mtgml_state::EndingStep::EndStep,
+        }
+    );
+    assert_eq!(closed.next_state.core.priority, mtgml_state::PriorityState::None);
+    assert_eq!(closed.next_state.revision.0, before.revision.0 + 1);
+    assert!(closed.next_decision.is_none());
+    assert!(matches!(closed.status, EpisodeStatus::Running));
+    assert_eq!(closed.events.len(), 3);
+    assert_eq!(closed.delta.before_revision, before.revision);
+    assert_eq!(closed.delta.after_revision, closed.next_state.revision);
+    assert_eq!(closed.delta.apply(before).unwrap(), closed.next_state);
+    assert!(matches!(closed.events[0].event, mtgml_rules::AuthoritativeRuleEventKind::DecisionCleared { decision } if decision == pending_before.request.decision_id));
+    assert!(matches!(closed.events[1].event, mtgml_rules::AuthoritativeRuleEventKind::PriorityChanged { from, to } if from == old_priority && to == mtgml_state::PriorityState::None));
+    assert!(matches!(closed.events[2].event, mtgml_rules::AuthoritativeRuleEventKind::TurnPositionChanged { from, to } if from == old_position && to == TurnPosition::Ending { step: mtgml_state::EndingStep::EndStep }));
+}
+
+#[test]
+fn historical_profiles_preserve_environment_second_pass_error_and_atomicity() {
+    let draw = TrustedEnvironmentController::new(draw_backend(stable_draw_state_at_upkeep()));
+    draw.execute_forced_progress().unwrap();
+    for actor in [P2, P1] {
+        let pending = draw.checkpoint().unwrap().state.execution.pending_decision.unwrap().request;
+        draw.execute_trusted_response(actor, current_authoritative_select_one_response(&pending))
+            .unwrap();
+    }
+    let p2_draw_pass = draw.checkpoint().unwrap().state.execution.pending_decision.unwrap().request;
+    draw.execute_trusted_response(P2, current_authoritative_select_one_response(&p2_draw_pass))
+        .unwrap();
+    let draw_before = draw.checkpoint().unwrap();
+    let draw_replay = draw.export_replay().unwrap();
+    let draw_p1 = player_fingerprint(&draw, P1);
+    let draw_p2 = player_fingerprint(&draw, P2);
+    let p1_draw_pass = draw.checkpoint().unwrap().state.execution.pending_decision.unwrap().request;
+    assert!(matches!(
+        draw.execute_trusted_response(P1, current_authoritative_select_one_response(&p1_draw_pass)),
+        Err(crate::ControllerError::TransitionContract(
+            mtgml_rules::TransitionViolation::RevisionDidNotAdvance
+        ))
+    ));
+    assert_eq!(draw.checkpoint().unwrap(), draw_before);
+    assert_eq!(draw.export_replay().unwrap(), draw_replay);
+    assert_eq!(player_fingerprint(&draw, P1), draw_p1);
+    assert_eq!(player_fingerprint(&draw, P2), draw_p2);
+
+    let postcombat = TrustedEnvironmentController::new(damage_backend(stable_state_at(
+        TurnPosition::PostcombatMain,
+    )));
+    postcombat.execute_forced_progress().unwrap();
+    let p1_pass = postcombat.checkpoint().unwrap().state.execution.pending_decision.unwrap().request;
+    postcombat.execute_trusted_response(P1, current_authoritative_select_one_response(&p1_pass))
+        .unwrap();
+    let postcombat_before = postcombat.checkpoint().unwrap();
+    let postcombat_replay = postcombat.export_replay().unwrap();
+    let postcombat_p1 = player_fingerprint(&postcombat, P1);
+    let postcombat_p2 = player_fingerprint(&postcombat, P2);
+    let p2_pass = postcombat.checkpoint().unwrap().state.execution.pending_decision.unwrap().request;
+    assert!(matches!(
+        postcombat.execute_trusted_response(P2, current_authoritative_select_one_response(&p2_pass)),
+        Err(crate::ControllerError::TransitionContract(
+            mtgml_rules::TransitionViolation::RevisionDidNotAdvance
+        ))
+    ));
+    assert_eq!(postcombat.checkpoint().unwrap(), postcombat_before);
+    assert_eq!(postcombat.export_replay().unwrap(), postcombat_replay);
+    assert_eq!(player_fingerprint(&postcombat, P1), postcombat_p1);
+    assert_eq!(player_fingerprint(&postcombat, P2), postcombat_p2);
+}
+
+fn current_authoritative_select_one_response(
+    request: &mtgml_decision::AuthoritativeDecisionRequestV2,
+) -> DecisionResponseV2 {
+    DecisionResponseV2 {
+        schema_version: mtgml_decision::DECISION_RESPONSE_V2_SCHEMA.into(),
+        player_decision_id: request.player_decision_id,
+        state_revision: request.state_revision,
+        answer: DecisionAnswerV2::SelectOne {
+            candidate_id: request.candidates[0].candidate_id,
+        },
+    }
+}
+
+#[test]
 fn bounded_cleanup_overflow_rejections_preserve_checkpoint_replay_and_player_products() {
     for exhaustion in ["turn", "events", "revision"] {
         let mut state = stable_combat_state();
