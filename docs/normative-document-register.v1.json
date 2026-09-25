@@ -1078,6 +1078,13 @@
       "stability": "provisional"
     },
     {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/plans/2026-09-25-m4-1-card-definition-foundation-implementation.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
       "change_process": "documentation-pr",
       "owner_role": "maintainer",
       "path": "docs/reviews/m3-block7-retroactive-red-characterization-2026-09-25.md",
