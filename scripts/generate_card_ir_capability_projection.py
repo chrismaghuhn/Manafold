@@ -6,7 +6,10 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import sys
 from typing import Any
+
+sys.dont_write_bytecode = True
 
 from maintainer_common import (
     LIFECYCLE_ORDER,
