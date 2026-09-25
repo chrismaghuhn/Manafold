@@ -51,6 +51,11 @@ use crate::turn_structure::{
 
 const MAX_SUPPORTED_ATTACKERS: usize = 8;
 
+pub(crate) struct BlockerDeclarationSupport {
+    pub(crate) blocker: Option<mtgml_model::GameObjectId>,
+    pub(crate) candidates: Vec<AuthoritativeCandidateV2>,
+}
+
 /// Durable, milestone-free owner of Magic execution.
 ///
 /// Production construction is reachable only through
@@ -118,6 +123,10 @@ impl MagicKernelProfile {
 
     fn allows_combat_attackers(&self) -> bool {
         matches!(self, Self::Admitted(profile) if profile.allows_combat_attackers_0_1_0())
+    }
+
+    fn allows_combat_blockers(&self) -> bool {
+        matches!(self, Self::Admitted(profile) if profile.allows_combat_blockers_0_1_0())
     }
 }
 
@@ -215,6 +224,23 @@ impl RulesKernel for MagicRulesKernel {
                     && !self.profile.allows_combat_attackers()
                 {
                     return Err(KernelExecutionError::UnsupportedStagePath);
+                }
+                if self.profile.allows_combat_attackers()
+                    && self.profile.allows_combat_blockers()
+                    && state.core.position
+                        == (TurnPosition::Combat {
+                            step: mtgml_state::CombatStep::DeclareBlockers,
+                        })
+                    && state.core.priority == mtgml_state::PriorityState::None
+                    && state
+                        .execution
+                        .pending_decision
+                        .as_ref()
+                        .is_some_and(|pending| {
+                            matches!(pending.request.decision, DecisionDomainV2::ChooseOne)
+                        })
+                {
+                    return self.apply_blocker_declaration(state, trusted_actor, response);
                 }
                 if self.profile.allows_combat_attackers()
                     && state
@@ -319,6 +345,87 @@ impl MagicRulesKernel {
             }
             _ => crate::program_kernel::validate_draw_runtime_state(state, status),
         }
+    }
+
+    pub(crate) fn validate_combat_blockers_runtime_state(
+        state: &EngineState,
+        status: &EpisodeStatus,
+    ) -> Result<(), KernelExecutionError> {
+        if !matches!(status, EpisodeStatus::Running) {
+            return Err(KernelExecutionError::UnsupportedStagePath);
+        }
+        if state.core.position
+            != (TurnPosition::Combat {
+                step: mtgml_state::CombatStep::DeclareBlockers,
+            })
+        {
+            return Self::validate_combat_runtime_state(state, status);
+        }
+        match state.core.priority {
+            mtgml_state::PriorityState::None => {
+                if state.execution.pending_decision.is_none() {
+                    return Err(KernelExecutionError::UnsupportedStagePath);
+                }
+                Self::validate_blocker_declaration_support(state)?;
+                Ok(())
+            }
+            mtgml_state::PriorityState::HeldBy { .. } => {
+                crate::basic_priority::validate_pass_only_state_with_blockers(state, true)
+            }
+        }
+    }
+
+    pub(crate) fn validate_declared_blocker_combat_runtime_support(
+        state: &EngineState,
+    ) -> Result<(), KernelExecutionError> {
+        if state.core.position
+            != (TurnPosition::Combat {
+                step: mtgml_state::CombatStep::DeclareBlockers,
+            })
+        {
+            return Err(KernelExecutionError::UnsupportedStagePath);
+        }
+        let combat = state
+            .combat
+            .as_ref()
+            .ok_or(KernelExecutionError::UnsupportedStagePath)?;
+        if combat.blockers.len() != combat.attackers.len()
+            || combat
+                .blockers
+                .keys()
+                .copied()
+                .collect::<std::collections::BTreeSet<_>>()
+                != combat.attackers.iter().copied().collect()
+        {
+            return Err(KernelExecutionError::UnsupportedStagePath);
+        }
+        let assigned: Vec<_> = combat.blockers.values().flatten().copied().collect();
+        if assigned.len() > 1
+            || assigned
+                .iter()
+                .copied()
+                .collect::<std::collections::BTreeSet<_>>()
+                .len()
+                != assigned.len()
+        {
+            return Err(KernelExecutionError::UnsupportedStagePath);
+        }
+        let mut predeclaration = state.clone();
+        predeclaration.core.priority = mtgml_state::PriorityState::None;
+        predeclaration.execution.pending_decision = None;
+        if let Some(combat) = predeclaration.combat.as_mut() {
+            for blocker in combat.blockers.values_mut() {
+                *blocker = None;
+            }
+        }
+        let support = Self::validate_blocker_declaration_support(&predeclaration)?;
+        if assigned
+            .first()
+            .is_some_and(|assigned| Some(*assigned) != support.blocker)
+        {
+            return Err(KernelExecutionError::UnsupportedStagePath);
+        }
+        Ok(())
     }
 
     fn derive_eligible_attackers(
@@ -429,6 +536,172 @@ impl MagicRulesKernel {
         Ok(eligible)
     }
 
+    /// The single decision/restore authority for bounded blocker declaration.
+    /// It validates the whole Foundation/SBA runtime profile before deriving
+    /// either the one eligible blocker or the defender-visible attacker domain.
+    pub(crate) fn validate_blocker_declaration_support(
+        state: &EngineState,
+    ) -> Result<BlockerDeclarationSupport, KernelExecutionError> {
+        validate_engine_state(state).map_err(KernelExecutionError::BeforeState)?;
+        if state.core.position
+            != (TurnPosition::Combat {
+                step: mtgml_state::CombatStep::DeclareBlockers,
+            })
+            || state.core.priority != mtgml_state::PriorityState::None
+            || !state.execution.continuations.is_empty()
+            || state.core.players.len() != 2
+            || !state.core.players.contains_key(&state.core.active_player)
+            || state.core.turn_number == 0
+        {
+            return Err(KernelExecutionError::UnsupportedStagePath);
+        }
+        let combat = state
+            .combat
+            .as_ref()
+            .ok_or(KernelExecutionError::UnsupportedStagePath)?;
+        if combat.attackers.is_empty()
+            || combat.attackers.len() > MAX_SUPPORTED_ATTACKERS
+            || combat.attackers.windows(2).any(|pair| pair[0] >= pair[1])
+            || combat.blockers.len() != combat.attackers.len()
+            || combat.blockers.iter().any(|(attacker, blocker)| {
+                combat.attackers.binary_search(attacker).is_err() || blocker.is_some()
+            })
+        {
+            return Err(KernelExecutionError::UnsupportedStagePath);
+        }
+        let defending_player = state
+            .core
+            .players
+            .keys()
+            .copied()
+            .find(|player| *player != state.core.active_player)
+            .ok_or(KernelExecutionError::UnsupportedStagePath)?;
+        if combat.defending_player != defending_player {
+            return Err(KernelExecutionError::UnsupportedStagePath);
+        }
+
+        let mut support_state = state.clone();
+        support_state.execution.pending_decision = None;
+        crate::state_based_actions::validate_state_based_actions_support_profile(&support_state)
+            .map_err(|_| KernelExecutionError::UnsupportedStagePath)?;
+        let sba_plan = crate::state_based_actions::derive_bounded_sba_round_plan(&support_state)
+            .map_err(|_| KernelExecutionError::UnsupportedStagePath)?;
+        if !sba_plan.selected_sba_actions.is_empty() || !sba_plan.apnap_owners.is_empty() {
+            return Err(KernelExecutionError::UnsupportedStagePath);
+        }
+
+        for attacker in &combat.attackers {
+            let object = state
+                .zones
+                .objects
+                .get(attacker)
+                .ok_or(KernelExecutionError::UnsupportedStagePath)?;
+            let location = state
+                .zones
+                .locations
+                .get(attacker)
+                .ok_or(KernelExecutionError::UnsupportedStagePath)?;
+            let source = state
+                .foundation_sources
+                .get(attacker)
+                .ok_or(KernelExecutionError::UnsupportedStagePath)?;
+            let controlled_in_time = match source.control_history {
+                mtgml_state::ControlHistory::BeforeTurnStart { turn_number } => {
+                    turn_number <= state.core.turn_number
+                }
+                mtgml_state::ControlHistory::DuringTurn { turn_number, .. } => {
+                    turn_number < state.core.turn_number
+                }
+            };
+            if location.zone != ZoneKind::Battlefield
+                || object.controller != state.core.active_player
+                || !object.tapped
+                || object.face_down
+                || source.source_kind != mtgml_state::FoundationSourceKind::Creature
+                || !matches!(
+                    source.base_characteristics,
+                    mtgml_state::BaseCharacteristics::Simple { .. }
+                )
+                || !controlled_in_time
+            {
+                return Err(KernelExecutionError::UnsupportedStagePath);
+            }
+        }
+
+        let identities = state
+            .perspective_identities
+            .players
+            .get(&defending_player)
+            .ok_or(KernelExecutionError::UnsupportedStagePath)?;
+        let mut visible_candidates = Vec::with_capacity(combat.attackers.len() + 1);
+        for attacker in &combat.attackers {
+            let opaque = identities
+                .object_to_opaque
+                .get(attacker)
+                .copied()
+                .ok_or(KernelExecutionError::UnsupportedStagePath)?;
+            if identities.opaque_to_object.get(&opaque) != Some(attacker) {
+                return Err(KernelExecutionError::UnsupportedStagePath);
+            }
+            visible_candidates.push((
+                CandidateIntent::SelectObject { object: opaque },
+                EngineCandidateBinding::SelectObject { object: *attacker },
+            ));
+        }
+        visible_candidates.push((CandidateIntent::Confirm, EngineCandidateBinding::Confirm));
+        let candidates = CandidateOrderingV1::assign_dense(visible_candidates)
+            .map_err(|_| KernelExecutionError::UnsupportedStagePath)?;
+
+        let mut eligible_blockers = Vec::new();
+        for (object_id, object) in &state.zones.objects {
+            let location = state
+                .zones
+                .locations
+                .get(object_id)
+                .ok_or(KernelExecutionError::UnsupportedStagePath)?;
+            if location.zone == ZoneKind::Battlefield
+                && object.controller == defending_player
+                && !object.tapped
+            {
+                let source = state
+                    .foundation_sources
+                    .get(object_id)
+                    .ok_or(KernelExecutionError::UnsupportedStagePath)?;
+                if source.source_kind != mtgml_state::FoundationSourceKind::Creature
+                    || !matches!(
+                        source.base_characteristics,
+                        mtgml_state::BaseCharacteristics::Simple { .. }
+                    )
+                    || object.face_down
+                {
+                    return Err(KernelExecutionError::UnsupportedStagePath);
+                }
+                eligible_blockers.push(*object_id);
+            }
+        }
+        if eligible_blockers.len() > 1 {
+            return Err(KernelExecutionError::UnsupportedStagePath);
+        }
+        let blocker = eligible_blockers.first().copied();
+        if let Some(pending) = &state.execution.pending_decision {
+            if blocker.is_none()
+                || pending.request.actor != defending_player
+                || pending.request.state_revision != state.revision
+                || pending.request.visibility != DecisionVisibility::ActingPlayerOnly
+                || pending.request.continuation_id.is_some()
+                || pending.request.decision != DecisionDomainV2::ChooseOne
+                || pending.request.candidates != candidates
+                || pending.request.project_player_request().is_err()
+            {
+                return Err(KernelExecutionError::UnsupportedStagePath);
+            }
+        }
+        Ok(BlockerDeclarationSupport {
+            blocker,
+            candidates,
+        })
+    }
+
     fn create_attacker_decision(
         &mut self,
         state: &EngineState,
@@ -492,6 +765,282 @@ impl MagicRulesKernel {
             )?;
             Ok(())
         })
+    }
+
+    fn create_blocker_decision(
+        &mut self,
+        state: &EngineState,
+        support: BlockerDeclarationSupport,
+    ) -> Result<TransitionResult, KernelExecutionError> {
+        if support.blocker.is_none() || state.execution.pending_decision.is_some() {
+            return Err(KernelExecutionError::UnsupportedStagePath);
+        }
+        let actor = state
+            .combat
+            .as_ref()
+            .ok_or(KernelExecutionError::UnsupportedStagePath)?
+            .defending_player;
+        let identity = crate::decision_stage::fresh_stage_identity(state, actor)?;
+        let request = mtgml_decision::AuthoritativeDecisionRequestV2 {
+            decision_id: identity.decision_id,
+            player_decision_id: identity.player_decision_id,
+            state_revision: identity.revision,
+            actor,
+            visibility: DecisionVisibility::ActingPlayerOnly,
+            decision: DecisionDomainV2::ChooseOne,
+            candidates: support.candidates,
+            continuation_id: None,
+        };
+        let event = crate::basic_priority::bound_event(
+            state,
+            0,
+            identity.revision,
+            AuthoritativeRuleEventKind::DecisionCreated {
+                decision: identity.decision_id,
+            },
+        )?;
+        let mut next = state.clone();
+        next.revision = identity.revision;
+        build_accepted_product(state, next, vec![event], |workspace| {
+            workspace.execution.pending_decision = Some(PendingDecisionRecordV2 { request });
+            workspace.allocators.next_decision_id = DecisionId(
+                identity
+                    .decision_id
+                    .0
+                    .checked_add(1)
+                    .ok_or(KernelExecutionError::Exhaustion("decision"))?,
+            );
+            crate::decision_stage::advance_player_allocator(
+                workspace,
+                actor,
+                identity.player_decision_id,
+            )?;
+            Ok(())
+        })
+    }
+
+    fn complete_empty_blocker_declaration(
+        &mut self,
+        state: &EngineState,
+        support: BlockerDeclarationSupport,
+    ) -> Result<TransitionResult, KernelExecutionError> {
+        if support.blocker.is_some() || state.execution.pending_decision.is_some() {
+            return Err(KernelExecutionError::UnsupportedStagePath);
+        }
+        let revision = crate::decision_stage::next_revision(state)?;
+        let active = state.core.active_player;
+        let identity = crate::decision_stage::fresh_stage_identity(state, active)?;
+        if identity.revision != revision {
+            return Err(KernelExecutionError::UnsupportedStagePath);
+        }
+        let request = crate::basic_priority::make_pass_request(
+            active,
+            revision,
+            identity.decision_id,
+            identity.player_decision_id,
+        )?;
+        let next_decision = DecisionId(
+            identity
+                .decision_id
+                .0
+                .checked_add(1)
+                .ok_or(KernelExecutionError::Exhaustion("decision"))?,
+        );
+        let attackers = &state
+            .combat
+            .as_ref()
+            .ok_or(KernelExecutionError::UnsupportedStagePath)?
+            .attackers;
+        let assignments: Vec<mtgml_state::CombatBlockerAssignmentV1> = attackers
+            .iter()
+            .map(|attacker| mtgml_state::CombatBlockerAssignmentV1 {
+                attacker: *attacker,
+                blocker: None,
+            })
+            .collect();
+        let mut declared_state = state.clone();
+        if let Some(combat) = declared_state.combat.as_mut() {
+            for assignment in &assignments {
+                combat
+                    .blockers
+                    .insert(assignment.attacker, assignment.blocker);
+            }
+        }
+        let sba_plan = crate::state_based_actions::derive_bounded_sba_round_plan(&declared_state)
+            .map_err(|_| KernelExecutionError::UnsupportedStagePath)?;
+        if !sba_plan.selected_sba_actions.is_empty() || !sba_plan.apnap_owners.is_empty() {
+            return Err(KernelExecutionError::UnsupportedStagePath);
+        }
+        let events = vec![
+            crate::basic_priority::bound_event(
+                state,
+                0,
+                revision,
+                AuthoritativeRuleEventKind::BlockersDeclared { assignments },
+            )?,
+            crate::basic_priority::bound_event(
+                state,
+                1,
+                revision,
+                AuthoritativeRuleEventKind::PriorityChanged {
+                    from: mtgml_state::PriorityState::None,
+                    to: mtgml_state::PriorityState::HeldBy {
+                        player: active,
+                        consecutive_passes: 0,
+                    },
+                },
+            )?,
+            crate::basic_priority::bound_event(
+                state,
+                2,
+                revision,
+                AuthoritativeRuleEventKind::DecisionCreated {
+                    decision: identity.decision_id,
+                },
+            )?,
+        ];
+        let mut next = state.clone();
+        next.revision = revision;
+        build_accepted_product(state, next, events, |workspace| {
+            workspace.core.priority = mtgml_state::PriorityState::HeldBy {
+                player: active,
+                consecutive_passes: 0,
+            };
+            workspace.execution.pending_decision = Some(PendingDecisionRecordV2 { request });
+            workspace.allocators.next_decision_id = next_decision;
+            crate::decision_stage::advance_player_allocator(
+                workspace,
+                active,
+                identity.player_decision_id,
+            )?;
+            Ok(())
+        })
+    }
+
+    fn advance_blocker_declaration(
+        &mut self,
+        state: &EngineState,
+    ) -> Result<TransitionResult, KernelExecutionError> {
+        if state.core.priority != mtgml_state::PriorityState::None
+            || state.execution.pending_decision.is_some()
+        {
+            return Err(KernelExecutionError::UnsupportedStagePath);
+        }
+        let support = Self::validate_blocker_declaration_support(state)?;
+        if support.blocker.is_some() {
+            self.create_blocker_decision(state, support)
+        } else {
+            self.complete_empty_blocker_declaration(state, support)
+        }
+    }
+
+    fn apply_blocker_declaration(
+        &mut self,
+        state: &EngineState,
+        trusted_actor: PlayerId,
+        response: &DecisionResponseV2,
+    ) -> Result<TransitionResult, KernelExecutionError> {
+        validate_engine_state(state).map_err(KernelExecutionError::BeforeState)?;
+        let Some(pending) = state.execution.pending_decision.as_ref() else {
+            return crate::decision_stage::rejected(state);
+        };
+        let request = &pending.request;
+        let Ok(visible_request) = request.project_player_request() else {
+            return crate::decision_stage::rejected(state);
+        };
+        if trusted_actor != request.actor
+            || response.validate_for(&visible_request).is_err()
+            || response.state_revision != state.revision
+        {
+            return crate::decision_stage::rejected(state);
+        }
+        let DecisionAnswerV2::SelectOne { candidate_id } = response.answer else {
+            return crate::decision_stage::rejected(state);
+        };
+        let support = Self::validate_blocker_declaration_support(state)?;
+        let blocker = support
+            .blocker
+            .ok_or(KernelExecutionError::UnsupportedStagePath)?;
+        let index = usize::try_from(candidate_id.0)
+            .map_err(|_| KernelExecutionError::UnsupportedStagePath)?;
+        let selected = request
+            .candidates
+            .get(index)
+            .filter(|candidate| candidate.candidate_id == candidate_id)
+            .ok_or(KernelExecutionError::UnsupportedStagePath)?;
+        let blocked_attacker = match (&selected.visible_intent, &selected.trusted_binding) {
+            (CandidateIntent::Confirm, EngineCandidateBinding::Confirm) => None,
+            (
+                CandidateIntent::SelectObject { object: opaque },
+                EngineCandidateBinding::SelectObject { object },
+            ) => {
+                let identity = state
+                    .perspective_identities
+                    .players
+                    .get(&trusted_actor)
+                    .ok_or(KernelExecutionError::UnsupportedStagePath)?;
+                if identity.opaque_to_object.get(opaque) != Some(object)
+                    || identity.object_to_opaque.get(object) != Some(opaque)
+                    || state
+                        .combat
+                        .as_ref()
+                        .is_none_or(|combat| combat.attackers.binary_search(object).is_err())
+                {
+                    return Err(KernelExecutionError::UnsupportedStagePath);
+                }
+                Some(*object)
+            }
+            _ => return Err(KernelExecutionError::UnsupportedStagePath),
+        };
+        let combat = state
+            .combat
+            .as_ref()
+            .ok_or(KernelExecutionError::UnsupportedStagePath)?;
+        let assignments: Vec<_> = combat
+            .attackers
+            .iter()
+            .map(|attacker| mtgml_state::CombatBlockerAssignmentV1 {
+                attacker: *attacker,
+                blocker: (Some(*attacker) == blocked_attacker).then_some(blocker),
+            })
+            .collect();
+        let revision = crate::decision_stage::next_revision(state)?;
+        let events = vec![
+            crate::basic_priority::bound_event(
+                state,
+                0,
+                revision,
+                AuthoritativeRuleEventKind::DecisionCleared {
+                    decision: request.decision_id,
+                },
+            )?,
+            crate::basic_priority::bound_event(
+                state,
+                1,
+                revision,
+                AuthoritativeRuleEventKind::BlockersDeclared {
+                    assignments: assignments.clone(),
+                },
+            )?,
+        ];
+        let mut next = state.clone();
+        next.revision = revision;
+        let declaration = build_accepted_product(state, next, events, |workspace| {
+            workspace.execution.pending_decision = None;
+            let combat = workspace
+                .combat
+                .as_mut()
+                .ok_or(KernelExecutionError::UnsupportedStagePath)?;
+            for assignment in &assignments {
+                combat
+                    .blockers
+                    .insert(assignment.attacker, assignment.blocker);
+            }
+            Ok(())
+        })?;
+        let stable_priority =
+            self.advance_state_based_actions_fixed_point(&declaration.next_state)?;
+        crate::product::compose_atomic_products(state, declaration, stable_priority)
     }
 
     fn apply_attacker_declaration(
@@ -677,6 +1226,9 @@ impl MagicRulesKernel {
                 step: mtgml_state::CombatStep::DeclareAttackers,
             } if state.combat.is_some() => self.advance_state_based_actions_fixed_point(state),
             TurnPosition::Combat {
+                step: mtgml_state::CombatStep::DeclareBlockers,
+            } if self.profile.allows_combat_blockers() => self.advance_blocker_declaration(state),
+            TurnPosition::Combat {
                 step: mtgml_state::CombatStep::EndOfCombat,
             } => crate::basic_priority::open_combat_priority_window(state),
             _ => Err(KernelExecutionError::UnsupportedStagePath),
@@ -800,7 +1352,15 @@ impl MagicRulesKernel {
             .map_err(|_| KernelExecutionError::UnsupportedStagePath)?;
         if plan.selected_sba_actions.is_empty() {
             if self.profile.allows_basic_priority() {
-                return if self.profile.allows_combat_attackers()
+                return if self.profile.allows_combat_blockers()
+                    && matches!(
+                        state.core.position,
+                        TurnPosition::Combat {
+                            step: mtgml_state::CombatStep::DeclareBlockers
+                        }
+                    ) {
+                    crate::basic_priority::open_combat_blocker_priority_window(state)
+                } else if self.profile.allows_combat_attackers()
                     && matches!(state.core.position, TurnPosition::Combat { .. })
                 {
                     crate::basic_priority::open_combat_priority_window(state)
@@ -1414,7 +1974,14 @@ impl MagicRulesKernel {
         if state.execution.pending_decision.is_none() {
             return crate::decision_stage::rejected(state);
         }
-        if self.profile.allows_combat_attackers()
+        if self.profile.allows_combat_blockers()
+            && state.core.position
+                == (TurnPosition::Combat {
+                    step: mtgml_state::CombatStep::DeclareBlockers,
+                })
+        {
+            crate::basic_priority::validate_pass_only_state_with_blockers(state, true)?;
+        } else if self.profile.allows_combat_attackers()
             && matches!(state.core.position, TurnPosition::Combat { .. })
         {
             crate::basic_priority::validate_pass_only_state_with_combat(state, true, true)?;
@@ -1525,11 +2092,16 @@ impl MagicRulesKernel {
                         let Some(combat) = state.combat.as_ref() else {
                             return crate::decision_stage::rejected(state);
                         };
-                        if !combat.attackers.is_empty() {
+                        if combat.attackers.is_empty() {
+                            TurnPosition::Combat {
+                                step: mtgml_state::CombatStep::EndOfCombat,
+                            }
+                        } else if self.profile.allows_combat_blockers() {
+                            TurnPosition::Combat {
+                                step: mtgml_state::CombatStep::DeclareBlockers,
+                            }
+                        } else {
                             return crate::decision_stage::rejected(state);
-                        }
-                        TurnPosition::Combat {
-                            step: mtgml_state::CombatStep::EndOfCombat,
                         }
                     }
                     TurnPosition::Combat {
@@ -1577,7 +2149,10 @@ impl MagicRulesKernel {
                     TurnPosition::Combat {
                         step: mtgml_state::CombatStep::DeclareAttackers
                     }
-                ) {
+                ) && successor
+                    == (TurnPosition::Combat {
+                        step: mtgml_state::CombatStep::EndOfCombat,
+                    }) {
                     AuthoritativeRuleEventKind::EmptyCombatStepsSkipped
                 } else {
                     AuthoritativeRuleEventKind::TurnPositionChanged {

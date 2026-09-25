@@ -42,6 +42,19 @@ fn all_seven_observed_event_variants_deserialize() {
 }
 
 #[test]
+fn magic_combat_observation_v3_rejects_an_object_as_attacker_and_blocker() {
+    let mut observation: MagicObservationV3 = serde_json::from_str(include_str!(
+        "../../../wire/golden/magic-combat-observation.v3.json"
+    ))
+    .unwrap();
+    observation.combat.as_mut().unwrap().blockers[0].blocker = Some(mtgml_model::OpaqueObjectId(7));
+    assert_eq!(
+        observation.validate(),
+        Err(ObservationValidationError::ObservationPayload)
+    );
+}
+
+#[test]
 fn observed_event_text_fields_are_closed_like_python_and_schema() {
     let empty_label = ObservedEventEnvelope {
         schema_version: OBSERVED_EVENT_SCHEMA.into(),

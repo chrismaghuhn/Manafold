@@ -1441,6 +1441,7 @@ fn validate_accepted_progression(
         matches!(
             event.event,
             AuthoritativeRuleEventKind::AttackersDeclared { .. }
+                | AuthoritativeRuleEventKind::BlockersDeclared { .. }
                 | AuthoritativeRuleEventKind::CombatEnded
         )
     });
@@ -2168,6 +2169,113 @@ fn is_attacker_declaration_priority_composition(
     true
 }
 
+fn is_blocker_declaration_priority_composition(
+    before: &EngineState,
+    result: &TransitionResult,
+) -> bool {
+    use crate::events::AuthoritativeRuleEventKind as Event;
+    let after = &result.next_state;
+    let Some(pending) = before.execution.pending_decision.as_ref() else {
+        return false;
+    };
+    let Some(after_pending) = after.execution.pending_decision.as_ref() else {
+        return false;
+    };
+    let Some(combat) = before.combat.as_ref() else {
+        return false;
+    };
+    let Ok(support) = crate::magic::MagicRulesKernel::validate_blocker_declaration_support(before)
+    else {
+        return false;
+    };
+    let Some(eligible_blocker) = support.blocker else {
+        return false;
+    };
+    if before.core.position
+        != (TurnPosition::Combat {
+            step: mtgml_state::CombatStep::DeclareBlockers,
+        })
+        || before.core.priority != mtgml_state::PriorityState::None
+        || pending.request.actor != combat.defending_player
+        || pending.request.decision != mtgml_decision::DecisionDomainV2::ChooseOne
+        || after.core.position != before.core.position
+        || after.combat.as_ref().is_none_or(|after_combat| {
+            after_combat.defending_player != combat.defending_player
+                || after_combat.attackers != combat.attackers
+                || after_combat.blockers.len() != combat.attackers.len()
+                || after_combat
+                    .blockers
+                    .keys()
+                    .copied()
+                    .collect::<BTreeSet<_>>()
+                    != combat.attackers.iter().copied().collect()
+        })
+        || !matches!(
+            after.core.priority,
+            mtgml_state::PriorityState::HeldBy {
+                player,
+                consecutive_passes: 0
+            } if player == after.core.active_player
+        )
+        || after_pending.request.actor != after.core.active_player
+        || after_pending.request.decision != mtgml_decision::DecisionDomainV2::ChooseOne
+        || after_pending.request.candidates.len() != 1
+        || after_pending.request.candidates[0].visible_intent
+            != mtgml_decision::CandidateIntent::PassPriority
+        || before.revision.0.checked_add(1) != Some(after.revision.0)
+        || !matches!(result.status, EpisodeStatus::Running)
+    {
+        return false;
+    }
+    if !matches!(
+        result.events.first().map(|event| &event.event),
+        Some(Event::DecisionCleared { decision }) if *decision == pending.request.decision_id
+    ) {
+        return false;
+    }
+    let Some(Event::BlockersDeclared { assignments }) =
+        result.events.get(1).map(|event| &event.event)
+    else {
+        return false;
+    };
+    if assignments.len() != combat.attackers.len()
+        || assignments
+            .iter()
+            .zip(&combat.attackers)
+            .any(|(assignment, attacker)| {
+                assignment.attacker != *attacker
+                    || after
+                        .combat
+                        .as_ref()
+                        .and_then(|after_combat| after_combat.blockers.get(attacker))
+                        != Some(&assignment.blocker)
+            })
+        || assignments
+            .iter()
+            .filter_map(|assignment| assignment.blocker)
+            .any(|blocker| blocker != eligible_blocker)
+        || !matches!(
+            result.events.get(2).map(|event| &event.event),
+            Some(Event::PriorityChanged {
+                from: mtgml_state::PriorityState::None,
+                to: mtgml_state::PriorityState::HeldBy {
+                    player,
+                    consecutive_passes: 0
+                }
+            }) if *player == after.core.active_player
+        )
+        || !matches!(
+            result.events.get(3).map(|event| &event.event),
+            Some(Event::DecisionCreated { decision })
+                if *decision == after_pending.request.decision_id
+        )
+        || result.events.len() != 4
+    {
+        return false;
+    }
+    true
+}
+
 pub fn validate_transition_contract(
     before: &EngineState,
     result: &TransitionResult,
@@ -2213,7 +2321,11 @@ pub fn validate_transition_contract(
             crate::basic_priority::validate_second_pass_combat_composition(before, result)?;
         let composed_attacker_declaration =
             is_attacker_declaration_priority_composition(before, result);
-        let revision_advance = if composed_draw && draw_order {
+        let composed_blocker_declaration =
+            is_blocker_declaration_priority_composition(before, result);
+        let revision_advance = if composed_blocker_declaration {
+            1
+        } else if composed_draw && draw_order {
             3
         } else if composed_sba
             || composed_cleanup
@@ -2284,6 +2396,7 @@ pub fn validate_transition_contract(
         crate::basic_priority::validate_second_pass_combat_composition(before, result)?;
     let composed_attacker_declaration =
         is_attacker_declaration_priority_composition(before, result);
+    let composed_blocker_declaration = is_blocker_declaration_priority_composition(before, result);
     let direct_draw = is_draw_s2_priority_composition(before, result);
     let draw_order = result
         .next_state
@@ -2327,7 +2440,9 @@ pub fn validate_transition_contract(
             .0
             .checked_add(offset)
             .ok_or(TransitionViolation::EventIdentity)?;
-        let expected_revision = if composed_draw {
+        let expected_revision = if composed_blocker_declaration {
+            revision_one
+        } else if composed_draw {
             if offset < 3 {
                 revision_one
             } else if draw_order && offset + 1 == event_len {
@@ -2377,6 +2492,8 @@ pub fn validate_transition_contract(
                 };
                 u64::try_from(declared_index + 1 + declared_count)
                     .map_err(|_| TransitionViolation::EventIdentity)?
+            } else if composed_blocker_declaration {
+                2
             } else {
                 event_len.saturating_sub(2)
             };

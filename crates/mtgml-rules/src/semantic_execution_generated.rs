@@ -14,6 +14,8 @@ pub(crate) const MAGIC_S3_C_SEMANTIC_CONTRACT_HEX: &str =
     "2818c779c0a1f3b534d5551d9842a26e64ea93fa5906e8d43b499c4a3e042cb5";
 pub(crate) const MAGIC_COMBAT_ATTACKERS_SEMANTIC_CONTRACT_HEX: &str =
     "fb55663090b2ea6d0ab709d56a6b58ce3a21b3beca24113008bb98684f3230a7";
+pub(crate) const MAGIC_COMBAT_BLOCKERS_SEMANTIC_CONTRACT_HEX: &str =
+    "b788155232e2fca4b3f43170251f86dd5718ba42b3b674309d99c1df9eddaa6c";
 pub(crate) const SYNTHETIC_LEGACY_SEMANTIC_CONTRACT_HEX: &str =
     "66ccac959475370e641e853473cbdd7f88489399587794b43f66cfa0342b1be4";
 
@@ -34,6 +36,10 @@ pub(crate) fn magic_combat_attackers_0_1_0_semantic_contract_id() -> SemanticCon
     SemanticContractIdV1::parse(MAGIC_COMBAT_ATTACKERS_SEMANTIC_CONTRACT_HEX)
         .expect("generated canonical hex")
 }
+pub(crate) fn magic_combat_blockers_0_1_0_semantic_contract_id() -> SemanticContractIdV1 {
+    SemanticContractIdV1::parse(MAGIC_COMBAT_BLOCKERS_SEMANTIC_CONTRACT_HEX)
+        .expect("generated canonical hex")
+}
 pub(crate) fn synthetic_legacy_default_semantic_contract_id() -> SemanticContractIdV1 {
     SemanticContractIdV1::parse(SYNTHETIC_LEGACY_SEMANTIC_CONTRACT_HEX)
         .expect("generated canonical hex")
@@ -46,6 +52,7 @@ pub(crate) struct MagicExecutionProfile {
     draw_card_0_1_0: bool,
     combat_phase_0_1_0: bool,
     declare_attackers_0_1_0: bool,
+    declare_blockers_0_1_0: bool,
 }
 impl MagicExecutionProfile {
     pub(crate) fn allows_turn_structure_0_1_0(&self) -> bool {
@@ -63,12 +70,16 @@ impl MagicExecutionProfile {
     pub(crate) fn allows_combat_attackers_0_1_0(&self) -> bool {
         self.combat_phase_0_1_0 && self.declare_attackers_0_1_0
     }
+    pub(crate) fn allows_combat_blockers_0_1_0(&self) -> bool {
+        self.allows_combat_attackers_0_1_0() && self.declare_blockers_0_1_0
+    }
     pub(crate) fn is_turn_structure_only_profile(&self) -> bool {
         self.allows_turn_structure_0_1_0()
             && !self.allows_state_based_actions_combat_0_1_0()
             && !self.allows_basic_priority_0_1_0()
             && !self.allows_draw_card_0_1_0()
             && !self.allows_combat_attackers_0_1_0()
+            && !self.allows_combat_blockers_0_1_0()
     }
 }
 #[cfg(test)]
@@ -84,6 +95,7 @@ pub(crate) fn test_only_magic_execution_profile(
         draw_card_0_1_0: false,
         combat_phase_0_1_0: false,
         declare_attackers_0_1_0: false,
+        declare_blockers_0_1_0: false,
     }
 }
 pub(crate) fn magic_execution_profile(
@@ -97,6 +109,7 @@ pub(crate) fn magic_execution_profile(
             draw_card_0_1_0: false,
             combat_phase_0_1_0: false,
             declare_attackers_0_1_0: false,
+            declare_blockers_0_1_0: false,
         });
     }
     if semantic_contract_id == magic_s3_a_ordered_sba_0_1_0_semantic_contract_id() {
@@ -107,6 +120,7 @@ pub(crate) fn magic_execution_profile(
             draw_card_0_1_0: false,
             combat_phase_0_1_0: false,
             declare_attackers_0_1_0: false,
+            declare_blockers_0_1_0: false,
         });
     }
     if semantic_contract_id == magic_s3_b_basic_priority_0_1_0_semantic_contract_id() {
@@ -117,6 +131,7 @@ pub(crate) fn magic_execution_profile(
             draw_card_0_1_0: false,
             combat_phase_0_1_0: false,
             declare_attackers_0_1_0: false,
+            declare_blockers_0_1_0: false,
         });
     }
     if semantic_contract_id == magic_s3_c_draw_interaction_0_1_0_semantic_contract_id() {
@@ -127,6 +142,7 @@ pub(crate) fn magic_execution_profile(
             draw_card_0_1_0: true,
             combat_phase_0_1_0: false,
             declare_attackers_0_1_0: false,
+            declare_blockers_0_1_0: false,
         });
     }
     if semantic_contract_id == magic_combat_attackers_0_1_0_semantic_contract_id() {
@@ -137,6 +153,18 @@ pub(crate) fn magic_execution_profile(
             draw_card_0_1_0: true,
             combat_phase_0_1_0: true,
             declare_attackers_0_1_0: true,
+            declare_blockers_0_1_0: false,
+        });
+    }
+    if semantic_contract_id == magic_combat_blockers_0_1_0_semantic_contract_id() {
+        return Some(MagicExecutionProfile {
+            turn_structure_0_1_0: true,
+            state_based_actions_combat_0_1_0: true,
+            basic_priority_0_1_0: true,
+            draw_card_0_1_0: true,
+            combat_phase_0_1_0: true,
+            declare_attackers_0_1_0: true,
+            declare_blockers_0_1_0: true,
         });
     }
     None

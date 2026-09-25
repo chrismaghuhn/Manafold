@@ -16,6 +16,10 @@ use crate::semantic_catalog_generated::{
     magic_combat_attackers_0_1_0_rules_manifest,
     magic_combat_attackers_0_1_0_semantic_contract_id,
     magic_combat_attackers_0_1_0_semantic_manifest,
+    magic_combat_blockers_0_1_0_rules_contract_id,
+    magic_combat_blockers_0_1_0_rules_manifest,
+    magic_combat_blockers_0_1_0_semantic_contract_id,
+    magic_combat_blockers_0_1_0_semantic_manifest,
     magic_turn_structure_0_1_0_rules_contract_id,
     magic_turn_structure_0_1_0_rules_manifest,
     magic_turn_structure_0_1_0_semantic_contract_id,
@@ -113,7 +117,7 @@ fn known_meaning_is_distinct_from_supported_execution() {
 #[test]
 fn production_catalog_contains_exactly_generated_material() {
     let catalog = RuntimeSemanticCatalog::production();
-    assert_eq!(catalog.entry_count(), 6, "Synthetic, frozen S1, S3.A, S3.B, S3.C, and combat identities");
+    assert_eq!(catalog.entry_count(), 7, "Synthetic, frozen S1, S3.A/B/C, combat, and combat+blockers identities");
 
     let syn_id = synthetic_legacy_default_semantic_contract_id();
     let syn_entry = catalog.resolve(&syn_id).unwrap();
@@ -224,6 +228,38 @@ fn production_catalog_contains_exactly_generated_material() {
         "rules/zone-incarnation",
     ]);
     assert!(catalog.supported(&combat_id, ExecutionProgramV1::MagicRules));
+
+    let blockers_id = magic_combat_blockers_0_1_0_semantic_contract_id();
+    let blockers_entry = catalog.resolve(&blockers_id).unwrap();
+    assert_eq!(
+        blockers_entry.manifest.rules_contract_id,
+        magic_combat_blockers_0_1_0_rules_contract_id()
+    );
+    assert_eq!(
+        blockers_entry.manifest,
+        magic_combat_blockers_0_1_0_semantic_manifest()
+    );
+    assert_eq!(
+        blockers_entry.rules_manifest,
+        magic_combat_blockers_0_1_0_rules_manifest()
+    );
+    assert_eq!(
+        blockers_id.as_str(),
+        "b788155232e2fca4b3f43170251f86dd5718ba42b3b674309d99c1df9eddaa6c"
+    );
+    let blockers_closure = blockers_entry.rules_manifest.capability_closure.as_ref().unwrap();
+    assert_eq!(blockers_closure.iter().map(|entry| entry.key.as_str()).collect::<Vec<_>>(), vec![
+        "rules/basic-priority",
+        "rules/combat-phase",
+        "rules/declare-attackers",
+        "rules/declare-blockers",
+        "rules/draw-card",
+        "rules/state-based-actions-combat",
+        "rules/turn-structure",
+        "rules/zone-incarnation",
+    ]);
+    assert!(catalog.supported(&blockers_id, ExecutionProgramV1::MagicRules));
+    assert_ne!(blockers_id, combat_id);
 }
 
 #[test]

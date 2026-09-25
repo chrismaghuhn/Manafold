@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "python" / "src"))
@@ -59,6 +60,26 @@ class SchemaParityTests(unittest.TestCase):
             inventory["wire_contracts"],
             sorted(validate_schemas.WIRE_MAPPING.values()),
         )
+
+    def test_wire_schema_ids_match_their_filenames(self) -> None:
+        validate_schemas.validate_wire_schema_inventory(self._schema_inventory())
+
+    def test_wire_schema_identity_collision_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            first = "first.v1.schema.json"
+            second = "second.v1.schema.json"
+            for name in (first, second):
+                (root / name).write_text(
+                    json.dumps({"$id": first}),
+                    encoding="utf-8",
+                )
+            inventory = {"wire_contracts": [first, second]}
+            with (
+                patch.object(validate_schemas, "WIRE_MAPPING", {"first": first, "second": second}),
+                self.assertRaisesRegex(ValueError, r"\$id must match filename"),
+            ):
+                validate_schemas.validate_wire_schema_inventory(inventory, schema_root=root)
 
     def test_schema_inventory_duplicate_rejected(self) -> None:
         inventory = self._schema_inventory()
@@ -120,6 +141,7 @@ class SchemaParityTests(unittest.TestCase):
             "authoritative-replay.v3": "authoritative-replay.v3.schema.json",
             "magic-m3-observation.v1": "magic-m3-observation.v1.schema.json",
             "magic-combat-observation.v2": "magic-combat-observation.v2.schema.json",
+            "magic-combat-observation.v3": "magic-combat-observation.v3.schema.json",
             "synthetic-m3-observation.v1": "synthetic-m3-observation.v1.schema.json",
             "replay-manifest.v4": "replay-manifest.v4.schema.json",
             "authoritative-replay.v4": "authoritative-replay.v4.schema.json",

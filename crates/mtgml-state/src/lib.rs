@@ -25,9 +25,9 @@ pub use construction::{
     SyntheticV4Setup,
 };
 pub use core::{
-    BaseCharacteristics, BeginningStep, CombatState, CombatStep, ControlHistory, CoreRulesState,
-    EndingStep, FoundationCreatureSource, FoundationSourceKind, PlayerState, PriorityState,
-    TurnPosition,
+    BaseCharacteristics, BeginningStep, CombatBlockerAssignmentV1, CombatState, CombatStep,
+    ControlHistory, CoreRulesState, EndingStep, FoundationCreatureSource, FoundationSourceKind,
+    PlayerState, PriorityState, TurnPosition,
 };
 pub use delta::{DeltaApplicationError, SemanticDeltaOperation, StateDelta};
 pub use digest::StateDigestError;

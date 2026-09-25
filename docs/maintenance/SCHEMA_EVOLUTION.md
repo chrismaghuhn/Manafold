@@ -29,3 +29,21 @@ new exact combat capability closure.
 Schema source: `schemas/magic-combat-observation.v2.schema.json`
 
 Content SHA-256: `232ff2962461335ceeacc4291a588134f54940dfab6871c9b9198946dc2b580a`
+
+## Combat observation successor (2026-09-24)
+
+The payload `magic-combat-observation.v2` remains byte-for-byte unchanged and
+continues to be bound only to `magic_combat_attackers_0_1_0`. Public blocker
+assignments use the successor `magic-combat-observation.v3`, bound only to the
+exact `magic_combat_blockers_0_1_0` execution contract. V3 retains the same
+perspective-local opaque identity shape and permits the bounded zero/one
+blocker assignment. V1 and V2 readers keep their existing meanings and reject
+the V3 codec as unknown.
+
+Migration provenance: V3 adds a separate Rust/Python writer and reader, schema,
+and canonical fixture. Replay V6 admits V3 only for the exact cumulative
+combat + blockers capability closure; it does not reinterpret V2 artifacts.
+
+Schema source: `schemas/magic-combat-observation.v3.schema.json`
+
+Content SHA-256: `c51b86ef50cb024aa90e62543a92a6c6f2433e170380a21f87128ed51cf1dd6a`

@@ -24,10 +24,13 @@ const CHECKPOINT_CODEC_VERSION_V6: &str = "6";
 const SYNTHETIC_OBSERVATION_CODEC: &str = "synthetic-m3-observation.v1";
 const MAGIC_OBSERVATION_CODEC: &str = "magic-m3-observation.v1";
 const COMBAT_OBSERVATION_CODEC: &str = "magic-combat-observation.v2";
+const COMBAT_BLOCKERS_OBSERVATION_CODEC: &str = "magic-combat-observation.v3";
 const SBA_CAPABILITY_KEY: &str = "rules/state-based-actions-combat";
 const SBA_CAPABILITY_VERSION: &str = "0.1.0";
 const BASIC_PRIORITY_CAPABILITY_KEY: &str = "rules/basic-priority";
 const DRAW_CARD_CAPABILITY_KEY: &str = "rules/draw-card";
+const DECLARE_ATTACKERS_CAPABILITY_KEY: &str = "rules/declare-attackers";
+const DECLARE_BLOCKERS_CAPABILITY_KEY: &str = "rules/declare-blockers";
 const TURN_STRUCTURE_CAPABILITY_KEY: &str = "rules/turn-structure";
 const ZONE_INCARNATION_CAPABILITY_KEY: &str = "rules/zone-incarnation";
 
@@ -38,7 +41,8 @@ fn forced_progress_revision_budget(
 ) -> Option<u64> {
     if execution.program_kind != mtgml_model::ExecutionProgramV1::MagicRules
         || (observation_codec != MAGIC_OBSERVATION_CODEC
-            && observation_codec != COMBAT_OBSERVATION_CODEC)
+            && observation_codec != COMBAT_OBSERVATION_CODEC
+            && observation_codec != COMBAT_BLOCKERS_OBSERVATION_CODEC)
         || !matches!(
             &rules.rules_authority,
             RulesAuthorityV1::ComprehensiveRules { .. }
@@ -65,7 +69,17 @@ fn forced_progress_revision_budget(
     let expected_combat = [
         BASIC_PRIORITY_CAPABILITY_KEY,
         "rules/combat-phase",
-        "rules/declare-attackers",
+        DECLARE_ATTACKERS_CAPABILITY_KEY,
+        DRAW_CARD_CAPABILITY_KEY,
+        SBA_CAPABILITY_KEY,
+        TURN_STRUCTURE_CAPABILITY_KEY,
+        ZONE_INCARNATION_CAPABILITY_KEY,
+    ];
+    let expected_combat_blockers = [
+        BASIC_PRIORITY_CAPABILITY_KEY,
+        "rules/combat-phase",
+        DECLARE_ATTACKERS_CAPABILITY_KEY,
+        DECLARE_BLOCKERS_CAPABILITY_KEY,
         DRAW_CARD_CAPABILITY_KEY,
         SBA_CAPABILITY_KEY,
         TURN_STRUCTURE_CAPABILITY_KEY,
@@ -76,6 +90,15 @@ fn forced_progress_revision_budget(
         && closure
             .iter()
             .zip(expected_combat)
+            .all(|(actual, key)| actual.key == key && actual.version == SBA_CAPABILITY_VERSION)
+    {
+        return Some(1);
+    }
+    if observation_codec == COMBAT_BLOCKERS_OBSERVATION_CODEC
+        && closure.len() == expected_combat_blockers.len()
+        && closure
+            .iter()
+            .zip(expected_combat_blockers)
             .all(|(actual, key)| actual.key == key && actual.version == SBA_CAPABILITY_VERSION)
     {
         return Some(1);
@@ -114,7 +137,7 @@ fn observation_codec_supported(rules: &RulesContractManifestV1, codec: &str) -> 
         let expected = [
             BASIC_PRIORITY_CAPABILITY_KEY,
             "rules/combat-phase",
-            "rules/declare-attackers",
+            DECLARE_ATTACKERS_CAPABILITY_KEY,
             DRAW_CARD_CAPABILITY_KEY,
             SBA_CAPABILITY_KEY,
             TURN_STRUCTURE_CAPABILITY_KEY,
@@ -126,11 +149,29 @@ fn observation_codec_supported(rules: &RulesContractManifestV1, codec: &str) -> 
                 .zip(expected)
                 .all(|(actual, key)| actual.key == key && actual.version == SBA_CAPABILITY_VERSION)
     });
-    let magic_v1_admitted = magic_semantics_admitted && !combat_closure;
+    let blocker_closure = rules.capability_closure.as_ref().is_some_and(|closure| {
+        let expected = [
+            BASIC_PRIORITY_CAPABILITY_KEY,
+            "rules/combat-phase",
+            DECLARE_ATTACKERS_CAPABILITY_KEY,
+            DECLARE_BLOCKERS_CAPABILITY_KEY,
+            DRAW_CARD_CAPABILITY_KEY,
+            SBA_CAPABILITY_KEY,
+            TURN_STRUCTURE_CAPABILITY_KEY,
+            ZONE_INCARNATION_CAPABILITY_KEY,
+        ];
+        closure.len() == expected.len()
+            && closure
+                .iter()
+                .zip(expected)
+                .all(|(actual, key)| actual.key == key && actual.version == SBA_CAPABILITY_VERSION)
+    });
+    let magic_v1_admitted = magic_semantics_admitted && !combat_closure && !blocker_closure;
     matches!(
         (magic_v1_admitted, codec),
         (true, MAGIC_OBSERVATION_CODEC) | (false, SYNTHETIC_OBSERVATION_CODEC)
     ) || (combat_closure && codec == COMBAT_OBSERVATION_CODEC)
+        || (blocker_closure && codec == COMBAT_BLOCKERS_OBSERVATION_CODEC)
 }
 
 fn validate_status_for_players(

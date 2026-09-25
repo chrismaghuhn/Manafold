@@ -57,10 +57,46 @@
           "required": ["semantic_contract"]
         },
         "then": {
-          "properties": {
-            "schemas": {
-              "properties": {
-                "observation_payload_codec": {"const": "magic-combat-observation.v2"}
+          "if": {
+            "properties": {
+              "semantic_contract": {
+                "properties": {
+                  "rules_manifest": {
+                    "properties": {
+                      "capability_closure": {"const": [
+                        {"key": "rules/basic-priority", "version": "0.1.0"},
+                        {"key": "rules/combat-phase", "version": "0.1.0"},
+                        {"key": "rules/declare-attackers", "version": "0.1.0"},
+                        {"key": "rules/declare-blockers", "version": "0.1.0"},
+                        {"key": "rules/draw-card", "version": "0.1.0"},
+                        {"key": "rules/state-based-actions-combat", "version": "0.1.0"},
+                        {"key": "rules/turn-structure", "version": "0.1.0"},
+                        {"key": "rules/zone-incarnation", "version": "0.1.0"}
+                      ]}
+                    },
+                    "required": ["capability_closure"]
+                  }
+                },
+                "required": ["rules_manifest"]
+              }
+            },
+            "required": ["semantic_contract"]
+          },
+          "then": {
+            "properties": {
+              "schemas": {
+                "properties": {
+                  "observation_payload_codec": {"const": "magic-combat-observation.v3"}
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "schemas": {
+                "properties": {
+                  "observation_payload_codec": {"const": "magic-combat-observation.v2"}
+                }
               }
             }
           }
@@ -446,7 +482,7 @@
           "const": "observation-envelope.v1"
         },
         "observation_payload_codec": {
-          "enum": ["synthetic-m3-observation.v1", "magic-m3-observation.v1", "magic-combat-observation.v2"]
+          "enum": ["synthetic-m3-observation.v1", "magic-m3-observation.v1", "magic-combat-observation.v2", "magic-combat-observation.v3"]
         },
         "information_state": {
           "const": "information-state-envelope.v2"

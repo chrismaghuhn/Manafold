@@ -103,6 +103,13 @@ pub struct CombatState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CombatBlockerAssignmentV1 {
+    pub attacker: mtgml_model::GameObjectId,
+    pub blocker: Option<mtgml_model::GameObjectId>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FoundationSourceKind {
     Creature,
