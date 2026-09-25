@@ -218,23 +218,6 @@ pub fn validate_runtime_state_for_contract(
                     .map_err(KernelExecutionError::TurnStructure)?;
                 return Ok(());
             }
-            if profile.allows_combat_damage_0_1_0()
-                && matches!(
-                    state.core.position,
-                    mtgml_state::TurnPosition::Combat {
-                        step: mtgml_state::CombatStep::CombatDamage
-                            | mtgml_state::CombatStep::EndOfCombat
-                    }
-                )
-            {
-                return MagicRulesKernel::validate_combat_damage_runtime_state(state, status);
-            }
-            if profile.allows_combat_blockers_0_1_0() {
-                return MagicRulesKernel::validate_combat_blockers_runtime_state(state, status);
-            }
-            if profile.allows_combat_attackers_0_1_0() {
-                return MagicRulesKernel::validate_combat_runtime_state(state, status);
-            }
             if profile.allows_cleanup_reset_0_1_0()
                 && state.core.position
                     == (mtgml_state::TurnPosition::Ending {
@@ -263,6 +246,23 @@ pub fn validate_runtime_state_for_contract(
                     return Err(KernelExecutionError::UnsupportedStagePath);
                 }
                 return Ok(());
+            }
+            if profile.allows_combat_damage_0_1_0()
+                && matches!(
+                    state.core.position,
+                    mtgml_state::TurnPosition::Combat {
+                        step: mtgml_state::CombatStep::CombatDamage
+                            | mtgml_state::CombatStep::EndOfCombat
+                    }
+                )
+            {
+                return MagicRulesKernel::validate_combat_damage_runtime_state(state, status);
+            }
+            if profile.allows_combat_blockers_0_1_0() {
+                return MagicRulesKernel::validate_combat_blockers_runtime_state(state, status);
+            }
+            if profile.allows_combat_attackers_0_1_0() {
+                return MagicRulesKernel::validate_combat_runtime_state(state, status);
             }
             if matches!(
                 state.core.position,

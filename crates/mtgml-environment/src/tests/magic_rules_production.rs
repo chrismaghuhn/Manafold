@@ -1840,6 +1840,64 @@ fn add_creature(state: &mut mtgml_state::EngineState, object_id: u64, owner: Pla
     }
 }
 
+fn add_known_hand_cards(
+    state: &mut mtgml_state::EngineState,
+    owner: PlayerId,
+    count: u64,
+) {
+    let first = state.allocators.next_object_id.0;
+    for offset in 0..count {
+        let object_id = first + offset;
+        let object = GameObjectId(object_id);
+        let physical = PhysicalCardId(object_id);
+        let definition = CardDefinitionId(object_id);
+        let location = ZoneLocation {
+            zone: mtgml_model::ZoneKind::Hand,
+            player: Some(owner),
+            position: ZonePosition::Unordered,
+            visibility: VisibilityPartition::OwnerOnly,
+            partition: None,
+        };
+        state.zones.objects.insert(
+            object,
+            GameObject {
+                id: object,
+                physical_card: Some(physical),
+                card_definition: definition,
+                owner,
+                controller: owner,
+                tapped: false,
+                face_down: false,
+            },
+        );
+        state.zones.locations.insert(object, location.clone());
+        let identity = state
+            .perspective_identities
+            .players
+            .get_mut(&owner)
+            .unwrap();
+        let opaque = identity.next_opaque_object_id;
+        identity.next_opaque_object_id.0 += 1;
+        identity.opaque_to_object.insert(opaque, object);
+        identity.object_to_opaque.insert(object, opaque);
+        state.knowledge.players.get_mut(&owner).unwrap().active.insert(
+            opaque,
+            KnowledgeRecordV2 {
+                opaque_object: opaque,
+                physical_card: Some(physical),
+                card_definition: Some(definition),
+                known_location: Some(KnownLocationFactV2 {
+                    location,
+                    provenance: KnowledgeAcquisitionReason::InitialConfiguration,
+                }),
+                historical_locations: Vec::new(),
+                acquisition: KnowledgeAcquisitionReason::InitialConfiguration,
+            },
+        );
+    }
+    state.allocators.next_object_id = GameObjectId(first + count);
+}
+
 fn two_owner_stage_zero() -> mtgml_state::EngineState {
     let mut state = super::restore_admission::magic_sba_continuation_state();
     // Add two selected deaths for P2, preserving the authoritative P1 Order
@@ -4219,4 +4277,101 @@ fn combat_damage_contract_still_stops_at_marked_damage_cleanup() {
     assert!(controller.execute_forced_progress().is_err());
     assert_eq!(controller.checkpoint().unwrap(), checkpoint);
     assert_eq!(controller.export_replay().unwrap(), replay);
+}
+
+#[test]
+fn bounded_cleanup_accepts_active_hand_seven_and_ignores_opponent_hand_eight() {
+    let mut state = stable_combat_state();
+    state.core.position = TurnPosition::Ending {
+        step: mtgml_state::EndingStep::Cleanup,
+    };
+    state.core.priority = mtgml_state::PriorityState::None;
+    state.combat = None;
+    state.foundation_sources.get_mut(&GameObjectId(1)).unwrap().marked_damage = 1;
+    add_known_hand_cards(&mut state, P1, 7);
+    add_known_hand_cards(&mut state, P2, 8);
+    mtgml_state::validate_engine_state(&state).unwrap();
+    state.digest().unwrap();
+
+    let controller = TrustedEnvironmentController::new(bounded_turn_backend(state));
+    let result = controller.execute_forced_progress().unwrap();
+    assert_eq!(result.next_state.core.turn_number, 2);
+    assert_eq!(result.next_state.core.active_player, P2);
+    assert!(result.next_state.foundation_sources.values().all(|source| source.marked_damage == 0));
+}
+
+#[test]
+fn bounded_cleanup_restore_rejects_active_hand_eight_atomically() {
+    let mut state = stable_combat_state();
+    state.core.position = TurnPosition::Ending {
+        step: mtgml_state::EndingStep::Cleanup,
+    };
+    state.core.priority = mtgml_state::PriorityState::None;
+    state.combat = None;
+    state.foundation_sources.get_mut(&GameObjectId(1)).unwrap().marked_damage = 1;
+    mtgml_state::validate_engine_state(&state).unwrap();
+    let controller = TrustedEnvironmentController::new(bounded_turn_backend(state));
+    let before = controller.checkpoint().unwrap();
+    let replay_before = controller.export_replay().unwrap();
+    let p1_before = player_fingerprint(&controller, P1);
+    let p2_before = player_fingerprint(&controller, P2);
+
+    let mut incompatible = before.state.clone();
+    add_known_hand_cards(&mut incompatible, P1, 8);
+    mtgml_state::validate_engine_state(&incompatible).unwrap();
+    let invalid_checkpoint = crate::checkpoint::EnvironmentCheckpointV6::new(
+        incompatible,
+        before.status.clone(),
+        before.limit_counters.clone(),
+        before.codec.clone(),
+        before.execution_identity.clone(),
+    )
+    .unwrap();
+    assert!(controller.restore(invalid_checkpoint).is_err());
+    assert_eq!(controller.checkpoint().unwrap(), before);
+    assert_eq!(controller.export_replay().unwrap(), replay_before);
+    assert_eq!(player_fingerprint(&controller, P1), p1_before);
+    assert_eq!(player_fingerprint(&controller, P2), p2_before);
+}
+
+#[test]
+fn bounded_cleanup_restore_rejects_sba_unstable_state_without_clearing_damage() {
+    for unstable in ["lethal-mark", "life-zero"] {
+        let mut state = stable_combat_state();
+        state.core.position = TurnPosition::Ending {
+            step: mtgml_state::EndingStep::Cleanup,
+        };
+        state.core.priority = mtgml_state::PriorityState::None;
+        state.combat = None;
+        state.foundation_sources.get_mut(&GameObjectId(1)).unwrap().marked_damage = 1;
+        mtgml_state::validate_engine_state(&state).unwrap();
+        let controller = TrustedEnvironmentController::new(bounded_turn_backend(state));
+        let before = controller.checkpoint().unwrap();
+        let replay_before = controller.export_replay().unwrap();
+        let p1_before = player_fingerprint(&controller, P1);
+        let p2_before = player_fingerprint(&controller, P2);
+
+        let mut incompatible = before.state.clone();
+        match unstable {
+            "lethal-mark" => {
+                incompatible.foundation_sources.get_mut(&GameObjectId(1)).unwrap().marked_damage = 2;
+            }
+            "life-zero" => incompatible.core.players.get_mut(&P1).unwrap().life = 0,
+            _ => unreachable!(),
+        }
+        mtgml_state::validate_engine_state(&incompatible).unwrap();
+        let invalid_checkpoint = crate::checkpoint::EnvironmentCheckpointV6::new(
+            incompatible,
+            before.status.clone(),
+            before.limit_counters.clone(),
+            before.codec.clone(),
+            before.execution_identity.clone(),
+        )
+        .unwrap();
+        assert!(controller.restore(invalid_checkpoint).is_err(), "{unstable}");
+        assert_eq!(controller.checkpoint().unwrap(), before);
+        assert_eq!(controller.export_replay().unwrap(), replay_before);
+        assert_eq!(player_fingerprint(&controller, P1), p1_before);
+        assert_eq!(player_fingerprint(&controller, P2), p2_before);
+    }
 }
