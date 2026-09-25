@@ -4,8 +4,8 @@
 use super::*;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use mtgml_model::{
-    EpisodeStatus, EventSequence, InformationStateDigest, ObservationDigest, PlayerId,
-    StateRevision, VisibleSequence,
+    EpisodeStatus, EventSequence, InformationStateDigest, ObservationDigest, OpaqueObjectId,
+    PlayerId, StateRevision, VisibleSequence,
 };
 
 fn observation(payload: &[u8], digest_payload: &[u8]) -> ObservationEnvelope {
@@ -80,6 +80,29 @@ fn magic_combat_observation_v4_rejects_inconsistent_unblocked_relation() {
         observation.validate(),
         Err(ObservationValidationError::ObservationPayload)
     );
+}
+
+#[test]
+fn magic_combat_observation_v4_supports_distinct_blockers_for_distinct_attackers() {
+    let mut observation: MagicObservationV4 = serde_json::from_str(include_str!(
+        "../../../wire/golden/magic-combat-observation.v4.json"
+    ))
+    .unwrap();
+    let combat = observation.combat.as_mut().unwrap();
+    combat.attackers = vec![OpaqueObjectId(3), OpaqueObjectId(5)];
+    combat.blockers = vec![
+        MagicCombatBlockerAssignmentV4 {
+            attacker: OpaqueObjectId(3),
+            status: MagicBlockedStatusV4::Blocked,
+            blocker: Some(OpaqueObjectId(4)),
+        },
+        MagicCombatBlockerAssignmentV4 {
+            attacker: OpaqueObjectId(5),
+            status: MagicBlockedStatusV4::Blocked,
+            blocker: Some(OpaqueObjectId(6)),
+        },
+    ];
+    observation.validate().unwrap();
 }
 
 #[test]

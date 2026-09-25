@@ -77,6 +77,18 @@ class MagicObservationTests(unittest.TestCase):
         with self.assertRaises(WireError):
             decode_canonical(MAGIC_OBSERVATION_SCHEMA_V4, canonical_json_bytes(value))
 
+    def test_v4_supports_distinct_blockers_for_distinct_attackers(self) -> None:
+        value = json.loads(
+            (ROOT / ".." / "wire" / "golden" / "magic-combat-observation.v4.json").read_bytes()
+        )
+        value["combat"]["attackers"] = ["3", "5"]
+        value["combat"]["blockers"] = [
+            {"attacker": "3", "status": "blocked", "blocker": "4"},
+            {"attacker": "5", "status": "blocked", "blocker": "6"},
+        ]
+        decoded = decode_canonical(MAGIC_OBSERVATION_SCHEMA_V4, canonical_json_bytes(value))
+        self.assertEqual(len(decoded.combat.blockers), 2)
+
     def test_golden_magic_payloads_roundtrip_and_keep_perspective_local_ids(self) -> None:
         names = (
             "magic-m3-observation-null.json",

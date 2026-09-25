@@ -125,7 +125,6 @@ class MagicCombatParticipationV4:
                 entry.attacker != attacker
                 for entry, attacker in zip(self.blockers, self.attackers, strict=True)
             )
-            or len(assigned) > 1
             or len(set(assigned)) != len(assigned)
             or bool(set(assigned).intersection(self.attackers))
         ):

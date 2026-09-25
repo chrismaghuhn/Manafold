@@ -3284,6 +3284,98 @@ fn combat_damage_multiple_and_mixed_attackers_are_complete_and_simultaneous() {
 }
 
 #[test]
+fn combat_damage_multiple_blocked_attackers_keep_distinct_simultaneous_pairs() {
+    let mut state = blocker_fixture(2, 2, 0);
+    state.core.players.get_mut(&P2).unwrap().life = 20;
+    for (object, power) in [
+        (GameObjectId(3), 2),
+        (GameObjectId(4), 2),
+        (GameObjectId(5), 1),
+        (GameObjectId(6), 3),
+    ] {
+        state
+            .foundation_sources
+            .get_mut(&object)
+            .unwrap()
+            .base_characteristics = BaseCharacteristics::Simple {
+            power,
+            toughness: 10,
+        };
+    }
+    state.zones.objects.get_mut(&GameObjectId(3)).unwrap().tapped = true;
+    state.zones.objects.get_mut(&GameObjectId(4)).unwrap().tapped = true;
+    state.core.position = TurnPosition::Combat {
+        step: mtgml_state::CombatStep::CombatDamage,
+    };
+    state.combat = Some(mtgml_state::CombatState {
+        defending_player: P2,
+        attackers: vec![GameObjectId(3), GameObjectId(4)],
+        damage_step_completed: false,
+        blocked_attackers: std::collections::BTreeSet::from([GameObjectId(3), GameObjectId(4)]),
+        blockers: std::collections::BTreeMap::from([
+            (GameObjectId(3), Some(GameObjectId(5))),
+            (GameObjectId(4), Some(GameObjectId(6))),
+        ]),
+    });
+    mtgml_state::validate_engine_state(&state).unwrap();
+
+    let mut backend = damage_backend(state);
+    let transition = backend.execute_forced_progress().unwrap();
+    let assignments = transition
+        .events
+        .iter()
+        .find_map(|event| match &event.event {
+            mtgml_rules::AuthoritativeRuleEventKind::CombatDamageDealt { assignments } => {
+                Some(assignments)
+            }
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(assignments.len(), 4);
+    assert!(assignments.iter().any(|assignment| {
+        assignment.source == GameObjectId(3)
+            && assignment.recipient
+                == mtgml_state::DamageRecipientV1::Creature {
+                    object: GameObjectId(5),
+                }
+            && assignment.amount == 2
+    }));
+    assert!(assignments.iter().any(|assignment| {
+        assignment.source == GameObjectId(5)
+            && assignment.recipient
+                == mtgml_state::DamageRecipientV1::Creature {
+                    object: GameObjectId(3),
+                }
+            && assignment.amount == 1
+    }));
+    assert!(assignments.iter().any(|assignment| {
+        assignment.source == GameObjectId(4)
+            && assignment.recipient
+                == mtgml_state::DamageRecipientV1::Creature {
+                    object: GameObjectId(6),
+                }
+            && assignment.amount == 2
+    }));
+    assert!(assignments.iter().any(|assignment| {
+        assignment.source == GameObjectId(6)
+            && assignment.recipient
+                == mtgml_state::DamageRecipientV1::Creature {
+                    object: GameObjectId(4),
+                }
+            && assignment.amount == 3
+    }));
+    for (object, expected) in [
+        (GameObjectId(3), 1),
+        (GameObjectId(4), 3),
+        (GameObjectId(5), 2),
+        (GameObjectId(6), 2),
+    ] {
+        assert_eq!(transition.next_state.foundation_sources[&object].marked_damage, expected);
+    }
+    assert_eq!(transition.next_state.core.players[&P2].life, 20);
+}
+
+#[test]
 fn zero_power_has_no_damage_event_and_lethal_player_damage_has_no_priority() {
     let (_, _, _, zero, zero_transition) =
         run_combat_damage_case(&[(0, 2)], None, 20, false);
@@ -3605,7 +3697,7 @@ fn combat_damage_restore_rejects_unsupported_characteristics_atomically() {
 }
 
 #[test]
-fn combat_damage_restore_rejects_multiple_allocation_choices() {
+fn combat_damage_restore_rejects_one_blocker_reused_across_attackers() {
     let mut state = declared_blockers_state(2, 0, 0);
     for object in [GameObjectId(5), GameObjectId(6)] {
         add_creature(&mut state, object.0, P2, [200 + object.0, 300 + object.0]);
@@ -3619,32 +3711,37 @@ fn combat_damage_restore_rejects_multiple_allocation_choices() {
     state.core.position = TurnPosition::Combat {
         step: mtgml_state::CombatStep::CombatDamage,
     };
-    let combat = state.combat.as_mut().unwrap();
-    combat.blockers.insert(GameObjectId(3), Some(GameObjectId(5)));
-    combat.blockers.insert(GameObjectId(4), Some(GameObjectId(6)));
-    combat.blocked_attackers.extend([GameObjectId(3), GameObjectId(4)]);
-    mtgml_state::validate_engine_state(&state).unwrap();
-    let before = state.clone();
-    let checkpoint = crate::EnvironmentCheckpointV6::new(
-        state,
-        EpisodeStatus::Running,
-        EnvironmentLimitCounters::default(),
-        CheckpointCodecIdentity {
-            codec_id: CHECKPOINT_CODEC_ID_V6.into(),
-            semantic_version: CHECKPOINT_CODEC_SEMANTIC_VERSION_V6.into(),
-        },
-        ReferenceEnvironmentBackend::magic_combat_damage_execution_identity(),
-    )
-    .unwrap();
-    let admission = crate::semantic_catalog::admit_restore(
-        &crate::semantic_catalog::RuntimeSemanticCatalog::production(),
-        &checkpoint,
-    );
+    let controller = crate::TrustedEnvironmentController::new(damage_backend(state));
+    let before = controller.checkpoint().unwrap();
+    let replay_before = controller.export_replay().unwrap();
+    let p1_before = player_fingerprint(&controller, P1);
+    let p2_before = player_fingerprint(&controller, P2);
+    let mut invalid = before.clone();
+    invalid.state.combat.as_mut().unwrap().blockers = std::collections::BTreeMap::from([
+        (GameObjectId(3), Some(GameObjectId(5))),
+        (GameObjectId(4), Some(GameObjectId(5))),
+    ]);
+    invalid
+        .state
+        .combat
+        .as_mut()
+        .unwrap()
+        .blocked_attackers
+        .extend([GameObjectId(3), GameObjectId(4)]);
+    let admission = controller.restore(invalid);
     assert!(
-        matches!(&admission, Err(crate::semantic_catalog::RestoreAdmissionError::ProgramStateIncompatible)),
-        "unexpected multiple-allocation admission result: {admission:?}"
+        matches!(
+            &admission,
+            Err(crate::ControllerError::CheckpointValidation(
+                crate::CheckpointValidationError::StateInvariant
+            ))
+        ),
+        "unexpected reused-blocker admission result: {admission:?}"
     );
-    assert_eq!(checkpoint.state, before);
+    assert_eq!(controller.checkpoint().unwrap(), before);
+    assert_eq!(controller.export_replay().unwrap(), replay_before);
+    assert_eq!(player_fingerprint(&controller, P1), p1_before);
+    assert_eq!(player_fingerprint(&controller, P2), p2_before);
 }
 
 #[test]

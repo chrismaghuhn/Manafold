@@ -155,7 +155,6 @@ pub(crate) fn validate_combat_damage_state(state: &EngineState) -> Result<(), Co
         return Err(CombatDamageError::Unsupported);
     }
     let mut blockers = BTreeSet::new();
-    let mut participant_controllers = BTreeMap::<GameObjectId, PlayerId>::new();
     for attacker in &combat.attackers {
         let blocker = combat
             .blockers
@@ -173,7 +172,6 @@ pub(crate) fn validate_combat_damage_state(state: &EngineState) -> Result<(), Co
             return Err(CombatDamageError::Unsupported);
         }
         source_power(state, *attacker)?;
-        participant_controllers.insert(*attacker, object.controller);
         if let Some(blocker) = blocker {
             if !blockers.insert(*blocker) {
                 return Err(CombatDamageError::Unsupported);
@@ -187,13 +185,8 @@ pub(crate) fn validate_combat_damage_state(state: &EngineState) -> Result<(), Co
                 return Err(CombatDamageError::Unsupported);
             }
             source_power(state, *blocker)?;
-            participant_controllers.insert(*blocker, object.controller);
         }
     }
-    if blockers.len() > 1 {
-        return Err(CombatDamageError::Unsupported);
-    }
-    let _ = participant_controllers;
     Ok(())
 }
 
