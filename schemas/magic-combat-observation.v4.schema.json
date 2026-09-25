@@ -336,6 +336,6 @@
     "player_life",
     "marked_damage"
   ],
-  "title": "MagicCombatObservation v3",
+  "title": "MagicCombatObservation v4",
   "type": "object"
 }
