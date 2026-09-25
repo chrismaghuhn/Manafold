@@ -16,10 +16,8 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             r"\*\*Foundation closure/freeze:\*\* `COMPLETE`",
         )
         self.assertIn(
-            "**Current status:** M3 final closure candidate on `chris/m3-final-closure-20260925`; "
-            "11/11 Foundation V2 capabilities are proposed as covered, 16/16 interaction "
-            "obligations are mapped, and final acceptance remains pending independent review "
-            "and hosted CI",
+            "**Current status:** M3 is complete and final acceptance passed; M4 is unblocked "
+            "and content implementation has not started",
             readme,
         )
         self.assertNotIn(
@@ -56,13 +54,12 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertNotIn("SELECTED / AUTHORIZATION-ELIGIBLE / NOT_AUTHORIZED", readme)
         self.assertIn(
             "**M3 semantic implementation:** the eleven bounded Foundation V2 capabilities "
-            "are implemented and proposed as `COVERED`; none is certified",
+            "are implemented and covered; none is certified",
             readme,
         )
         self.assertIn(
             "**M3.S2:** its selected Battlefield → owner Graveyard and owner Library-top "
-            "→ owner Hand profiles are integrated with combat SBA and ordinary Draw replay "
-            "in the M3 final-closure candidate",
+            "→ owner Hand profiles are integrated with combat SBA and ordinary Draw replay",
             readme,
         )
         self.assertIn(
@@ -111,8 +108,8 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             "**M3 Block 7:** Cleanup Reset + complete bounded turn merged and accepted in PR #219",
             readme,
         )
-        self.assertIn("**M3 Block 8:** cumulative final-closure candidate", readme)
-        self.assertIn("`M3 = FINAL_CLOSURE_CANDIDATE`", readme)
+        self.assertIn("**M3 Block 8:** cumulative final closure accepted by PR #220", readme)
+        self.assertIn("`M3 = COMPLETE`", readme)
         self.assertNotIn("M3_S1_AUTHORIZATION_DECISION", readme)
         self.assertNotIn("M3_T0_CLOSURE_STATUS_SYNC_EXACT_HEAD_REVIEW", readme)
         self.assertIn(
@@ -125,18 +122,15 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         )
         self.assertIn("finalized as COMPLETE / FROZEN", readme)
         self.assertIn(
-            "the closure candidate proposes 11 Foundation capabilities `covered`; `0` are "
-            "certified",
+            "11 Foundation capabilities are `covered`; `0` are certified",
             readme,
         )
         self.assertIn(
-            "**Current boundary:** `M3 = FINAL_CLOSURE_CANDIDATE`; accepted repository status "
-            "remains "
-            "incomplete until review, hosted CI, merge, and post-merge verification",
+            "**Current boundary:** `M3 = COMPLETE`; `M3_FINAL_ACCEPTANCE = PASS`; `M4 = UNBLOCKED`",
             readme,
         )
         self.assertIn(
-            "**Real Magic semantics:** candidate evidence covers the eleven bounded "
+            "**Real Magic semantics:** accepted evidence covers the eleven bounded "
             "Foundation V2 capabilities",
             readme,
         )
@@ -182,6 +176,14 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
 
     def test_roadmap_preserves_external_scope_and_engine_m3_boundary(self) -> None:
         roadmap = (ROOT / "docs" / "ROADMAP.md").read_text(encoding="utf-8")
+        current_status = roadmap.split("## M0.2", 1)[0]
+
+        self.assertIn("M3 = COMPLETE", current_status)
+        self.assertIn("M3_FINAL_ACCEPTANCE = PASS", current_status)
+        self.assertIn("M4 = UNBLOCKED", current_status)
+        self.assertIn("M4_CONTENT_IMPLEMENTATION = NOT_STARTED", current_status)
+        self.assertNotIn("M3_FINAL_ACCEPTANCE = PENDING", current_status)
+        self.assertNotIn("M4_STARTED = NO", current_status)
 
         self.assertRegex(roadmap, r"## M2 [^\n]+\n\n\*\*Status:\*\* `COMPLETE`")
         self.assertIn("`M2.5 = NOT_CLAIMED / NOT_FROZEN`", roadmap)
