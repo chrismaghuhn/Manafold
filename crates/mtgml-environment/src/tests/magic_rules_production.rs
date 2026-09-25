@@ -4043,6 +4043,10 @@ fn bounded_turn_player_endpoints_carry_combat_damage_through_cleanup_and_replay(
     let backend = bounded_turn_backend(damage_checkpoint.state.clone());
     let initial = backend.checkpoint().unwrap();
     let controller = TrustedEnvironmentController::new(backend);
+    assert_eq!(controller.fork().unwrap().checkpoint().unwrap(), initial);
+    let mut restored = bounded_turn_backend(initial.state.clone());
+    restored.restore(initial.clone()).unwrap();
+    assert_eq!(restored.checkpoint().unwrap(), initial);
 
     // Both surviving combatants carry marks up to Cleanup.
     assert_eq!(damage_checkpoint.state.foundation_sources[&GameObjectId(3)].marked_damage, 2);
@@ -4102,25 +4106,62 @@ fn complete_bounded_turn_runs_from_untap_through_cleanup_with_explicit_endpoints
         BaseCharacteristics::Simple { power: 3, toughness: 4 };
     state.foundation_sources.get_mut(&GameObjectId(4)).unwrap().base_characteristics =
         BaseCharacteristics::Simple { power: 2, toughness: 5 };
+    let hidden_hand_object = GameObjectId(state.allocators.next_object_id.0);
+    add_known_hand_cards(&mut state, P1, 1);
+    let mut hidden_state = state.clone();
+    let hidden_opaque = hidden_state.perspective_identities.players[&P1]
+        .object_to_opaque[&hidden_hand_object];
+    hidden_state
+        .zones
+        .objects
+        .get_mut(&hidden_hand_object)
+        .unwrap()
+        .physical_card = Some(PhysicalCardId(900));
+    hidden_state
+        .zones
+        .objects
+        .get_mut(&hidden_hand_object)
+        .unwrap()
+        .card_definition = CardDefinitionId(901);
+    let hidden_record = hidden_state
+        .knowledge
+        .players
+        .get_mut(&P1)
+        .unwrap()
+        .active
+        .get_mut(&hidden_opaque)
+        .unwrap();
+    hidden_record.physical_card = Some(PhysicalCardId(900));
+    hidden_record.card_definition = Some(CardDefinitionId(901));
     mtgml_state::validate_engine_state(&state).unwrap();
+    mtgml_state::validate_engine_state(&hidden_state).unwrap();
     state.digest().unwrap();
+    hidden_state.digest().unwrap();
 
     let mut backend = bounded_turn_backend(state);
+    let mut hidden_backend = bounded_turn_backend(hidden_state);
     backend.execute_forced_progress().unwrap(); // P2 Untap -> Upkeep.
     backend.execute_forced_progress().unwrap(); // Open the first Upkeep priority Decision.
+    hidden_backend.execute_forced_progress().unwrap();
+    hidden_backend.execute_forced_progress().unwrap();
     let initial = backend.checkpoint().unwrap();
+    let hidden_initial = hidden_backend.checkpoint().unwrap();
     let controller = TrustedEnvironmentController::new(backend);
+    let hidden_controller = TrustedEnvironmentController::new(hidden_backend);
     assert_eq!(controller.fork().unwrap().checkpoint().unwrap(), initial);
+    assert_eq!(player_fingerprint(&controller, P2), player_fingerprint(&hidden_controller, P2));
     let mut restored = bounded_turn_backend(initial.state.clone());
     restored.restore(initial.clone()).unwrap();
     assert_eq!(restored.checkpoint().unwrap(), initial);
     let mut external_responses = 0usize;
     let mut decisions = Vec::new();
+    let mut p2_products = Vec::new();
 
     let pass_window = |position: TurnPosition,
                        controller: &TrustedEnvironmentController,
                        external_responses: &mut usize,
-                       decisions: &mut Vec<(PlayerId, TurnPosition, usize)>| {
+                       decisions: &mut Vec<(PlayerId, TurnPosition, usize)>,
+                       p2_products: &mut Vec<Vec<u8>>| {
         assert_eq!(controller.checkpoint().unwrap().state.core.position, position);
         for actor in [P2, P1] {
             let endpoint = controller.bind_player(actor).unwrap();
@@ -4129,6 +4170,7 @@ fn complete_bounded_turn_runs_from_untap_through_cleanup_with_explicit_endpoints
             decisions.push((actor, position, request.candidates.len()));
             endpoint.submit(current_select_one_response(&request)).unwrap();
             *external_responses += 1;
+            p2_products.push(player_fingerprint(controller, P2));
         }
     };
 
@@ -4137,19 +4179,22 @@ fn complete_bounded_turn_runs_from_untap_through_cleanup_with_explicit_endpoints
         &controller,
         &mut external_responses,
         &mut decisions,
+        &mut p2_products,
     );
     pass_window(
         TurnPosition::Beginning { step: mtgml_state::BeginningStep::Draw },
         &controller,
         &mut external_responses,
         &mut decisions,
+        &mut p2_products,
     );
-    pass_window(TurnPosition::PrecombatMain, &controller, &mut external_responses, &mut decisions);
+    pass_window(TurnPosition::PrecombatMain, &controller, &mut external_responses, &mut decisions, &mut p2_products);
     pass_window(
         TurnPosition::Combat { step: mtgml_state::CombatStep::BeginningOfCombat },
         &controller,
         &mut external_responses,
         &mut decisions,
+        &mut p2_products,
     );
 
     let p2 = controller.bind_player(P2).unwrap();
@@ -4160,11 +4205,13 @@ fn complete_bounded_turn_runs_from_untap_through_cleanup_with_explicit_endpoints
     decisions.push((P2, TurnPosition::Combat { step: mtgml_state::CombatStep::DeclareAttackers }, attackers.candidates.len()));
     p2.submit(current_select_many_response(&attackers)).unwrap();
     external_responses += 1;
+    p2_products.push(player_fingerprint(&controller, P2));
     pass_window(
         TurnPosition::Combat { step: mtgml_state::CombatStep::DeclareAttackers },
         &controller,
         &mut external_responses,
         &mut decisions,
+        &mut p2_products,
     );
 
     let p1 = controller.bind_player(P1).unwrap();
@@ -4183,30 +4230,35 @@ fn complete_bounded_turn_runs_from_untap_through_cleanup_with_explicit_endpoints
         answer: DecisionAnswerV2::SelectOne { candidate_id: blocker_candidate.candidate_id },
     }).unwrap();
     external_responses += 1;
+    p2_products.push(player_fingerprint(&controller, P2));
     pass_window(
         TurnPosition::Combat { step: mtgml_state::CombatStep::DeclareBlockers },
         &controller,
         &mut external_responses,
         &mut decisions,
+        &mut p2_products,
     );
     pass_window(
         TurnPosition::Combat { step: mtgml_state::CombatStep::CombatDamage },
         &controller,
         &mut external_responses,
         &mut decisions,
+        &mut p2_products,
     );
     pass_window(
         TurnPosition::Combat { step: mtgml_state::CombatStep::EndOfCombat },
         &controller,
         &mut external_responses,
         &mut decisions,
+        &mut p2_products,
     );
-    pass_window(TurnPosition::PostcombatMain, &controller, &mut external_responses, &mut decisions);
+    pass_window(TurnPosition::PostcombatMain, &controller, &mut external_responses, &mut decisions, &mut p2_products);
     pass_window(
         TurnPosition::Ending { step: mtgml_state::EndingStep::EndStep },
         &controller,
         &mut external_responses,
         &mut decisions,
+        &mut p2_products,
     );
 
     let final_checkpoint = controller.checkpoint().unwrap();
@@ -4223,6 +4275,25 @@ fn complete_bounded_turn_runs_from_untap_through_cleanup_with_explicit_endpoints
     let replay = controller.export_replay().unwrap();
     let report = controller.execute_replay_from_checkpoint(initial, replay).unwrap();
     assert_eq!(report.final_checkpoint, final_checkpoint);
+
+    let mut hidden_p2_products = Vec::new();
+    for step in &controller.export_replay().unwrap().steps {
+        let endpoint = hidden_controller.bind_player(step.actor).unwrap();
+        let request = endpoint.visible_decision().unwrap().unwrap();
+        assert_eq!(request.actor, step.actor);
+        let accepted = endpoint.submit(step.response.clone()).unwrap();
+        assert_eq!(accepted.submission, PlayerStepSubmissionV1::Accepted);
+        hidden_p2_products.push(player_fingerprint(&hidden_controller, P2));
+    }
+    assert_eq!(p2_products, hidden_p2_products);
+    assert_ne!(player_fingerprint(&controller, P1), player_fingerprint(&hidden_controller, P1));
+    let hidden_final = hidden_controller.checkpoint().unwrap();
+    let hidden_replay = hidden_controller.export_replay().unwrap();
+    assert_eq!(hidden_replay.steps.len(), external_responses);
+    let hidden_report = hidden_controller
+        .execute_replay_from_checkpoint(hidden_initial, hidden_replay)
+        .unwrap();
+    assert_eq!(hidden_report.final_checkpoint, hidden_final);
 }
 
 #[test]
