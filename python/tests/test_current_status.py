@@ -16,9 +16,10 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             r"\*\*Foundation closure/freeze:\*\* `COMPLETE`",
         )
         self.assertIn(
-            "**Current status:** M3.S1 complete / covered / not certified; "
-            "M3.S2 complete / implemented / not covered / not certified; PR #208 "
-            "is merged and S2 exact-head verification passed",
+            "**Current status:** M3 final closure candidate on `chris/m3-final-closure-20260925`; "
+            "11/11 Foundation V2 capabilities are proposed as covered, 16/16 interaction "
+            "obligations are mapped, and final acceptance remains pending independent review "
+            "and hosted CI",
             readme,
         )
         self.assertNotIn(
@@ -54,19 +55,20 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("`587016574e4e8f9f797a713877f8caf1c5143cfb`", readme)
         self.assertNotIn("SELECTED / AUTHORIZATION-ELIGIBLE / NOT_AUTHORIZED", readme)
         self.assertIn(
-            "**M3 semantic implementation:** M3.S1 is `COVERED`; bounded M3.S2 "
-            "zone-incarnation is `IMPLEMENTED` and not covered",
+            "**M3 semantic implementation:** the eleven bounded Foundation V2 capabilities "
+            "are implemented and proposed as `COVERED`; none is certified",
             readme,
         )
         self.assertIn(
-            "**M3.S2:** `COMPLETE / IMPLEMENTED / NOT COVERED / NOT CERTIFIED`",
+            "**M3.S2:** its selected Battlefield → owner Graveyard and owner Library-top "
+            "→ owner Hand profiles are integrated with combat SBA and ordinary Draw replay "
+            "in the M3 final-closure candidate",
             readme,
         )
-        self.assertIn("**PR #208:** `MERGED`; `S2_EXACT_HEAD_VERIFICATION = PASS`", readme)
         self.assertIn(
-            "**S2 authoritative replay:** Draw \u00d7 S2 has a Block 3 "
-            "Replay V6 candidate witness; "
-            "overall S2 replay coverage remains `DEFERRED_REQUIRED / BLOCKED_FOR_COVERED`",
+            "**S2 authoritative replay:** the Block 8 exact Foundation V2 integration "
+            "exercises both "
+            "SBA-to-graveyard and Draw-to-Hand incarnation transitions through Replay V6",
             readme,
         )
         self.assertIn("**M3 Pre-T0 hardening:** `COMPLETE / ACCEPTED`", readme)
@@ -106,9 +108,11 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             readme,
         )
         self.assertIn(
-            "**M3 Block 7:** Cleanup Reset + complete bounded turn implementation candidate",
+            "**M3 Block 7:** Cleanup Reset + complete bounded turn merged and accepted in PR #219",
             readme,
         )
+        self.assertIn("**M3 Block 8:** cumulative final-closure candidate", readme)
+        self.assertIn("`M3 = FINAL_CLOSURE_CANDIDATE`", readme)
         self.assertNotIn("M3_S1_AUTHORIZATION_DECISION", readme)
         self.assertNotIn("M3_T0_CLOSURE_STATUS_SYNC_EXACT_HEAD_REVIEW", readme)
         self.assertIn(
@@ -121,23 +125,22 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         )
         self.assertIn("finalized as COMPLETE / FROZEN", readme)
         self.assertIn(
-            "9 Foundation capabilities are `specified`, 1 is `implemented`, "
-            "1 is `covered`, and 0 are `certified`",
+            "the closure candidate proposes 11 Foundation capabilities `covered`; `0` are "
+            "certified",
             readme,
         )
         self.assertIn(
-            "**Current boundary:** S2 remains `IMPLEMENTED / NOT COVERED`; Block 3 supplies a "
-            "Draw \u00d7 S2 Replay V6 candidate witness but does not close all S2 coverage gates",
+            "**Current boundary:** `M3 = FINAL_CLOSURE_CANDIDATE`; accepted repository status "
+            "remains "
+            "incomplete until review, hosted CI, merge, and post-merge verification",
             readme,
         )
         self.assertIn(
-            "**Real Magic semantics:** S1 is covered; S2 is implemented / not covered; "
-            "bounded S3.A and S3.B implementations are accepted / merged under distinct "
-            "production identities",
+            "**Real Magic semantics:** candidate evidence covers the eleven bounded "
+            "Foundation V2 capabilities",
             readme,
         )
-        self.assertNotIn("S2 covered", readme)
-        self.assertNotIn("S2 certified", readme)
+        self.assertIn("0` are certified", readme)
         self.assertIn("**Playable engine:** no", readme)
         self.assertIn("**Real card support:** none", readme)
         self.assertIn("**Current resumable execution contract:** V6.", readme)
@@ -499,6 +502,8 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
                 "s1.catalog.program-pairing",
                 "s1.observation.temporal-fields",
                 "s1.observation.public-untap",
+                "production_basic_priority_end_step_two_pass_reference_replay_closes_through_cleanup",
+                "complete_bounded_turn_runs_from_untap_through_cleanup_with_explicit_endpoints",
             ],
         )
         self.assertEqual(turn_structure["benchmark_scenarios"], [])
@@ -508,7 +513,7 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         )
 
         self.assertEqual(zone_incarnation["version"], "0.1.0")
-        self.assertEqual(zone_incarnation["lifecycle"], "implemented")
+        self.assertEqual(zone_incarnation["lifecycle"], "covered")
         self.assertEqual(
             zone_incarnation["spec_path"],
             "docs/superpowers/specs/2026-09-23-m3-s2-zone-incarnation-design.md",
@@ -564,9 +569,9 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertEqual(zone_incarnation["owners"], ["zones_identity"])
         self.assertNotIn("s2.replay.authoritative", zone_incarnation["conformance_cases"])
         self.assertIn("fail closed", zone_incarnation["notes"])
-        self.assertIn("DEFERRED_REQUIRED", zone_incarnation["notes"])
+        self.assertIn("No certification", zone_incarnation["notes"])
 
-        self.assertEqual(draw_card["lifecycle"], "specified")
+        self.assertEqual(draw_card["lifecycle"], "covered")
         self.assertEqual(
             draw_card["conformance_cases"],
             [
@@ -586,46 +591,46 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
                 "crates/mtgml-environment/src/tests/magic_rules_production.rs",
             ],
         )
-        self.assertIn("lifecycle remains specified", draw_card["notes"])
+        self.assertIn("No certification", draw_card["notes"])
 
-        self.assertEqual(cleanup_reset["lifecycle"], "specified")
+        self.assertEqual(cleanup_reset["lifecycle"], "covered")
         self.assertTrue(cleanup_reset["implementation_paths"])
-        self.assertEqual(cleanup_reset["conformance_cases"], [])
+        self.assertTrue(cleanup_reset["conformance_cases"])
         self.assertEqual(cleanup_reset["benchmark_scenarios"], [])
-        self.assertIn("pending independent exact-head review", cleanup_reset["notes"])
+        self.assertIn("No certification", cleanup_reset["notes"])
 
-        self.assertEqual(combat_phase["lifecycle"], "specified")
+        self.assertEqual(combat_phase["lifecycle"], "covered")
         self.assertTrue(combat_phase["implementation_paths"])
-        self.assertEqual(combat_phase["conformance_cases"], [])
-        self.assertIn("independent exact-head review pending", combat_phase["notes"])
-        self.assertEqual(declare_attackers["lifecycle"], "specified")
+        self.assertTrue(combat_phase["conformance_cases"])
+        self.assertIn("No certification", combat_phase["notes"])
+        self.assertEqual(declare_attackers["lifecycle"], "covered")
         self.assertTrue(declare_attackers["implementation_paths"])
-        self.assertEqual(declare_attackers["conformance_cases"], [])
-        self.assertIn("independent exact-head review pending", declare_attackers["notes"])
-        self.assertEqual(declare_blockers["lifecycle"], "specified")
+        self.assertTrue(declare_attackers["conformance_cases"])
+        self.assertIn("No certification", declare_attackers["notes"])
+        self.assertEqual(declare_blockers["lifecycle"], "covered")
         self.assertTrue(declare_blockers["implementation_paths"])
-        self.assertEqual(declare_blockers["conformance_cases"], [])
-        self.assertIn("independent exact-head review is pending", declare_blockers["notes"])
+        self.assertTrue(declare_blockers["conformance_cases"])
+        self.assertIn("No certification", declare_blockers["notes"])
 
         for entry in (combat_damage, damage_and_life):
             with self.subTest(capability=entry["key"]):
-                self.assertEqual(entry["lifecycle"], "specified")
+                self.assertEqual(entry["lifecycle"], "covered")
                 self.assertTrue(entry["implementation_paths"])
-                self.assertEqual(entry["conformance_cases"], [])
+                self.assertTrue(entry["conformance_cases"])
                 self.assertEqual(entry["benchmark_scenarios"], [])
-                self.assertIn("pending independent exact-head review", entry["notes"])
+                self.assertIn("No certification", entry["notes"])
 
         for entry in other_entries:
             with self.subTest(capability=entry["key"]):
                 self.assertEqual(entry["version"], "0.1.0")
-                self.assertEqual(entry["lifecycle"], "specified")
-                self.assertEqual(entry["implementation_paths"], [])
-                self.assertEqual(entry["conformance_cases"], [])
+                self.assertEqual(entry["lifecycle"], "covered")
+                self.assertTrue(entry["implementation_paths"])
+                self.assertTrue(entry["conformance_cases"])
                 self.assertEqual(entry["benchmark_scenarios"], [])
 
-        self.assertEqual(sum(entry["lifecycle"] == "specified" for entry in entries), 9)
-        self.assertEqual(sum(entry["lifecycle"] == "implemented" for entry in entries), 1)
-        self.assertEqual(sum(entry["lifecycle"] == "covered" for entry in entries), 1)
+        self.assertEqual(sum(entry["lifecycle"] == "specified" for entry in entries), 0)
+        self.assertEqual(sum(entry["lifecycle"] == "implemented" for entry in entries), 0)
+        self.assertEqual(sum(entry["lifecycle"] == "covered" for entry in entries), 11)
         self.assertEqual(sum(entry["lifecycle"] == "certified" for entry in entries), 0)
         self.assertEqual(
             sum(len(entry.get("dependencies", [])) for entry in entries),

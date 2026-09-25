@@ -67,6 +67,10 @@ capability-lifecycle, or resumable-execution status.
 - [`DEBUG_ARCHITECTURE_CONTRACT.md`](DEBUG_ARCHITECTURE_CONTRACT.md)
 - [`PERFORMANCE.md`](PERFORMANCE.md)
 
+## M3 closure evidence
+
+- [`reviews/m3-final-closure-2026-09-25.md`](reviews/m3-final-closure-2026-09-25.md) — cumulative Foundation V2 exit candidate and evidence matrices.
+
 ## Binding contract sheets
 
 - [`contracts/M0_2_DESIGN_LOCK_MATRIX.md`](contracts/M0_2_DESIGN_LOCK_MATRIX.md)
