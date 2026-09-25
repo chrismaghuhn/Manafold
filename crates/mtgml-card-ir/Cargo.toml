@@ -6,4 +6,6 @@ rust-version.workspace = true
 
 [dependencies]
 mtgml-model = { path = "../mtgml-model" }
+mtgml-persistence = { path = "../mtgml-persistence" }
 serde.workspace = true
+thiserror.workspace = true

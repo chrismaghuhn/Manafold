@@ -143,7 +143,9 @@ name = "mtgml-card-ir"
 version = "0.2.2"
 dependencies = [
  "mtgml-model",
+ "mtgml-persistence",
  "serde",
+ "thiserror",
 ]
 
 [[package]]

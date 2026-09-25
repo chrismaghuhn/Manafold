@@ -42,7 +42,8 @@ fn minimal_unprofiled_definition_is_structurally_valid() {
 #[test]
 fn duplicate_face_identity_is_rejected() {
     let mut manifest = minimal_manifest();
-    manifest.definitions[0].faces.push(manifest.definitions[0].faces[0].clone());
+    let duplicate = manifest.definitions[0].faces[0].clone();
+    manifest.definitions[0].faces.push(duplicate);
     assert!(validate_content_manifest_v1(&manifest).is_err());
 }
 
