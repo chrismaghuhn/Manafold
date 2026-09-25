@@ -165,15 +165,17 @@ RulesKernel, Decision/continuation, transition-product, information, and
 replay evidence.
 
 M4.1 preflight can report a catalog as structurally valid and can resolve its
-profile identifiers and capability requirements. It must return
-`GameplayAdmission::Rejected(NoExecutableProfileAdmitted)` for gameplay in
-M4.1. It does not create an executable-profile exception for basic lands,
+profile bindings and capability requirements. Any gameplay-construction gate
+must return `Rejected(NoExecutableProfileAdmitted)` in M4.1. This rejection
+boundary is not a `GameplayAdmission` request/response API. It does not create
+an executable-profile exception for basic lands,
 synthetic examples, tests, or the current experimental enum.
 
 ## 6. Terminology and identity families
 
-- **CardDefinition**: immutable authored semantic content identified within
-  one content universe.
+- **CardDefinition**: immutable authored content identified within one content
+  universe; the semantic binding states whether a reviewed semantic profile
+  is attached.
 - **ContentContractIdV1**: domain-separated digest identity for one immutable
   content manifest and its complete definition set.
 - **CardDefinitionId**: existing typed definition identifier; current Rust
@@ -222,10 +224,17 @@ CardDefinitionEnvelopeV1 {
     card_definition_id: CardDefinitionId,
     faces: NonEmpty<FaceDefinitionV1>,
     ability_identities: Vec<AbilityIdentityV1>,
-    semantic_profile_id: CardSemanticProfileId,
+    semantic_binding: CardSemanticBindingV1,
     definition_references: Vec<DefinitionReferenceV1>,
     explicit_additional_requirements: Vec<CapabilityRequirementV1>,
 }
+
+CardSemanticBindingV1 =
+    UnprofiledV1
+  | ProfiledV1 {
+        profile_id: CardSemanticProfileId,
+        body: ProfileTypedDefinitionBody,
+    }
 
 FaceDefinitionV1 {
     face_key: FaceKey,
@@ -253,9 +262,21 @@ DefinitionProvenanceRecordV1 {
 This is a semantic field inventory, not a claim that these Rust names or
 in-memory wrappers already exist. The accepted implementation plan may choose
 equivalent Rust layout while preserving every field, closedness rule, and
-identity scope. V1 wire decoding rejects unknown fields and duplicate fields;
-it does not accept arbitrary extension maps, untyped JSON, opcodes, plugin
-payloads, or executable Card-IR nodes.
+identity scope. `CardSemanticBindingV1` is the durable typed body-binding seam
+inside the frozen outer envelope. `UnprofiledV1` is the only production
+binding admitted by M4.1. A later reviewed profile contract may add one closed,
+statically typed `ProfileTypedDefinitionBody` alternative keyed by its
+immutable `CardSemanticProfileId`; that alternative's concrete fields and
+codec are owned by that profile contract. `ProfileTypedDefinitionBody` is a
+specification meta-name for this family of concrete closed DTOs, not a Rust
+trait object, opaque byte/string/JSON/CBOR value, open trait, or dynamically
+loaded plugin. Decoding selects a statically compiled schema from the profile
+ID; it does not execute the profile. The outer envelope field set and
+manifest schema do not acquire a generic extension map or sidecar. Unknown
+profile IDs/body alternatives reject. This seam defines no executable body
+in M4.1 and is not a universal Card-IR language, string opcode, or
+capability-key dispatch path. V1 wire decoding rejects unknown fields and
+duplicate fields.
 
 `faces` is nonempty. Face order is explicit and canonical in the content
 record; `FaceKey` values are unique and contiguous from zero in that order.
@@ -432,29 +453,32 @@ layer, cost, casting, or copy engine.
 ## 11. CardSemanticProfileId and version axes
 
 `CardSemanticProfileId` is a closed, versioned identity for the semantic
-vocabulary and interpretation a definition requires. Changing the meaning of
-an existing profile ID is forbidden. A semantic change requires a new
-profile identity and fresh admission/evidence. The M4.1 envelope stores an
-ID, not a dispatch string or program. Its grammar is one or more
+vocabulary, typed definition-body schema, and interpretation a definition
+requires. Changing the meaning or body schema of an existing profile ID is
+forbidden. A semantic change requires a new profile identity and fresh
+admission/evidence. The M4.1 envelope's profiled binding stores this identity
+beside the profile-typed body; it stores no dispatch string or program. Its
+grammar is one or more
 slash-separated lowercase ASCII namespace/name segments, each matching
 `[a-z0-9][a-z0-9-]*`, followed by `@major.minor.patch`. Each version
 component is canonical unsigned decimal with no leading zero except the value
 `0`; prerelease and build suffixes are not allowed. Unknown or malformed
 identifiers fail closed.
 
-M4.1 defines no executable profile and does not register an executable
-profile. The sole M4.1 profile identity is
-`card-semantics/empty@1.0.0`, whose closed meaning is “no executable card
-semantics”; it admits no rules action and cannot authorize gameplay. Unknown
-profile IDs, including IDs whose definitions are not present in the immutable
-runtime profile catalog, fail preflight. The immutable profile catalog
-defines profile meaning and deterministic structural requirement derivation;
-it does not own support lifecycle, coverage, or certification. Future
-executable profiles own closed typed semantic data under reviewed profile
-contracts. The content manifest must bind that data before admission; if the
-manifest schema must evolve, it requires a separately versioned M4.2+
-contract. No `extension: any`, arbitrary JSON, string opcode, generic plugin
-payload, or capability-key dispatch is permitted.
+M4.1 registers no semantic profile and admits only `UnprofiledV1`. It does
+not reserve a placeholder `CardSemanticProfileId`; profile identity is
+introduced with the first separately reviewed profile contract. In a later
+profile-enabled contract, a profiled binding is structurally valid only when
+its immutable profile catalog contains the exact ID and its closed, statically
+typed body schema. The profile catalog defines profile meaning and
+deterministic structural requirement derivation; it does not own support
+lifecycle, coverage, or certification. A later profile contract adds its
+concrete typed body alternative at the existing binding seam; the outer
+envelope field set remains V1. Unknown IDs and body alternatives fail closed.
+Any later gameplay-admission contract must reject an unreviewed reachable
+profile before gameplay construction; M4.1 admits no profiled body at all.
+No `extension: any`, arbitrary JSON/CBOR value, untyped payload, string
+opcode, generic plugin interface, or capability-key dispatch is permitted.
 
 The version axes have separate jobs:
 
@@ -463,7 +487,7 @@ The version axes have separate jobs:
 | `CardDefinitionEnvelopeVersion` | Outer field/wire/structural contract version | Rules semantics or support lifecycle |
 | `CardSemanticProfileId` | Closed inner vocabulary and semantic meaning | Capability identity, content identity, or executable opcode |
 | `CapabilityKey@version` | Required reusable semantic support node/version | Card dispatch instruction or certification |
-| `SupportProfileId` | Requested support/admission evidence policy identity | Content meaning or card semantic identity |
+| `SupportProfileId` | Identity of a separately reviewed support/admission policy when one exists | Content meaning or card semantic identity; M4.1 defines no policy |
 | `ContentContractIdV1` | Digest identity of one complete immutable content universe | Support, playability, or certification |
 
 ## 12. Definition references and recursive closure
@@ -549,15 +573,16 @@ opcodes.
 
 Unknown root keys, unknown versions, missing dependencies, dependency cycles,
 invalid registry data, or a dependency below the explicitly requested
-capability lifecycle reject preflight. The minimum lifecycle is a required
-typed preflight input; the implementation must not infer a default from
-definition content. A requested `SupportProfileId` must resolve through an
-independently reviewed admission policy that names the minimum lifecycle and
-admitted profile combinations. M4.1 defines no such support-profile catalog;
-an unknown/missing requested policy rejects gameplay admission. Explicit
-roots are additive even if their semantics are not otherwise visible from the
-profile; this is a conservative author-added requirement, not evidence that
-the card needs or implements it.
+capability lifecycle fail the content preflight request. The caller supplies
+an explicit `RequiredCapabilityLifecycle` for this diagnostic closure query;
+the implementation never infers a threshold from definition content. This
+threshold does not establish a support profile or authorize gameplay.
+`SupportProfileId` remains a distinct identity axis, but M4.1 does not resolve
+it, define its policy, or compare profile × support-profile combinations.
+M4.2 or later owns that admission policy. Explicit roots remain additive even
+if their semantics are not otherwise visible from the profile; this is a
+conservative author-added requirement, not evidence that the card needs or
+implements it.
 
 ## 14. Structural validation and fail-closed preflight
 
@@ -570,17 +595,20 @@ and canonical collection order. It then checks content-scoped identity and
 reference existence. It does not prove source accuracy, Oracle agreement,
 rules correctness, support, or certification.
 
-Preflight has two distinct result modes. `ContentValidationOnly` validates
-and closes an immutable catalog for trusted authoring/review tools; its
-result is never an authorization to construct gameplay. A requested
-`GameplayAdmission` also supplies a `SupportProfileId`/admission policy and
-required capability lifecycle. `ContentValidationOnly` still resolves the
-capability closure and checks it against an explicitly supplied lifecycle
-threshold; it simply cannot return gameplay authorization. Its sequence is:
+M4.1 defines one non-authorizing preflight: `ContentValidationOnly`. It
+validates and closes an immutable catalog for trusted authoring/review tools,
+resolves its capability requirements, and reports their status against an
+explicitly supplied `RequiredCapabilityLifecycle`. It can never authorize
+gameplay. M4.1 defines no `GameplayAdmission` request, `SupportProfileId`
+policy lookup, or support-profile combination check. Any attempt to construct
+gameplay from this Foundation returns the closed rejection
+`NoExecutableProfileAdmitted` and is not a partially implemented admission
+pipeline. Its sequence is:
 
 ```text
 decode strict ContentContractManifestV1 and DefinitionProvenanceRecordV1 catalog
 → validate every CardDefinitionEnvelopeV1 structurally
+→ require `UnprofiledV1`; reject every profiled/unknown binding in M4.1
 → verify unique local FaceKey / AbilityKey and local references
 → recompute and verify ContentContractIdV1
 → validate provenance catalog has one exact record per content definition
@@ -589,11 +617,13 @@ decode strict ContentContractManifestV1 and DefinitionProvenanceRecordV1 catalog
 → derive all mandatory roots and add explicit roots
 → resolve transitive capability closure through the existing registry
 → compare required lifecycle to registry lifecycle/evidence status
-→ check each reachable profile × requested SupportProfileId admission
-→ reject unknown, unreviewed, or unsupported reachable profile semantics
 → return a typed preflight report
 → gameplay construction remains disabled in M4.1
 ```
+
+Test-only closed profile descriptors used to prove structural requirement
+derivation are isolated conformance inputs; they cannot be inserted into the
+production profile catalog or treated as admitted content.
 
 Every stage is fail-closed. It rejects at least:
 
@@ -609,8 +639,8 @@ missing, duplicate, or extra provenance record
 invalid/cyclic recursive closure
 capability dependency missing/cycle/conflict
 capability below required lifecycle or missing required evidence
-unsupported profile × support-profile combination
-unreviewed reachable semantic profile where admission requires review
+any profiled binding, because M4.1 admits no profile body
+unknown profile/body variant
 M4.1 attempt to construct gameplay with no executable profile admitted
 ```
 
@@ -810,20 +840,134 @@ fixture, reader, writer, checkpoint, replay, or migration changes in M4.1.
 
 ## 24. Serialization and canonicalization
 
-The manifest and envelope use closed typed schemas with required fields,
-explicit nullability, duplicate-field rejection, and unknown-field
-rejection. The semantic identity preimage is canonical CBOR through the
-accepted digest envelope, not serialized Rust layout or arbitrary JSON.
-Canonical collection order is field-specific and semantic: definition arrays
-sort by numeric ID; local key sets sort by their declared canonical key;
-face order and other semantically ordered data preserve explicit order.
-Duplicate set entries and noncanonical ordering reject; validators never
-silently repair or reorder incoming identity material.
+`ContentContractIdV1` has one exact byte-level preimage. It uses the existing
+digest-envelope framing from `docs/STATE_HASHING.md` and ADR 0055:
 
-Readers validate the exact manifest/envelope/profile versions and canonical
-form before constructing trusted catalog values. Unknown future versions
-reject without fallback. Source-record hashing is separately defined by the
-pinned source adapter and is not confused with the content-manifest digest.
+```text
+ASCII("mtgml.digest-envelope.v1") || 0x00
+|| frame(ASCII("sha-256"))
+|| frame(ASCII("mtgml.content-contract.v1"))
+|| frame(ASCII("mtgml.canonical-cbor.v1"))
+|| frame(ASCII("content-contract-manifest.v1"))
+|| frame(canonical_payload)
+
+frame(x) = u64_be(byte_length(x)) || x
+ContentContractIdV1 = SHA256(all preceding envelope bytes)
+```
+
+The exact canonical-CBOR payload is this fixed three-element array:
+
+```text
+[
+  "content-contract-manifest.v1",
+  "mtgml.content-contract.v1",
+  [CardDefinitionEnvelopeV1, ...]
+]
+```
+
+The schema and domain strings intentionally repeat the envelope identity,
+following the accepted ADR 0055 manifest convention. The definition array
+may be empty; when nonempty it is sorted by numeric `CardDefinitionId` and
+contains no duplicate ID.
+Each `CardDefinitionEnvelopeV1` is exactly this fixed seven-element array:
+
+```text
+[
+  "card-definition-envelope.v1",
+  card_definition_id,            # CBOR unsigned integer, u64 range
+  [FaceDefinitionV1, ...],       # nonempty; explicit face order
+  [AbilityIdentityV1, ...],      # sorted by (face_key, ability_key)
+  CardSemanticBindingV1,
+  [DefinitionReferenceV1, ...],  # target ID, then null/face key, ascending
+  [CapabilityRequirementV1, ...] # sorted by ASCII (key, version)
+]
+```
+
+Nested records have the following exact positional encodings and arities:
+
+```text
+FaceDefinitionV1       = [face_key, BaseCharacteristicsV1]
+AbilityIdentityV1      = [ability_key, face_key]
+DefinitionReferenceV1   = ["required_definition", target_id, target_face_key_or_null]
+CapabilityRequirementV1 = [capability_key_text, capability_version_text]
+
+BaseCharacteristicsV1 = [
+  name_text,
+  mana_cost_or_null,             # null or array of PrintedManaSymbolV1
+  color_indicator,               # array of color text values, canonical sorted set
+  type_line,                     # [supertypes, card_types, subtypes]
+  power_toughness_or_null,       # null or [signed_i32, signed_i32]
+  loyalty_or_null,               # null or signed_i32
+  defense_or_null                # null or signed_i32
+]
+```
+
+Each type-line component is an array of exact UTF-8 text terms in its declared
+source order, with duplicates rejected. Each color is one of `white`, `blue`,
+`black`, `red`, or `green`; the color-indicator array is sorted by unsigned
+lexicographic comparison of each color's canonical CBOR text encoding.
+`PrintedManaSymbolV1` is encoded as the two-element variant array
+`[variant_id_text, payload]`: `generic` carries a positive CBOR unsigned
+integer in `u32` range; `white`, `blue`, `black`, `red`, `green`, and
+`colorless` carry `null`. No other variant ID is valid.
+
+`CardSemanticBindingV1` uses the same two-element closed variant form. Its
+M4.1 value is exactly `["unprofiled", null]`. The reserved profiled form is
+`["profiled", [profile_id_text, profile_body]]`; only a separately reviewed
+profile contract can define and admit that profile's fixed-array
+`profile_body` schema. The body is decoded directly into that profile's
+closed typed definition type; it is not an arbitrary CBOR/JSON value or a
+generic extension payload. A profile contract must publish the exact body
+array arity, field order, ranges, option forms, and variant IDs before any
+content uses it. Profile identity, body bytes, and their schema therefore
+participate in the content digest. M4.1 defines no profiled body.
+The canonical manifest encoding specified here is complete for every value
+M4.1 accepts: `UnprofiledV1`. M4.1 must reject a profiled value before
+identity calculation and must not mint a `ContentContractIdV1` for it. Before
+any later profile content is authored or hashed, that profile's accepted
+contract must freeze its concrete body array and canonical encoding at this
+existing seam. That adds a reviewed typed alternative without changing the
+outer V1 field set or reinterpreting existing M4.1 bytes.
+
+The separate audit-provenance catalog also has a closed canonical encoding,
+but is never passed to `ContentContractIdV1` hashing:
+
+```text
+ProvenanceCatalogV1 = ["definition-provenance-catalog.v1", [record, ...]]
+DefinitionProvenanceRecordV1 = [content_contract_id_bytes32, card_definition_id,
+                                SourceProvenanceV1]
+SourceProvenanceV1 = [source_snapshot_id_text, source_record_id_text,
+                      source_record_codec_id_text, source_record_digest_bytes32]
+```
+
+Provenance records are sorted by unsigned lexicographic content-ID bytes,
+then numeric definition ID. Their strings are exact UTF-8 with no
+normalization; the source digest is a 32-byte CBOR byte string. This encoding
+makes the audit artifact deterministic while preserving ADR 0055's rule that
+Oracle/source and lowering provenance do not bind semantic content identity.
+
+Across these arrays, unsigned IDs/keys use CBOR unsigned integers; declared
+signed 32-bit characteristics use canonical signed CBOR integers constrained
+to the exact `i32` range (within the codec's signed-`i64` integer model); text
+is exact UTF-8; byte strings are used only where a nested
+typed digest contract expressly declares them. Every record has the stated
+fixed length. Every optional field is present and uses CBOR `null` for
+absence. Unit variants use `[variant_id_text, null]`. Maps, floats, tags,
+indefinite-length values, shared references, undefined, bignums, non-shortest
+encodings, and trailing values are forbidden by the accepted
+`mtgml.canonical-cbor.v1` profile. Arrays are definite length. Integer and
+length encodings use the shortest permitted RFC 8949 form. The decoder
+re-encodes the typed manifest and requires byte equality before hashing.
+
+All ordering is validated before digesting; input is never silently sorted or
+repaired. Face order and printed mana-symbol order preserve their declared
+semantic order. Definitions sort numerically by ID. Set-like fields and
+identity collections use their declared sort key. Definition provenance is
+not present in this payload and cannot affect this content digest. Readers
+reject an unknown envelope version, profile ID, body variant, relation,
+characteristic variant, wrong array arity, duplicate, noncanonical order, or
+out-of-range value before constructing trusted catalog values. Source-record
+hashing remains a separate provenance operation.
 
 ## 25. Fail-closed error classes and diagnostics
 
@@ -849,8 +993,9 @@ UnknownCapabilityVersion
 CapabilityVersionConflict
 CapabilityDependencyFailure
 CapabilityLifecycleBelowRequirement
-UnsupportedProfileSupportCombination
-UnreviewedReachableSemantics
+InvalidSemanticBinding
+UnknownProfileBodyVariant
+ProfiledBindingNotAdmitted
 NoExecutableProfileAdmitted
 ```
 
@@ -867,7 +1012,7 @@ evidence that any test has run.
 
 ### Structural validation
 
-- minimal valid empty-profile definition;
+- minimal valid `UnprofiledV1` definition;
 - duplicate `FaceKey` and duplicate `AbilityKey` rejection;
 - invalid local reference rejection;
 - unknown semantic profile rejection;
@@ -880,6 +1025,11 @@ evidence that any test has run.
 - same `(ContentContractIdV1, CardDefinitionId)` never resolves to two
   canonical immutable definitions;
 - identical manifest material yields identical content ID bytes;
+- the normative ContentContractManifestV1 canonical-CBOR known-answer vector
+  matches exact preimage bytes and digest;
+- changing a profiled body under a test-only reviewed typed profile schema
+  changes content identity; the fixture schema is not admitted production
+  semantics;
 - changing every rule-relevant definition field changes the content manifest
   identity;
 - changing only source provenance or lowering-tool audit metadata preserves
@@ -903,9 +1053,9 @@ evidence that any test has run.
 - deterministic derived roots;
 - explicit requirements add roots and never replace derived roots;
 - author omission cannot suppress a known profile-derived root;
-- a closed test-only profile descriptor derives a known root even when that
-  root is absent from explicit requirements; the test descriptor is not in
-  the production profile catalog and cannot authorize execution;
+- a closed test-only typed profile descriptor derives a known root even when
+  that root is absent from explicit requirements; the test descriptor is not
+  in the production profile catalog and cannot authorize execution;
 - unknown capability/version fails closed;
 - missing/cyclic dependency fails closed;
 - existing Capability Registry performs transitive closure and lifecycle
@@ -913,9 +1063,12 @@ evidence that any test has run.
 
 ### Preflight
 
-- unknown profile, missing definition, unknown capability, dependency
-  failure, below-required lifecycle, unsupported combination, and
-  unreviewed/unadmitted reachable semantics each reject;
+- unknown profile/body variant, missing definition, unknown capability,
+  dependency failure, and below-requested lifecycle each reject the
+  content-preflight request;
+- every gameplay-construction attempt rejects with
+  `NoExecutableProfileAdmitted` in M4.1, independent of content-validation
+  success; no SupportProfile admission policy is consulted;
 - structurally valid content is not gameplay-admitted and creates no support
   or certification claim;
 - preflight infrastructure does not certify any R1/W1 content or bundle.
