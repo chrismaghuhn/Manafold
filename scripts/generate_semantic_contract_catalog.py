@@ -378,14 +378,36 @@ pub fn execution_contract_supported(
             "@BLOCKERS_BLOCKERS@",
             str(has_capability(combat_blockers_entry, "rules/declare-blockers")).lower(),
         )
-        .replace("@DAMAGE_TURN@", str(has_capability(combat_damage_entry, "rules/turn-structure")).lower())
-        .replace("@DAMAGE_SBA@", str(has_capability(combat_damage_entry, "rules/state-based-actions-combat")).lower())
-        .replace("@DAMAGE_PRIORITY@", str(has_capability(combat_damage_entry, "rules/basic-priority")).lower())
-        .replace("@DAMAGE_DRAW@", str(has_capability(combat_damage_entry, "rules/draw-card")).lower())
-        .replace("@DAMAGE_PHASE@", str(has_capability(combat_damage_entry, "rules/combat-phase")).lower())
-        .replace("@DAMAGE_ATTACKERS@", str(has_capability(combat_damage_entry, "rules/declare-attackers")).lower())
-        .replace("@DAMAGE_BLOCKERS@", str(has_capability(combat_damage_entry, "rules/declare-blockers")).lower())
-        .replace("@DAMAGE_DAMAGE@", str(has_capability(combat_damage_entry, "rules/combat-damage")).lower())
+        .replace(
+            "@DAMAGE_TURN@",
+            str(has_capability(combat_damage_entry, "rules/turn-structure")).lower(),
+        )
+        .replace(
+            "@DAMAGE_SBA@",
+            str(has_capability(combat_damage_entry, "rules/state-based-actions-combat")).lower(),
+        )
+        .replace(
+            "@DAMAGE_PRIORITY@",
+            str(has_capability(combat_damage_entry, "rules/basic-priority")).lower(),
+        )
+        .replace(
+            "@DAMAGE_DRAW@", str(has_capability(combat_damage_entry, "rules/draw-card")).lower()
+        )
+        .replace(
+            "@DAMAGE_PHASE@", str(has_capability(combat_damage_entry, "rules/combat-phase")).lower()
+        )
+        .replace(
+            "@DAMAGE_ATTACKERS@",
+            str(has_capability(combat_damage_entry, "rules/declare-attackers")).lower(),
+        )
+        .replace(
+            "@DAMAGE_BLOCKERS@",
+            str(has_capability(combat_damage_entry, "rules/declare-blockers")).lower(),
+        )
+        .replace(
+            "@DAMAGE_DAMAGE@",
+            str(has_capability(combat_damage_entry, "rules/combat-damage")).lower(),
+        )
         .replace("@SYNTHETIC_ID@", synthetic_semantic)
         .replace(
             "@TURN_STRUCTURE_TURN@",

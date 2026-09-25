@@ -54,12 +54,16 @@ class MagicMarkedDamageV4:
         obj = require_exact_keys(value, {"creature", "amount"})
         amount = obj["amount"]
         if not isinstance(amount, str) or parse_uint(amount) == 0:
-            raise WireError("semantic.magic_combat_observation_v4", "marked damage must be positive")
+            raise WireError(
+                "semantic.magic_combat_observation_v4", "marked damage must be positive"
+            )
         return cls(parse_uint(obj["creature"]), amount)
 
     def to_wire(self) -> dict[str, object]:
         if parse_uint(self.amount) == 0:
-            raise WireError("semantic.magic_combat_observation_v4", "marked damage must be positive")
+            raise WireError(
+                "semantic.magic_combat_observation_v4", "marked damage must be positive"
+            )
         return {"creature": uint_wire(self.creature), "amount": self.amount}
 
 
@@ -75,16 +79,16 @@ class MagicCombatBlockerAssignmentV4:
         try:
             status = MagicBlockedStatusV4(obj["status"])
         except (TypeError, ValueError):
-            raise WireError("semantic.magic_combat_observation_v4", "unknown blocked status")
+            raise WireError(
+                "semantic.magic_combat_observation_v4", "unknown blocked status"
+            ) from None
         blocker = None if obj["blocker"] is None else parse_uint(obj["blocker"])
         return cls(parse_uint(obj["attacker"]), status, blocker)
 
     def to_wire(self) -> dict[str, object]:
         if not isinstance(self.status, MagicBlockedStatusV4):
             raise WireError("semantic.magic_combat_observation_v4", "unknown blocked status")
-        if (
-            self.status == MagicBlockedStatusV4.UNBLOCKED and self.blocker is not None
-        ):
+        if self.status == MagicBlockedStatusV4.UNBLOCKED and self.blocker is not None:
             raise WireError("semantic.magic_combat_observation_v4", "invalid blocker relation")
         return {
             "attacker": uint_wire(self.attacker),
@@ -162,7 +166,9 @@ class MagicObservationV4:
             },
         )
         if obj["schema_version"] != MAGIC_OBSERVATION_SCHEMA_V4:
-            raise WireError("semantic.magic_combat_observation_v4", "unsupported observation schema")
+            raise WireError(
+                "semantic.magic_combat_observation_v4", "unsupported observation schema"
+            )
         if not isinstance(obj["turn_number"], str):
             raise WireError("decode.invalid_json", "turn number must be a string")
         if not isinstance(obj["player_life"], list) or not isinstance(obj["marked_damage"], list):
@@ -185,7 +191,9 @@ class MagicObservationV4:
 
     def to_wire(self) -> dict[str, object]:
         if self.schema_version != MAGIC_OBSERVATION_SCHEMA_V4:
-            raise WireError("semantic.magic_combat_observation_v4", "unsupported observation schema")
+            raise WireError(
+                "semantic.magic_combat_observation_v4", "unsupported observation schema"
+            )
         uint_wire(self.active_player)
         parse_uint(self.turn_number)
         if (
