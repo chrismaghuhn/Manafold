@@ -1311,6 +1311,23 @@ fn validate_accepted_progression(
     before: &EngineState,
     result: &TransitionResult,
 ) -> Result<(), TransitionViolation> {
+    // Exhaustive review seam for authoritative mutation ownership. Every
+    // EngineState top-level field must be classified here when the state
+    // shape changes. Visibility is a human semantic decision; this guard does
+    // not infer projection policy, which remains separately reviewed and tested.
+    let EngineState {
+        revision: _,               // EVENT_OR_CURSOR_OWNED
+        core: _,                   // EVENT_OR_CURSOR_OWNED / fail-closed subfields below
+        combat: _,                 // SPECIAL_REVIEWED_OWNER (combat/SBA events)
+        foundation_sources: _,     // SPECIAL_REVIEWED_OWNER (zone transition)
+        zones: _,                  // EVENT_OR_CURSOR_OWNED (zone/object events)
+        allocators: _,             // EVENT_OR_CURSOR_OWNED (identity progression)
+        execution: _,              // EVENT_OR_CURSOR_OWNED (decision/cursor)
+        random: _,                 // FAIL_CLOSED_UNEXPLAINED here
+        knowledge: _,              // EVENT_OR_CURSOR_OWNED (knowledge events)
+        perspective_identities: _, // EVENT_OR_CURSOR_OWNED (identity events)
+        format: _,                 // FAIL_CLOSED_UNEXPLAINED
+    } = before;
     let after = &result.next_state;
 
     if after.allocators.next_object_id.0 < before.allocators.next_object_id.0

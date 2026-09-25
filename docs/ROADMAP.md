@@ -2,28 +2,27 @@
 
 **Status:** accepted milestone ordering; dates intentionally uncommitted
 
-## Current M3 status — final-closure candidate
+## Current status
 
 ```text
-M3 = FINAL_CLOSURE_CANDIDATE
+M3 = COMPLETE
 M3_BASE_HEAD = c7cafa0356508164988fb92b0fcedc24bccbbdae
 M3_SEMANTIC_CONTRACT = magic_bounded_turn_0_1_0
 M3_CAPABILITY_CLOSURE = 11 / 11
 M3_SPECIFIED = 11 / 11
 M3_IMPLEMENTED = 11 / 11
-M3_COVERED = 11 / 11 (candidate evidence; pending independent exact-head acceptance)
+M3_COVERED = 11 / 11
 M3_CERTIFIED = 0 / 11
-M3_INTERACTION_OBLIGATIONS = 16 / 16 (candidate evidence)
-M3_FINAL_ACCEPTANCE = PENDING_INDEPENDENT_REVIEW_AND_HOSTED_CI
+M3_INTERACTION_OBLIGATIONS = 16 / 16
+M3_FINAL_ACCEPTANCE = PASS
 M3_CARD_DECK_FORMAT_SUPPORT = NONE
-M4_STARTED = NO
+M4 = UNBLOCKED
+M4_CONTENT_IMPLEMENTATION = NOT_STARTED
 ```
 
-The candidate's executable evidence and lifecycle reconciliation are recorded
-in [`reviews/m3-final-closure-2026-09-25.md`](reviews/m3-final-closure-2026-09-25.md).
-The accepted repository state remains incomplete until review, hosted CI,
-merge, and post-merge exact-master verification pass. The milestone records
-below retain their historical acceptance-time values.
+The final-closure review artifact records acceptance-time evidence and is
+preserved as historical record. The milestone records below retain their
+historical acceptance-time values.
 
 ## M0.2 — Specification and Maintainer Readiness
 
