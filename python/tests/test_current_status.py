@@ -18,7 +18,8 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn(
             "**Current status:** M3 final closure candidate on `chris/m3-final-closure-20260925`; "
             "11/11 Foundation V2 capabilities are proposed as covered, 16/16 interaction "
-            "obligations are mapped, and final acceptance remains pending independent review and hosted CI",
+            "obligations are mapped, and final acceptance remains pending independent review "
+            "and hosted CI",
             readme,
         )
         self.assertNotIn(
@@ -59,12 +60,14 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             readme,
         )
         self.assertIn(
-            "**M3.S2:** its selected Battlefield → owner Graveyard and owner Library-top → owner Hand "
-            "profiles are integrated with combat SBA and ordinary Draw replay in the M3 final-closure candidate",
+            "**M3.S2:** its selected Battlefield → owner Graveyard and owner Library-top "
+            "→ owner Hand profiles are integrated with combat SBA and ordinary Draw replay "
+            "in the M3 final-closure candidate",
             readme,
         )
         self.assertIn(
-            "**S2 authoritative replay:** the Block 8 exact Foundation V2 integration exercises both "
+            "**S2 authoritative replay:** the Block 8 exact Foundation V2 integration "
+            "exercises both "
             "SBA-to-graveyard and Draw-to-Hand incarnation transitions through Replay V6",
             readme,
         )
@@ -122,16 +125,19 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         )
         self.assertIn("finalized as COMPLETE / FROZEN", readme)
         self.assertIn(
-            "the closure candidate proposes 11 Foundation capabilities `covered`; `0` are certified",
+            "the closure candidate proposes 11 Foundation capabilities `covered`; `0` are "
+            "certified",
             readme,
         )
         self.assertIn(
-            "**Current boundary:** `M3 = FINAL_CLOSURE_CANDIDATE`; accepted repository status remains "
+            "**Current boundary:** `M3 = FINAL_CLOSURE_CANDIDATE`; accepted repository status "
+            "remains "
             "incomplete until review, hosted CI, merge, and post-merge verification",
             readme,
         )
         self.assertIn(
-            "**Real Magic semantics:** candidate evidence covers the eleven bounded Foundation V2 capabilities",
+            "**Real Magic semantics:** candidate evidence covers the eleven bounded "
+            "Foundation V2 capabilities",
             readme,
         )
         self.assertIn("0` are certified", readme)
