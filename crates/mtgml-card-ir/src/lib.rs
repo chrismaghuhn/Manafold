@@ -5,6 +5,7 @@
 
 use mtgml_model::{CapabilityRequirementV1, CardDefinitionId};
 use mtgml_persistence::cbor::{self, Value};
+use mtgml_persistence::content_contract_digest::calculate_content_contract_id_v1;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -423,6 +424,127 @@ pub fn decode_content_manifest_v1(
     Ok(manifest)
 }
 
+pub fn encode_provenance_catalog_v1(
+    provenance: &ProvenanceCatalogV1,
+) -> Result<Vec<u8>, ContentValidationErrorV1> {
+    validate_provenance_shape(provenance)?;
+    let records = provenance
+        .records
+        .iter()
+        .map(|record| {
+            Value::Array(vec![
+                Value::Bytes(record.content_contract_id.raw_bytes().to_vec()),
+                Value::Unsigned(record.card_definition_id.0),
+                Value::Array(vec![
+                    text(record.source_provenance.source_snapshot_id.clone()),
+                    text(record.source_provenance.source_record_id.clone()),
+                    text(record.source_provenance.source_record_codec_id.clone()),
+                    Value::Bytes(record.source_provenance.source_record_digest.to_vec()),
+                ]),
+            ])
+        })
+        .collect();
+    let value = Value::Array(vec![
+        text("definition-provenance-catalog.v1"),
+        Value::Array(records),
+    ]);
+    cbor::encode_canonical(&value).map_err(|_| ContentValidationErrorV1::MalformedEnvelope)
+}
+
+pub fn decode_provenance_catalog_v1(
+    bytes: &[u8],
+) -> Result<ProvenanceCatalogV1, ContentValidationErrorV1> {
+    let value =
+        cbor::decode_canonical(bytes).map_err(|_| ContentValidationErrorV1::MalformedEnvelope)?;
+    let mut fields = array(value, 2)?;
+    if take_text(fields.remove(0))? != "definition-provenance-catalog.v1" {
+        return Err(ContentValidationErrorV1::UnknownEnvelopeVersion);
+    }
+    let records = take_array(fields.remove(0))?
+        .into_iter()
+        .map(|value| {
+            let mut record = array(value, 3)?;
+            let content_bytes = match record.remove(0) {
+                Value::Bytes(bytes) if bytes.len() == 32 => bytes,
+                _ => return Err(ContentValidationErrorV1::MalformedEnvelope),
+            };
+            let card_definition_id = CardDefinitionId(take_unsigned(record.remove(0))?);
+            let mut source = array(record.remove(0), 4)?;
+            let source_snapshot_id = take_text(source.remove(0))?;
+            let source_record_id = take_text(source.remove(0))?;
+            let source_record_codec_id = take_text(source.remove(0))?;
+            let source_record_digest = match source.remove(0) {
+                Value::Bytes(bytes) if bytes.len() == 32 => {
+                    let mut digest = [0; 32];
+                    digest.copy_from_slice(&bytes);
+                    digest
+                }
+                _ => return Err(ContentValidationErrorV1::MalformedEnvelope),
+            };
+            let content_contract_id = mtgml_model::ContentContractIdV1::parse(hex(&content_bytes))
+                .map_err(|_| ContentValidationErrorV1::MalformedEnvelope)?;
+            Ok(DefinitionProvenanceRecordV1 {
+                content_contract_id,
+                card_definition_id,
+                source_provenance: SourceProvenanceV1 {
+                    source_snapshot_id,
+                    source_record_id,
+                    source_record_codec_id,
+                    source_record_digest,
+                },
+            })
+        })
+        .collect::<Result<Vec<_>, ContentValidationErrorV1>>()?;
+    let catalog = ProvenanceCatalogV1 {
+        schema_version: "definition-provenance-catalog.v1".to_owned(),
+        records,
+    };
+    validate_provenance_shape(&catalog)?;
+    if encode_provenance_catalog_v1(&catalog)? != bytes {
+        return Err(ContentValidationErrorV1::MalformedEnvelope);
+    }
+    Ok(catalog)
+}
+
+fn validate_provenance_shape(
+    provenance: &ProvenanceCatalogV1,
+) -> Result<(), ContentValidationErrorV1> {
+    if provenance.schema_version != "definition-provenance-catalog.v1" {
+        return Err(ContentValidationErrorV1::UnknownEnvelopeVersion);
+    }
+    let mut previous: Option<([u8; 32], u64)> = None;
+    for record in &provenance.records {
+        for text in [
+            &record.source_provenance.source_snapshot_id,
+            &record.source_provenance.source_record_id,
+            &record.source_provenance.source_record_codec_id,
+        ] {
+            if !valid_text(text) {
+                return Err(ContentValidationErrorV1::InvalidCharacteristic);
+            }
+        }
+        let key = (
+            record.content_contract_id.raw_bytes(),
+            record.card_definition_id.0,
+        );
+        if previous.is_some_and(|prior| prior >= key) {
+            return Err(ContentValidationErrorV1::InvalidLocalIdentity);
+        }
+        previous = Some(key);
+    }
+    Ok(())
+}
+
+fn hex(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut encoded = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        encoded.push(HEX[(byte >> 4) as usize] as char);
+        encoded.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    encoded
+}
+
 fn manifest_from_value(
     value: Value,
 ) -> Result<ContentContractManifestV1, ContentValidationErrorV1> {
@@ -822,4 +944,195 @@ fn color_name(color: ManaColorV1) -> &'static str {
 
 fn text(value: impl Into<String>) -> Value {
     Value::Text(value.into())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum CatalogBuildErrorV1 {
+    #[error("manifest is structurally invalid: {0}")]
+    InvalidManifest(ContentValidationErrorV1),
+    #[error("computed content identity does not match the supplied identity")]
+    ContentIdentityMismatch,
+    #[error("provenance catalog does not exactly match content definitions")]
+    ProvenanceCatalogMismatch,
+}
+
+/// Verified, immutable definitions scoped to one recomputed content identity.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VerifiedContentCatalogV1 {
+    content_contract_id: mtgml_model::ContentContractIdV1,
+    definitions: std::collections::BTreeMap<CardDefinitionId, CardDefinitionEnvelopeV1>,
+    provenance: ProvenanceCatalogV1,
+}
+
+impl VerifiedContentCatalogV1 {
+    pub fn build(
+        canonical_payload: &[u8],
+        supplied_content_contract_id: &mtgml_model::ContentContractIdV1,
+        provenance: ProvenanceCatalogV1,
+    ) -> Result<Self, CatalogBuildErrorV1> {
+        let manifest = decode_content_manifest_v1(canonical_payload)
+            .map_err(CatalogBuildErrorV1::InvalidManifest)?;
+        let actual_id = calculate_content_contract_id_v1(canonical_payload).map_err(|_| {
+            CatalogBuildErrorV1::InvalidManifest(ContentValidationErrorV1::MalformedEnvelope)
+        })?;
+        if &actual_id != supplied_content_contract_id {
+            return Err(CatalogBuildErrorV1::ContentIdentityMismatch);
+        }
+        validate_provenance_catalog(&manifest, &actual_id, &provenance)
+            .map_err(|_| CatalogBuildErrorV1::ProvenanceCatalogMismatch)?;
+        let definitions = manifest
+            .definitions
+            .into_iter()
+            .map(|definition| (definition.card_definition_id, definition))
+            .collect();
+        Ok(Self {
+            content_contract_id: actual_id,
+            definitions,
+            provenance,
+        })
+    }
+
+    pub fn content_contract_id(&self) -> &mtgml_model::ContentContractIdV1 {
+        &self.content_contract_id
+    }
+
+    pub fn get(
+        &self,
+        content_contract_id: &mtgml_model::ContentContractIdV1,
+        card_definition_id: CardDefinitionId,
+    ) -> Result<&CardDefinitionEnvelopeV1, DefinitionLookupErrorV1> {
+        if content_contract_id != &self.content_contract_id {
+            return Err(DefinitionLookupErrorV1::ContentContractMismatch);
+        }
+        self.definitions
+            .get(&card_definition_id)
+            .ok_or(DefinitionLookupErrorV1::MissingDefinition)
+    }
+
+    pub fn provenance(&self) -> &ProvenanceCatalogV1 {
+        &self.provenance
+    }
+
+    pub fn close_definition_roots(
+        &self,
+        content_contract_id: &mtgml_model::ContentContractIdV1,
+        roots: &[CardDefinitionId],
+    ) -> Result<Vec<CardDefinitionId>, DefinitionClosureErrorV1> {
+        if content_contract_id != &self.content_contract_id {
+            return Err(DefinitionClosureErrorV1::ContentContractMismatch);
+        }
+        let mut ordered_roots = roots.to_vec();
+        ordered_roots.sort_unstable();
+        ordered_roots.dedup();
+        let mut states = std::collections::BTreeMap::<CardDefinitionId, u8>::new();
+        let mut active = Vec::<CardDefinitionId>::new();
+        let mut reached = std::collections::BTreeSet::<CardDefinitionId>::new();
+        for root in ordered_roots {
+            self.visit_definition(root, &mut states, &mut active, &mut reached)?;
+        }
+        Ok(reached.into_iter().collect())
+    }
+
+    fn visit_definition(
+        &self,
+        id: CardDefinitionId,
+        states: &mut std::collections::BTreeMap<CardDefinitionId, u8>,
+        active: &mut Vec<CardDefinitionId>,
+        reached: &mut std::collections::BTreeSet<CardDefinitionId>,
+    ) -> Result<(), DefinitionClosureErrorV1> {
+        match states.get(&id).copied() {
+            Some(2) => return Ok(()),
+            Some(1) => {
+                let index = active.iter().position(|entry| *entry == id).unwrap_or(0);
+                let mut path = active[index..].to_vec();
+                path.push(id);
+                return Err(DefinitionClosureErrorV1::ReferenceCycle { path });
+            }
+            _ => {}
+        }
+        let definition = self
+            .definitions
+            .get(&id)
+            .ok_or(DefinitionClosureErrorV1::MissingDefinition { id })?;
+        states.insert(id, 1);
+        active.push(id);
+        reached.insert(id);
+        for reference in &definition.definition_references {
+            let target = self.definitions.get(&reference.target).ok_or(
+                DefinitionClosureErrorV1::MissingDefinition {
+                    id: reference.target,
+                },
+            )?;
+            if let Some(face_key) = reference.target_face_key {
+                if !target.faces.iter().any(|face| face.face_key == face_key) {
+                    return Err(DefinitionClosureErrorV1::InvalidTargetFace {
+                        definition: reference.target,
+                        face: face_key,
+                    });
+                }
+            }
+            self.visit_definition(reference.target, states, active, reached)?;
+        }
+        active.pop();
+        states.insert(id, 2);
+        Ok(())
+    }
+}
+
+fn validate_provenance_catalog(
+    manifest: &ContentContractManifestV1,
+    content_id: &mtgml_model::ContentContractIdV1,
+    provenance: &ProvenanceCatalogV1,
+) -> Result<(), ()> {
+    if provenance.schema_version != "definition-provenance-catalog.v1"
+        || provenance.records.len() != manifest.definitions.len()
+    {
+        return Err(());
+    }
+    let expected = manifest
+        .definitions
+        .iter()
+        .map(|definition| definition.card_definition_id)
+        .collect::<Vec<_>>();
+    let mut seen = std::collections::BTreeSet::new();
+    let mut previous = None;
+    for record in &provenance.records {
+        if &record.content_contract_id != content_id
+            || !expected.contains(&record.card_definition_id)
+            || !seen.insert(record.card_definition_id)
+            || !valid_text(&record.source_provenance.source_snapshot_id)
+            || !valid_text(&record.source_provenance.source_record_id)
+            || !valid_text(&record.source_provenance.source_record_codec_id)
+        {
+            return Err(());
+        }
+        if previous.is_some_and(|id| id >= record.card_definition_id) {
+            return Err(());
+        }
+        previous = Some(record.card_definition_id);
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum DefinitionLookupErrorV1 {
+    #[error("content contract does not match the verified catalog")]
+    ContentContractMismatch,
+    #[error("definition is absent from the verified content catalog")]
+    MissingDefinition,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum DefinitionClosureErrorV1 {
+    #[error("content contract does not match the verified catalog")]
+    ContentContractMismatch,
+    #[error("definition {id} is missing from the verified catalog")]
+    MissingDefinition { id: CardDefinitionId },
+    #[error("target face {face:?} is missing from definition {definition}")]
+    InvalidTargetFace {
+        definition: CardDefinitionId,
+        face: FaceKey,
+    },
+    #[error("definition reference graph contains a cycle")]
+    ReferenceCycle { path: Vec<CardDefinitionId> },
 }

@@ -608,6 +608,12 @@ fn persisted_positive_fixture_manifest_matches_rust_bytes_and_meaning() {
                     Some("105a083f417293333532c3ffed1d96c13f74664c3bbaf64e8fad995918fb5a4a")
                 );
                 assert_eq!(hex(&digest), fixture.sha256.unwrap());
+                assert_eq!(
+                    crate::content_contract_digest::calculate_content_contract_id_v1(&bytes)
+                        .unwrap()
+                        .as_str(),
+                    "105a083f417293333532c3ffed1d96c13f74664c3bbaf64e8fad995918fb5a4a"
+                );
             }
             other => panic!("unknown positive persistence fixture {other:?}"),
         }
