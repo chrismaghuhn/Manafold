@@ -1,5 +1,12 @@
 {
   "documents": [
+    {
+      "change_process": "cross-layer-contract-change",
+      "owner_role": "content-maintainer",
+      "path": "docs/contracts/CARD_DEFINITION_CONTRACT.md",
+      "role": "normative",
+      "stability": "provisional"
+    },
   {
     "change_process": "documentation-pr",
     "owner_role": "maintainer",

@@ -1,11 +1,17 @@
 # Card IR
 
-**Status:** architectural direction accepted; concrete vocabulary experimental  
+**Status:** architectural direction accepted; executable vocabulary experimental
 **Stability:** experimental pending an explicit reviewed capability scope
+
+The immutable content envelope, content identity, provenance separation,
+validation, and non-authorizing preflight are owned by the normative
+[Card Definition and Content Contract V1](contracts/CARD_DEFINITION_CONTRACT.md).
+That foundation does not make executable Card-IR vocabulary stable or admit
+a semantic profile.
 
 ## Required properties
 
-Authoritative card definitions must be:
+Future executable card definitions must be:
 
 - typed, inspectable, serializable, deterministic, and versioned;
 - free of arbitrary I/O, wall clock, global randomness, and hidden mutable state;
@@ -21,7 +27,7 @@ source provenance
     ↓
 generated/review candidate
     ↓
-typed Card IR definition
+immutable CardDefinition content envelope
     ↓
 capability validation and lowering
     ↓
@@ -42,6 +48,12 @@ M0.2 intentionally does not freeze:
 - native-executor calling convention.
 
 These are driven by a future reviewed deck closure and M3 authority cases. The existing Rust enum is illustrative scaffolding, not a support claim.
+
+M4.1 freezes only the closed immutable content foundation. It does not
+execute content or define a general Magic semantic language. The existing
+`ExperimentalEffect` scaffold has no compatibility entitlement and is
+removed or quarantined by its implementation contract; it is not promoted by
+renaming it.
 
 ## Maintainer rule
 
