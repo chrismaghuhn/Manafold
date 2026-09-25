@@ -138,6 +138,6 @@ executable proof and does not itself authorize the accepted repository status
 | Exact §14 integration | PASS | `cargo test -p mtgml-environment --locked foundation_v2_exact_turn_composition_closes_through_p2_draw` |
 | Python fast | PASS | `scripts/run_checks.py fast`; 71 Python smoke tests plus contract/schema/repository gates |
 | Repository/schema/maintainer/golden/contract catalog | PASS | `verify_repository.py`, `validate_schemas.py`, `validate_maintainer_artifacts.py`, `validate_golden_path.py`, semantic catalog `--check` |
-| Python integration | PENDING_CLEAN_HEAD_RERUN | Initial run had 2 failures in M2.H clean-tree fingerprint tests because the candidate files were uncommitted; 3 optional adapter scenarios were skipped. Must rerun on clean commit head. |
-| Certification/repository acceptance profile | NOT_RUN | Run after all source changes and commit; archive reproducibility must be the final source-tree gate. |
+| Python integration | PASS | `scripts/run_checks.py integration` on a clean committed head; 548 Python tests passed, 3 optional M2.H adapter scenarios skipped, Rust workspace tests passed, Ruff and mypy passed. |
+| Certification/repository acceptance profile | PENDING_FINAL_SOURCE_ARCHIVE_GATE | Run after all source changes and commit; archive reproducibility must be the final source-tree gate. |
 | Hosted CI | NOT_RUN | Draft PR required |
