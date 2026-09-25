@@ -338,6 +338,15 @@ pub(crate) fn validate_priority_transition(
     before: &EngineState,
     result: &TransitionResult,
 ) -> Result<(), TransitionViolation> {
+    if crate::contract::is_bounded_cleanup_to_upkeep_composition(before, result) {
+        return Ok(());
+    }
+    if crate::contract::is_endstep_cleanup_upkeep_composition(before, result) {
+        return Ok(());
+    }
+    if crate::contract::is_second_pass_priority_progress_composition(before, result) {
+        return Ok(());
+    }
     if validate_second_pass_combat_composition(before, result)? {
         return Ok(());
     }

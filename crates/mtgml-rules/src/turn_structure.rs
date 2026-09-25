@@ -1,7 +1,7 @@
 use mtgml_model::{GameObjectId, PlayerId, ZoneKind};
 use mtgml_state::{
-    BeginningStep, CombatStep, EndingStep, EngineState, FormatState, ObjectSnapshot, PriorityState,
-    TurnPosition,
+    BaseCharacteristics, BeginningStep, CombatStep, EndingStep, EngineState, FormatState,
+    FoundationSourceKind, ObjectSnapshot, PriorityState, TurnPosition,
 };
 use std::collections::BTreeMap;
 use thiserror::Error;
@@ -287,6 +287,8 @@ pub(crate) enum CleanupBoundaryViolation {
     MarkedDamagePresent,
     /// A Hand-zone location has `player == None`, so ownership is ambiguous.
     AmbiguousHandOwnership,
+    /// A marked-damage source is outside the selected live-permanent profile.
+    UnsupportedMarkedDamageSource,
 }
 
 /// Shared authoritative quiescent-Cleanup boundary predicate (spec §11.1).
@@ -313,6 +315,20 @@ pub(crate) fn validate_quiescent_cleanup_boundary(
     state: &EngineState,
     active_player: PlayerId,
 ) -> Result<(), CleanupBoundaryViolation> {
+    if !derive_cleanup_damage_reset_objects(state, active_player)?.is_empty() {
+        return Err(CleanupBoundaryViolation::MarkedDamagePresent);
+    }
+    Ok(())
+}
+
+/// Derive the complete ordered cleanup mark-reset package from authoritative
+/// live permanent state. The new cleanup capability consumes this shared
+/// boundary authority; the historical quiescent predicate above still rejects
+/// any nonempty result.
+pub(crate) fn derive_cleanup_damage_reset_objects(
+    state: &EngineState,
+    active_player: PlayerId,
+) -> Result<Vec<(GameObjectId, u64)>, CleanupBoundaryViolation> {
     for location in state.zones.locations.values() {
         if location.zone == ZoneKind::Hand && location.player.is_none() {
             return Err(CleanupBoundaryViolation::AmbiguousHandOwnership);
@@ -332,15 +348,30 @@ pub(crate) fn validate_quiescent_cleanup_boundary(
         return Err(CleanupBoundaryViolation::ActiveHandExceedsLimit);
     }
 
-    if state
-        .foundation_sources
-        .values()
-        .any(|source| source.marked_damage > 0)
-    {
-        return Err(CleanupBoundaryViolation::MarkedDamagePresent);
+    let mut affected = Vec::new();
+    for (object, source) in &state.foundation_sources {
+        if source.marked_damage == 0 {
+            continue;
+        }
+        let Some(snapshot) = state.zones.objects.get(object) else {
+            return Err(CleanupBoundaryViolation::UnsupportedMarkedDamageSource);
+        };
+        let Some(location) = state.zones.locations.get(object) else {
+            return Err(CleanupBoundaryViolation::UnsupportedMarkedDamageSource);
+        };
+        if source.source_kind != FoundationSourceKind::Creature
+            || !matches!(
+                source.base_characteristics,
+                BaseCharacteristics::Simple { .. }
+            )
+            || snapshot.face_down
+            || location.zone != ZoneKind::Battlefield
+        {
+            return Err(CleanupBoundaryViolation::UnsupportedMarkedDamageSource);
+        }
+        affected.push((*object, source.marked_damage));
     }
-
-    Ok(())
+    Ok(affected)
 }
 
 #[cfg(test)]

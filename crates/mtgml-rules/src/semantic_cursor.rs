@@ -534,17 +534,28 @@ impl SemanticValidationCursor {
                     .foundation_sources
                     .get_mut(creature)
                     .ok_or(TransitionViolation::Combat)?;
-                if from == to
-                    || source.marked_damage != *from
-                    || self.pending_damage_marks.remove(creature) != Some((*from, *to))
-                {
+                if from == to || source.marked_damage != *from {
+                    return Err(TransitionViolation::Combat);
+                }
+                let damage_assignment =
+                    self.pending_damage_marks.remove(creature) == Some((*from, *to));
+                let cleanup_reset = self.position
+                    == (TurnPosition::Ending {
+                        step: mtgml_state::EndingStep::Cleanup,
+                    })
+                    && *from > 0
+                    && *to == 0
+                    && !self.pending_damage_active;
+                if !damage_assignment && !cleanup_reset {
                     return Err(TransitionViolation::Combat);
                 }
                 source.marked_damage = *to;
-                self.pending_damage_active =
-                    !self.pending_damage_life.is_empty() || !self.pending_damage_marks.is_empty();
-                if !self.pending_damage_active && self.damage_dealt_event_seen {
-                    self.sba_plan = Some(self.derive_cursor_sba_plan()?);
+                if damage_assignment {
+                    self.pending_damage_active = !self.pending_damage_life.is_empty()
+                        || !self.pending_damage_marks.is_empty();
+                    if !self.pending_damage_active && self.damage_dealt_event_seen {
+                        self.sba_plan = Some(self.derive_cursor_sba_plan()?);
+                    }
                 }
             }
             AuthoritativeRuleEventKind::ObjectTapped { object, from, to } => {

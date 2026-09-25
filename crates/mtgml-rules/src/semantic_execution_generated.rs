@@ -18,6 +18,8 @@ pub(crate) const MAGIC_COMBAT_BLOCKERS_SEMANTIC_CONTRACT_HEX: &str =
     "b788155232e2fca4b3f43170251f86dd5718ba42b3b674309d99c1df9eddaa6c";
 pub(crate) const MAGIC_COMBAT_DAMAGE_SEMANTIC_CONTRACT_HEX: &str =
     "58c55b0f08f045da01e81c595a00cc63dc75361efeb83be7e5e82064ae85805e";
+pub(crate) const MAGIC_BOUNDED_TURN_SEMANTIC_CONTRACT_HEX: &str =
+    "b03634245635bb65dffe5f20a21ac47828a44a3aad5732594216b8138c7eee00";
 pub(crate) const SYNTHETIC_LEGACY_SEMANTIC_CONTRACT_HEX: &str =
     "66ccac959475370e641e853473cbdd7f88489399587794b43f66cfa0342b1be4";
 
@@ -46,6 +48,10 @@ pub(crate) fn magic_combat_damage_0_1_0_semantic_contract_id() -> SemanticContra
     SemanticContractIdV1::parse(MAGIC_COMBAT_DAMAGE_SEMANTIC_CONTRACT_HEX)
         .expect("generated canonical hex")
 }
+pub(crate) fn magic_bounded_turn_0_1_0_semantic_contract_id() -> SemanticContractIdV1 {
+    SemanticContractIdV1::parse(MAGIC_BOUNDED_TURN_SEMANTIC_CONTRACT_HEX)
+        .expect("generated canonical hex")
+}
 pub(crate) fn synthetic_legacy_default_semantic_contract_id() -> SemanticContractIdV1 {
     SemanticContractIdV1::parse(SYNTHETIC_LEGACY_SEMANTIC_CONTRACT_HEX)
         .expect("generated canonical hex")
@@ -60,6 +66,7 @@ pub(crate) struct MagicExecutionProfile {
     declare_attackers_0_1_0: bool,
     declare_blockers_0_1_0: bool,
     combat_damage_0_1_0: bool,
+    cleanup_reset_0_1_0: bool,
 }
 impl MagicExecutionProfile {
     pub(crate) fn allows_turn_structure_0_1_0(&self) -> bool {
@@ -83,6 +90,9 @@ impl MagicExecutionProfile {
     pub(crate) fn allows_combat_damage_0_1_0(&self) -> bool {
         self.allows_combat_blockers_0_1_0() && self.combat_damage_0_1_0
     }
+    pub(crate) fn allows_cleanup_reset_0_1_0(&self) -> bool {
+        self.turn_structure_0_1_0 && self.cleanup_reset_0_1_0
+    }
     pub(crate) fn is_turn_structure_only_profile(&self) -> bool {
         self.allows_turn_structure_0_1_0()
             && !self.allows_state_based_actions_combat_0_1_0()
@@ -91,6 +101,7 @@ impl MagicExecutionProfile {
             && !self.allows_combat_attackers_0_1_0()
             && !self.allows_combat_blockers_0_1_0()
             && !self.allows_combat_damage_0_1_0()
+            && !self.allows_cleanup_reset_0_1_0()
     }
 }
 #[cfg(test)]
@@ -108,6 +119,7 @@ pub(crate) fn test_only_magic_execution_profile(
         declare_attackers_0_1_0: false,
         declare_blockers_0_1_0: false,
         combat_damage_0_1_0: false,
+        cleanup_reset_0_1_0: false,
     }
 }
 pub(crate) fn magic_execution_profile(
@@ -123,6 +135,7 @@ pub(crate) fn magic_execution_profile(
             declare_attackers_0_1_0: false,
             declare_blockers_0_1_0: false,
             combat_damage_0_1_0: false,
+            cleanup_reset_0_1_0: false,
         });
     }
     if semantic_contract_id == magic_s3_a_ordered_sba_0_1_0_semantic_contract_id() {
@@ -135,6 +148,7 @@ pub(crate) fn magic_execution_profile(
             declare_attackers_0_1_0: false,
             declare_blockers_0_1_0: false,
             combat_damage_0_1_0: false,
+            cleanup_reset_0_1_0: false,
         });
     }
     if semantic_contract_id == magic_s3_b_basic_priority_0_1_0_semantic_contract_id() {
@@ -147,6 +161,7 @@ pub(crate) fn magic_execution_profile(
             declare_attackers_0_1_0: false,
             declare_blockers_0_1_0: false,
             combat_damage_0_1_0: false,
+            cleanup_reset_0_1_0: false,
         });
     }
     if semantic_contract_id == magic_s3_c_draw_interaction_0_1_0_semantic_contract_id() {
@@ -159,6 +174,7 @@ pub(crate) fn magic_execution_profile(
             declare_attackers_0_1_0: false,
             declare_blockers_0_1_0: false,
             combat_damage_0_1_0: false,
+            cleanup_reset_0_1_0: false,
         });
     }
     if semantic_contract_id == magic_combat_attackers_0_1_0_semantic_contract_id() {
@@ -171,6 +187,7 @@ pub(crate) fn magic_execution_profile(
             declare_attackers_0_1_0: true,
             declare_blockers_0_1_0: false,
             combat_damage_0_1_0: false,
+            cleanup_reset_0_1_0: false,
         });
     }
     if semantic_contract_id == magic_combat_blockers_0_1_0_semantic_contract_id() {
@@ -183,6 +200,7 @@ pub(crate) fn magic_execution_profile(
             declare_attackers_0_1_0: true,
             declare_blockers_0_1_0: true,
             combat_damage_0_1_0: false,
+            cleanup_reset_0_1_0: false,
         });
     }
     if semantic_contract_id == magic_combat_damage_0_1_0_semantic_contract_id() {
@@ -195,6 +213,20 @@ pub(crate) fn magic_execution_profile(
             declare_attackers_0_1_0: true,
             declare_blockers_0_1_0: true,
             combat_damage_0_1_0: true,
+            cleanup_reset_0_1_0: false,
+        });
+    }
+    if semantic_contract_id == magic_bounded_turn_0_1_0_semantic_contract_id() {
+        return Some(MagicExecutionProfile {
+            turn_structure_0_1_0: true,
+            state_based_actions_combat_0_1_0: true,
+            basic_priority_0_1_0: true,
+            draw_card_0_1_0: true,
+            combat_phase_0_1_0: true,
+            declare_attackers_0_1_0: true,
+            declare_blockers_0_1_0: true,
+            combat_damage_0_1_0: true,
+            cleanup_reset_0_1_0: true,
         });
     }
     None

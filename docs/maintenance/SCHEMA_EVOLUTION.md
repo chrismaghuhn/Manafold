@@ -85,3 +85,20 @@ Clauses compared: CR 119.2–119.3; 120.1, 120.2a, 120.3a, 120.3e,
 Schema source: `schemas/magic-combat-observation.v4.schema.json`.
 
 Content SHA-256: `b18493bc4dbeb9ea0dffcc3e33c2e655df952d25b094abbd80d885ae92b97a37`
+
+## Bounded turn Rules authority recheck (2026-09-25)
+
+For the bounded Cleanup/turn candidate, the official Rules page was resolved
+again at `https://magic.wizards.com/en/rules`. Its current TXT link resolved to
+`https://media.wizards.com/2026/downloads/MagicCompRules%2020260925.txt`.
+The downloaded artifact is 977,752 bytes, states an effective date of
+2026-09-25, and hashes to
+`8d860e451f20f38865b725b42d82feb714c725373dd8f3b32b8652b3eeb070ca`.
+
+Cleanup, turn progression, priority, Draw, combat, and SBA clauses selected by
+Foundation V2 were compared against the frozen August 7 snapshot. The current
+artifact adds/renumbers unrelated CR 506.6–506.8 text about attacks alone and
+the had-to-attack rule; those abilities are outside this candidate's scope.
+The selected Cleanup and turn clauses show no material semantic disagreement
+with Foundation V2 (`MATERIAL_FOUNDATION_DISCREPANCY = NO`). Historical Rules
+and Semantic Contract IDs remain bound to their original snapshots.

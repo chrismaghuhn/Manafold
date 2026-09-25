@@ -1423,29 +1423,52 @@ fn validate_accepted_progression(
             == TurnPosition::Beginning {
                 step: BeginningStep::Untap,
             };
+    let is_bounded_cleanup_handoff = is_bounded_cleanup_to_upkeep_composition(before, result)
+        || is_endstep_cleanup_upkeep_composition(before, result);
 
-    if is_cleanup_boundary {
+    if is_bounded_cleanup_handoff {
+        // The new cumulative profile atomically composes the ordinary reset,
+        // turn handoff, next player's Untap, and Upkeep priority boundary.
+    } else if is_cleanup_boundary {
         let next_turn = before.core.turn_number.checked_add(1);
         let turn_ok = next_turn == Some(after.core.turn_number);
         let player_ok = after.core.active_player != before.core.active_player
             && before.core.players.contains_key(&after.core.active_player)
             && before.core.players.len() == 2;
-        let events_ok = result.events.len() == 3
+        let reset = crate::turn_structure::derive_cleanup_damage_reset_objects(
+            before,
+            before.core.active_player,
+        )
+        .map_err(|_| TransitionViolation::TurnStructure)?;
+        let reset_event_count = reset
+            .len()
+            .checked_add(3)
+            .ok_or(TransitionViolation::EventIdentity)?;
+        let reset_events_ok = result.events.len() == reset_event_count
+            && reset.iter().enumerate().all(|(index, (object, damage))| {
+                matches!(
+                    result.events[index].event,
+                    AuthoritativeRuleEventKind::MarkedDamageChanged { creature, from, to }
+                        if creature == *object && from == *damage && to == 0
+                )
+            });
+        let tail = result.events.len().saturating_sub(3);
+        let events_ok = reset_events_ok
             && matches!(
-                &result.events[0].event,
+                &result.events[tail].event,
                 AuthoritativeRuleEventKind::TurnNumberChanged { from, to }
                     if *from == before.core.turn_number
                         && *to == after.core.turn_number
             )
             && matches!(
-                &result.events[1].event,
+                &result.events[tail + 1].event,
                 AuthoritativeRuleEventKind::ActivePlayerChanged { from, to }
                     if *from == before.core.active_player
                         && *to == after.core.active_player
                         && from != to
             )
             && matches!(
-                &result.events[2].event,
+                &result.events[tail + 2].event,
                 AuthoritativeRuleEventKind::TurnPositionChanged { from, to }
                     if *from == TurnPosition::Ending {
                         step: EndingStep::Cleanup,
@@ -1458,12 +1481,9 @@ fn validate_accepted_progression(
             return Err(TransitionViolation::TurnStructure);
         }
 
-        validate_quiescent_cleanup_boundary(before, before.core.active_player)
-            .map_err(|_| TransitionViolation::TurnStructure)?;
-
-        // Exact Cleanup event shape validated: active_player and turn_number
-        // changes are expected and proven by events. Continue to blanket
-        // check which will pass for all non-position/non-priority fields.
+        // Exact reset and handoff event shape validated. Runtime admission
+        // gates damage clearing to the cumulative cleanup capability; old
+        // profiles still reject marked damage before constructing a product.
     } else if !is_second_pass_cleanup_composition(before, result) {
         // Task 7 turn-switch events (TurnNumberChanged, ActivePlayerChanged)
         // are valid for the Cleanup -> next-Untap transition only. Outside
@@ -1613,7 +1633,7 @@ fn validate_accepted_progression(
                 }
             }
         }
-    } else if has_untap {
+    } else if has_untap && !is_bounded_cleanup_handoff {
         // UntapCompleted outside an ordinary untap transition is invalid.
         return Err(TransitionViolation::TurnStructure);
     }
@@ -1645,6 +1665,7 @@ fn validate_accepted_progression(
     if (before.core.active_player != after.core.active_player
         || before.core.turn_number != after.core.turn_number)
         && !is_cleanup_boundary
+        && !is_bounded_cleanup_handoff
         && !is_second_pass_cleanup_composition(before, result)
         || (before.core.priority != after.core.priority && !has_priority_application)
         || before.core.players.len() != after.core.players.len()
@@ -2277,6 +2298,259 @@ pub(crate) fn is_second_pass_cleanup_composition(
         && matches!(result.status, EpisodeStatus::Running)
 }
 
+pub(crate) fn is_bounded_cleanup_to_upkeep_composition(
+    before: &EngineState,
+    result: &TransitionResult,
+) -> bool {
+    use crate::events::AuthoritativeRuleEventKind as Event;
+    let after = &result.next_state;
+    let reset = match crate::turn_structure::derive_cleanup_damage_reset_objects(
+        before,
+        before.core.active_player,
+    ) {
+        Ok(reset) => reset,
+        Err(_) => return false,
+    };
+    let Some(other) = before
+        .core
+        .players
+        .keys()
+        .copied()
+        .find(|player| *player != before.core.active_player)
+    else {
+        return false;
+    };
+    if before.core.position
+        != (TurnPosition::Ending {
+            step: EndingStep::Cleanup,
+        })
+        || after.core.position
+            != (TurnPosition::Beginning {
+                step: BeginningStep::Upkeep,
+            })
+        || before.core.turn_number.checked_add(1) != Some(after.core.turn_number)
+        || after.core.active_player != other
+        || after.core.priority
+            != (mtgml_state::PriorityState::HeldBy {
+                player: other,
+                consecutive_passes: 0,
+            })
+        || !matches!(result.status, EpisodeStatus::Running)
+        || result.next_decision.as_ref().is_none_or(|request| {
+            request.actor != other
+                || request.decision != mtgml_decision::DecisionDomainV2::ChooseOne
+                || request.visibility != mtgml_decision::DecisionVisibility::ActingPlayerOnly
+                || request.candidates.len() != 1
+                || request.candidates[0].candidate_id.0 != 0
+                || !matches!(
+                    request.candidates[0].visible_intent,
+                    mtgml_decision::CandidateIntent::PassPriority
+                )
+                || request.candidates[0].trusted_binding
+                    != mtgml_decision::EngineCandidateBinding::PassPriority
+        })
+    {
+        return false;
+    }
+    let prefix_ok = reset.iter().enumerate().all(|(index, (object, damage))| {
+        matches!(
+            result.events.get(index).map(|event| &event.event),
+            Some(Event::MarkedDamageChanged { creature, from, to })
+                if creature == object && from == damage && *to == 0
+        )
+    });
+    if !prefix_ok {
+        return false;
+    }
+    let handoff = reset.len();
+    if !matches!(result.events.get(handoff).map(|event| &event.event), Some(Event::TurnNumberChanged { from, to }) if *from == before.core.turn_number && *to == after.core.turn_number)
+        || !matches!(result.events.get(handoff + 1).map(|event| &event.event), Some(Event::ActivePlayerChanged { from, to }) if *from == before.core.active_player && *to == other)
+        || !matches!(result.events.get(handoff + 2).map(|event| &event.event), Some(Event::TurnPositionChanged { from, to }) if *from == TurnPosition::Ending { step: EndingStep::Cleanup } && *to == TurnPosition::Beginning { step: BeginningStep::Untap })
+    {
+        return false;
+    }
+    let Some(Event::UntapCompleted { affected_objects }) =
+        result.events.get(handoff + 3).map(|event| &event.event)
+    else {
+        return false;
+    };
+    let Ok(snapshots) = crate::snapshots::object_snapshots(before) else {
+        return false;
+    };
+    let expected_untap =
+        crate::turn_structure::derive_ordinary_untap_affected_objects(&snapshots, other);
+    if affected_objects != &expected_untap {
+        return false;
+    }
+    let players: Vec<_> = before.knowledge.players.keys().copied().collect();
+    for (perspective_index, perspective) in players.iter().enumerate() {
+        let Some(knowledge) = before.knowledge.players.get(perspective) else {
+            return false;
+        };
+        let Some(start) = handoff.checked_add(4).and_then(|base| {
+            base.checked_add(perspective_index.checked_mul(expected_untap.len())?)
+        }) else {
+            return false;
+        };
+        for (object_index, object) in expected_untap.iter().enumerate() {
+            let Some(sequence) = u64::try_from(object_index)
+                .ok()
+                .and_then(|offset| knowledge.next_visible_sequence.0.checked_add(offset))
+            else {
+                return false;
+            };
+            let Some(Event::PerspectiveOccurrence {
+                lifecycle,
+                observation,
+            }) = start
+                .checked_add(object_index)
+                .and_then(|index| result.events.get(index))
+                .map(|event| &event.event)
+            else {
+                return false;
+            };
+            if lifecycle.perspective != *perspective
+                || lifecycle.sequence.0 != sequence
+                || lifecycle.mutation != mtgml_state::PerspectiveLifecycleMutationV1::default()
+                || *observation
+                    != (crate::events::PerspectiveObservationPolicyV1::ObjectTapped {
+                        object: *object,
+                        tapped: false,
+                    })
+            {
+                return false;
+            }
+        }
+    }
+    let Some(expected_occurrences) = expected_untap
+        .len()
+        .checked_mul(before.knowledge.players.len())
+    else {
+        return false;
+    };
+    let Some(position_index) = handoff
+        .checked_add(4)
+        .and_then(|base| base.checked_add(expected_occurrences))
+    else {
+        return false;
+    };
+    matches!(result.events.get(position_index).map(|event| &event.event), Some(Event::TurnPositionChanged { from, to }) if *from == TurnPosition::Beginning { step: BeginningStep::Untap } && *to == TurnPosition::Beginning { step: BeginningStep::Upkeep })
+        && matches!(result.events.get(position_index + 1).map(|event| &event.event), Some(Event::PriorityChanged { from, to }) if *from == mtgml_state::PriorityState::None && *to == after.core.priority)
+        && matches!(result.events.get(position_index + 2).map(|event| &event.event), Some(Event::DecisionCreated { decision }) if Some(*decision) == after.execution.pending_decision.as_ref().map(|pending| pending.request.decision_id))
+        && result.events.len() == position_index + 3
+}
+
+pub(crate) fn is_second_pass_priority_progress_composition(
+    before: &EngineState,
+    result: &TransitionResult,
+) -> bool {
+    use crate::events::AuthoritativeRuleEventKind as Event;
+    let Some(pending) = before.execution.pending_decision.as_ref() else {
+        return false;
+    };
+    let after = &result.next_state;
+    let next = crate::turn_structure::temporal_successor(before.core.position);
+    let other = before
+        .core
+        .players
+        .keys()
+        .copied()
+        .find(|player| *player != before.core.active_player);
+    let Some(other) = other else { return false };
+    matches!(
+        before.core.position,
+        TurnPosition::Beginning {
+            step: BeginningStep::Draw
+        } | TurnPosition::PostcombatMain
+    ) && crate::basic_priority::validate_pass_only_state(before, true).is_ok()
+        && matches!(before.core.priority, mtgml_state::PriorityState::HeldBy { player, consecutive_passes: 1 } if player == other)
+        && matches!(
+            pending.request.decision,
+            mtgml_decision::DecisionDomainV2::ChooseOne
+        )
+        && matches!(after.core.priority, mtgml_state::PriorityState::HeldBy { player, consecutive_passes: 0 } if player == after.core.active_player)
+        && after.core.position == next
+        && after
+            .execution
+            .pending_decision
+            .as_ref()
+            .is_some_and(|pending| {
+                pending.request.actor == after.core.active_player
+                    && matches!(
+                        pending.request.decision,
+                        mtgml_decision::DecisionDomainV2::ChooseOne
+                    )
+                    && pending.request.visibility
+                        == mtgml_decision::DecisionVisibility::ActingPlayerOnly
+                    && pending.request.candidates.len() == 1
+                    && pending.request.candidates[0].candidate_id.0 == 0
+                    && matches!(
+                        pending.request.candidates[0].visible_intent,
+                        mtgml_decision::CandidateIntent::PassPriority
+                    )
+                    && pending.request.candidates[0].trusted_binding
+                        == mtgml_decision::EngineCandidateBinding::PassPriority
+            })
+        && result.events.len() == 5
+        && matches!(result.events[0].event, Event::DecisionCleared { decision } if decision == pending.request.decision_id)
+        && matches!(result.events[1].event, Event::PriorityChanged { from, to } if from == before.core.priority && to == mtgml_state::PriorityState::None)
+        && matches!(result.events[2].event, Event::TurnPositionChanged { from, to } if from == before.core.position && to == next)
+        && matches!(result.events[3].event, Event::PriorityChanged { from, to } if from == mtgml_state::PriorityState::None && to == after.core.priority)
+        && matches!(result.events[4].event, Event::DecisionCreated { decision } if Some(decision) == after.execution.pending_decision.as_ref().map(|pending| pending.request.decision_id))
+        && matches!(result.status, EpisodeStatus::Running)
+}
+
+pub(crate) fn is_endstep_cleanup_upkeep_composition(
+    before: &EngineState,
+    result: &TransitionResult,
+) -> bool {
+    use crate::events::AuthoritativeRuleEventKind as Event;
+    let Some(pending) = before.execution.pending_decision.as_ref() else {
+        return false;
+    };
+    let Some(other) = before
+        .core
+        .players
+        .keys()
+        .copied()
+        .find(|player| *player != before.core.active_player)
+    else {
+        return false;
+    };
+    if before.core.position
+        != (TurnPosition::Ending {
+            step: EndingStep::EndStep,
+        })
+        || crate::basic_priority::validate_pass_only_state(before, true).is_err()
+        || !matches!(before.core.priority, mtgml_state::PriorityState::HeldBy { player, consecutive_passes: 1 } if player == other)
+        || !matches!(
+            pending.request.decision,
+            mtgml_decision::DecisionDomainV2::ChooseOne
+        )
+        || result.events.len() < 3
+        || !matches!(result.events[0].event, Event::DecisionCleared { decision } if decision == pending.request.decision_id)
+        || !matches!(result.events[1].event, Event::PriorityChanged { from, to } if from == before.core.priority && to == mtgml_state::PriorityState::None)
+        || !matches!(result.events[2].event, Event::TurnPositionChanged { from, to } if from == before.core.position && to == TurnPosition::Ending { step: EndingStep::Cleanup })
+    {
+        return false;
+    }
+    let mut cleanup_before = before.clone();
+    cleanup_before.core.position = TurnPosition::Ending {
+        step: EndingStep::Cleanup,
+    };
+    cleanup_before.core.priority = mtgml_state::PriorityState::None;
+    cleanup_before.execution.pending_decision = None;
+    let sliced = TransitionResult {
+        accepted: result.accepted,
+        next_state: result.next_state.clone(),
+        delta: result.delta.clone(),
+        events: result.events[3..].to_vec(),
+        next_decision: result.next_decision.clone(),
+        status: result.status.clone(),
+    };
+    is_bounded_cleanup_to_upkeep_composition(&cleanup_before, &sliced)
+}
+
 fn is_attacker_declaration_priority_composition(
     before: &EngineState,
     result: &TransitionResult,
@@ -2501,6 +2775,9 @@ pub fn validate_transition_contract(
     } else {
         let composed_sba = is_final_sba_order_priority_composition(before, result);
         let composed_cleanup = is_second_pass_cleanup_composition(before, result);
+        let composed_priority_progress =
+            is_second_pass_priority_progress_composition(before, result);
+        let composed_endstep_cleanup = is_endstep_cleanup_upkeep_composition(before, result);
         let composed_draw = is_upkeep_pass_draw_composition(before, result);
         let direct_draw = is_draw_s2_priority_composition(before, result);
         let draw_order = result
@@ -2526,6 +2803,8 @@ pub fn validate_transition_contract(
             3
         } else if composed_sba
             || composed_cleanup
+            || composed_endstep_cleanup
+            || composed_priority_progress
             || composed_draw
             || direct_draw && draw_order
             || composed_combat
@@ -2588,6 +2867,8 @@ pub fn validate_transition_contract(
     let mut cursor = SemanticValidationCursor::from_state(before)?;
     let composed_sba = is_final_sba_order_priority_composition(before, result);
     let composed_cleanup = is_second_pass_cleanup_composition(before, result);
+    let composed_priority_progress = is_second_pass_priority_progress_composition(before, result);
+    let composed_endstep_cleanup = is_endstep_cleanup_upkeep_composition(before, result);
     let composed_draw = is_upkeep_pass_draw_composition(before, result);
     let composed_combat =
         crate::basic_priority::validate_second_pass_combat_composition(before, result)?;
@@ -2657,43 +2938,46 @@ pub fn validate_transition_contract(
             || composed_cleanup
             || composed_combat
             || composed_attacker_declaration
+            || composed_priority_progress
+            || composed_endstep_cleanup
         {
-            let split = if composed_cleanup {
-                3u64
-            } else if composed_combat {
-                if before.core.position
-                    == (TurnPosition::Combat {
-                        step: mtgml_state::CombatStep::EndOfCombat,
-                    })
-                {
-                    4u64
-                } else {
+            let split =
+                if composed_endstep_cleanup || composed_priority_progress || composed_cleanup {
                     3u64
-                }
-            } else if composed_attacker_declaration {
-                let declared_index = result
-                    .events
-                    .iter()
-                    .position(|event| {
-                        matches!(
-                            event.event,
-                            AuthoritativeRuleEventKind::AttackersDeclared { .. }
-                        )
-                    })
-                    .ok_or(TransitionViolation::EventIdentity)?;
-                let declared_count = match &result.events[declared_index].event {
-                    AuthoritativeRuleEventKind::AttackersDeclared { attackers, .. } => {
-                        attackers.len()
+                } else if composed_combat {
+                    if before.core.position
+                        == (TurnPosition::Combat {
+                            step: mtgml_state::CombatStep::EndOfCombat,
+                        })
+                    {
+                        4u64
+                    } else {
+                        3u64
                     }
-                    _ => return Err(TransitionViolation::EventIdentity),
+                } else if composed_attacker_declaration {
+                    let declared_index = result
+                        .events
+                        .iter()
+                        .position(|event| {
+                            matches!(
+                                event.event,
+                                AuthoritativeRuleEventKind::AttackersDeclared { .. }
+                            )
+                        })
+                        .ok_or(TransitionViolation::EventIdentity)?;
+                    let declared_count = match &result.events[declared_index].event {
+                        AuthoritativeRuleEventKind::AttackersDeclared { attackers, .. } => {
+                            attackers.len()
+                        }
+                        _ => return Err(TransitionViolation::EventIdentity),
+                    };
+                    u64::try_from(declared_index + 1 + declared_count)
+                        .map_err(|_| TransitionViolation::EventIdentity)?
+                } else if composed_blocker_declaration {
+                    2
+                } else {
+                    event_len.saturating_sub(2)
                 };
-                u64::try_from(declared_index + 1 + declared_count)
-                    .map_err(|_| TransitionViolation::EventIdentity)?
-            } else if composed_blocker_declaration {
-                2
-            } else {
-                event_len.saturating_sub(2)
-            };
             if offset < split {
                 revision_one
             } else {

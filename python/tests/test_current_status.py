@@ -102,8 +102,11 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             readme,
         )
         self.assertIn(
-            "**M3 Block 6:** Damage/Life, Combat Damage, and post-damage SBA "
-            "implementation candidate is in progress",
+            "**M3 Block 6:** Damage/Life, Combat Damage, and post-damage SBA merged in PR #218",
+            readme,
+        )
+        self.assertIn(
+            "**M3 Block 7:** Cleanup Reset + complete bounded turn implementation candidate",
             readme,
         )
         self.assertNotIn("M3_S1_AUTHORIZATION_DECISION", readme)
@@ -437,6 +440,7 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             entry for entry in entries if entry["key"] == "rules/zone-incarnation"
         )
         draw_card = next(entry for entry in entries if entry["key"] == "rules/draw-card")
+        cleanup_reset = next(entry for entry in entries if entry["key"] == "rules/cleanup-reset")
         combat_phase = next(entry for entry in entries if entry["key"] == "rules/combat-phase")
         declare_attackers = next(
             entry for entry in entries if entry["key"] == "rules/declare-attackers"
@@ -456,6 +460,7 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
                 turn_structure,
                 zone_incarnation,
                 draw_card,
+                cleanup_reset,
                 combat_phase,
                 declare_attackers,
                 declare_blockers,
@@ -582,6 +587,12 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             ],
         )
         self.assertIn("lifecycle remains specified", draw_card["notes"])
+
+        self.assertEqual(cleanup_reset["lifecycle"], "specified")
+        self.assertTrue(cleanup_reset["implementation_paths"])
+        self.assertEqual(cleanup_reset["conformance_cases"], [])
+        self.assertEqual(cleanup_reset["benchmark_scenarios"], [])
+        self.assertIn("pending independent exact-head review", cleanup_reset["notes"])
 
         self.assertEqual(combat_phase["lifecycle"], "specified")
         self.assertTrue(combat_phase["implementation_paths"])

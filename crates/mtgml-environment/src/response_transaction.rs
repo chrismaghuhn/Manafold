@@ -124,6 +124,9 @@ where
             };
         }
     }
+    if transition.accepted {
+        kernel.authorize_response_progress(&before.state, &transition)?;
+    }
     validate_transition_contract(&before.state, &transition)?;
 
     if !transition.accepted {
