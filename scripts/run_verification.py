@@ -220,6 +220,11 @@ def main() -> None:
 
     gates: list[dict[str, Any]] = [
         run_gate(
+            "capability_registry_projection_drift",
+            [sys.executable, "scripts/generate_card_ir_capability_projection.py", "--check"],
+            logs=logs,
+        ),
+        run_gate(
             "repository_verifier",
             [sys.executable, "scripts/verify_repository.py"],
             logs=logs,

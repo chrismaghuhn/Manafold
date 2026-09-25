@@ -1,0 +1,104 @@
+{
+  "entries": [
+    {
+      "dependencies": [
+        "rules/state-based-actions-combat",
+        "rules/turn-structure"
+      ],
+      "key": "rules/basic-priority",
+      "lifecycle": "covered",
+      "lifecycle_rank": 3,
+      "version": "0.1.0"
+    },
+    {
+      "dependencies": [
+        "rules/turn-structure"
+      ],
+      "key": "rules/cleanup-reset",
+      "lifecycle": "covered",
+      "lifecycle_rank": 3,
+      "version": "0.1.0"
+    },
+    {
+      "dependencies": [
+        "rules/damage-and-life",
+        "rules/declare-blockers",
+        "rules/state-based-actions-combat"
+      ],
+      "key": "rules/combat-damage",
+      "lifecycle": "covered",
+      "lifecycle_rank": 3,
+      "version": "0.1.0"
+    },
+    {
+      "dependencies": [
+        "rules/basic-priority",
+        "rules/turn-structure"
+      ],
+      "key": "rules/combat-phase",
+      "lifecycle": "covered",
+      "lifecycle_rank": 3,
+      "version": "0.1.0"
+    },
+    {
+      "dependencies": [],
+      "key": "rules/damage-and-life",
+      "lifecycle": "covered",
+      "lifecycle_rank": 3,
+      "version": "0.1.0"
+    },
+    {
+      "dependencies": [
+        "rules/combat-phase"
+      ],
+      "key": "rules/declare-attackers",
+      "lifecycle": "covered",
+      "lifecycle_rank": 3,
+      "version": "0.1.0"
+    },
+    {
+      "dependencies": [
+        "rules/declare-attackers"
+      ],
+      "key": "rules/declare-blockers",
+      "lifecycle": "covered",
+      "lifecycle_rank": 3,
+      "version": "0.1.0"
+    },
+    {
+      "dependencies": [
+        "rules/turn-structure",
+        "rules/zone-incarnation"
+      ],
+      "key": "rules/draw-card",
+      "lifecycle": "covered",
+      "lifecycle_rank": 3,
+      "version": "0.1.0"
+    },
+    {
+      "dependencies": [
+        "rules/zone-incarnation"
+      ],
+      "key": "rules/state-based-actions-combat",
+      "lifecycle": "covered",
+      "lifecycle_rank": 3,
+      "version": "0.1.0"
+    },
+    {
+      "dependencies": [],
+      "key": "rules/turn-structure",
+      "lifecycle": "covered",
+      "lifecycle_rank": 3,
+      "version": "0.1.0"
+    },
+    {
+      "dependencies": [],
+      "key": "rules/zone-incarnation",
+      "lifecycle": "covered",
+      "lifecycle_rank": 3,
+      "version": "0.1.0"
+    }
+  ],
+  "registry_id": "project/capabilities",
+  "schema_version": "card-ir-capability-projection.v1"
+}

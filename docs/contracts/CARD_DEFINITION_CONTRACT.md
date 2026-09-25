@@ -188,9 +188,16 @@ dependencies, lifecycle, coverage, support, and certification. Direct roots
 must match both key and version exactly. Transitive dependencies and their
 versions come from that registry. Unknown keys/versions, missing dependencies,
 cycles, invalid registry input, or lifecycle below an explicitly requested
-threshold reject. Card IR has no support registry, dispatch mechanism,
-lifecycle table, or certification authority. `SupportProfileId` admission
-policy is outside M4.1.
+threshold reject. The Rust adapter consumes only the generated projection at
+`crates/mtgml-card-ir/src/generated_capability_registry.json`. The projection
+generator first runs the existing maintainer registry validator against the
+canonical source, including lifecycle evidence/path checks; fast and release
+gates require a byte-exact projection drift check. Rust does not define another
+registry validator or author lifecycle data. Its closure traversal is checked
+against `capability_census` output generated from the same root and lifecycle
+fixtures. Card IR has no support registry, dispatch mechanism, independently
+maintained lifecycle table, or certification authority. `SupportProfileId`
+admission policy is outside M4.1.
 
 ## Validation and preflight
 
@@ -215,6 +222,13 @@ raw source text, preflight/capability metadata, trusted content IDs, or
 provenance through player endpoints. A successful validation report remains
 non-authorizing: gameplay construction always rejects with
 `NoExecutableProfileAdmitted`.
+
+Structural diagnostics pair the stable error class with the closed
+`ContentValidationPathV1` variants `Manifest`, `Definition`, `Face`,
+`Ability`, `SemanticBinding`, `DefinitionReference`, or `Requirement`. Each
+definition-local variant carries its `CardDefinitionId` and the relevant
+`FaceKey`, `AbilityKey`, target `CardDefinitionId`, or capability key. The path
+is typed data, not a formatted debug string.
 
 These statements are independent:
 

@@ -198,27 +198,88 @@ pub enum ContentValidationErrorV1 {
     MalformedEnvelope,
 }
 
+/// Closed typed location for deterministic content-validation diagnostics.
+/// Paths contain trusted catalog identities only and are never player-facing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ContentValidationPathV1 {
+    Manifest,
+    Definition {
+        card_definition_id: CardDefinitionId,
+    },
+    Face {
+        card_definition_id: CardDefinitionId,
+        face_key: FaceKey,
+    },
+    Ability {
+        card_definition_id: CardDefinitionId,
+        face_key: FaceKey,
+        ability_key: AbilityKey,
+    },
+    SemanticBinding {
+        card_definition_id: CardDefinitionId,
+    },
+    DefinitionReference {
+        card_definition_id: CardDefinitionId,
+        target: CardDefinitionId,
+    },
+    Requirement {
+        card_definition_id: CardDefinitionId,
+        key: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("content validation failed; inspect the typed class and path fields")]
+pub struct ContentValidationDiagnosticV1 {
+    pub class: ContentValidationErrorV1,
+    pub path: ContentValidationPathV1,
+}
+
+impl ContentValidationDiagnosticV1 {
+    fn at(class: ContentValidationErrorV1, path: ContentValidationPathV1) -> Self {
+        Self { class, path }
+    }
+}
+
 pub fn validate_content_manifest_v1(
     manifest: &ContentContractManifestV1,
-) -> Result<(), ContentValidationErrorV1> {
+) -> Result<(), ContentValidationDiagnosticV1> {
     if manifest.schema_version != CONTENT_CONTRACT_MANIFEST_V1 {
-        return Err(ContentValidationErrorV1::UnknownEnvelopeVersion);
+        return Err(ContentValidationDiagnosticV1::at(
+            ContentValidationErrorV1::UnknownEnvelopeVersion,
+            ContentValidationPathV1::Manifest,
+        ));
     }
     let mut previous: Option<&CardDefinitionEnvelopeV1> = None;
     for definition in &manifest.definitions {
         if definition.envelope_version != CARD_DEFINITION_ENVELOPE_V1 {
-            return Err(ContentValidationErrorV1::UnknownEnvelopeVersion);
+            return Err(ContentValidationDiagnosticV1::at(
+                ContentValidationErrorV1::UnknownEnvelopeVersion,
+                ContentValidationPathV1::Definition {
+                    card_definition_id: definition.card_definition_id,
+                },
+            ));
         }
         match previous {
             Some(prior) if prior.card_definition_id == definition.card_definition_id => {
-                return Err(if prior == definition {
-                    ContentValidationErrorV1::DuplicateDefinitionId
-                } else {
-                    ContentValidationErrorV1::IdentityConflict
-                });
+                return Err(ContentValidationDiagnosticV1::at(
+                    if prior == definition {
+                        ContentValidationErrorV1::DuplicateDefinitionId
+                    } else {
+                        ContentValidationErrorV1::IdentityConflict
+                    },
+                    ContentValidationPathV1::Definition {
+                        card_definition_id: definition.card_definition_id,
+                    },
+                ));
             }
             Some(prior) if prior.card_definition_id > definition.card_definition_id => {
-                return Err(ContentValidationErrorV1::InvalidLocalIdentity);
+                return Err(ContentValidationDiagnosticV1::at(
+                    ContentValidationErrorV1::InvalidLocalIdentity,
+                    ContentValidationPathV1::Definition {
+                        card_definition_id: definition.card_definition_id,
+                    },
+                ));
             }
             _ => {}
         }
@@ -230,15 +291,29 @@ pub fn validate_content_manifest_v1(
 
 fn validate_definition(
     definition: &CardDefinitionEnvelopeV1,
-) -> Result<(), ContentValidationErrorV1> {
+) -> Result<(), ContentValidationDiagnosticV1> {
+    let definition_path = || ContentValidationPathV1::Definition {
+        card_definition_id: definition.card_definition_id,
+    };
     if definition.faces.is_empty() {
-        return Err(ContentValidationErrorV1::InvalidLocalIdentity);
+        return Err(ContentValidationDiagnosticV1::at(
+            ContentValidationErrorV1::InvalidLocalIdentity,
+            definition_path(),
+        ));
     }
     for (index, face) in definition.faces.iter().enumerate() {
+        let face_path = || ContentValidationPathV1::Face {
+            card_definition_id: definition.card_definition_id,
+            face_key: face.face_key,
+        };
         if usize::try_from(face.face_key.0).ok() != Some(index) {
-            return Err(ContentValidationErrorV1::InvalidLocalIdentity);
+            return Err(ContentValidationDiagnosticV1::at(
+                ContentValidationErrorV1::InvalidLocalIdentity,
+                face_path(),
+            ));
         }
-        validate_characteristics(&face.base_characteristics)?;
+        validate_characteristics(&face.base_characteristics)
+            .map_err(|class| ContentValidationDiagnosticV1::at(class, face_path()))?;
     }
 
     let mut ability_keys = std::collections::BTreeSet::new();
@@ -247,11 +322,25 @@ fn validate_definition(
         if identity.face_key.0 as usize >= definition.faces.len()
             || !ability_keys.insert(identity.ability_key)
         {
-            return Err(ContentValidationErrorV1::InvalidLocalReference);
+            return Err(ContentValidationDiagnosticV1::at(
+                ContentValidationErrorV1::InvalidLocalReference,
+                ContentValidationPathV1::Ability {
+                    card_definition_id: definition.card_definition_id,
+                    face_key: identity.face_key,
+                    ability_key: identity.ability_key,
+                },
+            ));
         }
         let key = (identity.face_key.0, identity.ability_key.0);
         if previous_ability.is_some_and(|previous| previous >= key) {
-            return Err(ContentValidationErrorV1::InvalidLocalIdentity);
+            return Err(ContentValidationDiagnosticV1::at(
+                ContentValidationErrorV1::InvalidLocalIdentity,
+                ContentValidationPathV1::Ability {
+                    card_definition_id: definition.card_definition_id,
+                    face_key: identity.face_key,
+                    ability_key: identity.ability_key,
+                },
+            ));
         }
         previous_ability = Some(key);
     }
@@ -260,10 +349,31 @@ fn validate_definition(
         definition.semantic_binding,
         CardSemanticBindingV1::UnprofiledV1
     ) {
-        return Err(ContentValidationErrorV1::ProfiledBindingNotAdmitted);
+        return Err(ContentValidationDiagnosticV1::at(
+            ContentValidationErrorV1::ProfiledBindingNotAdmitted,
+            ContentValidationPathV1::SemanticBinding {
+                card_definition_id: definition.card_definition_id,
+            },
+        ));
     }
-    validate_references(&definition.definition_references)?;
-    validate_requirements(&definition.explicit_additional_requirements)?;
+    if let Err((class, target)) = validate_references(&definition.definition_references) {
+        return Err(ContentValidationDiagnosticV1::at(
+            class,
+            ContentValidationPathV1::DefinitionReference {
+                card_definition_id: definition.card_definition_id,
+                target,
+            },
+        ));
+    }
+    if let Err((class, key)) = validate_requirements(&definition.explicit_additional_requirements) {
+        return Err(ContentValidationDiagnosticV1::at(
+            class,
+            ContentValidationPathV1::Requirement {
+                card_definition_id: definition.card_definition_id,
+                key,
+            },
+        ));
+    }
     Ok(())
 }
 
@@ -309,11 +419,14 @@ fn validate_characteristics(value: &BaseCharacteristicsV1) -> Result<(), Content
 
 fn validate_references(
     references: &[DefinitionReferenceV1],
-) -> Result<(), ContentValidationErrorV1> {
+) -> Result<(), (ContentValidationErrorV1, CardDefinitionId)> {
     let mut previous = None;
     for reference in references {
         if reference.relation != "required_definition" {
-            return Err(ContentValidationErrorV1::UnknownReferenceRelation);
+            return Err((
+                ContentValidationErrorV1::UnknownReferenceRelation,
+                reference.target,
+            ));
         }
         let key = (
             reference.target.0,
@@ -321,7 +434,10 @@ fn validate_references(
             reference.relation.as_str(),
         );
         if previous.is_some_and(|value| value >= key) {
-            return Err(ContentValidationErrorV1::InvalidDefinitionReference);
+            return Err((
+                ContentValidationErrorV1::InvalidDefinitionReference,
+                reference.target,
+            ));
         }
         previous = Some(key);
     }
@@ -330,19 +446,25 @@ fn validate_references(
 
 fn validate_requirements(
     requirements: &[CapabilityRequirementV1],
-) -> Result<(), ContentValidationErrorV1> {
+) -> Result<(), (ContentValidationErrorV1, String)> {
     let mut previous: Option<(&str, &str)> = None;
     let mut seen_key: Option<&str> = None;
     for requirement in requirements {
         if !valid_capability_key(&requirement.key)
             || !valid_capability_version(&requirement.version)
         {
-            return Err(ContentValidationErrorV1::InvalidCapabilityRequirement);
+            return Err((
+                ContentValidationErrorV1::InvalidCapabilityRequirement,
+                requirement.key.clone(),
+            ));
         }
         let key = (requirement.key.as_str(), requirement.version.as_str());
         if previous.is_some_and(|value| value >= key) || seen_key == Some(requirement.key.as_str())
         {
-            return Err(ContentValidationErrorV1::InvalidCapabilityRequirement);
+            return Err((
+                ContentValidationErrorV1::InvalidCapabilityRequirement,
+                requirement.key.clone(),
+            ));
         }
         previous = Some(key);
         seen_key = Some(requirement.key.as_str());
@@ -402,7 +524,7 @@ fn color_value(color: ManaColorV1) -> Vec<u8> {
 
 pub fn encode_content_manifest_v1(
     manifest: &ContentContractManifestV1,
-) -> Result<Vec<u8>, ContentValidationErrorV1> {
+) -> Result<Vec<u8>, ContentValidationDiagnosticV1> {
     validate_content_manifest_v1(manifest)?;
     let definitions = manifest.definitions.iter().map(definition_value).collect();
     let value = Value::Array(vec![
@@ -410,21 +532,35 @@ pub fn encode_content_manifest_v1(
         Value::Text("mtgml.content-contract.v1".to_owned()),
         Value::Array(definitions),
     ]);
-    cbor::encode_canonical(&value).map_err(|_| ContentValidationErrorV1::MalformedEnvelope)
+    cbor::encode_canonical(&value).map_err(|_| {
+        ContentValidationDiagnosticV1::at(
+            ContentValidationErrorV1::MalformedEnvelope,
+            ContentValidationPathV1::Manifest,
+        )
+    })
 }
 
 /// Decode one canonical CBOR content manifest and require that the closed
 /// typed representation re-encodes to the exact original payload bytes.
 pub fn decode_content_manifest_v1(
     bytes: &[u8],
-) -> Result<ContentContractManifestV1, ContentValidationErrorV1> {
-    let value =
-        cbor::decode_canonical(bytes).map_err(|_| ContentValidationErrorV1::MalformedEnvelope)?;
-    let manifest = manifest_from_value(value)?;
+) -> Result<ContentContractManifestV1, ContentValidationDiagnosticV1> {
+    let manifest_path = || ContentValidationPathV1::Manifest;
+    let value = cbor::decode_canonical(bytes).map_err(|_| {
+        ContentValidationDiagnosticV1::at(
+            ContentValidationErrorV1::MalformedEnvelope,
+            manifest_path(),
+        )
+    })?;
+    let manifest = manifest_from_value(value)
+        .map_err(|class| ContentValidationDiagnosticV1::at(class, manifest_path()))?;
     validate_content_manifest_v1(&manifest)?;
     let encoded = encode_content_manifest_v1(&manifest)?;
     if encoded != bytes {
-        return Err(ContentValidationErrorV1::MalformedEnvelope);
+        return Err(ContentValidationDiagnosticV1::at(
+            ContentValidationErrorV1::MalformedEnvelope,
+            manifest_path(),
+        ));
     }
     Ok(manifest)
 }
@@ -954,7 +1090,7 @@ fn text(value: impl Into<String>) -> Value {
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum CatalogBuildErrorV1 {
     #[error("manifest is structurally invalid: {0}")]
-    InvalidManifest(ContentValidationErrorV1),
+    InvalidManifest(ContentValidationDiagnosticV1),
     #[error("computed content identity does not match the supplied identity")]
     ContentIdentityMismatch,
     #[error("provenance catalog does not exactly match content definitions")]
@@ -978,7 +1114,10 @@ impl VerifiedContentCatalogV1 {
         let manifest = decode_content_manifest_v1(canonical_payload)
             .map_err(CatalogBuildErrorV1::InvalidManifest)?;
         let actual_id = calculate_content_contract_id_v1(canonical_payload).map_err(|_| {
-            CatalogBuildErrorV1::InvalidManifest(ContentValidationErrorV1::MalformedEnvelope)
+            CatalogBuildErrorV1::InvalidManifest(ContentValidationDiagnosticV1::at(
+                ContentValidationErrorV1::MalformedEnvelope,
+                ContentValidationPathV1::Manifest,
+            ))
         })?;
         if &actual_id != supplied_content_contract_id {
             return Err(CatalogBuildErrorV1::ContentIdentityMismatch);
@@ -996,7 +1135,10 @@ impl VerifiedContentCatalogV1 {
         let manifest = decode_content_manifest_v1(canonical_payload)
             .map_err(CatalogBuildErrorV1::InvalidManifest)?;
         let actual_id = calculate_content_contract_id_v1(canonical_payload).map_err(|_| {
-            CatalogBuildErrorV1::InvalidManifest(ContentValidationErrorV1::MalformedEnvelope)
+            CatalogBuildErrorV1::InvalidManifest(ContentValidationDiagnosticV1::at(
+                ContentValidationErrorV1::MalformedEnvelope,
+                ContentValidationPathV1::Manifest,
+            ))
         })?;
         if &actual_id != supplied_content_contract_id {
             return Err(CatalogBuildErrorV1::ContentIdentityMismatch);

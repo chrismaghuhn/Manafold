@@ -45,6 +45,7 @@ def reference_python_matches() -> bool:
 
 
 FAST = [
+    [sys.executable, "scripts/generate_card_ir_capability_projection.py", "--check"],
     [sys.executable, "scripts/generate_contracts.py", "--check"],
     [sys.executable, "scripts/run_v5_execution_identity_gate.py"],
     [sys.executable, "scripts/run_v6_state_identity_gate.py"],

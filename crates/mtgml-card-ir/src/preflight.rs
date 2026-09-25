@@ -1,13 +1,12 @@
 //! Fail-closed content validation through the canonical Capability Registry.
 
-use crate::{ContentValidationErrorV1, DefinitionClosureErrorV1, VerifiedContentCatalogV1};
+use crate::{ContentValidationDiagnosticV1, DefinitionClosureErrorV1, VerifiedContentCatalogV1};
 use mtgml_model::{CapabilityRequirementV1, CardDefinitionId, ContentContractIdV1};
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
 use thiserror::Error;
 
-const CANONICAL_CAPABILITY_REGISTRY: &str =
-    include_str!("../../../cards/capabilities/registry.json");
+const GENERATED_CAPABILITY_REGISTRY: &str = include_str!("generated_capability_registry.json");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum RequiredCapabilityLifecycleV1 {
@@ -48,7 +47,7 @@ pub enum ContentAuthorizationV1 {
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum ContentPreflightErrorV1 {
     #[error("content structure is invalid")]
-    InvalidContent(ContentValidationErrorV1),
+    InvalidContent(ContentValidationDiagnosticV1),
     #[error("content digest does not match the supplied identity")]
     ContentIdentityMismatch,
     #[error("provenance does not exactly match content definitions")]
@@ -166,6 +165,7 @@ fn normalize_requirement_roots(
 #[derive(Debug, Deserialize)]
 struct RegistryFile {
     schema_version: String,
+    registry_id: String,
     entries: Vec<RegistryEntry>,
 }
 
@@ -174,6 +174,7 @@ struct RegistryEntry {
     key: String,
     version: String,
     lifecycle: String,
+    lifecycle_rank: i8,
     #[serde(default)]
     dependencies: Vec<String>,
 }
@@ -184,50 +185,21 @@ struct CapabilityRegistry {
 }
 
 fn parse_canonical_registry() -> Result<CapabilityRegistry, ContentPreflightErrorV1> {
-    let file: RegistryFile = serde_json::from_str(CANONICAL_CAPABILITY_REGISTRY)
+    let file: RegistryFile = serde_json::from_str(GENERATED_CAPABILITY_REGISTRY)
         .map_err(|_| ContentPreflightErrorV1::InvalidCapabilityRegistry)?;
-    if file.schema_version != "capability-registry.v1" {
+    if file.schema_version != "card-ir-capability-projection.v1" || file.registry_id.is_empty() {
         return Err(ContentPreflightErrorV1::InvalidCapabilityRegistry);
     }
     let mut entries = BTreeMap::new();
-    for mut entry in file.entries {
-        entry.dependencies.sort_unstable();
-        if !valid_capability_key(&entry.key)
-            || !valid_version(&entry.version)
-            || lifecycle_rank(&entry.lifecycle).is_none()
-            || entries.insert(entry.key.clone(), entry).is_some()
-        {
+    for entry in file.entries {
+        if entries.insert(entry.key.clone(), entry).is_some() {
             return Err(ContentPreflightErrorV1::InvalidCapabilityRegistry);
         }
     }
-    for entry in entries.values() {
-        let mut seen = BTreeSet::new();
-        if entry.dependencies.iter().any(|key| !seen.insert(key)) {
-            return Err(ContentPreflightErrorV1::InvalidCapabilityRegistry);
-        }
-        for dependency in &entry.dependencies {
-            if !entries.contains_key(dependency) {
-                return Err(ContentPreflightErrorV1::CapabilityDependencyFailure {
-                    path: vec![entry.key.clone(), dependency.clone()],
-                });
-            }
-        }
-    }
-    let registry = CapabilityRegistry { entries };
-    registry.validate_acyclic()?;
-    Ok(registry)
+    Ok(CapabilityRegistry { entries })
 }
 
 impl CapabilityRegistry {
-    fn validate_acyclic(&self) -> Result<(), ContentPreflightErrorV1> {
-        let mut states = BTreeMap::<String, u8>::new();
-        let mut active = Vec::new();
-        for key in self.entries.keys() {
-            self.visit(key, &mut states, &mut active, &mut BTreeSet::new())?;
-        }
-        Ok(())
-    }
-
     fn resolve(
         &self,
         roots: &[CapabilityRequirementV1],
@@ -253,7 +225,7 @@ impl CapabilityRegistry {
         let mut closure = Vec::new();
         for key in reached {
             let entry = &self.entries[&key];
-            if lifecycle_rank(&entry.lifecycle).unwrap_or(-1) < required.rank() {
+            if entry.lifecycle_rank < required.rank() {
                 return Err(
                     ContentPreflightErrorV1::CapabilityLifecycleBelowRequirement {
                         key,
@@ -305,53 +277,6 @@ impl CapabilityRegistry {
     }
 }
 
-fn lifecycle_rank(value: &str) -> Option<i8> {
-    match value {
-        "proposed" => Some(0),
-        "specified" => Some(1),
-        "implemented" => Some(2),
-        "covered" => Some(3),
-        "certified" => Some(4),
-        "deprecated" => Some(-1),
-        _ => None,
-    }
-}
-
-fn valid_version(value: &str) -> bool {
-    let parts = value.split('.').collect::<Vec<_>>();
-    parts.len() == 3
-        && parts
-            .iter()
-            .all(|part| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()))
-}
-
-fn valid_capability_key(value: &str) -> bool {
-    let segments = value.split('/').collect::<Vec<_>>();
-    let word = |segment: &str| {
-        let mut bytes = segment.bytes();
-        bytes
-            .next()
-            .is_some_and(|first| first.is_ascii_lowercase() || first.is_ascii_digit())
-            && bytes.all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
-    };
-    match segments.as_slice() {
-        [head, rest @ ..]
-            if ["rules", "mechanic", "decision", "visibility", "tooling"].contains(head) =>
-        {
-            !rest.is_empty() && rest.iter().all(|segment| word(segment))
-        }
-        ["format", namespace, rest @ ..] => {
-            !namespace.is_empty()
-                && namespace
-                    .bytes()
-                    .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
-                && !rest.is_empty()
-                && rest.iter().all(|segment| word(segment))
-        }
-        _ => false,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -385,6 +310,7 @@ mod tests {
                         key: "rules/alpha".to_owned(),
                         version: "1.0.0".to_owned(),
                         lifecycle: "specified".to_owned(),
+                        lifecycle_rank: 1,
                         dependencies: vec!["rules/beta".to_owned()],
                     },
                 ),
@@ -394,13 +320,20 @@ mod tests {
                         key: "rules/beta".to_owned(),
                         version: "1.0.0".to_owned(),
                         lifecycle: "specified".to_owned(),
+                        lifecycle_rank: 1,
                         dependencies: vec!["rules/alpha".to_owned()],
                     },
                 ),
             ]),
         };
         assert_eq!(
-            registry.validate_acyclic(),
+            registry.resolve(
+                &[CapabilityRequirementV1 {
+                    key: "rules/alpha".to_owned(),
+                    version: "1.0.0".to_owned(),
+                }],
+                RequiredCapabilityLifecycleV1::Specified,
+            ),
             Err(ContentPreflightErrorV1::CapabilityDependencyFailure {
                 path: vec![
                     "rules/alpha".to_owned(),
@@ -409,5 +342,86 @@ mod tests {
                 ]
             })
         );
+    }
+
+    #[test]
+    fn rust_closure_matches_python_registry_owner_on_synthetic_cases() {
+        let parity: serde_json::Value = serde_json::from_str(include_str!(
+            "../tests/fixtures/capability_registry_parity.v1.json"
+        ))
+        .unwrap();
+        assert_eq!(parity["registry_id"], "project/capabilities");
+        for case in parity["cases"].as_array().unwrap() {
+            let registry = CapabilityRegistry {
+                entries: case["entries"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|entry| {
+                        let registry_entry = RegistryEntry {
+                            key: entry["key"].as_str().unwrap().to_owned(),
+                            version: entry["version"].as_str().unwrap().to_owned(),
+                            lifecycle: entry["lifecycle"].as_str().unwrap().to_owned(),
+                            lifecycle_rank: entry["lifecycle_rank"].as_i64().unwrap() as i8,
+                            dependencies: entry["dependencies"]
+                                .as_array()
+                                .unwrap()
+                                .iter()
+                                .map(|key| key.as_str().unwrap().to_owned())
+                                .collect(),
+                        };
+                        (registry_entry.key.clone(), registry_entry)
+                    })
+                    .collect(),
+            };
+            let roots = case["roots"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|root| CapabilityRequirementV1 {
+                    key: root["key"].as_str().unwrap().to_owned(),
+                    version: root["version"].as_str().unwrap().to_owned(),
+                })
+                .collect::<Vec<_>>();
+            let required = match case["minimum_lifecycle"].as_str().unwrap() {
+                "proposed" => RequiredCapabilityLifecycleV1::Proposed,
+                "specified" => RequiredCapabilityLifecycleV1::Specified,
+                "implemented" => RequiredCapabilityLifecycleV1::Implemented,
+                "covered" => RequiredCapabilityLifecycleV1::Covered,
+                "certified" => RequiredCapabilityLifecycleV1::Certified,
+                _ => panic!("unknown parity lifecycle"),
+            };
+            let below = case["below_required_lifecycle"].as_array().unwrap();
+            let actual = registry.resolve(&roots, required);
+            if below.is_empty() {
+                let actual = actual.unwrap();
+                let actual = actual
+                    .iter()
+                    .map(|entry| (entry.key.as_str(), entry.version.as_str()))
+                    .collect::<Vec<_>>();
+                let expected = case["resolved"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|key| {
+                        let key = key.as_str().unwrap();
+                        (key, registry.entries[key].version.as_str())
+                    })
+                    .collect::<Vec<_>>();
+                assert_eq!(actual, expected);
+            } else {
+                let (key, lifecycle) =
+                    (below[0][0].as_str().unwrap(), below[0][1].as_str().unwrap());
+                assert_eq!(
+                    actual,
+                    Err(
+                        ContentPreflightErrorV1::CapabilityLifecycleBelowRequirement {
+                            key: key.to_owned(),
+                            lifecycle: lifecycle.to_owned(),
+                        }
+                    )
+                );
+            }
+        }
     }
 }

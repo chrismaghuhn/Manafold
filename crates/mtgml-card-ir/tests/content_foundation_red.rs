@@ -56,9 +56,16 @@ fn duplicate_face_identity_is_rejected() {
 fn duplicate_and_conflicting_definition_ids_have_distinct_failures() {
     let mut duplicate = minimal_manifest();
     duplicate.definitions.push(duplicate.definitions[0].clone());
+    let duplicate_error = validate_content_manifest_v1(&duplicate).unwrap_err();
     assert_eq!(
-        validate_content_manifest_v1(&duplicate),
-        Err(mtgml_card_ir::ContentValidationErrorV1::DuplicateDefinitionId)
+        duplicate_error.class,
+        mtgml_card_ir::ContentValidationErrorV1::DuplicateDefinitionId
+    );
+    assert_eq!(
+        duplicate_error.path,
+        mtgml_card_ir::ContentValidationPathV1::Definition {
+            card_definition_id: CardDefinitionId(1)
+        }
     );
 
     let mut conflict = minimal_manifest();
@@ -66,9 +73,16 @@ fn duplicate_and_conflicting_definition_ids_have_distinct_failures() {
     conflicting_definition.faces[0].base_characteristics.name =
         "Different rule-relevant name".to_owned();
     conflict.definitions.push(conflicting_definition);
+    let conflict_error = validate_content_manifest_v1(&conflict).unwrap_err();
     assert_eq!(
-        validate_content_manifest_v1(&conflict),
-        Err(mtgml_card_ir::ContentValidationErrorV1::IdentityConflict)
+        conflict_error.class,
+        mtgml_card_ir::ContentValidationErrorV1::IdentityConflict
+    );
+    assert_eq!(
+        conflict_error.path,
+        mtgml_card_ir::ContentValidationPathV1::Definition {
+            card_definition_id: CardDefinitionId(1)
+        }
     );
 }
 
@@ -82,9 +96,17 @@ fn unknown_definition_reference_relation_has_its_own_error_class() {
             target: CardDefinitionId(2),
             target_face_key: None,
         });
+    let error = validate_content_manifest_v1(&manifest).unwrap_err();
     assert_eq!(
-        validate_content_manifest_v1(&manifest),
-        Err(mtgml_card_ir::ContentValidationErrorV1::UnknownReferenceRelation)
+        error.class,
+        mtgml_card_ir::ContentValidationErrorV1::UnknownReferenceRelation
+    );
+    assert_eq!(
+        error.path,
+        mtgml_card_ir::ContentValidationPathV1::DefinitionReference {
+            card_definition_id: CardDefinitionId(1),
+            target: CardDefinitionId(2)
+        }
     );
 }
 
@@ -124,11 +146,27 @@ fn invalid_hybrid_and_zero_generic_symbols_fail_closed() {
         ManaColorV1::Green,
         ManaColorV1::Green,
     )]);
-    assert!(validate_content_manifest_v1(&manifest).is_err());
+    let invalid_hybrid = validate_content_manifest_v1(&manifest).unwrap_err();
+    assert_eq!(
+        invalid_hybrid.class,
+        mtgml_card_ir::ContentValidationErrorV1::InvalidCharacteristic
+    );
+    assert_eq!(
+        invalid_hybrid.path,
+        mtgml_card_ir::ContentValidationPathV1::Face {
+            card_definition_id: CardDefinitionId(1),
+            face_key: FaceKey(0)
+        }
+    );
     manifest.definitions[0].faces[0]
         .base_characteristics
         .mana_cost = Some(vec![PrintedManaSymbolV1::Generic(0)]);
-    assert!(validate_content_manifest_v1(&manifest).is_err());
+    let invalid_generic = validate_content_manifest_v1(&manifest).unwrap_err();
+    assert_eq!(
+        invalid_generic.class,
+        mtgml_card_ir::ContentValidationErrorV1::InvalidCharacteristic
+    );
+    assert_eq!(invalid_generic.path, invalid_hybrid.path);
 }
 
 fn provenance(
@@ -397,8 +435,8 @@ fn strict_cbor_decoder_rejects_profile_variants_arity_order_and_trailing_data() 
     ]);
     let profiled = cbor::encode_canonical(&value).unwrap();
     assert_eq!(
-        decode_content_manifest_v1(&profiled),
-        Err(mtgml_card_ir::ContentValidationErrorV1::ProfiledBindingNotAdmitted)
+        decode_content_manifest_v1(&profiled).unwrap_err().class,
+        mtgml_card_ir::ContentValidationErrorV1::ProfiledBindingNotAdmitted
     );
 
     let valid = encode_content_manifest_v1(&minimal_manifest()).unwrap();
@@ -446,8 +484,8 @@ fn unknown_closed_mana_variant_has_a_typed_error() {
     ])]);
     let bytes = cbor::encode_canonical(&value).unwrap();
     assert_eq!(
-        decode_content_manifest_v1(&bytes),
-        Err(mtgml_card_ir::ContentValidationErrorV1::UnknownFieldOrVariant)
+        decode_content_manifest_v1(&bytes).unwrap_err().class,
+        mtgml_card_ir::ContentValidationErrorV1::UnknownFieldOrVariant
     );
 }
 
@@ -498,10 +536,26 @@ fn duplicate_ability_key_and_invalid_face_binding_reject() {
             face_key: FaceKey(0),
         },
     ];
-    assert!(validate_content_manifest_v1(&manifest).is_err());
+    let duplicate = validate_content_manifest_v1(&manifest).unwrap_err();
+    assert_eq!(
+        duplicate.path,
+        mtgml_card_ir::ContentValidationPathV1::Ability {
+            card_definition_id: CardDefinitionId(1),
+            face_key: FaceKey(0),
+            ability_key: mtgml_card_ir::AbilityKey(1)
+        }
+    );
     manifest.definitions[0].ability_identities[1].ability_key = mtgml_card_ir::AbilityKey(2);
     manifest.definitions[0].ability_identities[1].face_key = FaceKey(1);
-    assert!(validate_content_manifest_v1(&manifest).is_err());
+    let invalid_face = validate_content_manifest_v1(&manifest).unwrap_err();
+    assert_eq!(
+        invalid_face.path,
+        mtgml_card_ir::ContentValidationPathV1::Ability {
+            card_definition_id: CardDefinitionId(1),
+            face_key: FaceKey(1),
+            ability_key: mtgml_card_ir::AbilityKey(2)
+        }
+    );
 }
 
 #[test]
