@@ -1898,6 +1898,39 @@ fn add_known_hand_cards(
     state.allocators.next_object_id = GameObjectId(first + count);
 }
 
+fn add_hidden_library_top(
+    state: &mut mtgml_state::EngineState,
+    owner: PlayerId,
+    object_id: u64,
+    physical_id: u64,
+    definition_id: u64,
+) {
+    let object = GameObjectId(object_id);
+    let location = ZoneLocation {
+        zone: mtgml_model::ZoneKind::Library,
+        player: Some(owner),
+        position: ZonePosition::Top { offset: 0 },
+        visibility: VisibilityPartition::FaceDown,
+        partition: None,
+    };
+    let key = location.key();
+    state.zones.objects.insert(
+        object,
+        GameObject {
+            id: object,
+            physical_card: Some(PhysicalCardId(physical_id)),
+            card_definition: CardDefinitionId(definition_id),
+            owner,
+            controller: owner,
+            tapped: false,
+            face_down: false,
+        },
+    );
+    state.zones.locations.insert(object, location);
+    state.zones.ordered_zones.insert(key, vec![object]);
+    state.allocators.next_object_id = GameObjectId(object_id + 1);
+}
+
 fn two_owner_stage_zero() -> mtgml_state::EngineState {
     let mut state = super::restore_admission::magic_sba_continuation_state();
     // Add two selected deaths for P2, preserving the authoritative P1 Order
@@ -4293,6 +4326,389 @@ fn complete_bounded_turn_runs_from_untap_through_cleanup_with_explicit_endpoints
     let hidden_report = hidden_controller
         .execute_replay_from_checkpoint(hidden_initial, hidden_replay)
         .unwrap();
+    assert_eq!(hidden_report.final_checkpoint, hidden_final);
+}
+
+fn close_explicit_priority_window(
+    controller: &TrustedEnvironmentController,
+    active: PlayerId,
+    position: TurnPosition,
+    external_responses: &mut usize,
+    decisions: &mut Vec<(PlayerId, TurnPosition, mtgml_decision::DecisionDomainV2, usize)>,
+    visible_requests: &mut Vec<Vec<u8>>,
+    unaffected_player_products: &mut Vec<Vec<u8>>,
+) {
+    assert_eq!(controller.checkpoint().unwrap().state.core.position, position);
+    let other = if active == P1 { P2 } else { P1 };
+    for actor in [active, other] {
+        let endpoint = controller.bind_player(actor).unwrap();
+        let request = endpoint.visible_decision().unwrap().unwrap();
+        assert_eq!(request.actor, actor);
+        assert!(matches!(request.decision, mtgml_decision::DecisionDomainV2::ChooseOne));
+        assert_eq!(request.candidates.len(), 1);
+        assert!(matches!(
+            request.candidates[0].intent,
+            mtgml_decision::CandidateIntent::PassPriority
+        ));
+        decisions.push((actor, position, request.decision.clone(), request.candidates.len()));
+        visible_requests.push(mtgml_wire::encode_canonical(&request).unwrap());
+        let response = current_select_one_response(&request);
+        if let Err(error) = endpoint.submit(response.clone()) {
+            let direct = controller.execute_trusted_response(actor, response).unwrap_err();
+            panic!("priority response {actor:?} at {position:?}: {error:?}; direct={direct:?}");
+        }
+        *external_responses += 1;
+        unaffected_player_products.push(player_fingerprint(controller, P2));
+    }
+}
+
+#[test]
+fn foundation_v2_exact_turn_composition_closes_through_p2_draw() {
+    let mut state = blocker_fixture(2, 1, 0);
+    state.core.turn_number = 2;
+    state.core.active_player = P1;
+    state.core.players.get_mut(&P1).unwrap().life = 20;
+    state.core.players.get_mut(&P2).unwrap().life = 20;
+    state.core.position = TurnPosition::Beginning {
+        step: mtgml_state::BeginningStep::Untap,
+    };
+    state.core.priority = mtgml_state::PriorityState::None;
+    state.combat = None;
+    state.execution.pending_decision = None;
+    state.execution.continuations.clear();
+
+    // A and C enter turn 2 tapped and become eligible only through P1's
+    // ordinary simultaneous Untap. The extra tapped P2 permanent is not an
+    // eligible blocker and proves that it waits for P2's own Untap.
+    state.zones.objects.get_mut(&GameObjectId(1)).unwrap().controller = P2;
+    state.zones.objects.get_mut(&GameObjectId(1)).unwrap().tapped = true;
+    for attacker in [GameObjectId(3), GameObjectId(4)] {
+        state.zones.objects.get_mut(&attacker).unwrap().tapped = true;
+    }
+    state.zones.objects.get_mut(&GameObjectId(5)).unwrap().tapped = false;
+    state.zones.objects.get_mut(&GameObjectId(2)).unwrap().face_down = false;
+    state.foundation_sources.get_mut(&GameObjectId(3)).unwrap().base_characteristics =
+        BaseCharacteristics::Simple { power: 3, toughness: 3 }; // A
+    state.foundation_sources.get_mut(&GameObjectId(4)).unwrap().base_characteristics =
+        BaseCharacteristics::Simple { power: 2, toughness: 2 }; // C
+    state.foundation_sources.get_mut(&GameObjectId(5)).unwrap().base_characteristics =
+        BaseCharacteristics::Simple { power: 2, toughness: 2 }; // B
+    let p1_library = state.allocators.next_object_id.0;
+    add_hidden_library_top(&mut state, P1, p1_library, 600, 601);
+    assert!(!state.foundation_sources.contains_key(&GameObjectId(p1_library)));
+    assert!(!state.zones.objects[&GameObjectId(p1_library)].face_down);
+    assert_eq!(state.zones.locations[&GameObjectId(p1_library)].zone, mtgml_model::ZoneKind::Library);
+    let p1_private_hand = state.allocators.next_object_id.0;
+    add_known_hand_cards(&mut state, P1, 1);
+
+    // The paired world varies an unrevealed identity that stays in P1's hand
+    // for the whole run. P2's information products must remain identical.
+    let mut hidden_state = state.clone();
+    let hidden_opaque = hidden_state.perspective_identities.players[&P1]
+        .object_to_opaque[&GameObjectId(p1_private_hand)];
+    let hidden_card = hidden_state
+        .zones
+        .objects
+        .get_mut(&GameObjectId(p1_private_hand))
+        .unwrap();
+    hidden_card.physical_card = Some(PhysicalCardId(900));
+    hidden_card.card_definition = CardDefinitionId(901);
+    let hidden_record = hidden_state
+        .knowledge
+        .players
+        .get_mut(&P1)
+        .unwrap()
+        .active
+        .get_mut(&hidden_opaque)
+        .unwrap();
+    hidden_record.physical_card = Some(PhysicalCardId(900));
+    hidden_record.card_definition = Some(CardDefinitionId(901));
+
+    mtgml_state::validate_engine_state(&state).unwrap();
+    mtgml_state::validate_engine_state(&hidden_state).unwrap();
+    state.digest().unwrap();
+    hidden_state.digest().unwrap();
+
+    let mut backend = bounded_turn_backend(state);
+    let mut hidden_backend = bounded_turn_backend(hidden_state);
+    for backend in [&mut backend, &mut hidden_backend] {
+        backend.execute_forced_progress().unwrap(); // P1 Untap -> Upkeep.
+        backend.execute_forced_progress().unwrap(); // Open P1 Upkeep priority.
+    }
+    let initial = backend.checkpoint().unwrap();
+    let hidden_initial = hidden_backend.checkpoint().unwrap();
+    let controller = TrustedEnvironmentController::new(backend);
+    let hidden_controller = TrustedEnvironmentController::new(hidden_backend);
+    assert_eq!(player_fingerprint(&controller, P2), player_fingerprint(&hidden_controller, P2));
+    assert_eq!(controller.fork().unwrap().checkpoint().unwrap(), initial);
+    let mut restored = bounded_turn_backend(initial.state.clone());
+    restored.restore(initial.clone()).unwrap();
+    assert_eq!(restored.checkpoint().unwrap(), initial);
+
+    let mut external_responses = 0usize;
+    let mut decisions = Vec::new();
+    let mut visible_requests = Vec::new();
+    let mut p2_products = Vec::new();
+    close_explicit_priority_window(
+        &controller,
+        P1,
+        TurnPosition::Beginning { step: mtgml_state::BeginningStep::Upkeep },
+        &mut external_responses,
+        &mut decisions,
+        &mut visible_requests,
+        &mut p2_products,
+    );
+    close_explicit_priority_window(
+        &controller,
+        P1,
+        TurnPosition::Beginning { step: mtgml_state::BeginningStep::Draw },
+        &mut external_responses,
+        &mut decisions,
+        &mut visible_requests,
+        &mut p2_products,
+    );
+    let after_p1_draw = controller.checkpoint().unwrap();
+    let p1_drawn_object = after_p1_draw
+        .state
+        .zones
+        .objects
+        .iter()
+        .find_map(|(object, card)| {
+            (card.physical_card == Some(PhysicalCardId(600))).then_some(*object)
+        })
+        .unwrap();
+    assert!(after_p1_draw.state.perspective_identities.players[&P1]
+        .object_to_opaque
+        .contains_key(&p1_drawn_object));
+    assert!(!after_p1_draw.state.perspective_identities.players[&P2]
+        .object_to_opaque
+        .contains_key(&p1_drawn_object));
+    assert!(!after_p1_draw.state.knowledge.players[&P2]
+        .active
+        .values()
+        .any(|record| record.physical_card == Some(PhysicalCardId(600))));
+    close_explicit_priority_window(
+        &controller,
+        P1,
+        TurnPosition::PrecombatMain,
+        &mut external_responses,
+        &mut decisions,
+        &mut visible_requests,
+        &mut p2_products,
+    );
+    close_explicit_priority_window(
+        &controller,
+        P1,
+        TurnPosition::Combat { step: mtgml_state::CombatStep::BeginningOfCombat },
+        &mut external_responses,
+        &mut decisions,
+        &mut visible_requests,
+        &mut p2_products,
+    );
+
+    let p1 = controller.bind_player(P1).unwrap();
+    let attackers = p1.visible_decision().unwrap().unwrap();
+    assert_eq!(attackers.actor, P1);
+    assert!(matches!(attackers.decision, mtgml_decision::DecisionDomainV2::ChooseMany { .. }));
+    assert_eq!(attackers.candidates.len(), 2);
+    assert!(attackers.candidates.iter().all(|candidate| matches!(
+        candidate.intent,
+        mtgml_decision::CandidateIntent::SelectObject { .. }
+    )));
+    decisions.push((
+        P1,
+        TurnPosition::Combat { step: mtgml_state::CombatStep::DeclareAttackers },
+        attackers.decision.clone(),
+        attackers.candidates.len(),
+    ));
+    visible_requests.push(mtgml_wire::encode_canonical(&attackers).unwrap());
+    p1.submit(current_select_many_response(&attackers)).unwrap();
+    external_responses += 1;
+    p2_products.push(player_fingerprint(&controller, P2));
+    close_explicit_priority_window(
+        &controller,
+        P1,
+        TurnPosition::Combat { step: mtgml_state::CombatStep::DeclareAttackers },
+        &mut external_responses,
+        &mut decisions,
+        &mut visible_requests,
+        &mut p2_products,
+    );
+
+    let p2 = controller.bind_player(P2).unwrap();
+    let blockers = p2.visible_decision().unwrap().unwrap();
+    assert_eq!(blockers.actor, P2);
+    let block_a = blockers
+        .candidates
+        .iter()
+        .find(|candidate| {
+            let mtgml_decision::CandidateIntent::SelectObject { object } = candidate.intent else {
+                return false;
+            };
+            controller.checkpoint().unwrap().state.perspective_identities.players[&P2]
+                .opaque_to_object[&object]
+                == GameObjectId(3)
+        })
+        .expect("P2 can explicitly assign B to A");
+    decisions.push((
+        P2,
+        TurnPosition::Combat { step: mtgml_state::CombatStep::DeclareBlockers },
+        blockers.decision.clone(),
+        blockers.candidates.len(),
+    ));
+    visible_requests.push(mtgml_wire::encode_canonical(&blockers).unwrap());
+    p2.submit(DecisionResponseV2 {
+        schema_version: mtgml_decision::DECISION_RESPONSE_V2_SCHEMA.into(),
+        player_decision_id: blockers.player_decision_id,
+        state_revision: blockers.state_revision,
+        answer: DecisionAnswerV2::SelectOne { candidate_id: block_a.candidate_id },
+    }).unwrap();
+    external_responses += 1;
+    p2_products.push(player_fingerprint(&controller, P2));
+    close_explicit_priority_window(
+        &controller,
+        P1,
+        TurnPosition::Combat { step: mtgml_state::CombatStep::DeclareBlockers },
+        &mut external_responses,
+        &mut decisions,
+        &mut visible_requests,
+        &mut p2_products,
+    );
+    close_explicit_priority_window(
+        &controller,
+        P1,
+        TurnPosition::Combat { step: mtgml_state::CombatStep::CombatDamage },
+        &mut external_responses,
+        &mut decisions,
+        &mut visible_requests,
+        &mut p2_products,
+    );
+
+    let after_damage = controller.checkpoint().unwrap();
+    assert_eq!(after_damage.state.core.players[&P2].life, 18);
+    assert_eq!(after_damage.state.foundation_sources[&GameObjectId(3)].marked_damage, 2);
+    assert_eq!(after_damage.state.foundation_sources[&GameObjectId(4)].marked_damage, 0);
+    assert!(!after_damage.state.zones.objects.contains_key(&GameObjectId(5)));
+    let p2_graveyard_blocker = after_damage.state.zones.objects.iter().find_map(|(object, card)| {
+        (card.physical_card == Some(PhysicalCardId(5))
+            && after_damage.state.zones.locations[object].zone == mtgml_model::ZoneKind::Graveyard)
+            .then_some(*object)
+    }).expect("lethal B has a new owner-graveyard incarnation");
+    assert_ne!(p2_graveyard_blocker, GameObjectId(5));
+    assert!(after_damage.state.combat.as_ref().unwrap().blocked_attackers.contains(&GameObjectId(3)));
+
+    close_explicit_priority_window(
+        &controller,
+        P1,
+        TurnPosition::Combat { step: mtgml_state::CombatStep::EndOfCombat },
+        &mut external_responses,
+        &mut decisions,
+        &mut visible_requests,
+        &mut p2_products,
+    );
+    close_explicit_priority_window(
+        &controller,
+        P1,
+        TurnPosition::PostcombatMain,
+        &mut external_responses,
+        &mut decisions,
+        &mut visible_requests,
+        &mut p2_products,
+    );
+    let before_cleanup = controller.checkpoint().unwrap();
+    assert_eq!(before_cleanup.state.foundation_sources[&GameObjectId(3)].marked_damage, 2);
+    close_explicit_priority_window(
+        &controller,
+        P1,
+        TurnPosition::Ending { step: mtgml_state::EndingStep::EndStep },
+        &mut external_responses,
+        &mut decisions,
+        &mut visible_requests,
+        &mut p2_products,
+    );
+
+    let after_cleanup = controller.checkpoint().unwrap();
+    assert_eq!(after_cleanup.state.core.turn_number, 3);
+    assert_eq!(after_cleanup.state.core.active_player, P2);
+    assert_eq!(after_cleanup.state.core.position, TurnPosition::Beginning { step: mtgml_state::BeginningStep::Upkeep });
+    assert_eq!(after_cleanup.state.foundation_sources[&GameObjectId(3)].marked_damage, 0);
+    assert!(!after_cleanup.state.zones.objects[&GameObjectId(1)].tapped);
+    assert!(after_cleanup.state.zones.objects[&GameObjectId(3)].tapped);
+    assert!(after_cleanup.state.zones.objects[&GameObjectId(4)].tapped);
+    close_explicit_priority_window(
+        &controller,
+        P2,
+        TurnPosition::Beginning { step: mtgml_state::BeginningStep::Upkeep },
+        &mut external_responses,
+        &mut decisions,
+        &mut visible_requests,
+        &mut p2_products,
+    );
+
+    let final_checkpoint = controller.checkpoint().unwrap();
+    assert_eq!(final_checkpoint.state.core.position, TurnPosition::Beginning { step: mtgml_state::BeginningStep::Draw });
+    assert_eq!(final_checkpoint.state.core.priority, mtgml_state::PriorityState::HeldBy { player: P2, consecutive_passes: 0 });
+    assert!(!final_checkpoint.state.zones.objects[&GameObjectId(1)].tapped);
+    assert_eq!(final_checkpoint.state.core.players[&P2].life, 18);
+    let p2_drawn_object = final_checkpoint
+        .state
+        .zones
+        .objects
+        .iter()
+        .find_map(|(object, card)| {
+            (card.physical_card == Some(PhysicalCardId(2))).then_some(*object)
+        })
+        .unwrap();
+    let p2_drawn_opaque = final_checkpoint.state.perspective_identities.players[&P2]
+        .object_to_opaque
+        .get(&p2_drawn_object)
+        .copied()
+        .expect("P2 receives an opaque identity for the drawn card");
+    assert!(!final_checkpoint.state.perspective_identities.players[&P1]
+        .object_to_opaque
+        .contains_key(&p2_drawn_object));
+    assert!(final_checkpoint.state.knowledge.players[&P2]
+        .active
+        .get(&p2_drawn_opaque)
+        .is_some_and(|record| record.physical_card == Some(PhysicalCardId(2))));
+    assert!(!final_checkpoint.state.knowledge.players[&P1]
+        .active
+        .values()
+        .any(|record| record.physical_card == Some(PhysicalCardId(2))));
+    let p2_next_decision = controller.bind_player(P2).unwrap().visible_decision().unwrap().unwrap();
+    assert_eq!(p2_next_decision.actor, P2);
+    assert!(matches!(
+        p2_next_decision.decision,
+        mtgml_decision::DecisionDomainV2::ChooseOne
+    ));
+    assert_eq!(p2_next_decision.candidates.len(), 1);
+    assert!(matches!(
+        p2_next_decision.candidates[0].intent,
+        mtgml_decision::CandidateIntent::PassPriority
+    ));
+    assert_eq!(controller.export_replay().unwrap().steps.len(), external_responses);
+    assert_eq!(external_responses, 24);
+    assert_eq!(decisions.len(), external_responses);
+    assert_eq!(visible_requests.len(), external_responses);
+
+    let replay = controller.export_replay().unwrap();
+    let report = controller.execute_replay_from_checkpoint(initial.clone(), replay).unwrap();
+    assert_eq!(report.final_checkpoint, final_checkpoint);
+    let mut hidden_products = Vec::new();
+    for step in &controller.export_replay().unwrap().steps {
+        let endpoint = hidden_controller.bind_player(step.actor).unwrap();
+        let request = endpoint.visible_decision().unwrap().unwrap();
+        assert_eq!(mtgml_wire::encode_canonical(&request).unwrap(), visible_requests[step.step_index as usize]);
+        assert_eq!(request.actor, step.actor);
+        assert_eq!(endpoint.submit(step.response.clone()).unwrap().submission, PlayerStepSubmissionV1::Accepted);
+        hidden_products.push(player_fingerprint(&hidden_controller, P2));
+    }
+    assert_eq!(p2_products, hidden_products);
+    assert_ne!(player_fingerprint(&controller, P1), player_fingerprint(&hidden_controller, P1));
+    assert_eq!(hidden_controller.checkpoint().unwrap().state.core.turn_number, 3);
+    let hidden_replay = hidden_controller.export_replay().unwrap();
+    let hidden_final = hidden_controller.checkpoint().unwrap();
+    let hidden_report = hidden_controller.execute_replay_from_checkpoint(hidden_initial, hidden_replay).unwrap();
     assert_eq!(hidden_report.final_checkpoint, hidden_final);
 }
 
