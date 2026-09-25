@@ -139,5 +139,10 @@ executable proof and does not itself authorize the accepted repository status
 | Python fast | PASS | `scripts/run_checks.py fast`; 71 Python smoke tests plus contract/schema/repository gates |
 | Repository/schema/maintainer/golden/contract catalog | PASS | `verify_repository.py`, `validate_schemas.py`, `validate_maintainer_artifacts.py`, `validate_golden_path.py`, semantic catalog `--check` |
 | Python integration | PASS | `scripts/run_checks.py integration` on a clean committed head; 548 Python tests passed, 3 optional M2.H adapter scenarios skipped, Rust workspace tests passed, Ruff and mypy passed. |
-| Certification/repository acceptance profile | PASS | `scripts/run_checks.py certification`; project toolchain pins passed and final deterministic source archive contained 916 safe files (`sha256=b8ba2afd95bd35a1ed2587c79413d2d278606c7054db7d71361e01a20ab21bcc`). This is the repository gate, not bundle/card certification. |
-| Hosted CI | NOT_RUN | Draft PR required |
+| Certification/repository acceptance profile | PENDING_FINAL_EXACT_HEAD_EXECUTION | Run after the final source commit. The resulting exact-head archive digest is recorded outside the archived source tree; no source edits may follow that run. This is a repository gate, not bundle/card certification. |
+| Hosted CI | PENDING_GITBOOK_DOCS | Exact-head PR Fast, Integration, `manafold-pr-gate`, Windows Setup Smoke, CodeQL, and Analyze jobs pass; GitBook `./docs` remains pending. |
+
+The final archive digest is intentionally not embedded in this artifact,
+because this document is itself included in the source archive. Exact-head
+Certification and archive evidence belongs in PR metadata after the last
+source commit.
