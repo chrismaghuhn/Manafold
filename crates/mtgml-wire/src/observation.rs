@@ -3,8 +3,9 @@ use crate::contract::WireContract;
 use crate::error::WireError;
 use mtgml_observation::{
     InformationStateDigestInputV2, InformationStateEnvelope, MagicObservation, MagicObservationV2,
-    MagicObservationV3, ObservationEnvelope, ObservedEventEnvelope, ObservedEventEnvelopeV2,
-    PlayerInformationStateV2, PlayerStep, PlayerStepV2, SyntheticObservation,
+    MagicObservationV3, MagicObservationV4, ObservationEnvelope, ObservedEventEnvelope,
+    ObservedEventEnvelopeV2, PlayerInformationStateV2, PlayerStep, PlayerStepV2,
+    SyntheticObservation,
 };
 
 impl WireContract for ObservationEnvelope {
@@ -39,6 +40,14 @@ impl WireContract for MagicObservationV3 {
     fn validate_wire(&self) -> Result<(), WireError> {
         self.validate()
             .map_err(|error| WireError::new("semantic.magic_combat_observation", error.to_string()))
+    }
+}
+
+impl WireContract for MagicObservationV4 {
+    fn validate_wire(&self) -> Result<(), WireError> {
+        self.validate().map_err(|error| {
+            WireError::new("semantic.magic_combat_observation_v4", error.to_string())
+        })
     }
 }
 

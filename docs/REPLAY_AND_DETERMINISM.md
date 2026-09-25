@@ -86,6 +86,14 @@ The exact `magic_combat_attackers_0_1_0` contract uses the new
 progress product has a `+2` revision bound. The combat closure does not widen
 the bounds of historical contracts or permit another forced-progress pass.
 
+The Block 6 `magic_combat_damage_0_1_0` contract uses
+`magic-combat-observation.v4`. The closing Declare Blockers pass remains the
+real Replay V6 response; one forced-progress call performs the complete
+simultaneous damage product and post-damage SBA fixed point. The step advances
+at most two rules revisions for ordinary damage/SBA completion, or three when
+the fixed point creates its required Graveyard-order Decision. No internal
+damage action is encoded as a replay response.
+
 The V6 manifest binds the observation payload codec. Existing producers retain
 `synthetic-m3-observation.v1`; `magic-m3-observation.v1` is admitted only for a
 semantic rules closure containing the selected SBA capability. The observation

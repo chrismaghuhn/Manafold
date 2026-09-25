@@ -31,6 +31,7 @@ SYNTHETIC_OBSERVATION_CODEC = "synthetic-m3-observation.v1"
 MAGIC_OBSERVATION_CODEC = "magic-m3-observation.v1"
 COMBAT_OBSERVATION_CODEC = "magic-combat-observation.v2"
 COMBAT_BLOCKERS_OBSERVATION_CODEC = "magic-combat-observation.v3"
+COMBAT_DAMAGE_OBSERVATION_CODEC = "magic-combat-observation.v4"
 SBA_CAPABILITY_KEY = "rules/state-based-actions-combat"
 SBA_CAPABILITY_VERSION = "0.1.0"
 
@@ -285,10 +286,25 @@ class ReplayManifestV6:
             {"key": "rules/turn-structure", "version": "0.1.0"},
             {"key": "rules/zone-incarnation", "version": "0.1.0"},
         ]
+        combat_damage_closure = [
+            {"key": "rules/basic-priority", "version": "0.1.0"},
+            {"key": "rules/combat-damage", "version": "0.1.0"},
+            {"key": "rules/combat-phase", "version": "0.1.0"},
+            {"key": "rules/damage-and-life", "version": "0.1.0"},
+            {"key": "rules/declare-attackers", "version": "0.1.0"},
+            {"key": "rules/declare-blockers", "version": "0.1.0"},
+            {"key": "rules/draw-card", "version": "0.1.0"},
+            {"key": "rules/state-based-actions-combat", "version": "0.1.0"},
+            {"key": "rules/turn-structure", "version": "0.1.0"},
+            {"key": "rules/zone-incarnation", "version": "0.1.0"},
+        ]
         exact_combat_profile = closure == combat_closure
         exact_combat_blockers_profile = closure == combat_blockers_closure
+        exact_combat_damage_profile = closure == combat_damage_closure
         expected_codec = (
-            COMBAT_BLOCKERS_OBSERVATION_CODEC
+            COMBAT_DAMAGE_OBSERVATION_CODEC
+            if exact_combat_damage_profile
+            else COMBAT_BLOCKERS_OBSERVATION_CODEC
             if exact_combat_blockers_profile
             else COMBAT_OBSERVATION_CODEC
             if exact_combat_profile
@@ -534,9 +550,23 @@ class AuthoritativeReplayV6:
                     ("rules/turn-structure", "0.1.0"),
                     ("rules/zone-incarnation", "0.1.0"),
                 ]
+                combat_damage_closure = [
+                    ("rules/basic-priority", "0.1.0"),
+                    ("rules/combat-damage", "0.1.0"),
+                    ("rules/combat-phase", "0.1.0"),
+                    ("rules/damage-and-life", "0.1.0"),
+                    ("rules/declare-attackers", "0.1.0"),
+                    ("rules/declare-blockers", "0.1.0"),
+                    ("rules/draw-card", "0.1.0"),
+                    ("rules/state-based-actions-combat", "0.1.0"),
+                    ("rules/turn-structure", "0.1.0"),
+                    ("rules/zone-incarnation", "0.1.0"),
+                ]
                 maximum_advance = (
                     3
                     if closure_pairs == draw_closure
+                    else 3
+                    if closure_pairs == combat_damage_closure
                     else 2
                     if closure_pairs in (priority_closure, combat_closure)
                     else 1

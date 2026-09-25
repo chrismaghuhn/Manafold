@@ -63,11 +63,22 @@
         "rules/damage-and-life",
         "rules/state-based-actions-combat"
       ],
-      "implementation_paths": [],
+      "implementation_paths": [
+        "crates/mtgml-rules/src/combat_damage.rs",
+        "crates/mtgml-rules/src/magic.rs",
+        "crates/mtgml-rules/src/events.rs",
+        "crates/mtgml-rules/src/semantic_cursor.rs",
+        "crates/mtgml-rules/src/contract.rs",
+        "crates/mtgml-environment/src/reference.rs",
+        "crates/mtgml-environment/src/player_projection.rs",
+        "crates/mtgml-observation/src/magic_observation.rs",
+        "crates/mtgml-replay/src/v6.rs",
+        "crates/mtgml-environment/src/tests/magic_rules_production.rs"
+      ],
       "information_risk": "high",
       "key": "rules/combat-damage",
       "lifecycle": "specified",
-      "notes": "Specified only; no implementation, conformance, benchmark, coverage, or certification evidence is claimed.",
+      "notes": "Block 6 implementation candidate; lifecycle remains specified pending independent exact-head review. Coverage and certification are not claimed.",
       "owners": [
         "combat"
       ],
@@ -79,7 +90,8 @@
       "authority_refs": [
         "docs/adr/0054-m3-pre-t0-hardening.md",
         "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
-        "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f"
+        "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f",
+        "wotc-cr-2026-09-25-txt-20260925-sha256-8d860e451f20f38865b725b42d82feb714c725373dd8f3b32b8652b3eeb070ca"
       ],
       "benchmark_scenarios": [],
       "category": "core_rule",
@@ -191,11 +203,20 @@
       "category": "core_rule",
       "conformance_cases": [],
       "dependencies": [],
-      "implementation_paths": [],
+      "implementation_paths": [
+        "crates/mtgml-state/src/damage.rs",
+        "crates/mtgml-state/src/core.rs",
+        "crates/mtgml-state/src/delta.rs",
+        "crates/mtgml-rules/src/combat_damage.rs",
+        "crates/mtgml-rules/src/events.rs",
+        "crates/mtgml-rules/src/semantic_cursor.rs",
+        "crates/mtgml-environment/src/player_projection.rs",
+        "crates/mtgml-observation/src/magic_observation.rs"
+      ],
       "information_risk": "high",
       "key": "rules/damage-and-life",
       "lifecycle": "specified",
-      "notes": "Specified only; no implementation, conformance, benchmark, coverage, or certification evidence is claimed.",
+      "notes": "Block 6 implementation candidate; lifecycle remains specified pending independent exact-head review. Coverage and certification are not claimed.",
       "owners": [
         "damage"
       ],
@@ -207,7 +228,8 @@
       "authority_refs": [
         "docs/adr/0054-m3-pre-t0-hardening.md",
         "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
-        "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f"
+        "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f",
+        "wotc-cr-2026-09-25-txt-20260925-sha256-8d860e451f20f38865b725b42d82feb714c725373dd8f3b32b8652b3eeb070ca"
       ],
       "benchmark_scenarios": [],
       "category": "core_rule",

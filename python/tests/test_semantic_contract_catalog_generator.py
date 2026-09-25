@@ -59,8 +59,8 @@ class SourceOfTruthTests(unittest.TestCase):
         self.assertIsInstance(entries, list)
         self.assertEqual(
             len(entries),
-            7,
-            "production catalog must include the exact combat + blockers profile",
+            8,
+            "production catalog must include the exact cumulative combat damage profile",
         )
         # Entry 0: synthetic_legacy_default
         syn = entries[0]

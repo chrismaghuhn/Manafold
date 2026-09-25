@@ -97,7 +97,13 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             readme,
         )
         self.assertIn(
-            "**M3 Block 5:** Declare Blockers implementation candidate in progress",
+            "**M3 Block 5:** Declare Blockers merged in PR #217; "
+            "`FINAL_ACCEPTANCE_PASS` recorded at the accepted exact head.",
+            readme,
+        )
+        self.assertIn(
+            "**M3 Block 6:** Damage/Life, Combat Damage, and post-damage SBA "
+            "implementation candidate is in progress",
             readme,
         )
         self.assertNotIn("M3_S1_AUTHORIZATION_DECISION", readme)
@@ -438,6 +444,10 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         declare_blockers = next(
             entry for entry in entries if entry["key"] == "rules/declare-blockers"
         )
+        combat_damage = next(entry for entry in entries if entry["key"] == "rules/combat-damage")
+        damage_and_life = next(
+            entry for entry in entries if entry["key"] == "rules/damage-and-life"
+        )
         other_entries = [
             entry
             for entry in entries
@@ -449,6 +459,8 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
                 combat_phase,
                 declare_attackers,
                 declare_blockers,
+                combat_damage,
+                damage_and_life,
             )
         ]
 
@@ -583,6 +595,14 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertTrue(declare_blockers["implementation_paths"])
         self.assertEqual(declare_blockers["conformance_cases"], [])
         self.assertIn("independent exact-head review is pending", declare_blockers["notes"])
+
+        for entry in (combat_damage, damage_and_life):
+            with self.subTest(capability=entry["key"]):
+                self.assertEqual(entry["lifecycle"], "specified")
+                self.assertTrue(entry["implementation_paths"])
+                self.assertEqual(entry["conformance_cases"], [])
+                self.assertEqual(entry["benchmark_scenarios"], [])
+                self.assertIn("pending independent exact-head review", entry["notes"])
 
         for entry in other_entries:
             with self.subTest(capability=entry["key"]):

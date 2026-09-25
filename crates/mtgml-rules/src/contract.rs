@@ -274,6 +274,15 @@ fn validate_s2_zone_transition_product_core(
             AuthoritativeRuleEventKind::StateBasedActionsApplied { .. }
         )
     }) {
+        if result.events.iter().any(|event| {
+            matches!(
+                event.event,
+                AuthoritativeRuleEventKind::CombatDamageDealt { .. }
+            )
+        }) {
+            let (damage_state, sba_result) = split_combat_damage_sba_product(before, result)?;
+            return validate_sba_batch_product(&damage_state, &sba_result);
+        }
         return validate_sba_batch_product(before, result);
     }
     let transitions: Vec<_> = result
@@ -547,6 +556,176 @@ fn validate_s2_zone_transition_product_core(
         }
     }
     Ok(())
+}
+
+fn split_combat_damage_sba_product(
+    before: &EngineState,
+    result: &TransitionResult,
+) -> Result<(EngineState, TransitionResult), TransitionViolation> {
+    use AuthoritativeRuleEventKind as Event;
+    let sba_index = result
+        .events
+        .iter()
+        .position(|event| matches!(event.event, Event::StateBasedActionsApplied { .. }))
+        .ok_or(TransitionViolation::SbaBatch)?;
+    let damage_index = result
+        .events
+        .iter()
+        .position(|event| matches!(event.event, Event::CombatDamageDealt { .. }))
+        .ok_or(TransitionViolation::SbaBatch)?;
+    if damage_index >= sba_index {
+        return Err(TransitionViolation::SbaBatch);
+    }
+    let damage_event = &result.events[damage_index];
+    let Event::CombatDamageDealt { assignments } = &damage_event.event else {
+        return Err(TransitionViolation::SbaBatch);
+    };
+    let mut damage_state = before.clone();
+    if before.core.position
+        == (TurnPosition::Combat {
+            step: mtgml_state::CombatStep::DeclareBlockers,
+        })
+    {
+        if damage_index != 3
+            || !matches!(
+                result.events.get(..3),
+                Some([
+                    crate::events::AuthoritativeRuleEvent {
+                        event: Event::DecisionCleared { .. },
+                        ..
+                    },
+                    crate::events::AuthoritativeRuleEvent {
+                        event: Event::PriorityChanged {
+                            from: mtgml_state::PriorityState::HeldBy {
+                                consecutive_passes: 1,
+                                ..
+                            },
+                            to: mtgml_state::PriorityState::None,
+                        },
+                        ..
+                    },
+                    crate::events::AuthoritativeRuleEvent {
+                        event: Event::TurnPositionChanged {
+                            from: TurnPosition::Combat {
+                                step: mtgml_state::CombatStep::DeclareBlockers,
+                            },
+                            to: TurnPosition::Combat {
+                                step: mtgml_state::CombatStep::CombatDamage,
+                            },
+                        },
+                        ..
+                    },
+                ])
+            )
+        {
+            return Err(TransitionViolation::SbaBatch);
+        }
+        damage_state.execution.pending_decision = None;
+        damage_state.core.priority = mtgml_state::PriorityState::None;
+        damage_state.core.position = TurnPosition::Combat {
+            step: mtgml_state::CombatStep::CombatDamage,
+        };
+    } else if before.core.position
+        != (TurnPosition::Combat {
+            step: mtgml_state::CombatStep::CombatDamage,
+        })
+        || damage_index != 0
+        || before.core.priority != mtgml_state::PriorityState::None
+        || before.execution.pending_decision.is_some()
+    {
+        return Err(TransitionViolation::SbaBatch);
+    }
+    let mutations = crate::combat_damage::derive_mutations(&damage_state, assignments)
+        .map_err(|_| TransitionViolation::SbaBatch)?;
+    let mut life_seen = BTreeSet::new();
+    let mut marks_seen = BTreeSet::new();
+    for event in &result.events[damage_index + 1..sba_index] {
+        match &event.event {
+            Event::CombatDamageStepCompleted => {
+                let combat = damage_state
+                    .combat
+                    .as_mut()
+                    .ok_or(TransitionViolation::SbaBatch)?;
+                if combat.damage_step_completed {
+                    return Err(TransitionViolation::SbaBatch);
+                }
+                combat.damage_step_completed = true;
+            }
+            Event::LifeChanged { player, from, to } => {
+                let expected = mutations
+                    .player_life
+                    .iter()
+                    .find(|(changed_player, _, _)| changed_player == player)
+                    .ok_or(TransitionViolation::SbaBatch)?;
+                if expected.1 != *from || expected.2 != *to || !life_seen.insert(*player) {
+                    return Err(TransitionViolation::SbaBatch);
+                }
+                let status = damage_state
+                    .core
+                    .players
+                    .get_mut(player)
+                    .ok_or(TransitionViolation::SbaBatch)?;
+                if status.life != *from {
+                    return Err(TransitionViolation::SbaBatch);
+                }
+                status.life = *to;
+            }
+            Event::MarkedDamageChanged { creature, from, to } => {
+                let expected = mutations
+                    .creature_marks
+                    .iter()
+                    .find(|(changed_creature, _, _)| changed_creature == creature)
+                    .ok_or(TransitionViolation::SbaBatch)?;
+                if expected.1 != *from || expected.2 != *to || !marks_seen.insert(*creature) {
+                    return Err(TransitionViolation::SbaBatch);
+                }
+                let source = damage_state
+                    .foundation_sources
+                    .get_mut(creature)
+                    .ok_or(TransitionViolation::SbaBatch)?;
+                if source.marked_damage != *from {
+                    return Err(TransitionViolation::SbaBatch);
+                }
+                source.marked_damage = *to;
+            }
+            _ => return Err(TransitionViolation::SbaBatch),
+        }
+    }
+    if life_seen.len() != mutations.player_life.len()
+        || marks_seen.len() != mutations.creature_marks.len()
+    {
+        return Err(TransitionViolation::SbaBatch);
+    }
+    let prefix_len = u64::try_from(sba_index).map_err(|_| TransitionViolation::EventIdentity)?;
+    damage_state.revision = damage_event.state_revision;
+    damage_state.allocators.next_rule_event_id = mtgml_model::RuleEventId(
+        before
+            .allocators
+            .next_rule_event_id
+            .0
+            .checked_add(prefix_len)
+            .ok_or(TransitionViolation::EventIdentity)?,
+    );
+    validate_engine_state(&damage_state).map_err(TransitionViolation::AfterState)?;
+    let events = result.events[sba_index..].to_vec();
+    let delta = mtgml_state::StateDelta::between(
+        &damage_state,
+        &result.next_state,
+        events
+            .iter()
+            .map(|event| event.event.semantic_delta())
+            .collect(),
+    )
+    .map_err(|_| TransitionViolation::DeltaReapplication)?;
+    let sba_result = TransitionResult {
+        accepted: true,
+        next_decision: result.next_decision.clone(),
+        status: result.status.clone(),
+        next_state: result.next_state.clone(),
+        delta,
+        events,
+    };
+    Ok((damage_state, sba_result))
 }
 
 fn validate_draw_composed_product(
@@ -935,6 +1114,9 @@ fn validate_sba_batch_product(
             combat
                 .blockers
                 .retain(|attacker, _| !selected_objects.contains(attacker));
+            combat
+                .blocked_attackers
+                .retain(|attacker| !selected_objects.contains(attacker));
             for blocker in combat.blockers.values_mut() {
                 if blocker.is_some_and(|object| selected_objects.contains(&object)) {
                     *blocker = None;
@@ -1085,27 +1267,41 @@ fn foundation_sources_match_selected_zone_transitions(
     };
     let mut expected = before.foundation_sources.clone();
     for event in events {
-        let crate::events::AuthoritativeRuleEventKind::ZoneTransition { transition } = &event.event
-        else {
-            continue;
-        };
-        let is_selected_battlefield_graveyard = transition.from == battlefield
-            && transition.to
-                == (ZoneLocation {
-                    zone: ZoneKind::Graveyard,
-                    player: Some(transition.last_known.owner),
-                    position: ZonePosition::Top { offset: 0 },
-                    visibility: VisibilityPartition::Public,
-                    partition: None,
-                });
-        if is_selected_battlefield_graveyard {
-            expected.remove(&transition.old_object);
-            if after
-                .foundation_sources
-                .contains_key(&transition.new_object)
-            {
-                return false;
+        match &event.event {
+            crate::events::AuthoritativeRuleEventKind::ZoneTransition { transition } => {
+                let is_selected_battlefield_graveyard = transition.from == battlefield
+                    && transition.to
+                        == (ZoneLocation {
+                            zone: ZoneKind::Graveyard,
+                            player: Some(transition.last_known.owner),
+                            position: ZonePosition::Top { offset: 0 },
+                            visibility: VisibilityPartition::Public,
+                            partition: None,
+                        });
+                if is_selected_battlefield_graveyard {
+                    expected.remove(&transition.old_object);
+                    if after
+                        .foundation_sources
+                        .contains_key(&transition.new_object)
+                    {
+                        return false;
+                    }
+                }
             }
+            crate::events::AuthoritativeRuleEventKind::MarkedDamageChanged {
+                creature,
+                from,
+                to,
+            } => {
+                let Some(source) = expected.get_mut(creature) else {
+                    return false;
+                };
+                if source.marked_damage != *from || from == to {
+                    return false;
+                }
+                source.marked_damage = *to;
+            }
+            _ => {}
         }
     }
     expected == after.foundation_sources
@@ -1443,6 +1639,7 @@ fn validate_accepted_progression(
             AuthoritativeRuleEventKind::AttackersDeclared { .. }
                 | AuthoritativeRuleEventKind::BlockersDeclared { .. }
                 | AuthoritativeRuleEventKind::CombatEnded
+                | AuthoritativeRuleEventKind::CombatDamageStepCompleted
         )
     });
     if (before.core.active_player != after.core.active_player

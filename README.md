@@ -28,10 +28,11 @@
 - **M3 Block 2:** Basic Priority + Reference response integration is accepted / merged
 - **M3 Block 3:** Draw + S2 replay/interaction merged by PR #214 at `0a36290`; exact-head review passed
 - **M3 Block 4:** Combat Phase + Declare Attackers merged by PR #216 at `5e474c763a1a67b14536fe5f70824897320e864b`; exact-head code review passed. Capability lifecycles remain `specified`.
-- **M3 Block 5:** Declare Blockers implementation candidate in progress on `chris/declare-blockers-20260924`, based on `5e474c763a1a67b14536fe5f70824897320e864b`; independent exact-head review pending. Foundation V2's zero/one-blocker Decision semantics remain unchanged.
+- **M3 Block 5:** Declare Blockers merged in PR #217; `FINAL_ACCEPTANCE_PASS` recorded at the accepted exact head. The lifecycle of the affected capabilities remains `specified`.
+- **M3 Block 6:** Damage/Life, Combat Damage, and post-damage SBA implementation candidate is in progress on `chris/combat-damage-20260925`, based on exact `origin/master` `839dc9b734dadbdee32cc435f0d33f217f8472ae`. Independent exact-head review is pending.
 - **M3 hardening acceptance:** PR #184 merged and accepted ADR 0054/Foundation V2; T0 was reauthorized under Issue #178, implemented by merged PRs #189/#190/#191, and finalized as COMPLETE / FROZEN
 - **Capability lifecycle:** 9 Foundation capabilities are `specified`, 1 is `implemented`, 1 is `covered`, and 0 are `certified`
-- **Current boundary:** S2 remains `IMPLEMENTED / NOT COVERED`; Block 3 supplies a Draw × S2 Replay V6 candidate witness but does not close all S2 coverage gates. Block 5 supplies a Declare Blockers implementation candidate; Combat Damage and later blocks have not started. Certification and card/deck/format/Commander/playability support are not claimed.
+- **Current boundary:** S2 remains `IMPLEMENTED / NOT COVERED`; Block 3 supplies a Draw × S2 Replay V6 candidate witness but does not close all S2 coverage gates. Block 6 supplies a bounded Combat Damage implementation candidate; Cleanup Reset and later blocks have not started. Certification and card/deck/format/Commander/playability support are not claimed.
 - **Project type:** independent greenfield MTG/ML rules and simulation engine
 - **Playable engine:** no
 - **Real Magic semantics:** S1 is covered; S2 is implemented / not covered; bounded S3.A and S3.B implementations are accepted / merged under distinct production identities, while their capability lifecycle claims remain `specified` pending separate evidence review

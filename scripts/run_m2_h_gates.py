@@ -162,12 +162,13 @@ CARGO_PACKAGE_ADAPTER = f"cargo-package::{ADAPTER_PACKAGE}"
 
 # Expected pytest pass counts measured on the H.6 head
 # d8d2a940b2f57867f8931b7808e9b8d539a4f7cf (clean tree). The schema-parity
-# suite is re-pinned to 16 for the reviewed V3 schema-identity and
-# attacker/blocker non-aliasing regressions.
+# suite is re-pinned to 17 for the reviewed V3 schema-identity and
+# attacker/blocker non-aliasing regressions plus the Block-6 V4 blocker-
+# cardinality schema regression.
 EXPECTED_PYTHON_PASSED: dict[str, int] = {
     PYTEST_WIRE_CONTRACTS: 2,
     PYTEST_CONSTRUCTIVE: 16,
-    PYTEST_SCHEMA_PARITY: 16,
+    PYTEST_SCHEMA_PARITY: 17,
     PYTEST_ADAPTER_UNIT: 49,
     PYTEST_CORE_SCENARIOS: 4,
     PYTEST_REJECTION_SCENARIOS: 14,
@@ -396,6 +397,8 @@ COMMON_NAMED_CONTRACTS = frozenset(
         "magic-combat-observation.v2",
         # Block 5 successor records bounded public blocker assignments.
         "magic-combat-observation.v3",
+        # Block 6 successor adds public life and marked damage.
+        "magic-combat-observation.v4",
         "replay-manifest.v4",
         "authoritative-replay.v4",
         "replay-manifest.v5",

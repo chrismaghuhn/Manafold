@@ -163,11 +163,13 @@ pub(crate) fn build_accepted_product_with_status(
     status: EpisodeStatus,
     mutate: impl FnOnce(&mut EngineState) -> Result<(), KernelExecutionError>,
 ) -> Result<TransitionResult, KernelExecutionError> {
+    let event_count =
+        u64::try_from(events.len()).map_err(|_| KernelExecutionError::RuleEventIdOverflow)?;
     let next_rule_event_id = state
         .allocators
         .next_rule_event_id
         .0
-        .checked_add(events.len() as u64)
+        .checked_add(event_count)
         .ok_or(KernelExecutionError::RuleEventIdOverflow)?;
     mutate(&mut next)?;
     next.allocators.next_rule_event_id = RuleEventId(next_rule_event_id);

@@ -2248,6 +2248,8 @@ fn task9b_no_order_post_damage_application_prunes_one_blocker_and_moves_it() {
     before.combat = Some(mtgml_state::CombatState {
         defending_player: P2,
         attackers: vec![GameObjectId(1)],
+        damage_step_completed: false,
+        blocked_attackers: std::collections::BTreeSet::from([GameObjectId(1)]),
         blockers: BTreeMap::from([(GameObjectId(1), Some(GameObjectId(2)))]),
     });
     validate_engine_state(&before)
@@ -2361,6 +2363,8 @@ fn task9b_post_damage_dying_blocker_prunes_live_reference_to_none() {
         mtgml_state::CombatState {
             defending_player: P2,
             attackers: vec![GameObjectId(1)],
+            damage_step_completed: true,
+            blocked_attackers: std::collections::BTreeSet::from([GameObjectId(1)]),
             blockers: BTreeMap::from([(GameObjectId(1), Some(GameObjectId(2)))]),
         },
         &[2, 3],
@@ -2397,6 +2401,8 @@ fn task9b_post_damage_dying_attacker_is_removed_with_its_blocker_key() {
         mtgml_state::CombatState {
             defending_player: P2,
             attackers: vec![GameObjectId(1)],
+            damage_step_completed: false,
+            blocked_attackers: std::collections::BTreeSet::new(),
             blockers: BTreeMap::from([(GameObjectId(1), None)]),
         },
         &[1, 2],
@@ -2438,6 +2444,8 @@ fn task9b_pre_damage_combat_participant_continuation_fails_closed() {
             mtgml_state::CombatState {
                 defending_player: P2,
                 attackers: vec![GameObjectId(1)],
+                damage_step_completed: false,
+                blocked_attackers: std::collections::BTreeSet::from([GameObjectId(1)]),
                 blockers: BTreeMap::from([(GameObjectId(1), Some(GameObjectId(2)))]),
             },
             &[2, 3],
@@ -2474,6 +2482,8 @@ fn task9b_end_of_combat_stale_combat_participant_fails_closed() {
         mtgml_state::CombatState {
             defending_player: P2,
             attackers: vec![GameObjectId(1)],
+            damage_step_completed: true,
+            blocked_attackers: std::collections::BTreeSet::from([GameObjectId(1)]),
             blockers: BTreeMap::from([(GameObjectId(1), Some(GameObjectId(2)))]),
         },
         &[2, 3],
@@ -2493,6 +2503,8 @@ fn task9b_unexplained_combat_state_mutation_remains_rejected() {
     before.combat = Some(mtgml_state::CombatState {
         defending_player: P2,
         attackers: vec![GameObjectId(1)],
+        damage_step_completed: false,
+        blocked_attackers: std::collections::BTreeSet::from([GameObjectId(1)]),
         blockers: BTreeMap::from([(GameObjectId(1), Some(GameObjectId(3)))]),
     });
     validate_engine_state(&before).unwrap();

@@ -116,6 +116,8 @@ fn m3_p0_full_state_digest_v5_mutation_matrix() {
             state.combat = Some(CombatState {
                 defending_player: PlayerId(2),
                 attackers: vec![GameObjectId(1)],
+                damage_step_completed: false,
+                blocked_attackers: BTreeSet::new(),
                 blockers: BTreeMap::from([(GameObjectId(1), None)]),
             });
         }),
@@ -589,16 +591,31 @@ fn v5_digest_binds_combat_inner_values() {
     baseline.combat = Some(CombatState {
         defending_player: PlayerId(2),
         attackers: vec![GameObjectId(1), GameObjectId(2)],
+        damage_step_completed: false,
+        blocked_attackers: BTreeSet::new(),
         blockers: BTreeMap::from([
             (GameObjectId(1), None),
             (GameObjectId(2), None),
         ]),
     });
+    baseline.core.position = TurnPosition::Combat {
+        step: crate::CombatStep::CombatDamage,
+    };
     validate_engine_state(&baseline).unwrap();
     let baseline_digest = baseline.digest().unwrap();
 
     let mut changed = baseline.clone();
     changed.combat.as_mut().unwrap().defending_player = PlayerId(1);
+    validate_engine_state(&changed).unwrap();
+    assert_ne!(baseline_digest, changed.digest().unwrap());
+
+    let mut changed = baseline.clone();
+    changed.combat.as_mut().unwrap().blocked_attackers.insert(GameObjectId(1));
+    validate_engine_state(&changed).unwrap();
+    assert_ne!(baseline_digest, changed.digest().unwrap());
+
+    let mut changed = baseline.clone();
+    changed.combat.as_mut().unwrap().damage_step_completed = true;
     validate_engine_state(&changed).unwrap();
     assert_ne!(baseline_digest, changed.digest().unwrap());
 }
