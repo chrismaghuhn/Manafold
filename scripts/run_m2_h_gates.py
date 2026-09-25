@@ -31,11 +31,9 @@ the following DELIBERATE fixes (plan §Q "deliberate deviations"):
    diagnostic and exit code 2 instead of an interpreter traceback; manifest
    drift at IMPORT time instead aborts the module load itself with a
    traceback and exit code 1.
-5. Single-invocation file-level pytest summaries: python evidence runs each
-   whole file once with a single ``-v`` (the G skeleton ran one named test
-   at a time under double verbosity) and requires exactly one terminal
-   summary line whose pass count equals the pinned expectation with zero
-   substitute outcomes.
+5. Single-invocation file-level pytest evidence: python evidence runs each
+   whole file once under ``-vv`` and requires every pinned historical node
+   to be present and pass, regardless of unrelated passing tests added later.
 
 Startup completeness/drift authorities (all fail closed BEFORE any evidence
 executes): the exact-set evidence manifest, the mechanically extracted
@@ -97,6 +95,7 @@ class EvidenceDefinition:
     surface: str
     package: str | None = None
     expected_passed: int | None = None
+    required_nodes: tuple[str, ...] = ()
     requires_adapter_binary: bool = False
 
 
@@ -111,13 +110,17 @@ def rust_package(package: str, name: str, surface: str, expected: int) -> Eviden
 
 
 def python_file(
-    relative: str, surface: str, expected: int, *, requires_adapter_binary: bool = False
+    relative: str,
+    surface: str,
+    required_nodes: tuple[str, ...],
+    *,
+    requires_adapter_binary: bool = False,
 ) -> EvidenceDefinition:
     return EvidenceDefinition(
         "python",
         f"pytest::{relative}",
         surface,
-        expected_passed=expected,
+        required_nodes=required_nodes,
         requires_adapter_binary=requires_adapter_binary,
     )
 
@@ -157,24 +160,144 @@ PYTEST_REJECTION_SCENARIOS = "pytest::python/tests/m2_h/test_m2_h_rejection_scen
 PYTEST_ISOLATION_SCENARIOS = "pytest::python/tests/m2_h/test_m2_h_isolation_scenarios.py"
 PYTEST_GUARDS = "pytest::python/tests/test_m2_h_rules_free_guards.py"
 
+# These node identities are the historical M2.H evidence anchors. The complete
+# files still execute; unrelated tests may grow without changing these names.
+# Suffixes are relative to the configured pytest file and include the class
+# when the item belongs to a unittest TestCase.
+REQUIRED_PYTHON_NODES: dict[str, tuple[str, ...]] = {
+    PYTEST_WIRE_CONTRACTS: (
+        "SharedFixtureTests::test_every_golden_fixture_roundtrips_to_identical_bytes",
+        "SharedFixtureTests::test_every_negative_fixture_is_rejected_with_expected_code",
+    ),
+    PYTEST_CONSTRUCTIVE: (
+        "ConstructiveDecisionResponseV2Tests::test_select_one_matches_golden_bytes",
+        "ConstructiveDecisionResponseV2Tests::test_select_many_matches_golden_bytes",
+        "ConstructiveDecisionResponseV2Tests::test_choose_number_matches_golden_bytes",
+        "ConstructiveDecisionResponseV2Tests::test_order_matches_golden_bytes",
+        "ConstructivePlayerDecisionRequestV2Tests::test_choose_one_matches_golden_bytes",
+        "ConstructivePlayerDecisionRequestV2Tests::test_choose_many_matches_golden_bytes",
+        "ConstructivePlayerDecisionRequestV2Tests::test_choose_number_matches_golden_bytes",
+        "ConstructivePlayerDecisionRequestV2Tests::test_order_matches_golden_bytes",
+        "ConstructiveEpisodeStatusTests::test_running_matches_golden_bytes",
+        "ConstructiveObservedEventEnvelopeV2Tests::test_every_kind_matches_its_golden_bytes",
+        "ConstructiveObservedEventEnvelopeV2Tests::test_case_kinds_cover_generated_vocabulary",
+        "ConstructivePlayerStepV2Tests::test_running_step_with_next_decision_matches_golden_bytes",
+        "ConstructivePlayerStepV2Tests::test_terminal_events_step_matches_golden_bytes",
+        "ConstructivePlayerStepV2Tests::test_episode_closed_rejected_step_matches_golden_bytes",
+        "ConstructiveEpisodeStatusTests::test_terminal_concession_matches_golden_bytes",
+        "ConstructiveEpisodeStatusTests::test_truncated_external_stop_matches_golden_bytes",
+    ),
+    PYTEST_SCHEMA_PARITY: (
+        "SchemaParityTests::test_all_golden_fixtures_match_their_normative_schema",
+        "SchemaParityTests::test_m2_b_detached_schema_fixtures",
+        "SchemaParityTests::test_m2_b_schemas_are_fully_closed",
+        "SchemaParityTests::test_mf_gap_002_replay_v3_schemas_are_inventoried",
+        "SchemaParityTests::test_v4_combat_schema_rejects_multiple_blocker_scope",
+        "SchemaParityTests::test_schema_readme_matches_wire_mapping",
+        "SchemaParityTests::test_wire_schema_ids_match_their_filenames",
+        "SchemaParityTests::test_wire_schema_identity_collision_is_rejected",
+        "SchemaParityTests::test_schema_inventory_duplicate_rejected",
+        "SchemaParityTests::test_schema_inventory_missing_rejected",
+        "SchemaParityTests::test_schema_inventory_stale_rejected",
+        "SchemaParityTests::test_schema_inventory_missing_schema_file_rejected",
+        "SchemaParityTests::test_replay_manifest_schema_has_exact_required_identity_fields",
+        "SchemaParityTests::test_observed_event_schema_contains_all_seven_closed_variants",
+        "SchemaParityTests::test_episode_reasons_are_schema_enums_not_open_strings",
+        "SchemaParityTests::test_v5_replay_schemas_are_inventoried",
+        "test_m2_b_detached_schema_fixtures",
+    ),
+    PYTEST_ADAPTER_UNIT: (
+        "FramingPairingTests::test_round_trip_pairs_ids_monotonically",
+        "FramingPairingTests::test_id_echo_mismatch_raises_parse_error",
+        "FramingPairingTests::test_malformed_frame_raises_parse_error",
+        "FramingPairingTests::test_non_object_frame_raises_parse_error",
+        "FramingPairingTests::test_unsupported_version_raises_parse_error",
+        "FramingPairingTests::test_non_boolean_ok_flag_raises_parse_error",
+        "FramingPairingTests::test_unknown_error_code_raises_parse_error",
+        "FramingPairingTests::test_error_envelope_surfaces_code_and_keeps_core_open",
+        "TimeoutAndCrashTests::test_request_timeout_terminates_child_and_fails_closed",
+        "TimeoutAndCrashTests::test_child_crash_mid_request_raises_transport_closed",
+        "BinaryResolutionTests::test_unset_binary_env_var_fails_closed_at_construction",
+        "BinaryResolutionTests::test_nonexistent_binary_fails_closed_at_construction",
+        "TrustedKeyIsolationTests::test_build_child_environment_copies_and_injects_key",
+        "TrustedKeyIsolationTests::test_parent_environ_untouched_across_real_child_flow",
+        "TrustedKeyIsolationTests::test_trusted_commands_carry_transport_scoped_key",
+        "TrustedKeyIsolationTests::test_shutdown_marks_core_closed_and_is_idempotent",
+        "PostShutdownTests::test_post_shutdown_write_never_touches_a_pipe",
+        "PostShutdownTests::test_post_shutdown_write_after_real_session_fails_closed",
+        "DeterministicTeardownTests::test_full_spawn_use_teardown_emits_no_resource_warnings",
+        "DeterministicTeardownTests::test_close_closes_pipes_and_joins_reader_on_a_live_child",
+        "CapabilitySeparationTests::test_no_route_surface_on_the_client_or_its_bound_transport",
+        "CapabilitySeparationTests::test_trusted_key_absent_from_bound_client_object_graph",
+        "CapabilitySeparationTests::test_bound_transport_public_surface_is_exactly_the_four_ops",
+        "CapabilitySeparationTests::test_removed_surfaces_leave_no_route_to_another_players_data",
+        "ApiInventoryTests::test_player_client_public_methods_are_exactly_the_protocol_four",
+        "ApiInventoryTests::test_synthetic_client_public_methods_are_exactly_the_trusted_three",
+        "ApiInventoryTests::test_synthetic_client_grows_only_the_underscore_private_direct_call",
+        "ApiInventoryTests::test_no_generic_send_surface_on_either_client",
+        "ApiInventoryTests::test_typed_signatures_match_the_playerclient_protocol",
+        "SubmissionEncoderTests::test_select_one_matches_hand_built_canonical_bytes",
+        "SubmissionEncoderTests::test_select_many_keeps_given_order_without_sorting_or_dedup",
+        "SubmissionEncoderTests::test_order_with_duplicate_ids_still_encodes",
+        "SubmissionEncoderTests::test_choose_number_encodes_negative_and_boundary_values",
+        "SubmissionEncoderTests::test_empty_select_many_still_encodes",
+        "SubmissionEncoderTests::test_out_of_range_candidate_count_still_encodes",
+        "SubmissionEncoderTests::test_encoder_output_equals_checked_in_golden_bytes",
+        "SubmissionEncoderTests::test_structural_violations_raise_invalid_params",
+        "ClientEndToEndTests::test_observation_decodes_through_the_real_codec",
+        "ClientEndToEndTests::test_information_state_decodes_through_the_real_codec",
+        "ClientEndToEndTests::test_visible_decision_returns_none_for_null_payload",
+        "ClientEndToEndTests::test_visible_decision_decodes_request_payload",
+        "ClientEndToEndTests::test_visible_decision_missing_field_raises_parse_error",
+        "ClientEndToEndTests::test_typed_submit_end_to_end_through_scripted_step",
+        "ClientEndToEndTests::test_ok_false_codes_surface_verbatim",
+        "ClientEndToEndTests::test_corrupted_inbound_step_output_is_service_unavailable_not_malformed",
+        "ClientEndToEndTests::test_bind_player_returns_client_holding_exactly_one_token",
+        "BoundTransportSeamTests::test_seam_forwards_arbitrary_bytes_and_returns_step_bytes",
+        "BoundTransportSeamTests::test_public_submit_rides_the_same_private_seam_path",
+        "BoundTransportSeamTests::test_token_mismatch_answers_unknown_token_without_sending",
+    ),
+    PYTEST_CORE_SCENARIOS: (
+        "ResetDeterminismTests::test_twin_payloads_are_byte_equal_and_the_seed_never_leaks",
+        "ExplicitDecisionChainTests::test_chain_walks_choose_one_number_many_order_then_rests_running",
+        "AcceptedParityLockstepTests::test_token_route_and_trusted_direct_route_stay_byte_locked",
+        "TwinTeardownSafetyTests::test_dead_child_surfaces_original_error_and_still_tears_down_both_twins",
+    ),
+    PYTEST_REJECTION_SCENARIOS: (
+        "TypedRejectionParityTests::test_unavailable_foreign_actor_row",
+        "TypedRejectionParityTests::test_invalid_answer_wrong_family_row",
+        "TypedRejectionParityTests::test_invalid_candidate_beyond_offered_row",
+        "TypedRejectionParityTests::test_duplicate_selectmany_member_row",
+        "TypedRejectionParityTests::test_duplicate_order_member_row",
+        "TypedRejectionParityTests::test_invalid_cardinality_below_minimum_row",
+        "TypedRejectionParityTests::test_invalid_number_above_maximum_row",
+        "TypedRejectionParityTests::test_invalid_order_noncanonical_selectmany_row",
+        "TypedRejectionParityTests::test_stale_decision_resubmits_consumed_response",
+        "TypedRejectionParityTests::test_rows_pin_exactly_the_eight_reachable_classes",
+        "SubmissionEncoderDivergenceTests::test_order_duplicate_passes_encoder_and_rejects_once_as_duplicate_assignment",
+        "SubmissionEncoderDivergenceTests::test_selectmany_nonascending_passes_encoder_and_rejects_once_as_invalid_order",
+        "MalformedRawByteBoundaryTests::test_document_level_corruption_classes",
+        "MalformedRawByteBoundaryTests::test_raw_byte_level_corruption_classes",
+    ),
+    PYTEST_ISOLATION_SCENARIOS: (
+        "BindingPermanenceTests::test_client_inventory_pins_one_token_and_no_rebinding_surface",
+        "WrongPerspectiveProbeTests::test_wrong_perspective_submit_is_closed_unavailable_and_zero_mutation",
+        "MultiEndpointIsolationTests::test_public_agreement_and_private_divergence_use_decoded_structures",
+        "MultiEndpointIsolationTests::test_interleaved_read_orders_never_drift",
+        "PairedHiddenVariantTests::test_seed_pair_views_and_entry_product_stay_byte_equal",
+        "RestartDeterminismTests::test_relaunch_reproduces_concatenated_public_sequence",
+    ),
+    PYTEST_GUARDS: (
+        "RulesFreeStaticGuardsTests::test_pyproject_declares_zero_runtime_dependencies",
+        "RulesFreeStaticGuardsTests::test_import_scan_confines_imports_to_stdlib_and_mtgml",
+        "RulesFreeStaticGuardsTests::test_forbidden_choice_symbols_are_absent_from_source",
+        "RulesFreeStaticGuardsTests::test_player_facing_surface_carries_no_trusted_vocabulary",
+        "RulesFreeStaticGuardsTests::test_public_api_inventory_matches_the_pinned_witnesses",
+    ),
+}
+
 BUILD_ADAPTER = f"build::{ADAPTER_PACKAGE}"
 CARGO_PACKAGE_ADAPTER = f"cargo-package::{ADAPTER_PACKAGE}"
-
-# Expected pytest pass counts measured on the H.6 head
-# d8d2a940b2f57867f8931b7808e9b8d539a4f7cf (clean tree). The schema-parity
-# suite is re-pinned to 17 for the reviewed V3 schema-identity and
-# attacker/blocker non-aliasing regressions plus the Block-6 V4 blocker-
-# cardinality schema regression.
-EXPECTED_PYTHON_PASSED: dict[str, int] = {
-    PYTEST_WIRE_CONTRACTS: 2,
-    PYTEST_CONSTRUCTIVE: 16,
-    PYTEST_SCHEMA_PARITY: 17,
-    PYTEST_ADAPTER_UNIT: 49,
-    PYTEST_CORE_SCENARIOS: 4,
-    PYTEST_REJECTION_SCENARIOS: 14,
-    PYTEST_ISOLATION_SCENARIOS: 6,
-    PYTEST_GUARDS: 5,
-}
 
 # Expected whole-package cargo pass count measured on the H.6 head (lib +
 # bin + doc targets summed across every "test result:" line); re-pinned 22
@@ -206,17 +329,17 @@ GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
         python_file(
             "python/tests/test_wire_contracts.py",
             "python shared-fixture consumer loops: golden round-trips and negatives",
-            EXPECTED_PYTHON_PASSED[PYTEST_WIRE_CONTRACTS],
+            REQUIRED_PYTHON_NODES[PYTEST_WIRE_CONTRACTS],
         ),
         python_file(
             "python/tests/test_constructive_producers.py",
             "python constructive producers encode domain data to the shared goldens",
-            EXPECTED_PYTHON_PASSED[PYTEST_CONSTRUCTIVE],
+            REQUIRED_PYTHON_NODES[PYTEST_CONSTRUCTIVE],
         ),
         python_file(
             "python/tests/test_schema_parity.py",
             "python codec/schema parity matrix",
-            EXPECTED_PYTHON_PASSED[PYTEST_SCHEMA_PARITY],
+            REQUIRED_PYTHON_NODES[PYTEST_SCHEMA_PARITY],
         ),
         check(
             CHECK_DIGESTS,
@@ -251,30 +374,30 @@ GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
         python_file(
             "python/tests/test_m2_adapter_unit.py",
             "python adapter transport/protocol/submission/client unit suite",
-            EXPECTED_PYTHON_PASSED[PYTEST_ADAPTER_UNIT],
+            REQUIRED_PYTHON_NODES[PYTEST_ADAPTER_UNIT],
         ),
         python_file(
             "python/tests/m2_h/test_m2_h_core_scenarios.py",
             "lockstep twin core scenarios (explicit chain, accepted parity)",
-            EXPECTED_PYTHON_PASSED[PYTEST_CORE_SCENARIOS],
+            REQUIRED_PYTHON_NODES[PYTEST_CORE_SCENARIOS],
             requires_adapter_binary=True,
         ),
         python_file(
             "python/tests/m2_h/test_m2_h_rejection_scenarios.py",
             "typed reachable rejection classes and malformed raw-byte boundary",
-            EXPECTED_PYTHON_PASSED[PYTEST_REJECTION_SCENARIOS],
+            REQUIRED_PYTHON_NODES[PYTEST_REJECTION_SCENARIOS],
             requires_adapter_binary=True,
         ),
         python_file(
             "python/tests/m2_h/test_m2_h_isolation_scenarios.py",
             "isolation, paired seeds, and restart determinism scenarios",
-            EXPECTED_PYTHON_PASSED[PYTEST_ISOLATION_SCENARIOS],
+            REQUIRED_PYTHON_NODES[PYTEST_ISOLATION_SCENARIOS],
             requires_adapter_binary=True,
         ),
         python_file(
             "python/tests/test_m2_h_rules_free_guards.py",
             "rules-free static guard inventory",
-            EXPECTED_PYTHON_PASSED[PYTEST_GUARDS],
+            REQUIRED_PYTHON_NODES[PYTEST_GUARDS],
         ),
     ),
 }
@@ -785,6 +908,18 @@ def validate_gate_manifest() -> None:
             f"undeclared={sorted(expected_gates - declared_gates)}"
         )
     seen_across_gates: set[str] = set()
+    python_definitions = {
+        definition.name
+        for definitions in GATE_TESTS.values()
+        for definition in definitions
+        if definition.kind == "python"
+    }
+    if python_definitions != set(REQUIRED_PYTHON_NODES):
+        raise GateConfigurationError(
+            "required pytest evidence manifest drift: "
+            f"missing={sorted(python_definitions - set(REQUIRED_PYTHON_NODES))} "
+            f"extra={sorted(set(REQUIRED_PYTHON_NODES) - python_definitions)}"
+        )
     for gate_name, definitions in GATE_TESTS.items():
         names = tuple(definition.name for definition in definitions)
         duplicates = sorted({name for name in names if names.count(name) > 1})
@@ -792,6 +927,14 @@ def validate_gate_manifest() -> None:
             raise GateConfigurationError(
                 f"{gate_name}: duplicate evidence node registration {duplicates}"
             )
+        for definition in definitions:
+            if definition.kind == "python":
+                nodes = definition.required_nodes
+                if not nodes or len(nodes) != len(set(nodes)):
+                    raise GateConfigurationError(
+                        f"{gate_name}: empty or duplicate required pytest nodes for "
+                        f"{definition.name}"
+                    )
         expected = EXPECTED_EVIDENCE[gate_name]
         if len(expected) != len(set(expected)):
             raise GateConfigurationError(
@@ -1307,18 +1450,19 @@ def execute_rust_package(definition: EvidenceDefinition, log_path: Path) -> dict
 _PYTHON_OUTCOME = re.compile(
     r"(?<![\w-])(\d+)\s+(passed|failed|error|skipped|xfailed|xpassed|deselected|warnings?)\b"
 )
+_PYTEST_NODE_OUTCOME = re.compile(
+    r"^(?P<node>.+?\.py::\S+)\s+"
+    r"(?P<outcome>PASSED|FAILED|ERROR|SKIPPED|XFAIL|XPASS|RERUN|BLOCKED|NOT_RUN)"
+    r"(?:\s+\[.*\])?\s*$"
+)
 
 
 def execute_python_file(definition: EvidenceDefinition, log_path: Path) -> dict[str, Any]:
-    assert definition.expected_passed is not None
+    assert definition.required_nodes
     relative = definition.name.removeprefix("pytest::")
-    # Skeleton deviation (plan §Q): whole-file pytest with a SINGLE -v. The
-    # G skeleton needed ``-v -v`` because its exact-name match required the
-    # per-node status lines that pytest 9 hides at net-default verbosity
-    # (pytest.ini pins global ``addopts = -q ...``); this validator instead
-    # demands exactly one terminal summary line whose pass count equals the
-    # pin with zero substitute outcomes, which survives net-default output.
-    command = (sys.executable, "-m", "pytest", "-v", relative)
+    # The repository pins ``addopts = -q``; -vv exposes node identities and
+    # outcomes while each shared file still runs in one pytest invocation.
+    command = (sys.executable, "-m", "pytest", "-vv", relative)
     evidence: dict[str, Any] = {
         "package": None,
         "test": definition.name,
@@ -1345,8 +1489,23 @@ def execute_python_file(definition: EvidenceDefinition, log_path: Path) -> dict[
         return evidence
     output = completed.stdout
     log_path.write_text(output, encoding="utf-8")
-    expected = definition.expected_passed
     summaries = [line for line in output.splitlines() if _PYTHON_OUTCOME.search(line)]
+    node_results: dict[str, str] = {}
+    marker = f"{relative}::"
+    for line in output.splitlines():
+        match = _PYTEST_NODE_OUTCOME.fullmatch(line.strip())
+        if match is None:
+            continue
+        node_id = match.group("node")
+        if marker in node_id:
+            node_results[node_id.split(marker, 1)[1]] = match.group("outcome")
+    required = set(definition.required_nodes)
+    missing = sorted(required - set(node_results))
+    non_passing = sorted(
+        f"{node}={node_results[node]}"
+        for node in required.intersection(node_results)
+        if node_results[node] != "PASSED"
+    )
     passed = substitutes = warnings = 0
     if len(summaries) == 1:
         for count, kind in _PYTHON_OUTCOME.findall(summaries[0]):
@@ -1359,7 +1518,10 @@ def execute_python_file(definition: EvidenceDefinition, log_path: Path) -> dict[
     passed_check = (
         completed.returncode == 0
         and len(summaries) == 1
-        and passed == expected
+        and bool(node_results)
+        and passed >= len(required)
+        and not missing
+        and not non_passing
         and substitutes == 0
     )
     evidence.update(
@@ -1367,14 +1529,16 @@ def execute_python_file(definition: EvidenceDefinition, log_path: Path) -> dict[
             "status": "PASS" if passed_check else "FAIL",
             "returncode": completed.returncode,
             "tests_observed": passed,
-            "expected_passed": expected,
+            "required_nodes": len(required),
+            "required_nodes_passed": len(required) - len(missing) - len(non_passing),
             "warnings": warnings,
             "reason": (
-                f"summary matched exactly {expected} passed with zero substitute outcomes"
+                f"all {len(required)} required nodes passed; unrelated passing tests are ignored"
                 if passed_check
                 else (
-                    f"summary mismatch: {passed} passed / {substitutes} substitute "
-                    f"outcomes across {len(summaries)} summary lines"
+                    f"required evidence incomplete: missing={missing}, "
+                    f"non_passing={non_passing}; summary={passed} passed / "
+                    f"{substitutes} substitute outcomes across {len(summaries)} summary lines"
                 )
             ),
         }

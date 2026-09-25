@@ -9,7 +9,7 @@ directories outside the repo.
 
 Covered groups:
 1. exact-set gate-manifest validation (current + four mutations),
-2. file-level pytest count-parser integrity,
+2. file-level pytest required-node completeness and outcome integrity,
 3. cargo whole-package result parser,
 4. SchemaContractDigest determinism/drift/annotation-insensitivity,
 5. mechanical player-surface extractors against synthetic sources,
@@ -73,64 +73,129 @@ def _log_path() -> Iterator[Path]:
 
 
 class PythonSummaryParserTests(unittest.TestCase):
-    """execute_python_file accepts exactly N passed with zero substitutes."""
+    """execute_python_file pins evidence identities, not shared-file totals."""
 
-    def _evidence(
-        self, expected: int, output: str, returncode: int = 0
-    ) -> tuple[dict[str, Any], dict[str, Any]]:
-        definition = runner.python_file("python/tests/example.py", "example surface", expected)
+    REQUIRED = ("Required::first", "Required::second")
+
+    def _evidence(self, output: str, returncode: int = 0) -> tuple[dict[str, Any], dict[str, Any]]:
+        definition = runner.python_file("python/tests/example.py", "example surface", self.REQUIRED)
         with _stubbed_execution(returncode, output) as seen, _log_path() as log:
             evidence = runner.execute_python_file(definition, log)
         return evidence, seen
 
-    def test_exact_pass_count_is_accepted(self) -> None:
-        evidence, seen = self._evidence(2, "======================= 2 passed in 0.06s =======\n")
+    def test_all_required_nodes_are_accepted(self) -> None:
+        output = (
+            "python/tests/example.py::Required::first PASSED [ 50%]\n"
+            "python/tests/example.py::Required::second PASSED [100%]\n"
+            "======================= 2 passed in 0.06s =======\n"
+        )
+        evidence, seen = self._evidence(output)
         self.assertEqual(evidence["status"], "PASS")
         self.assertEqual(evidence["tests_observed"], 2)
         self.assertEqual(evidence["returncode"], 0)
-        # Skeleton deviation Q.5: ONE file-level invocation under a single -v.
-        self.assertEqual(seen["command"][1:], ["-m", "pytest", "-v", "python/tests/example.py"])
+        self.assertEqual(seen["command"][1:], ["-m", "pytest", "-vv", "python/tests/example.py"])
 
     def test_warnings_are_tracked_but_not_substitutes(self) -> None:
-        evidence, _ = self._evidence(2, "2 passed, 1 warning in 0.10s\n")
+        output = (
+            "python/tests/example.py::Required::first PASSED [ 50%]\n"
+            "python/tests/example.py::Required::second PASSED [100%]\n"
+            "2 passed, 1 warning in 0.10s\n"
+        )
+        evidence, _ = self._evidence(output)
         self.assertEqual(evidence["status"], "PASS")
         self.assertEqual(evidence["warnings"], 1)
 
     def test_every_substitute_outcome_is_rejected_even_with_exit_zero(self) -> None:
         for tail in ("1 skipped", "1 xfailed", "1 xpassed", "3 deselected"):
             with self.subTest(substitute=tail):
-                evidence, _ = self._evidence(2, f"2 passed, {tail} in 0.02s\n")
+                output = (
+                    "python/tests/example.py::Required::first PASSED [ 50%]\n"
+                    "python/tests/example.py::Required::second PASSED [100%]\n"
+                    f"2 passed, {tail} in 0.02s\n"
+                )
+                evidence, _ = self._evidence(output)
                 self.assertEqual(evidence["status"], "FAIL")
                 self.assertIn("substitute", evidence["reason"])
 
     def test_failed_and_error_outcomes_are_rejected(self) -> None:
-        for summary, code in (
-            ("1 failed, 2 passed in 0.30s", 1),
-            ("2 passed, 1 error in 0.20s", 1),
+        for node_outcome, summary in (
+            ("FAILED", "1 failed, 1 passed in 0.30s"),
+            ("ERROR", "1 error, 1 passed in 0.20s"),
         ):
-            with self.subTest(summary=summary):
-                evidence, _ = self._evidence(2, f"{summary}\n", returncode=code)
+            with self.subTest(outcome=node_outcome):
+                output = (
+                    f"python/tests/example.py::Required::first {node_outcome} [ 50%]\n"
+                    "python/tests/example.py::Required::second PASSED [100%]\n"
+                    f"{summary}\n"
+                )
+                evidence, _ = self._evidence(output, returncode=1)
                 self.assertEqual(evidence["status"], "FAIL")
 
-    def test_wrong_pass_count_is_rejected(self) -> None:
-        evidence, _ = self._evidence(2, "3 passed in 0.05s\n")
+    def test_unrelated_extra_passing_test_does_not_invalidate_required_evidence(self) -> None:
+        output = (
+            "python/tests/example.py::Required::first PASSED [ 33%]\n"
+            "python/tests/example.py::Required::second PASSED [ 66%]\n"
+            "python/tests/example.py::Unrelated::new_test PASSED [100%]\n"
+            "3 passed in 0.05s\n"
+        )
+        evidence, _ = self._evidence(output)
+        self.assertEqual(evidence["status"], "PASS")
+
+    def test_missing_required_node_fails_even_when_total_is_unchanged(self) -> None:
+        output = (
+            "python/tests/example.py::Required::first PASSED [ 50%]\n"
+            "python/tests/example.py::Unrelated::replacement PASSED [100%]\n"
+            "2 passed in 0.05s\n"
+        )
+        evidence, _ = self._evidence(output)
         self.assertEqual(evidence["status"], "FAIL")
+        self.assertIn("Required::second", evidence["reason"])
+
+    def test_required_skip_fails(self) -> None:
+        output = (
+            "python/tests/example.py::Required::first PASSED [ 50%]\n"
+            "python/tests/example.py::Required::second SKIPPED [100%]\n"
+            "1 passed, 1 skipped in 0.05s\n"
+        )
+        evidence, _ = self._evidence(output)
+        self.assertEqual(evidence["status"], "FAIL")
+        self.assertIn("non_passing", evidence["reason"])
+
+    def test_required_blocked_evidence_fails(self) -> None:
+        output = (
+            "python/tests/example.py::Required::first PASSED [ 50%]\n"
+            "python/tests/example.py::Required::second BLOCKED [100%]\n"
+            "1 passed in 0.05s\n"
+        )
+        evidence, _ = self._evidence(output)
+        self.assertEqual(evidence["status"], "FAIL")
+        self.assertIn("Required::second=BLOCKED", evidence["reason"])
+
+    def test_zero_discovery_fails(self) -> None:
+        evidence, _ = self._evidence("no tests ran in 0.01s\n", returncode=5)
+        self.assertEqual(evidence["status"], "FAIL")
+        self.assertIn("required evidence incomplete", evidence["reason"])
 
     def test_two_summary_lines_are_rejected(self) -> None:
         output = "====== 2 passed in 0.10s ======\n\n====== 2 passed in 0.11s ======\n"
-        evidence, _ = self._evidence(2, output)
+        evidence, _ = self._evidence(output)
         self.assertEqual(evidence["status"], "FAIL")
         self.assertIn("across 2 summary lines", evidence["reason"])
 
     def test_missing_summary_is_rejected(self) -> None:
         evidence, _ = self._evidence(
-            2, ".                                                            [100%]\n"
+            ".                                                            [100%]\n"
         )
         self.assertEqual(evidence["status"], "FAIL")
         self.assertIn("across 0 summary lines", evidence["reason"])
 
     def test_nonzero_returncode_is_rejected_despite_clean_summary(self) -> None:
-        evidence, _ = self._evidence(2, "2 passed in 0.06s\n", returncode=1)
+        output = (
+            "python/tests/example.py::Required::first PASSED [ 50%]\n"
+            "python/tests/example.py::Required::second PASSED [100%]\n"
+            "2 passed in 0.06s\n"
+        )
+        evidence, _ = self._evidence(output, returncode=1)
         self.assertEqual(evidence["status"], "FAIL")
 
 
@@ -758,16 +823,32 @@ def _independent_head() -> str:
 
 
 class SourceHeadFingerprintTests(unittest.TestCase):
-    """source_snapshot describes this clean checkout at HEAD, stably."""
+    """source_snapshot reports clean identity when Git reports a clean tree."""
 
     def test_clean_tree_reports_clean_true_at_head_commit(self) -> None:
-        snapshot = runner.source_snapshot()
+        git_value = runner.git_value
+
+        def clean_status(args: Sequence[str]) -> str:
+            if args[:1] == ("status",):
+                return ""
+            return git_value(args)
+
+        with mock.patch.object(runner, "git_value", side_effect=clean_status):
+            snapshot = runner.source_snapshot()
         self.assertTrue(snapshot["clean"], snapshot.get("git_status"))
         self.assertEqual(snapshot["commit"], _independent_head())
 
     def test_tracked_source_fingerprint_is_stable_across_calls(self) -> None:
-        first = runner.source_snapshot()
-        second = runner.source_snapshot()
+        git_value = runner.git_value
+
+        def clean_status(args: Sequence[str]) -> str:
+            if args[:1] == ("status",):
+                return ""
+            return git_value(args)
+
+        with mock.patch.object(runner, "git_value", side_effect=clean_status):
+            first = runner.source_snapshot()
+            second = runner.source_snapshot()
         self.assertTrue(first["clean"], first.get("git_status"))
         self.assertTrue(second["clean"], second.get("git_status"))
         self.assertEqual(first["fingerprint"], second["fingerprint"])
