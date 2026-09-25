@@ -117,10 +117,13 @@ class MagicCombatParticipationV4:
         return result
 
     def to_wire(self) -> dict[str, object]:
+        blocked_count = sum(entry.status is MagicBlockedStatusV4.BLOCKED for entry in self.blockers)
         assigned = tuple(entry.blocker for entry in self.blockers if entry.blocker is not None)
         if (
             tuple(sorted(set(self.attackers))) != self.attackers
             or len(self.blockers) != len(self.attackers)
+            or blocked_count > 1
+            or len(assigned) > 1
             or any(
                 entry.attacker != attacker
                 for entry, attacker in zip(self.blockers, self.attackers, strict=True)

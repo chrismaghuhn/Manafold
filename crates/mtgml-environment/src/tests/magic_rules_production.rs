@@ -3284,95 +3284,92 @@ fn combat_damage_multiple_and_mixed_attackers_are_complete_and_simultaneous() {
 }
 
 #[test]
-fn combat_damage_multiple_blocked_attackers_keep_distinct_simultaneous_pairs() {
-    let mut state = blocker_fixture(2, 2, 0);
-    state.core.players.get_mut(&P2).unwrap().life = 20;
-    for (object, power) in [
-        (GameObjectId(3), 2),
-        (GameObjectId(4), 2),
-        (GameObjectId(5), 1),
-        (GameObjectId(6), 3),
-    ] {
-        state
-            .foundation_sources
-            .get_mut(&object)
-            .unwrap()
-            .base_characteristics = BaseCharacteristics::Simple {
-            power,
-            toughness: 10,
-        };
+fn combat_damage_restore_rejects_two_distinct_blockers_and_two_blocked_histories_atomically() {
+    let mut valid_state = blocker_fixture(2, 2, 0);
+    valid_state.core.players.get_mut(&P2).unwrap().life = 20;
+    for attacker in [GameObjectId(3), GameObjectId(4)] {
+        valid_state.zones.objects.get_mut(&attacker).unwrap().tapped = true;
     }
-    state.zones.objects.get_mut(&GameObjectId(3)).unwrap().tapped = true;
-    state.zones.objects.get_mut(&GameObjectId(4)).unwrap().tapped = true;
-    state.core.position = TurnPosition::Combat {
+    valid_state.core.position = TurnPosition::Combat {
         step: mtgml_state::CombatStep::CombatDamage,
     };
-    state.combat = Some(mtgml_state::CombatState {
+    valid_state.combat = Some(mtgml_state::CombatState {
         defending_player: P2,
         attackers: vec![GameObjectId(3), GameObjectId(4)],
         damage_step_completed: false,
-        blocked_attackers: std::collections::BTreeSet::from([GameObjectId(3), GameObjectId(4)]),
+        blocked_attackers: std::collections::BTreeSet::new(),
         blockers: std::collections::BTreeMap::from([
-            (GameObjectId(3), Some(GameObjectId(5))),
-            (GameObjectId(4), Some(GameObjectId(6))),
+            (GameObjectId(3), None),
+            (GameObjectId(4), None),
         ]),
     });
-    mtgml_state::validate_engine_state(&state).unwrap();
+    mtgml_state::validate_engine_state(&valid_state).unwrap();
 
-    let mut backend = damage_backend(state);
-    let transition = backend.execute_forced_progress().unwrap();
-    let assignments = transition
-        .events
-        .iter()
-        .find_map(|event| match &event.event {
-            mtgml_rules::AuthoritativeRuleEventKind::CombatDamageDealt { assignments } => {
-                Some(assignments)
-            }
-            _ => None,
-        })
+    let (controller, _, _, _, _) = run_combat_damage_case(&[(2, 2)], None, 20, false);
+    let before = controller.checkpoint().unwrap();
+    let replay_before = controller.export_replay().unwrap();
+    let p1_before = player_fingerprint(&controller, P1);
+    let p2_before = player_fingerprint(&controller, P2);
+    let assert_atomic_rejection = |invalid_state: mtgml_state::EngineState| {
+        let mut kernel = mtgml_rules::ProgramKernelV1::for_admitted_execution(
+            mtgml_model::ExecutionProgramV1::MagicRules,
+            ReferenceEnvironmentBackend::magic_combat_damage_execution_identity()
+                .semantic_contract_id,
+        )
         .unwrap();
-    assert_eq!(assignments.len(), 4);
-    assert!(assignments.iter().any(|assignment| {
-        assignment.source == GameObjectId(3)
-            && assignment.recipient
-                == mtgml_state::DamageRecipientV1::Creature {
-                    object: GameObjectId(5),
-                }
-            && assignment.amount == 2
-    }));
-    assert!(assignments.iter().any(|assignment| {
-        assignment.source == GameObjectId(5)
-            && assignment.recipient
-                == mtgml_state::DamageRecipientV1::Creature {
-                    object: GameObjectId(3),
-                }
-            && assignment.amount == 1
-    }));
-    assert!(assignments.iter().any(|assignment| {
-        assignment.source == GameObjectId(4)
-            && assignment.recipient
-                == mtgml_state::DamageRecipientV1::Creature {
-                    object: GameObjectId(6),
-                }
-            && assignment.amount == 2
-    }));
-    assert!(assignments.iter().any(|assignment| {
-        assignment.source == GameObjectId(6)
-            && assignment.recipient
-                == mtgml_state::DamageRecipientV1::Creature {
-                    object: GameObjectId(4),
-                }
-            && assignment.amount == 3
-    }));
-    for (object, expected) in [
-        (GameObjectId(3), 1),
-        (GameObjectId(4), 3),
-        (GameObjectId(5), 2),
-        (GameObjectId(6), 2),
-    ] {
-        assert_eq!(transition.next_state.foundation_sources[&object].marked_damage, expected);
-    }
-    assert_eq!(transition.next_state.core.players[&P2].life, 20);
+        assert!(matches!(
+            kernel.advance_forced_progress(&invalid_state),
+            Err(mtgml_rules::KernelExecutionError::UnsupportedStagePath)
+        ));
+        let invalid_checkpoint = crate::EnvironmentCheckpointV6::new(
+            invalid_state,
+            before.status.clone(),
+            before.limit_counters.clone(),
+            before.codec.clone(),
+            before.execution_identity.clone(),
+        )
+        .unwrap();
+        assert!(matches!(
+            controller.restore(invalid_checkpoint),
+            Err(crate::ControllerError::ProgramStateIncompatible)
+        ));
+        assert_eq!(controller.checkpoint().unwrap(), before);
+        assert_eq!(controller.export_replay().unwrap(), replay_before);
+        assert_eq!(player_fingerprint(&controller, P1), p1_before);
+        assert_eq!(player_fingerprint(&controller, P2), p2_before);
+    };
+
+    let mut two_distinct_blockers = valid_state.clone();
+    two_distinct_blockers
+        .combat
+        .as_mut()
+        .unwrap()
+        .blockers
+        .insert(GameObjectId(3), Some(GameObjectId(5)));
+    two_distinct_blockers
+        .combat
+        .as_mut()
+        .unwrap()
+        .blockers
+        .insert(GameObjectId(4), Some(GameObjectId(6)));
+    two_distinct_blockers
+        .combat
+        .as_mut()
+        .unwrap()
+        .blocked_attackers
+        .extend([GameObjectId(3), GameObjectId(4)]);
+    mtgml_state::validate_engine_state(&two_distinct_blockers).unwrap();
+    assert_atomic_rejection(two_distinct_blockers);
+
+    let mut two_blocked_histories = valid_state;
+    two_blocked_histories
+        .combat
+        .as_mut()
+        .unwrap()
+        .blocked_attackers
+        .extend([GameObjectId(3), GameObjectId(4)]);
+    mtgml_state::validate_engine_state(&two_blocked_histories).unwrap();
+    assert_atomic_rejection(two_blocked_histories);
 }
 
 #[test]
@@ -3694,6 +3691,95 @@ fn combat_damage_restore_rejects_unsupported_characteristics_atomically() {
     assert_eq!(controller.export_replay().unwrap(), replay_before);
     assert_eq!(player_fingerprint(&controller, P1), p1_before);
     assert_eq!(player_fingerprint(&controller, P2), p2_before);
+}
+
+#[test]
+fn combat_damage_rejects_two_blockers_and_two_blocked_histories_atomically() {
+    let mut valid_state = blocker_fixture(2, 2, 0);
+    valid_state.core.players.get_mut(&P2).unwrap().life = 20;
+    for attacker in [GameObjectId(3), GameObjectId(4)] {
+        valid_state.zones.objects.get_mut(&attacker).unwrap().tapped = true;
+    }
+    valid_state.core.position = TurnPosition::Combat {
+        step: mtgml_state::CombatStep::CombatDamage,
+    };
+    valid_state.combat = Some(mtgml_state::CombatState {
+        defending_player: P2,
+        attackers: vec![GameObjectId(3), GameObjectId(4)],
+        damage_step_completed: false,
+        blocked_attackers: std::collections::BTreeSet::new(),
+        blockers: std::collections::BTreeMap::from([
+            (GameObjectId(3), None),
+            (GameObjectId(4), None),
+        ]),
+    });
+    mtgml_state::validate_engine_state(&valid_state).unwrap();
+
+    let (controller, _, _, _, _) = run_combat_damage_case(&[(2, 2)], None, 20, false);
+    let before = controller.checkpoint().unwrap();
+    let replay_before = controller.export_replay().unwrap();
+    let p1_before = player_fingerprint(&controller, P1);
+    let p2_before = player_fingerprint(&controller, P2);
+    let assert_rejected_atomically = |invalid_state: mtgml_state::EngineState| {
+        let mut kernel = mtgml_rules::ProgramKernelV1::for_admitted_execution(
+            mtgml_model::ExecutionProgramV1::MagicRules,
+            ReferenceEnvironmentBackend::magic_combat_damage_execution_identity()
+                .semantic_contract_id,
+        )
+        .unwrap();
+        assert!(matches!(
+            kernel.advance_forced_progress(&invalid_state),
+            Err(mtgml_rules::KernelExecutionError::UnsupportedStagePath)
+        ));
+        let invalid_checkpoint = crate::EnvironmentCheckpointV6::new(
+            invalid_state,
+            before.status.clone(),
+            before.limit_counters.clone(),
+            before.codec.clone(),
+            before.execution_identity.clone(),
+        )
+        .unwrap();
+        assert!(matches!(
+            controller.restore(invalid_checkpoint),
+            Err(crate::ControllerError::ProgramStateIncompatible)
+        ));
+        assert_eq!(controller.checkpoint().unwrap(), before);
+        assert_eq!(controller.export_replay().unwrap(), replay_before);
+        assert_eq!(player_fingerprint(&controller, P1), p1_before);
+        assert_eq!(player_fingerprint(&controller, P2), p2_before);
+    };
+
+    let mut two_distinct_blockers = valid_state.clone();
+    two_distinct_blockers
+        .combat
+        .as_mut()
+        .unwrap()
+        .blockers
+        .insert(GameObjectId(3), Some(GameObjectId(5)));
+    two_distinct_blockers
+        .combat
+        .as_mut()
+        .unwrap()
+        .blockers
+        .insert(GameObjectId(4), Some(GameObjectId(6)));
+    two_distinct_blockers
+        .combat
+        .as_mut()
+        .unwrap()
+        .blocked_attackers
+        .extend([GameObjectId(3), GameObjectId(4)]);
+    mtgml_state::validate_engine_state(&two_distinct_blockers).unwrap();
+    assert_rejected_atomically(two_distinct_blockers);
+
+    let mut two_blocked_histories = valid_state;
+    two_blocked_histories
+        .combat
+        .as_mut()
+        .unwrap()
+        .blocked_attackers
+        .extend([GameObjectId(3), GameObjectId(4)]);
+    mtgml_state::validate_engine_state(&two_blocked_histories).unwrap();
+    assert_rejected_atomically(two_blocked_histories);
 }
 
 #[test]

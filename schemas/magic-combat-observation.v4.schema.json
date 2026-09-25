@@ -60,6 +60,36 @@
                 ],
                 "type": "object"
               },
+              "allOf": [
+                {
+                  "contains": {
+                    "properties": {
+                      "status": {
+                        "const": "blocked"
+                      }
+                    },
+                    "required": [
+                      "status"
+                    ]
+                  },
+                  "maxContains": 1,
+                  "minContains": 0
+                },
+                {
+                  "contains": {
+                    "properties": {
+                      "blocker": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "blocker"
+                    ]
+                  },
+                  "maxContains": 1,
+                  "minContains": 0
+                }
+              ],
               "type": "array"
             }
           },

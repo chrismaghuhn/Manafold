@@ -394,10 +394,22 @@ impl MagicObservationV4 {
             let attackers: std::collections::BTreeSet<_> =
                 combat.attackers.iter().copied().collect();
             let mut blockers = std::collections::BTreeSet::new();
+            let blocked_count = combat
+                .blockers
+                .iter()
+                .filter(|entry| matches!(entry.status, MagicBlockedStatusV4::Blocked))
+                .count();
+            let assigned_count = combat
+                .blockers
+                .iter()
+                .filter(|entry| entry.blocker.is_some())
+                .count();
             if combat.defending_player == self.active_player
                 || attackers.len() != combat.attackers.len()
                 || combat.attackers.windows(2).any(|pair| pair[0] >= pair[1])
                 || combat.blockers.len() != combat.attackers.len()
+                || blocked_count > 1
+                || assigned_count > 1
                 || combat
                     .blockers
                     .iter()

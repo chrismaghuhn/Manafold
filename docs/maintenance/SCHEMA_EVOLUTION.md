@@ -56,13 +56,20 @@ The V3 payload remains byte-for-byte unchanged and bound only to
 positive public marked damage keyed by perspective-local opaque creature ID,
 explicit durable blocked/unblocked status, and public player-loss status. It
 keeps the blocker relation separate, so blocked with no current blocker
-remains representable. V1, V2, and V3 readers retain their meanings and reject
-the V4 codec as unknown.
+remains representable. Its combat cardinality enforces the Foundation V2 bound
+of one blocked attacker and at most one live blocker. V1, V2, and V3 readers
+retain their meanings and reject the V4 codec as unknown.
 
 The current official Comprehensive Rules source is
 [MagicCompRules 20260925.txt](https://media.wizards.com/2026/downloads/MagicCompRules%2020260925.txt),
 effective 2026-09-25, SHA-256
 `8d860e451f20f38865b725b42d82feb714c725373dd8f3b32b8652b3eeb070ca`.
+The official [Rules page](https://magic.wizards.com/en/rules) linked to that
+exact TXT artifact during the independent review correction. The downloaded
+artifact was 977,752 bytes; its stated effective date and measured SHA-256
+matched the linked identity above.
+The page's resolved TXT URL was
+`https://media.wizards.com/2026/downloads/MagicCompRules%2020260925.txt`.
 Compared with the accepted Foundation V2 snapshot
 `wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f`,
 the reviewed clauses have zero text differences. The scope comparison is
@@ -77,4 +84,4 @@ Clauses compared: CR 119.2–119.3; 120.1, 120.2a, 120.3a, 120.3e,
 
 Schema source: `schemas/magic-combat-observation.v4.schema.json`.
 
-Content SHA-256: `6cbbc56fd30d25068c99e7081827596ebbc65bfe9946f2b057801def4a3a35c8`
+Content SHA-256: `b18493bc4dbeb9ea0dffcc3e33c2e655df952d25b094abbd80d885ae92b97a37`

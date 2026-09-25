@@ -83,7 +83,7 @@ fn magic_combat_observation_v4_rejects_inconsistent_unblocked_relation() {
 }
 
 #[test]
-fn magic_combat_observation_v4_supports_distinct_blockers_for_distinct_attackers() {
+fn magic_combat_observation_v4_rejects_multiple_blocked_attackers() {
     let mut observation: MagicObservationV4 = serde_json::from_str(include_str!(
         "../../../wire/golden/magic-combat-observation.v4.json"
     ))
@@ -102,7 +102,28 @@ fn magic_combat_observation_v4_supports_distinct_blockers_for_distinct_attackers
             blocker: Some(OpaqueObjectId(6)),
         },
     ];
-    observation.validate().unwrap();
+    assert_eq!(
+        observation.validate(),
+        Err(ObservationValidationError::ObservationPayload)
+    );
+
+    let combat = observation.combat.as_mut().unwrap();
+    combat.blockers = vec![
+        MagicCombatBlockerAssignmentV4 {
+            attacker: OpaqueObjectId(3),
+            status: MagicBlockedStatusV4::Blocked,
+            blocker: None,
+        },
+        MagicCombatBlockerAssignmentV4 {
+            attacker: OpaqueObjectId(5),
+            status: MagicBlockedStatusV4::Blocked,
+            blocker: None,
+        },
+    ];
+    assert_eq!(
+        observation.validate(),
+        Err(ObservationValidationError::ObservationPayload)
+    );
 }
 
 #[test]

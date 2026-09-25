@@ -53,6 +53,35 @@ class SchemaParityTests(unittest.TestCase):
             validate_schemas.WIRE_MAPPING,
         )
 
+    def test_v4_combat_schema_rejects_multiple_blocker_scope(self) -> None:
+        if jsonschema is None:
+            self.skipTest("jsonschema is unavailable")
+        schema = json.loads(
+            (ROOT / "schemas" / "magic-combat-observation.v4.schema.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        observation = json.loads(
+            (ROOT / "wire" / "golden" / "magic-combat-observation.v4.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        validator = jsonschema.Draft202012Validator(schema)
+        validator.validate(observation)
+
+        observation["combat"]["attackers"] = ["3", "5"]
+        observation["combat"]["blockers"] = [
+            {"attacker": "3", "status": "blocked", "blocker": "4"},
+            {"attacker": "5", "status": "blocked", "blocker": "6"},
+        ]
+        self.assertTrue(list(validator.iter_errors(observation)))
+
+        observation["combat"]["blockers"] = [
+            {"attacker": "3", "status": "blocked", "blocker": None},
+            {"attacker": "5", "status": "blocked", "blocker": None},
+        ]
+        self.assertTrue(list(validator.iter_errors(observation)))
+
     def test_schema_readme_matches_wire_mapping(self) -> None:
         inventory = self._schema_inventory()
         validate_schemas.validate_wire_schema_inventory(inventory)

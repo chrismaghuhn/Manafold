@@ -114,6 +114,8 @@ impl SemanticValidationCursor {
             || combat.blockers.len() != combat.attackers.len()
             || combat.blockers.keys().copied().collect::<BTreeSet<_>>()
                 != combat.attackers.iter().copied().collect()
+            || combat.blocked_attackers.len() > 1
+            || combat.blockers.values().flatten().count() > 1
         {
             return Err(TransitionViolation::Combat);
         }

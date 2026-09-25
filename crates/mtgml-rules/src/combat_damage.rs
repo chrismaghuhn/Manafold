@@ -151,6 +151,8 @@ pub(crate) fn validate_combat_damage_state(state: &EngineState) -> Result<(), Co
         || attackers.len() != combat.attackers.len()
         || combat.blockers.keys().copied().collect::<BTreeSet<_>>() != attackers
         || !combat.blocked_attackers.is_subset(&attackers)
+        || combat.blocked_attackers.len() > 1
+        || combat.blockers.values().flatten().count() > 1
     {
         return Err(CombatDamageError::Unsupported);
     }
