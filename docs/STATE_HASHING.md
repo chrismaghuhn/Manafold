@@ -26,6 +26,115 @@ Current/historical families include:
 
 Digest identity provides content identity/divergence detection, not authenticity.
 
+## Immutable content identity V1
+
+`ContentContractIdV1` identifies one complete immutable rule-relevant
+`ContentContractManifestV1`. It is external content identity, not
+`EngineState`, `FullStateDigestV5`, checkpoint, or replay identity. Its
+definition schema and validation rules are owned by the [Card Definition and
+Content Contract V1](contracts/CARD_DEFINITION_CONTRACT.md). Provenance is a
+separate audit artifact and is never included in this digest.
+
+The identity uses the existing ADR-0038 digest-envelope framing without a
+second domain prefix:
+
+```text
+ASCII("mtgml.digest-envelope.v1") || 0x00
+|| frame(ASCII("sha-256"))
+|| frame(ASCII("mtgml.content-contract.v1"))
+|| frame(ASCII("mtgml.canonical-cbor.v1"))
+|| frame(ASCII("content-contract-manifest.v1"))
+|| frame(canonical_payload)
+
+frame(x) = u64_be(byte_length(x)) || x
+ContentContractIdV1 = SHA256(the complete envelope bytes)
+```
+
+The exact canonical-CBOR preimage is a fixed three-element array:
+
+```text
+["content-contract-manifest.v1",
+ "mtgml.content-contract.v1",
+ [CardDefinitionEnvelopeV1, ...]]
+```
+
+The definition array is empty or sorted by numeric `CardDefinitionId`, with
+no duplicate ID. Each `CardDefinitionEnvelopeV1` is exactly a fixed
+seven-element array:
+
+```text
+["card-definition-envelope.v1", card_definition_id,
+ [FaceDefinitionV1, ...], [AbilityIdentityV1, ...],
+ CardSemanticBindingV1, [DefinitionReferenceV1, ...],
+ [CapabilityRequirementV1, ...]]
+```
+
+Nested records and their fixed positional forms are:
+
+```text
+FaceDefinitionV1        = [face_key, BaseCharacteristicsV1]
+AbilityIdentityV1       = [ability_key, face_key]
+DefinitionReferenceV1   = ["required_definition", target_id, target_face_key_or_null]
+CapabilityRequirementV1 = [capability_key_text, capability_version_text]
+
+BaseCharacteristicsV1 = [
+  name_text,
+  mana_cost_or_null,
+  color_indicator,
+  [supertypes, card_types, subtypes],
+  power_toughness_or_null,
+  loyalty_or_null,
+  defense_or_null
+]
+```
+
+Unsigned IDs and ordinals are CBOR unsigned integers. Name/type/capability
+values are exact UTF-8 text. Mana cost is null or an ordered array of symbols;
+color indicator is a sorted unique array of the canonical color text values.
+Each symbol is exactly `[variant_id_text, payload]`: `generic` carries a
+positive unsigned integer in u32 range; `white`, `blue`, `black`, `red`,
+`green`, and `colorless` carry null; `hybrid` carries a two-element array of
+distinct `ManaColorV1` text values in printed order. Power/toughness is null
+or a two-element array of signed i32 values; loyalty and defense are null or
+signed i32 values. Optional fields are always present and use null for
+absence. Face order and printed symbol order are preserved. Ability identities
+sort by numeric `(face_key, ability_key)`, references by numeric
+`(target_id, target_face_key-or-none, relation)`, and requirements by ASCII
+`(key, version)`. All declared set/order constraints are validated before
+hashing; malformed input is rejected rather than silently sorted.
+
+The M4.1 semantic binding is exactly `["unprofiled", null]`. The reserved
+profiled form is `[
+"profiled", [profile_id_text, profile_body]]`; its body can be encoded only
+by a separately reviewed profile contract that defines a fixed closed typed
+array schema. M4.1 rejects profiled content before identity calculation and
+does not mint a production ID for it. There is no arbitrary payload form.
+
+The audit provenance encoding is deterministic but never passed to content
+hashing:
+
+```text
+ProvenanceCatalogV1 = ["definition-provenance-catalog.v1", [record, ...]]
+DefinitionProvenanceRecordV1 = [content_contract_id_bytes32,
+                                card_definition_id, SourceProvenanceV1]
+SourceProvenanceV1 = [source_snapshot_id_text, source_record_id_text,
+                      source_record_codec_id_text, source_record_digest_bytes32]
+```
+
+Provenance records sort by unsigned lexicographic content-ID bytes, then
+numeric definition ID. The source digest is exactly a 32-byte CBOR byte
+string. Provenance-only changes do not change `ContentContractIdV1`.
+
+Only arrays, unsigned integers, schema-authorized signed integers, byte/text
+strings, and null are used. Arrays are definite length; integers and lengths
+use shortest encodings. Maps, floats, tags, indefinite values, shared
+references, undefined, bignums, malformed UTF-8, and trailing values are
+forbidden by `mtgml.canonical-cbor.v1`. The typed decoder validates schema,
+arity, ranges, variants, duplicates, and canonical order, then re-encodes and
+requires byte equality before identity verification. Resource bounds and
+codec error precedence remain those already specified by this document and
+ADR-0038.
+
 ## Historical V1 and V2
 
 ### V1

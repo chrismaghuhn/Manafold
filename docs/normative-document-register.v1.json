@@ -1,5 +1,12 @@
 {
   "documents": [
+    {
+      "change_process": "cross-layer-contract-change",
+      "owner_role": "content-maintainer",
+      "path": "docs/contracts/CARD_DEFINITION_CONTRACT.md",
+      "role": "normative",
+      "stability": "provisional"
+    },
   {
     "change_process": "documentation-pr",
     "owner_role": "maintainer",
@@ -1067,6 +1074,20 @@
       "change_process": "process-pr",
       "owner_role": "maintainer",
       "path": "docs/superpowers/specs/2026-09-23-m3-s3-state-identity-cut-design.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-09-25-m4-1-card-definition-foundation-spec.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/plans/2026-09-25-m4-1-card-definition-foundation-implementation.md",
       "role": "process",
       "stability": "provisional"
     },

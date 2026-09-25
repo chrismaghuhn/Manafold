@@ -1,0 +1,122 @@
+{
+  "cases": [
+    {
+      "below_required_lifecycle": [
+        [
+          "rules/parity-dependency",
+          "proposed"
+        ]
+      ],
+      "cycles": [],
+      "entries": [
+        {
+          "dependencies": [
+            "rules/parity-dependency"
+          ],
+          "key": "rules/parity-root",
+          "lifecycle": "specified",
+          "lifecycle_rank": 1,
+          "version": "0.1.0"
+        },
+        {
+          "dependencies": [],
+          "key": "rules/parity-dependency",
+          "lifecycle": "proposed",
+          "lifecycle_rank": 0,
+          "version": "0.1.0"
+        }
+      ],
+      "minimum_lifecycle": "specified",
+      "missing": [],
+      "resolved": [
+        "rules/parity-dependency",
+        "rules/parity-root"
+      ],
+      "roots": [
+        {
+          "key": "rules/parity-root",
+          "version": "0.1.0"
+        }
+      ]
+    },
+    {
+      "below_required_lifecycle": [
+        [
+          "rules/parity-dependency",
+          "implemented"
+        ],
+        [
+          "rules/parity-root",
+          "implemented"
+        ]
+      ],
+      "cycles": [],
+      "entries": [
+        {
+          "dependencies": [
+            "rules/parity-dependency"
+          ],
+          "key": "rules/parity-root",
+          "lifecycle": "implemented",
+          "lifecycle_rank": 2,
+          "version": "0.1.0"
+        },
+        {
+          "dependencies": [],
+          "key": "rules/parity-dependency",
+          "lifecycle": "implemented",
+          "lifecycle_rank": 2,
+          "version": "0.1.0"
+        }
+      ],
+      "minimum_lifecycle": "covered",
+      "missing": [],
+      "resolved": [
+        "rules/parity-dependency",
+        "rules/parity-root"
+      ],
+      "roots": [
+        {
+          "key": "rules/parity-root",
+          "version": "0.1.0"
+        }
+      ]
+    },
+    {
+      "below_required_lifecycle": [],
+      "cycles": [],
+      "entries": [
+        {
+          "dependencies": [
+            "rules/parity-dependency"
+          ],
+          "key": "rules/parity-root",
+          "lifecycle": "certified",
+          "lifecycle_rank": 4,
+          "version": "0.1.0"
+        },
+        {
+          "dependencies": [],
+          "key": "rules/parity-dependency",
+          "lifecycle": "certified",
+          "lifecycle_rank": 4,
+          "version": "0.1.0"
+        }
+      ],
+      "minimum_lifecycle": "certified",
+      "missing": [],
+      "resolved": [
+        "rules/parity-dependency",
+        "rules/parity-root"
+      ],
+      "roots": [
+        {
+          "key": "rules/parity-root",
+          "version": "0.1.0"
+        }
+      ]
+    }
+  ],
+  "registry_id": "project/capabilities",
+  "schema_version": "capability-closure-parity.v1"
+}

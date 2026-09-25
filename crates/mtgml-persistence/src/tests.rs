@@ -557,6 +557,69 @@ fn persisted_positive_fixture_manifest_matches_rust_bytes_and_meaning() {
                 assert_eq!(reference.input_schema_id, "test-input.v1");
                 assert_eq!(reference.digest_bytes, envelope::hash_envelope(&bytes));
             }
+            ("content-contract.v1", "content-contract-minimal-v1.cbor") => {
+                let value = cbor::Value::Array(vec![
+                    cbor::Value::Text("content-contract-manifest.v1".to_owned()),
+                    cbor::Value::Text("mtgml.content-contract.v1".to_owned()),
+                    cbor::Value::Array(vec![cbor::Value::Array(vec![
+                        cbor::Value::Text("card-definition-envelope.v1".to_owned()),
+                        cbor::Value::Unsigned(1),
+                        cbor::Value::Array(vec![cbor::Value::Array(vec![
+                            cbor::Value::Unsigned(0),
+                            cbor::Value::Array(vec![
+                                cbor::Value::Text("Fixture".to_owned()),
+                                cbor::Value::Null,
+                                cbor::Value::Array(vec![]),
+                                cbor::Value::Array(vec![
+                                    cbor::Value::Array(vec![]),
+                                    cbor::Value::Array(vec![cbor::Value::Text(
+                                        "Creature".to_owned(),
+                                    )]),
+                                    cbor::Value::Array(vec![]),
+                                ]),
+                                cbor::Value::Array(vec![
+                                    cbor::Value::Signed(1),
+                                    cbor::Value::Signed(1),
+                                ]),
+                                cbor::Value::Null,
+                                cbor::Value::Null,
+                            ]),
+                        ])]),
+                        cbor::Value::Array(vec![]),
+                        cbor::Value::Array(vec![
+                            cbor::Value::Text("unprofiled".to_owned()),
+                            cbor::Value::Null,
+                        ]),
+                        cbor::Value::Array(vec![]),
+                        cbor::Value::Array(vec![]),
+                    ])]),
+                ]);
+                let payload = cbor::encode_canonical(&value).unwrap();
+                assert_eq!(bytes, payload);
+                let envelope = envelope::encode_envelope(
+                    "mtgml.content-contract.v1",
+                    "content-contract-manifest.v1",
+                    &payload,
+                )
+                .unwrap();
+                let digest = envelope::hash_envelope(&envelope);
+                assert_eq!(
+                    fixture.sha256.as_deref(),
+                    Some("105a083f417293333532c3ffed1d96c13f74664c3bbaf64e8fad995918fb5a4a")
+                );
+                assert_eq!(hex(&digest), fixture.sha256.unwrap());
+                assert_eq!(
+                    crate::content_contract_digest::calculate_content_contract_id_v1(&bytes)
+                        .unwrap()
+                        .as_str(),
+                    "105a083f417293333532c3ffed1d96c13f74664c3bbaf64e8fad995918fb5a4a"
+                );
+            }
+            ("content-provenance.v1", "content-provenance-minimal-v1.cbor") => {
+                let value = cbor::decode_canonical(&bytes).unwrap();
+                assert_eq!(cbor::encode_canonical(&value).unwrap(), bytes);
+                assert!(fixture.sha256.is_none());
+            }
             other => panic!("unknown positive persistence fixture {other:?}"),
         }
     }

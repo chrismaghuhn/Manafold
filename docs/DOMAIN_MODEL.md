@@ -25,6 +25,13 @@ The engine separates identity by meaning:
 | `OpaqueObjectId` | perspective-specific distinguishable object identity | while distinguishability contract permits | yes to that perspective only |
 | `OpaqueAbilityId` | perspective-specific distinguishable ability identity | while distinguishability contract permits | yes to that perspective only |
 
+`CardDefinitionId` is resolved only within a verified immutable content
+universe. The content-scoped key is
+`(ContentContractIdV1, CardDefinitionId)`, as specified by the [Card
+Definition and Content Contract V1](contracts/CARD_DEFINITION_CONTRACT.md).
+It is not a runtime object identity and is not a player-visible opaque ID.
+M4.1 content catalogs and provenance remain outside `EngineState`.
+
 A zone transition creates a new `GameObjectId`. A physical card may persist. Last Known Information is captured from the old incarnation before transition commit.
 
 Opaque player-visible identity is deliberately independent of authoritative incarnation identity: it may be remapped across a new `GameObjectId` while a perspective can still distinguish the object, and must be retired/replaced when hidden randomization destroys that distinguishability.
