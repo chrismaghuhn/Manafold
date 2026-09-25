@@ -24,6 +24,15 @@ pub enum SemanticDeltaOperation {
         from: i64,
         to: i64,
     },
+    CombatDamageDealt {
+        assignments: Vec<crate::DamageAssignmentV1>,
+    },
+    CombatDamageStepCompleted,
+    MarkedDamageChanged {
+        creature: GameObjectId,
+        from: u64,
+        to: u64,
+    },
     ObjectTapped {
         object: GameObjectId,
         from: bool,
@@ -62,6 +71,15 @@ pub enum SemanticDeltaOperation {
         from: TurnPosition,
         to: TurnPosition,
     },
+    AttackersDeclared {
+        defending_player: PlayerId,
+        attackers: Vec<GameObjectId>,
+    },
+    BlockersDeclared {
+        assignments: Vec<crate::CombatBlockerAssignmentV1>,
+    },
+    CombatEnded,
+    EmptyCombatStepsSkipped,
     UntapCompleted {
         affected_objects: Vec<GameObjectId>,
     },

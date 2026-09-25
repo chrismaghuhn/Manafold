@@ -5,17 +5,17 @@
 - **Foundation closure/freeze:** `COMPLETE` (`FINAL_FOUNDATION_CLOSURE = PASS`, `PRE_M3_REMEDIATION_FREEZE = PASS`, `FOUNDATION_READY_FOR_M3 = YES`)
 - **Core modularization:** Issue #162 `COMPLETE`, merged by PR #179; the refactor was semantic-neutral and did not change public, wire, schema, digest, replay, or rules contracts
 - **M2.5 scope work:** `NOT_CLAIMED` / `NOT_FROZEN`; the abandoned census and research machinery remains historical Git evidence, not active engine scope
-- **Current status:** M3.S1 complete / covered / not certified; M3.S2 complete / implemented / not covered / not certified; PR #208 is merged and S2 exact-head verification passed
+- **Current status:** M3 final closure candidate on `chris/m3-final-closure-20260925`; 11/11 Foundation V2 capabilities are proposed as covered, 16/16 interaction obligations are mapped, and final acceptance remains pending independent review and hosted CI
 - **Pre-M3 governance cleanup:** `COMPLETE`; the accepted M3 Entry Decision and its historical authorization are preserved, with the hardened scope accepted by PR #184
 - **M3 authorization:** `AUTHORIZED` at `ea668c47ef1361b3d989fd32b8f3cfd4751b1e79`; the authorized task at that head was `M3.P0_STATE_IDENTITY_CUT`
 - **M3 milestone execution:** `STARTED` — P0 infrastructure is merged and frozen
 - **P0:** `COMPLETE / FROZEN` (reviewed head `a7e641a7e6145610c9533187cf6340712f460e44`, merge commit `20dac927027776ef5f0a5b389a27d4a05eefb180`)
 - **M3.T0:** `COMPLETE / FROZEN` (closure review head `b403edefcabf7b304c0fa5f6816d22ac8aca477b`, 10/10 frozen exit criteria PASS, 0 BLOCKER / 0 MAJOR; status-sync merge `b9c5f2be97b8fc1f31d648d58f890de78f0a035c`; freeze executed and tracked in Issue #178)
 - **M3.S1:** `COMPLETE / COVERED / NOT CERTIFIED` (`rules/turn-structure@0.1.0`; S1 authorization head `587016574e4e8f9f797a713877f8caf1c5143cfb`; covered for the bounded scope, certification is not claimed)
-- **M3 semantic implementation:** M3.S1 is `COVERED`; bounded M3.S2 zone-incarnation is `IMPLEMENTED` and not covered
-- **M3.S2:** `COMPLETE / IMPLEMENTED / NOT COVERED / NOT CERTIFIED` (`rules/zone-incarnation@0.1.0`); only the selected Battlefield → owner Graveyard and owner Library-top → owner Hand profiles are implemented
+- **M3 semantic implementation:** the eleven bounded Foundation V2 capabilities are implemented and proposed as `COVERED`; none is certified
+- **M3.S2:** its selected Battlefield → owner Graveyard and owner Library-top → owner Hand profiles are integrated with combat SBA and ordinary Draw replay in the M3 final-closure candidate
 - **PR #208:** `MERGED`; `S2_EXACT_HEAD_VERIFICATION = PASS`
-- **S2 authoritative replay:** Draw × S2 has a Block 3 Replay V6 candidate witness; overall S2 replay coverage remains `DEFERRED_REQUIRED / BLOCKED_FOR_COVERED`
+- **S2 authoritative replay:** the Block 8 exact Foundation V2 integration exercises both SBA-to-graveyard and Draw-to-Hand incarnation transitions through Replay V6; candidate evidence is recorded in `docs/reviews/m3-final-closure-2026-09-25.md`
 - **M3 Pre-T0 hardening:** `COMPLETE / ACCEPTED` (`ADR 0054 = ACCEPTED`, `FOUNDATION_V2 = ACCEPTED_HARDENED_M3_SCOPE`)
 - **M3 plan status:** `ACCEPTED`
 - **Task 14:** `COMPLETE` — `S1_EXACT_HEAD_VERIFICATION = PASS`
@@ -23,15 +23,21 @@
 - **S3.0:** `COMPLETE / FROZEN` (reviewed head `aa28f9753225dca0e58e33b0d0356a1cc560aae3`, PR #211, merge commit `66f3b713787cad89674257f6e0b6448b9fd568f9`)
 - **Magic rules-flow inventory:** `REVIEWED / FROZEN_PLANNING_INPUT` at `8a440645735fcb17be9470c7a53969860b1d4fad`; M3 has 8 major semantic blocks and all 11 Foundation capabilities accounted for
 - **PR #213:** `MERGED` at `60b6ee7957032a36371ceac89c3a1e4f886d200c`; reviewed head `fb5830e0354eda14a12641d4166214d63eace4d7` is contained in `master`
+- **PR #216:** `MERGED` at `5e474c763a1a67b14536fe5f70824897320e864b`; Combat Phase + Declare Attackers exact-head review passed
 - **M3 Block 1:** bounded S3.A is accepted / merged
 - **M3 Block 2:** Basic Priority + Reference response integration is accepted / merged
-- **M3 Block 3:** Draw + S2 replay/interaction implementation candidate complete; exact-head review pending
+- **M3 Block 3:** Draw + S2 replay/interaction merged by PR #214 at `0a36290`; exact-head review passed
+- **M3 Block 4:** Combat Phase + Declare Attackers merged by PR #216 at `5e474c763a1a67b14536fe5f70824897320e864b`; exact-head code review passed. Capability lifecycles remain `specified`.
+- **M3 Block 5:** Declare Blockers merged in PR #217; `FINAL_ACCEPTANCE_PASS` recorded at the accepted exact head. The lifecycle of the affected capabilities remains `specified`.
+- **M3 Block 6:** Damage/Life, Combat Damage, and post-damage SBA merged in PR #218 at `7060a1212eeb59d511265242be3c720b0fc1cc8a`; exact-head review passed. Capability lifecycles remain `specified`.
+- **M3 Block 7:** Cleanup Reset + complete bounded turn merged and accepted in PR #219 at `c7cafa0356508164988fb92b0fcedc24bccbbdae`.
+- **M3 Block 8:** cumulative final-closure candidate; exact Foundation V2 turn integration reaches P2 Draw and its next visible priority Decision. Acceptance is pending independent review, hosted CI, merge, and post-merge exact-master verification.
 - **M3 hardening acceptance:** PR #184 merged and accepted ADR 0054/Foundation V2; T0 was reauthorized under Issue #178, implemented by merged PRs #189/#190/#191, and finalized as COMPLETE / FROZEN
-- **Capability lifecycle:** 9 Foundation capabilities are `specified`, 1 is `implemented`, 1 is `covered`, and 0 are `certified`
-- **Current boundary:** S2 remains `IMPLEMENTED / NOT COVERED`; Block 3 supplies a Draw × S2 Replay V6 candidate witness but does not close all S2 coverage gates. Combat and later blocks have not started. Certification and card/deck/format/Commander/playability support are not claimed.
+- **Capability lifecycle:** the closure candidate proposes 11 Foundation capabilities `covered`; `0` are certified. The registry candidate's `covered` changes remain subject to exact-head acceptance.
+- **Current boundary:** `M3 = FINAL_CLOSURE_CANDIDATE`; accepted repository status remains incomplete until review, hosted CI, merge, and post-merge verification. Certification and card/deck/format/Commander/playability support are not claimed.
 - **Project type:** independent greenfield MTG/ML rules and simulation engine
 - **Playable engine:** no
-- **Real Magic semantics:** S1 is covered; S2 is implemented / not covered; bounded S3.A and S3.B implementations are accepted / merged under distinct production identities, while their capability lifecycle claims remain `specified` pending separate evidence review
+- **Real Magic semantics:** candidate evidence covers the eleven bounded Foundation V2 capabilities. This does not claim arbitrary Magic support, cards, decks, formats, or playability.
 - **Real card support:** none
 
 **Current resumable execution contract:** V6. V6 binds the V5 full-state

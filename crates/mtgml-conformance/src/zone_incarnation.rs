@@ -890,6 +890,8 @@ fn s2_identity_old_reference_forbidden_sites_reject() {
     combat.combat = Some(mtgml_state::CombatState {
         defending_player: P2,
         attackers: vec![OLD_BATTLEFIELD],
+        damage_step_completed: false,
+        blocked_attackers: std::collections::BTreeSet::new(),
         blockers: BTreeMap::from([(OLD_BATTLEFIELD, None)]),
     });
     validate_engine_state(&combat).unwrap();
@@ -1951,6 +1953,8 @@ fn s2_rejected_direct_requests_preserve_complete_environment_fingerprint_matrix(
     combat.combat = Some(mtgml_state::CombatState {
         defending_player: P2,
         attackers: vec![OLD_BATTLEFIELD],
+        damage_step_completed: false,
+        blocked_attackers: std::collections::BTreeSet::new(),
         blockers: BTreeMap::from([(OLD_BATTLEFIELD, None)]),
     });
     validate_engine_state(&combat).unwrap();
@@ -3069,6 +3073,8 @@ fn s2_mutant_old_reference_after_state_rejects() {
     combat_reference.next_state.combat = Some(mtgml_state::CombatState {
         defending_player: P2,
         attackers: vec![OLD_BATTLEFIELD],
+        damage_step_completed: false,
+        blocked_attackers: std::collections::BTreeSet::new(),
         blockers: BTreeMap::from([(OLD_BATTLEFIELD, None)]),
     });
     assert_transition_violation(&before, &combat_reference, |violation| {

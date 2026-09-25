@@ -29,6 +29,9 @@ WIRE_MAPPING = {
     "replay-manifest.v3": "replay-manifest.v3.schema.json",
     "authoritative-replay.v3": "authoritative-replay.v3.schema.json",
     "magic-m3-observation.v1": "magic-m3-observation.v1.schema.json",
+    "magic-combat-observation.v2": "magic-combat-observation.v2.schema.json",
+    "magic-combat-observation.v3": "magic-combat-observation.v3.schema.json",
+    "magic-combat-observation.v4": "magic-combat-observation.v4.schema.json",
     "synthetic-m3-observation.v1": "synthetic-m3-observation.v1.schema.json",
     "replay-manifest.v4": "replay-manifest.v4.schema.json",
     "authoritative-replay.v4": "authoritative-replay.v4.schema.json",
@@ -109,6 +112,19 @@ def validate_wire_schema_inventory(
     missing_files = sorted(name for name in expected if not (schema_root / name).is_file())
     if missing_files:
         raise ValueError(f"missing schema files: {missing_files}")
+
+    identities: dict[str, str] = {}
+    for name in expected:
+        schema = load(schema_root / name)
+        if not isinstance(schema, dict):
+            raise ValueError(f"wire schema must be an object: {name}")
+        schema_id = schema.get("$id")
+        if schema_id != name:
+            raise ValueError(f"wire schema $id must match filename: {name} has {schema_id!r}")
+        previous = identities.get(schema_id)
+        if previous is not None:
+            raise ValueError(f"duplicate wire schema $id: {schema_id} in {previous} and {name}")
+        identities[schema_id] = name
 
 
 def main() -> None:

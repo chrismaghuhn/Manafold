@@ -100,6 +100,8 @@ fn p0_normal_transition_rejects_unexplained_combat_mutation() {
         state.combat = Some(CombatState {
             defending_player: PlayerId(2),
             attackers: vec![mtgml_model::GameObjectId(1)],
+            damage_step_completed: false,
+            blocked_attackers: std::collections::BTreeSet::new(),
             blockers: BTreeMap::from([(mtgml_model::GameObjectId(1), None)]),
         });
     });

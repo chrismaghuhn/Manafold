@@ -4,8 +4,8 @@
 use super::*;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use mtgml_model::{
-    EpisodeStatus, EventSequence, InformationStateDigest, ObservationDigest, PlayerId,
-    StateRevision, VisibleSequence,
+    EpisodeStatus, EventSequence, InformationStateDigest, ObservationDigest, OpaqueObjectId,
+    PlayerId, StateRevision, VisibleSequence,
 };
 
 fn observation(payload: &[u8], digest_payload: &[u8]) -> ObservationEnvelope {
@@ -39,6 +39,91 @@ fn all_seven_observed_event_variants_deserialize() {
     for event in events {
         serde_json::from_str::<ObservedEventKind>(event).unwrap();
     }
+}
+
+#[test]
+fn magic_combat_observation_v3_rejects_an_object_as_attacker_and_blocker() {
+    let mut observation: MagicObservationV3 = serde_json::from_str(include_str!(
+        "../../../wire/golden/magic-combat-observation.v3.json"
+    ))
+    .unwrap();
+    observation.combat.as_mut().unwrap().blockers[0].blocker = Some(mtgml_model::OpaqueObjectId(7));
+    assert_eq!(
+        observation.validate(),
+        Err(ObservationValidationError::ObservationPayload)
+    );
+}
+
+#[test]
+fn magic_combat_observation_v4_golden_preserves_life_marks_and_blocked_history() {
+    let observation: MagicObservationV4 = serde_json::from_str(include_str!(
+        "../../../wire/golden/magic-combat-observation.v4.json"
+    ))
+    .unwrap();
+    observation.validate().unwrap();
+    assert_eq!(observation.player_life[1].life, 17);
+    assert_eq!(observation.marked_damage[0].amount, "2");
+    assert_eq!(
+        observation.combat.as_ref().unwrap().blockers[0].status,
+        MagicBlockedStatusV4::Blocked
+    );
+}
+
+#[test]
+fn magic_combat_observation_v4_rejects_inconsistent_unblocked_relation() {
+    let mut observation: MagicObservationV4 = serde_json::from_str(include_str!(
+        "../../../wire/golden/magic-combat-observation.v4.json"
+    ))
+    .unwrap();
+    observation.combat.as_mut().unwrap().blockers[0].status = MagicBlockedStatusV4::Unblocked;
+    assert_eq!(
+        observation.validate(),
+        Err(ObservationValidationError::ObservationPayload)
+    );
+}
+
+#[test]
+fn magic_combat_observation_v4_rejects_multiple_blocked_attackers() {
+    let mut observation: MagicObservationV4 = serde_json::from_str(include_str!(
+        "../../../wire/golden/magic-combat-observation.v4.json"
+    ))
+    .unwrap();
+    let combat = observation.combat.as_mut().unwrap();
+    combat.attackers = vec![OpaqueObjectId(3), OpaqueObjectId(5)];
+    combat.blockers = vec![
+        MagicCombatBlockerAssignmentV4 {
+            attacker: OpaqueObjectId(3),
+            status: MagicBlockedStatusV4::Blocked,
+            blocker: Some(OpaqueObjectId(4)),
+        },
+        MagicCombatBlockerAssignmentV4 {
+            attacker: OpaqueObjectId(5),
+            status: MagicBlockedStatusV4::Blocked,
+            blocker: Some(OpaqueObjectId(6)),
+        },
+    ];
+    assert_eq!(
+        observation.validate(),
+        Err(ObservationValidationError::ObservationPayload)
+    );
+
+    let combat = observation.combat.as_mut().unwrap();
+    combat.blockers = vec![
+        MagicCombatBlockerAssignmentV4 {
+            attacker: OpaqueObjectId(3),
+            status: MagicBlockedStatusV4::Blocked,
+            blocker: None,
+        },
+        MagicCombatBlockerAssignmentV4 {
+            attacker: OpaqueObjectId(5),
+            status: MagicBlockedStatusV4::Blocked,
+            blocker: None,
+        },
+    ];
+    assert_eq!(
+        observation.validate(),
+        Err(ObservationValidationError::ObservationPayload)
+    );
 }
 
 #[test]

@@ -774,10 +774,11 @@ The presence of this historical structural field does not claim executable Comma
 
 # Current FullStateDigestV5
 
-S3.P0 makes `FullStateDigestV5` the current full-state identity because the
+S3.P0 made `FullStateDigestV5` the current full-state identity because the
 typed Magic SBA Graveyard-order continuation is new authoritative
-`EngineState`. It uses SHA-256, the V1 digest envelope, canonical CBOR, and
-fresh identities:
+`EngineState`. Block 6 extends its combat component with durable blocked
+history and a completed-damage-step fact. It uses SHA-256, the V1 digest
+envelope, canonical CBOR, and these identities:
 
 ```text
 semantic_domain = mtgml.full-state-digest.v5
@@ -785,9 +786,9 @@ input_schema_id = full-state-digest-input.v5
 ```
 
 The canonical top-level input remains a fixed 13-element array with the same
-field sequence and unchanged component meanings as the accepted V4 encoder;
-only the first two schema/domain strings change, and the closed continuation
-payload family gains the new Magic variant:
+field sequence as the accepted V4 encoder. The closed continuation payload
+family gains the Magic SBA variant. Block 6 also adds the canonical combat
+substate extension described below:
 
 ```text
 [
@@ -841,6 +842,33 @@ order candidate derivation. APNAP owner sequence and each selected
 top-to-bottom permutation preserve semantic order. Completed order entries
 are a prefix of the owner sequence. No arbitrary Serde serialization or
 controller-local state enters the digest.
+
+The V5 `combat` component preserves the prior three-element representation
+byte-for-byte whenever Block 6 facts are derivable from it:
+
+```text
+[defending_player, attackers[], blockers[]]
+```
+
+When they are not derivable, it uses this five-element form:
+
+```text
+[
+  defending_player,
+  attackers[],
+  blockers[],
+  blocked_attackers[],
+  damage_step_completed
+]
+```
+
+`blocked_attackers` is sorted by `GameObjectId` and duplicate-free;
+`damage_step_completed` is a CBOR boolean. The legacy form is used only when
+`damage_step_completed` is false and `blocked_attackers` exactly equals the
+attacker keys with a live blocker. Otherwise the extension binds CR 509.1h
+blocked history and whether the mandatory damage action has already run.
+Existing FullStateDigestV5 identities for prior combat states therefore keep
+their bytes, while Block 6 restore states remain distinct.
 
 `FullStateDigestV4` remains an immutable historical identity. Its KAT bytes
 are unchanged, and its detached historical encoder rejects the Magic

@@ -23,6 +23,15 @@ pub enum AuthoritativeRuleEventKind {
         from: i64,
         to: i64,
     },
+    CombatDamageDealt {
+        assignments: Vec<mtgml_state::DamageAssignmentV1>,
+    },
+    CombatDamageStepCompleted,
+    MarkedDamageChanged {
+        creature: GameObjectId,
+        from: u64,
+        to: u64,
+    },
     ObjectTapped {
         object: GameObjectId,
         from: bool,
@@ -61,6 +70,15 @@ pub enum AuthoritativeRuleEventKind {
         from: TurnPosition,
         to: TurnPosition,
     },
+    AttackersDeclared {
+        defending_player: PlayerId,
+        attackers: Vec<GameObjectId>,
+    },
+    BlockersDeclared {
+        assignments: Vec<mtgml_state::CombatBlockerAssignmentV1>,
+    },
+    CombatEnded,
+    EmptyCombatStepsSkipped,
     UntapCompleted {
         affected_objects: Vec<GameObjectId>,
     },
@@ -102,6 +120,17 @@ impl AuthoritativeRuleEventKind {
                 from: *from,
                 to: *to,
             },
+            Self::CombatDamageDealt { assignments } => SemanticDeltaOperation::CombatDamageDealt {
+                assignments: assignments.clone(),
+            },
+            Self::CombatDamageStepCompleted => SemanticDeltaOperation::CombatDamageStepCompleted,
+            Self::MarkedDamageChanged { creature, from, to } => {
+                SemanticDeltaOperation::MarkedDamageChanged {
+                    creature: *creature,
+                    from: *from,
+                    to: *to,
+                }
+            }
             Self::ObjectTapped { object, from, to } => SemanticDeltaOperation::ObjectTapped {
                 object: *object,
                 from: *from,
@@ -153,6 +182,18 @@ impl AuthoritativeRuleEventKind {
                 from: *from,
                 to: *to,
             },
+            Self::AttackersDeclared {
+                defending_player,
+                attackers,
+            } => SemanticDeltaOperation::AttackersDeclared {
+                defending_player: *defending_player,
+                attackers: attackers.clone(),
+            },
+            Self::BlockersDeclared { assignments } => SemanticDeltaOperation::BlockersDeclared {
+                assignments: assignments.clone(),
+            },
+            Self::CombatEnded => SemanticDeltaOperation::CombatEnded,
+            Self::EmptyCombatStepsSkipped => SemanticDeltaOperation::EmptyCombatStepsSkipped,
             Self::UntapCompleted { affected_objects } => SemanticDeltaOperation::UntapCompleted {
                 affected_objects: affected_objects.clone(),
             },

@@ -203,6 +203,18 @@
     {
       "contract": "magic-m3-observation.v1",
       "path": "magic-m3-observation-stage-1-p2.json"
+    },
+    {
+      "contract": "magic-combat-observation.v2",
+      "path": "magic-combat-observation.v2.json"
+    },
+    {
+      "contract": "magic-combat-observation.v3",
+      "path": "magic-combat-observation.v3.json"
+    },
+    {
+      "contract": "magic-combat-observation.v4",
+      "path": "magic-combat-observation.v4.json"
     }
   ]
 }

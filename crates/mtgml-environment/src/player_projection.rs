@@ -17,7 +17,12 @@ use mtgml_observation::{
     PLAYER_STEP_SCHEMA_V2, SYNTHETIC_OBSERVATION_SCHEMA_V1,
 };
 use mtgml_observation::{
-    MagicCompletedOrder, MagicObservation, MagicPendingSbaOrdering, MAGIC_OBSERVATION_SCHEMA_V1,
+    MagicBlockedStatusV4, MagicCombatBlockerAssignmentV2, MagicCombatBlockerAssignmentV3,
+    MagicCombatBlockerAssignmentV4, MagicCombatParticipationV2, MagicCombatParticipationV3,
+    MagicCombatParticipationV4, MagicCompletedOrder, MagicMarkedDamageV4, MagicObservation,
+    MagicObservationV2, MagicObservationV3, MagicObservationV4, MagicPendingSbaOrdering,
+    MagicPlayerLifeV4, MAGIC_OBSERVATION_SCHEMA_V1, MAGIC_OBSERVATION_SCHEMA_V2,
+    MAGIC_OBSERVATION_SCHEMA_V3, MAGIC_OBSERVATION_SCHEMA_V4,
 };
 use mtgml_state::ContinuationPayloadV2;
 use mtgml_state::{
@@ -29,6 +34,10 @@ use mtgml_state::{
 use crate::endpoint::PlayerEndpointError;
 use crate::errors::{ControllerError, EnvironmentCommitError};
 use crate::semantic_catalog_generated::{
+    magic_bounded_turn_0_1_0_semantic_contract_id,
+    magic_combat_attackers_0_1_0_semantic_contract_id,
+    magic_combat_blockers_0_1_0_semantic_contract_id,
+    magic_combat_damage_0_1_0_semantic_contract_id,
     magic_s3_a_ordered_sba_0_1_0_semantic_contract_id,
     magic_s3_b_basic_priority_0_1_0_semantic_contract_id,
     magic_s3_c_draw_interaction_0_1_0_semantic_contract_id,
@@ -41,6 +50,9 @@ const SYNTHETIC_OBSERVATION_CODEC: &str = SYNTHETIC_OBSERVATION_SCHEMA_V1;
 pub(crate) enum ObservationProjectionProfile {
     Synthetic,
     Magic,
+    MagicCombat,
+    MagicCombatBlockers,
+    MagicCombatDamage,
 }
 
 pub(crate) fn profile_for_execution_identity(
@@ -63,6 +75,14 @@ pub(crate) fn profile_for_execution_identity(
         || identity.semantic_contract_id == magic_s3_c_draw_interaction_0_1_0_semantic_contract_id()
     {
         Ok(ObservationProjectionProfile::Magic)
+    } else if identity.semantic_contract_id == magic_combat_attackers_0_1_0_semantic_contract_id() {
+        Ok(ObservationProjectionProfile::MagicCombat)
+    } else if identity.semantic_contract_id == magic_combat_blockers_0_1_0_semantic_contract_id() {
+        Ok(ObservationProjectionProfile::MagicCombatBlockers)
+    } else if identity.semantic_contract_id == magic_combat_damage_0_1_0_semantic_contract_id()
+        || identity.semantic_contract_id == magic_bounded_turn_0_1_0_semantic_contract_id()
+    {
+        Ok(ObservationProjectionProfile::MagicCombatDamage)
     } else {
         Err(ControllerError::SemanticContractUnsupported)
     }
@@ -114,6 +134,71 @@ pub(crate) fn project_observation_with_profile(
                 mtgml_wire::encode_canonical(&value),
             )
         }
+        ObservationProjectionProfile::MagicCombat => {
+            let value = MagicObservationV2 {
+                schema_version: MAGIC_OBSERVATION_SCHEMA_V2.into(),
+                active_player: state.core.active_player,
+                turn_number: state.core.turn_number.to_string(),
+                turn_position: public_turn_position(state.core.position),
+                priority: public_priority(state.core.priority),
+                pending_sba_ordering: project_sba_ordering(state, perspective)?,
+                combat: project_combat(state, perspective)?,
+            };
+            value
+                .validate()
+                .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
+            (
+                MAGIC_OBSERVATION_SCHEMA_V2,
+                mtgml_wire::encode_canonical(&value),
+            )
+        }
+        ObservationProjectionProfile::MagicCombatBlockers => {
+            let value = MagicObservationV3 {
+                schema_version: MAGIC_OBSERVATION_SCHEMA_V3.into(),
+                active_player: state.core.active_player,
+                turn_number: state.core.turn_number.to_string(),
+                turn_position: public_turn_position(state.core.position),
+                priority: public_priority(state.core.priority),
+                pending_sba_ordering: project_sba_ordering(state, perspective)?,
+                combat: project_combat_v3(state, perspective)?,
+            };
+            value
+                .validate()
+                .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
+            (
+                MAGIC_OBSERVATION_SCHEMA_V3,
+                mtgml_wire::encode_canonical(&value),
+            )
+        }
+        ObservationProjectionProfile::MagicCombatDamage => {
+            let value = MagicObservationV4 {
+                schema_version: MAGIC_OBSERVATION_SCHEMA_V4.into(),
+                active_player: state.core.active_player,
+                turn_number: state.core.turn_number.to_string(),
+                turn_position: public_turn_position(state.core.position),
+                priority: public_priority(state.core.priority),
+                player_life: state
+                    .core
+                    .players
+                    .iter()
+                    .map(|(player, status)| MagicPlayerLifeV4 {
+                        player: *player,
+                        life: status.life,
+                        has_lost: status.has_lost,
+                    })
+                    .collect(),
+                marked_damage: project_marked_damage_v4(state, perspective)?,
+                pending_sba_ordering: project_sba_ordering(state, perspective)?,
+                combat: project_combat_v4(state, perspective)?,
+            };
+            value
+                .validate()
+                .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
+            (
+                MAGIC_OBSERVATION_SCHEMA_V4,
+                mtgml_wire::encode_canonical(&value),
+            )
+        }
     };
     let payload = payload.map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
     let observation = ObservationEnvelope {
@@ -128,6 +213,217 @@ pub(crate) fn project_observation_with_profile(
         .validate()
         .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
     Ok(observation)
+}
+
+fn project_combat(
+    state: &EngineState,
+    perspective: PlayerId,
+) -> Result<Option<MagicCombatParticipationV2>, PlayerEndpointError> {
+    let Some(combat) = state.combat.as_ref() else {
+        return Ok(None);
+    };
+    let identity = state
+        .perspective_identities
+        .players
+        .get(&perspective)
+        .ok_or(PlayerEndpointError::ServiceUnavailable)?;
+    let mut attackers = combat
+        .attackers
+        .iter()
+        .map(|object| {
+            identity
+                .object_to_opaque
+                .get(object)
+                .copied()
+                .map(|opaque| (opaque, *object))
+                .ok_or(PlayerEndpointError::ServiceUnavailable)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    attackers.sort_by_key(|(opaque, _)| *opaque);
+    let blockers = attackers
+        .iter()
+        .map(|(opaque, object)| {
+            let blocker = combat
+                .blockers
+                .get(object)
+                .ok_or(PlayerEndpointError::ServiceUnavailable)?;
+            let blocker = blocker
+                .map(|blocker| {
+                    identity
+                        .object_to_opaque
+                        .get(&blocker)
+                        .copied()
+                        .ok_or(PlayerEndpointError::ServiceUnavailable)
+                })
+                .transpose()?;
+            Ok(MagicCombatBlockerAssignmentV2 {
+                attacker: *opaque,
+                blocker,
+            })
+        })
+        .collect::<Result<Vec<_>, PlayerEndpointError>>()?;
+    Ok(Some(MagicCombatParticipationV2 {
+        defending_player: combat.defending_player,
+        attackers: attackers.iter().map(|(opaque, _)| *opaque).collect(),
+        blockers,
+    }))
+}
+
+fn project_combat_v3(
+    state: &EngineState,
+    perspective: PlayerId,
+) -> Result<Option<MagicCombatParticipationV3>, PlayerEndpointError> {
+    let Some(combat) = state.combat.as_ref() else {
+        return Ok(None);
+    };
+    let identity = state
+        .perspective_identities
+        .players
+        .get(&perspective)
+        .ok_or(PlayerEndpointError::ServiceUnavailable)?;
+    let mut attackers = combat
+        .attackers
+        .iter()
+        .map(|object| {
+            identity
+                .object_to_opaque
+                .get(object)
+                .copied()
+                .map(|opaque| (opaque, *object))
+                .ok_or(PlayerEndpointError::ServiceUnavailable)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    attackers.sort_by_key(|(opaque, _)| *opaque);
+    let blockers = attackers
+        .iter()
+        .map(|(opaque, object)| {
+            let blocker = combat
+                .blockers
+                .get(object)
+                .ok_or(PlayerEndpointError::ServiceUnavailable)?;
+            let blocker = blocker
+                .map(|blocker| {
+                    identity
+                        .object_to_opaque
+                        .get(&blocker)
+                        .copied()
+                        .ok_or(PlayerEndpointError::ServiceUnavailable)
+                })
+                .transpose()?;
+            Ok(MagicCombatBlockerAssignmentV3 {
+                attacker: *opaque,
+                blocker,
+            })
+        })
+        .collect::<Result<Vec<_>, PlayerEndpointError>>()?;
+    Ok(Some(MagicCombatParticipationV3 {
+        defending_player: combat.defending_player,
+        attackers: attackers.iter().map(|(opaque, _)| *opaque).collect(),
+        blockers,
+    }))
+}
+
+fn project_combat_v4(
+    state: &EngineState,
+    perspective: PlayerId,
+) -> Result<Option<MagicCombatParticipationV4>, PlayerEndpointError> {
+    let Some(combat) = state.combat.as_ref() else {
+        return Ok(None);
+    };
+    let identity = state
+        .perspective_identities
+        .players
+        .get(&perspective)
+        .ok_or(PlayerEndpointError::ServiceUnavailable)?;
+    let mut attackers = combat
+        .attackers
+        .iter()
+        .map(|object| {
+            identity
+                .object_to_opaque
+                .get(object)
+                .copied()
+                .map(|opaque| (opaque, *object))
+                .ok_or(PlayerEndpointError::ServiceUnavailable)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    attackers.sort_by_key(|(opaque, _)| *opaque);
+    let blockers = attackers
+        .iter()
+        .map(|(opaque, object)| {
+            let blocker = combat
+                .blockers
+                .get(object)
+                .ok_or(PlayerEndpointError::ServiceUnavailable)?;
+            let blocker = blocker
+                .map(|blocker| {
+                    identity
+                        .object_to_opaque
+                        .get(&blocker)
+                        .copied()
+                        .ok_or(PlayerEndpointError::ServiceUnavailable)
+                })
+                .transpose()?;
+            Ok(MagicCombatBlockerAssignmentV4 {
+                attacker: *opaque,
+                status: if combat.blocked_attackers.contains(object) {
+                    MagicBlockedStatusV4::Blocked
+                } else {
+                    MagicBlockedStatusV4::Unblocked
+                },
+                blocker,
+            })
+        })
+        .collect::<Result<Vec<_>, PlayerEndpointError>>()?;
+    Ok(Some(MagicCombatParticipationV4 {
+        defending_player: combat.defending_player,
+        attackers: attackers.iter().map(|(opaque, _)| *opaque).collect(),
+        blockers,
+    }))
+}
+
+fn project_marked_damage_v4(
+    state: &EngineState,
+    perspective: PlayerId,
+) -> Result<Vec<MagicMarkedDamageV4>, PlayerEndpointError> {
+    let identity = state
+        .perspective_identities
+        .players
+        .get(&perspective)
+        .ok_or(PlayerEndpointError::ServiceUnavailable)?;
+    let mut marked = Vec::new();
+    for (object, source) in &state.foundation_sources {
+        if source.marked_damage == 0 {
+            continue;
+        }
+        let snapshot = state
+            .zones
+            .objects
+            .get(object)
+            .ok_or(PlayerEndpointError::ServiceUnavailable)?;
+        let location = state
+            .zones
+            .locations
+            .get(object)
+            .ok_or(PlayerEndpointError::ServiceUnavailable)?;
+        if location.zone != mtgml_model::ZoneKind::Battlefield || snapshot.face_down {
+            continue;
+        }
+        let opaque = identity
+            .object_to_opaque
+            .get(object)
+            .copied()
+            .ok_or(PlayerEndpointError::ServiceUnavailable)?;
+        marked.push((
+            opaque,
+            MagicMarkedDamageV4 {
+                creature: opaque,
+                amount: source.marked_damage.to_string(),
+            },
+        ));
+    }
+    marked.sort_by_key(|(opaque, _)| *opaque);
+    Ok(marked.into_iter().map(|(_, item)| item).collect())
 }
 
 fn project_sba_ordering(

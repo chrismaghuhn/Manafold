@@ -681,6 +681,59 @@ SCOPE_MAGIC_CLOSED_VOCAB_EXCEPTIONS: dict[tuple[str, str, str], int] = {
         "python/src/mtgml/_synthetic_observation.py",
         '"combat_damage",',
     ): 1,
+    # Exact Block 6 combat-damage implementation vocabulary. These exceptions
+    # authorize only the bounded producer and its integration points.
+    (
+        r"\bcombat_damage\b",
+        "crates/mtgml-rules/src/basic_priority.rs",
+        "crate::combat_damage::validate_combat_damage_state(state).is_ok()",
+    ): 1,
+    (
+        r"\bcombat_damage\b",
+        "crates/mtgml-rules/src/basic_priority.rs",
+        "} => damage_enabled && crate::combat_damage::validate_combat_damage_state(state).is_ok(),",
+    ): 1,
+    (
+        r"\bcombat_damage\b",
+        "crates/mtgml-rules/src/basic_priority.rs",
+        "|| crate::combat_damage::validate_combat_damage_state(before).is_ok()",
+    ): 1,
+    (
+        r"\bcombat_damage\b",
+        "crates/mtgml-rules/src/contract.rs",
+        "let mutations = crate::combat_damage::derive_mutations(&damage_state, assignments)",
+    ): 1,
+    (r"\bcombat_damage\b", "crates/mtgml-rules/src/lib.rs", "mod combat_damage;"): 1,
+    (
+        r"\bcombat_damage\b",
+        "crates/mtgml-rules/src/magic.rs",
+        "crate::combat_damage::validate_combat_damage_state(state)",
+    ): 1,
+    (
+        r"\bcombat_damage\b",
+        "crates/mtgml-rules/src/magic.rs",
+        "crate::combat_damage::derive_assignments(state).map_err(|error| match error {",
+    ): 1,
+    (
+        r"\bcombat_damage\b",
+        "crates/mtgml-rules/src/magic.rs",
+        "crate::combat_damage::CombatDamageError::Unsupported => {",
+    ): 2,
+    (
+        r"\bcombat_damage\b",
+        "crates/mtgml-rules/src/magic.rs",
+        "crate::combat_damage::CombatDamageError::Exhaustion => {",
+    ): 2,
+    (
+        r"\bcombat_damage\b",
+        "crates/mtgml-rules/src/magic.rs",
+        'KernelExecutionError::Exhaustion("combat_damage")',
+    ): 2,
+    (
+        r"\bcombat_damage\b",
+        "crates/mtgml-rules/src/magic.rs",
+        "let mutations = crate::combat_damage::derive_mutations(state, &assignments).map_err(",
+    ): 1,
 }
 
 WORKSPACE_MEMBERS_ALLOWED: tuple[str, ...] = (
@@ -724,6 +777,12 @@ SCHEMA_INVENTORY_ALLOWED: frozenset[str] = frozenset(
         "information-state-envelope.v1.schema.json",
         "information-state-envelope.v2.schema.json",
         "magic-m3-observation.v1.schema.json",
+        # Explicit Block 4 observation successor; V1 remains byte-frozen.
+        "magic-combat-observation.v2.schema.json",
+        # Explicit Block 5 successor; V1/V2 remain byte-frozen.
+        "magic-combat-observation.v3.schema.json",
+        # Explicit Block 6 successor; V1/V2/V3 remain byte-frozen.
+        "magic-combat-observation.v4.schema.json",
         "normative-document-register.v1.schema.json",
         "observation-envelope.v1.schema.json",
         "observed-event-envelope.v1.schema.json",
@@ -984,7 +1043,10 @@ def check_schema_inventory_pinned(root: Path) -> str:
     ]
     if forbidden:
         raise ScopeCheckFailure(f"forbidden later-milestone schema artifacts present: {forbidden}")
-    return f"schema inventory matches the pinned M2 inventory ({len(schemas)} schemas)"
+    return (
+        "schema inventory matches the pinned M2 inventory plus the reviewed combat payload "
+        f"successor ({len(schemas)} schemas)"
+    )
 
 
 def check_card_and_deck_artifacts_unclaimed(root: Path) -> str:

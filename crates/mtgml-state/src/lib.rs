@@ -5,6 +5,7 @@
 
 mod construction;
 mod core;
+mod damage;
 mod delta;
 mod digest;
 mod digest_v3;
@@ -25,10 +26,11 @@ pub use construction::{
     SyntheticV4Setup,
 };
 pub use core::{
-    BaseCharacteristics, BeginningStep, CombatState, CombatStep, ControlHistory, CoreRulesState,
-    EndingStep, FoundationCreatureSource, FoundationSourceKind, PlayerState, PriorityState,
-    TurnPosition,
+    BaseCharacteristics, BeginningStep, CombatBlockerAssignmentV1, CombatState, CombatStep,
+    ControlHistory, CoreRulesState, EndingStep, FoundationCreatureSource, FoundationSourceKind,
+    PlayerState, PriorityState, TurnPosition,
 };
+pub use damage::{DamageAssignmentV1, DamageRecipientV1};
 pub use delta::{DeltaApplicationError, SemanticDeltaOperation, StateDelta};
 pub use digest::StateDigestError;
 pub use digest_v4::{

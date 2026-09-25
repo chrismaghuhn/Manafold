@@ -144,3 +144,10 @@ checkpoint/replay evidence are not reinterpreted by the V6 runtime. Neither
 V4→V5 nor V5→V6 automatic migration exists. A V6 checkpoint containing the
 Magic SBA-order continuation is not restore-executable under a semantic
 contract that does not admit S3.A.
+
+Block 6 extends authoritative `CombatState` with the attackers that became
+blocked, independently of live blocker references, and a flag recording that
+the combat-damage turn-based action completed. These facts are validated as
+part of `EngineState`, included in the current V5 full-state identity, and
+preserved by V6 checkpoints. A blocked attacker remains blocked when its live
+blocker reference is absent.

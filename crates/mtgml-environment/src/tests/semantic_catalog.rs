@@ -12,6 +12,22 @@ use crate::semantic_catalog_generated::{
     magic_s3_c_draw_interaction_0_1_0_rules_manifest,
     magic_s3_c_draw_interaction_0_1_0_semantic_contract_id,
     magic_s3_c_draw_interaction_0_1_0_semantic_manifest,
+    magic_combat_attackers_0_1_0_rules_contract_id,
+    magic_combat_attackers_0_1_0_rules_manifest,
+    magic_combat_attackers_0_1_0_semantic_contract_id,
+    magic_combat_attackers_0_1_0_semantic_manifest,
+    magic_combat_blockers_0_1_0_rules_contract_id,
+    magic_combat_blockers_0_1_0_rules_manifest,
+    magic_combat_blockers_0_1_0_semantic_contract_id,
+    magic_combat_blockers_0_1_0_semantic_manifest,
+    magic_combat_damage_0_1_0_rules_contract_id,
+    magic_combat_damage_0_1_0_rules_manifest,
+    magic_combat_damage_0_1_0_semantic_contract_id,
+    magic_combat_damage_0_1_0_semantic_manifest,
+    magic_bounded_turn_0_1_0_rules_contract_id,
+    magic_bounded_turn_0_1_0_rules_manifest,
+    magic_bounded_turn_0_1_0_semantic_contract_id,
+    magic_bounded_turn_0_1_0_semantic_manifest,
     magic_turn_structure_0_1_0_rules_contract_id,
     magic_turn_structure_0_1_0_rules_manifest,
     magic_turn_structure_0_1_0_semantic_contract_id,
@@ -30,7 +46,7 @@ use mtgml_model::{
 };
 
 #[test]
-fn frozen_s1_s3a_s3b_semantic_contract_ids_remain_byte_identical() {
+fn frozen_s1_s3a_s3b_s3c_semantic_contract_ids_remain_byte_identical() {
     assert_eq!(
         magic_turn_structure_0_1_0_semantic_contract_id().as_str(),
         "7e8f54f15bd27d16643422f6904a23ea2004cab1098b56f8cd842a2397ff42fe"
@@ -42,6 +58,10 @@ fn frozen_s1_s3a_s3b_semantic_contract_ids_remain_byte_identical() {
     assert_eq!(
         magic_s3_b_basic_priority_0_1_0_semantic_contract_id().as_str(),
         "c480cbae69bf0496aff83bb973a859721bfa0f969351b33b3f0b09ee3f7c5498"
+    );
+    assert_eq!(
+        magic_s3_c_draw_interaction_0_1_0_semantic_contract_id().as_str(),
+        "2818c779c0a1f3b534d5551d9842a26e64ea93fa5906e8d43b499c4a3e042cb5"
     );
 }
 use mtgml_persistence::semantic_contract_digest::{
@@ -105,7 +125,7 @@ fn known_meaning_is_distinct_from_supported_execution() {
 #[test]
 fn production_catalog_contains_exactly_generated_material() {
     let catalog = RuntimeSemanticCatalog::production();
-    assert_eq!(catalog.entry_count(), 5, "Synthetic, frozen S1, S3.A, S3.B, and S3.C identities");
+    assert_eq!(catalog.entry_count(), 9, "Synthetic, frozen profiles, combat, and bounded turn identities");
 
     let syn_id = synthetic_legacy_default_semantic_contract_id();
     let syn_entry = catalog.resolve(&syn_id).unwrap();
@@ -198,6 +218,90 @@ fn production_catalog_contains_exactly_generated_material() {
     assert_eq!(s3c_closure[4].key, "rules/zone-incarnation");
     assert!(catalog.supported(&s3c_id, ExecutionProgramV1::MagicRules));
     assert_ne!(s3c_id, s3b_id, "Draw closure must have a distinct identity");
+
+    let combat_id = magic_combat_attackers_0_1_0_semantic_contract_id();
+    let combat_entry = catalog.resolve(&combat_id).unwrap();
+    assert_eq!(combat_entry.manifest.rules_contract_id, magic_combat_attackers_0_1_0_rules_contract_id());
+    assert_eq!(combat_entry.manifest, magic_combat_attackers_0_1_0_semantic_manifest());
+    assert_eq!(combat_entry.rules_manifest, magic_combat_attackers_0_1_0_rules_manifest());
+    assert_eq!(combat_id.as_str(), "fb55663090b2ea6d0ab709d56a6b58ce3a21b3beca24113008bb98684f3230a7");
+    let combat_closure = combat_entry.rules_manifest.capability_closure.as_ref().unwrap();
+    assert_eq!(combat_closure.iter().map(|entry| entry.key.as_str()).collect::<Vec<_>>(), vec![
+        "rules/basic-priority",
+        "rules/combat-phase",
+        "rules/declare-attackers",
+        "rules/draw-card",
+        "rules/state-based-actions-combat",
+        "rules/turn-structure",
+        "rules/zone-incarnation",
+    ]);
+    assert!(catalog.supported(&combat_id, ExecutionProgramV1::MagicRules));
+
+    let blockers_id = magic_combat_blockers_0_1_0_semantic_contract_id();
+    let blockers_entry = catalog.resolve(&blockers_id).unwrap();
+    assert_eq!(
+        blockers_entry.manifest.rules_contract_id,
+        magic_combat_blockers_0_1_0_rules_contract_id()
+    );
+    assert_eq!(
+        blockers_entry.manifest,
+        magic_combat_blockers_0_1_0_semantic_manifest()
+    );
+    assert_eq!(
+        blockers_entry.rules_manifest,
+        magic_combat_blockers_0_1_0_rules_manifest()
+    );
+    assert_eq!(
+        blockers_id.as_str(),
+        "b788155232e2fca4b3f43170251f86dd5718ba42b3b674309d99c1df9eddaa6c"
+    );
+    let blockers_closure = blockers_entry.rules_manifest.capability_closure.as_ref().unwrap();
+    assert_eq!(blockers_closure.iter().map(|entry| entry.key.as_str()).collect::<Vec<_>>(), vec![
+        "rules/basic-priority",
+        "rules/combat-phase",
+        "rules/declare-attackers",
+        "rules/declare-blockers",
+        "rules/draw-card",
+        "rules/state-based-actions-combat",
+        "rules/turn-structure",
+        "rules/zone-incarnation",
+    ]);
+    assert!(catalog.supported(&blockers_id, ExecutionProgramV1::MagicRules));
+    assert_ne!(blockers_id, combat_id);
+
+    let damage_id = magic_combat_damage_0_1_0_semantic_contract_id();
+    let damage_entry = catalog.resolve(&damage_id).unwrap();
+    assert_eq!(damage_entry.manifest.rules_contract_id, magic_combat_damage_0_1_0_rules_contract_id());
+    assert_eq!(damage_entry.manifest, magic_combat_damage_0_1_0_semantic_manifest());
+    assert_eq!(damage_entry.rules_manifest, magic_combat_damage_0_1_0_rules_manifest());
+    assert_eq!(
+        damage_id.as_str(),
+        "58c55b0f08f045da01e81c595a00cc63dc75361efeb83be7e5e82064ae85805e"
+    );
+    assert_eq!(
+        damage_entry
+            .rules_manifest
+            .capability_closure
+            .as_ref()
+            .unwrap()
+            .iter()
+            .map(|item| item.key.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "rules/basic-priority",
+            "rules/combat-damage",
+            "rules/combat-phase",
+            "rules/damage-and-life",
+            "rules/declare-attackers",
+            "rules/declare-blockers",
+            "rules/draw-card",
+            "rules/state-based-actions-combat",
+            "rules/turn-structure",
+            "rules/zone-incarnation",
+        ]
+    );
+    assert!(catalog.supported(&damage_id, ExecutionProgramV1::MagicRules));
+    assert_ne!(damage_id, blockers_id);
 }
 
 #[test]

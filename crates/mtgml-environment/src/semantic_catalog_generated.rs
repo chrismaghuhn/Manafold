@@ -251,3 +251,295 @@ pub fn magic_s3_c_draw_interaction_0_1_0_semantic_contract_id() -> SemanticContr
     )
     .expect("generated canonical hex")
 }
+
+// magic_combat_attackers_0_1_0
+pub const SEMANTIC_CONTRACT_CATALOG_MAGIC_COMBAT_ATTACKERS_0_1_0_RULES_CONTRACT_HEX: &str =
+    "64a4a6198363ef5f03dbdeab714b220465216f19afb387b48a0cdb453654e6f9";
+pub const SEMANTIC_CONTRACT_CATALOG_MAGIC_COMBAT_ATTACKERS_0_1_0_SEMANTIC_CONTRACT_HEX: &str =
+    "fb55663090b2ea6d0ab709d56a6b58ce3a21b3beca24113008bb98684f3230a7";
+
+pub fn magic_combat_attackers_0_1_0_rules_manifest() -> mtgml_model::RulesContractManifestV1 {
+    mtgml_model::RulesContractManifestV1 {
+        rules_authority: mtgml_model::RulesAuthorityV1::ComprehensiveRules {
+            snapshot_id: "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f".to_owned(),
+        },
+        capability_closure: Some(vec![
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/basic-priority".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/combat-phase".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/declare-attackers".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/draw-card".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/state-based-actions-combat".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/turn-structure".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/zone-incarnation".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+        ]),
+    }
+}
+
+pub fn magic_combat_attackers_0_1_0_semantic_manifest() -> mtgml_model::SemanticContractManifestV1 {
+    mtgml_model::SemanticContractManifestV1 {
+        rules_contract_id: magic_combat_attackers_0_1_0_rules_contract_id(),
+        format_contract_id: None,
+        content_contract_id: None,
+    }
+}
+
+pub fn magic_combat_attackers_0_1_0_rules_contract_id() -> RulesContractIdV1 {
+    RulesContractIdV1::parse(
+        SEMANTIC_CONTRACT_CATALOG_MAGIC_COMBAT_ATTACKERS_0_1_0_RULES_CONTRACT_HEX,
+    )
+    .expect("generated canonical hex")
+}
+
+pub fn magic_combat_attackers_0_1_0_semantic_contract_id() -> SemanticContractIdV1 {
+    SemanticContractIdV1::parse(
+        SEMANTIC_CONTRACT_CATALOG_MAGIC_COMBAT_ATTACKERS_0_1_0_SEMANTIC_CONTRACT_HEX,
+    )
+    .expect("generated canonical hex")
+}
+
+// magic_combat_blockers_0_1_0
+pub const SEMANTIC_CONTRACT_CATALOG_MAGIC_COMBAT_BLOCKERS_0_1_0_RULES_CONTRACT_HEX: &str =
+    "8eb1d399230447195aa2fc6ec40737374216950718364e4b7dc0d3650e5994b4";
+pub const SEMANTIC_CONTRACT_CATALOG_MAGIC_COMBAT_BLOCKERS_0_1_0_SEMANTIC_CONTRACT_HEX: &str =
+    "b788155232e2fca4b3f43170251f86dd5718ba42b3b674309d99c1df9eddaa6c";
+
+pub fn magic_combat_blockers_0_1_0_rules_manifest() -> mtgml_model::RulesContractManifestV1 {
+    mtgml_model::RulesContractManifestV1 {
+        rules_authority: mtgml_model::RulesAuthorityV1::ComprehensiveRules {
+            snapshot_id: "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f".to_owned(),
+        },
+        capability_closure: Some(vec![
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/basic-priority".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/combat-phase".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/declare-attackers".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/declare-blockers".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/draw-card".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/state-based-actions-combat".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/turn-structure".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/zone-incarnation".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+        ]),
+    }
+}
+
+pub fn magic_combat_blockers_0_1_0_semantic_manifest() -> mtgml_model::SemanticContractManifestV1 {
+    mtgml_model::SemanticContractManifestV1 {
+        rules_contract_id: magic_combat_blockers_0_1_0_rules_contract_id(),
+        format_contract_id: None,
+        content_contract_id: None,
+    }
+}
+
+pub fn magic_combat_blockers_0_1_0_rules_contract_id() -> RulesContractIdV1 {
+    RulesContractIdV1::parse(
+        SEMANTIC_CONTRACT_CATALOG_MAGIC_COMBAT_BLOCKERS_0_1_0_RULES_CONTRACT_HEX,
+    )
+    .expect("generated canonical hex")
+}
+
+pub fn magic_combat_blockers_0_1_0_semantic_contract_id() -> SemanticContractIdV1 {
+    SemanticContractIdV1::parse(
+        SEMANTIC_CONTRACT_CATALOG_MAGIC_COMBAT_BLOCKERS_0_1_0_SEMANTIC_CONTRACT_HEX,
+    )
+    .expect("generated canonical hex")
+}
+
+// magic_combat_damage_0_1_0
+pub const SEMANTIC_CONTRACT_CATALOG_MAGIC_COMBAT_DAMAGE_0_1_0_RULES_CONTRACT_HEX: &str =
+    "0bd92322c84f7b021485c7932ab2ac7e119cff9248daa879fbcb8124f76a3aa3";
+pub const SEMANTIC_CONTRACT_CATALOG_MAGIC_COMBAT_DAMAGE_0_1_0_SEMANTIC_CONTRACT_HEX: &str =
+    "58c55b0f08f045da01e81c595a00cc63dc75361efeb83be7e5e82064ae85805e";
+
+pub fn magic_combat_damage_0_1_0_rules_manifest() -> mtgml_model::RulesContractManifestV1 {
+    mtgml_model::RulesContractManifestV1 {
+        rules_authority: mtgml_model::RulesAuthorityV1::ComprehensiveRules {
+            snapshot_id: "wotc-cr-2026-09-25-txt-20260925-sha256-8d860e451f20f38865b725b42d82feb714c725373dd8f3b32b8652b3eeb070ca".to_owned(),
+        },
+        capability_closure: Some(vec![
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/basic-priority".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/combat-damage".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/combat-phase".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/damage-and-life".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/declare-attackers".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/declare-blockers".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/draw-card".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/state-based-actions-combat".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/turn-structure".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/zone-incarnation".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+        ]),
+    }
+}
+
+pub fn magic_combat_damage_0_1_0_semantic_manifest() -> mtgml_model::SemanticContractManifestV1 {
+    mtgml_model::SemanticContractManifestV1 {
+        rules_contract_id: magic_combat_damage_0_1_0_rules_contract_id(),
+        format_contract_id: None,
+        content_contract_id: None,
+    }
+}
+
+pub fn magic_combat_damage_0_1_0_rules_contract_id() -> RulesContractIdV1 {
+    RulesContractIdV1::parse(SEMANTIC_CONTRACT_CATALOG_MAGIC_COMBAT_DAMAGE_0_1_0_RULES_CONTRACT_HEX)
+        .expect("generated canonical hex")
+}
+
+pub fn magic_combat_damage_0_1_0_semantic_contract_id() -> SemanticContractIdV1 {
+    SemanticContractIdV1::parse(
+        SEMANTIC_CONTRACT_CATALOG_MAGIC_COMBAT_DAMAGE_0_1_0_SEMANTIC_CONTRACT_HEX,
+    )
+    .expect("generated canonical hex")
+}
+
+// magic_bounded_turn_0_1_0
+pub const SEMANTIC_CONTRACT_CATALOG_MAGIC_BOUNDED_TURN_0_1_0_RULES_CONTRACT_HEX: &str =
+    "4751297521d08ffd90e5d696b7df1dd32325a35125a78898fe2fa0ab01da0b38";
+pub const SEMANTIC_CONTRACT_CATALOG_MAGIC_BOUNDED_TURN_0_1_0_SEMANTIC_CONTRACT_HEX: &str =
+    "b03634245635bb65dffe5f20a21ac47828a44a3aad5732594216b8138c7eee00";
+
+pub fn magic_bounded_turn_0_1_0_rules_manifest() -> mtgml_model::RulesContractManifestV1 {
+    mtgml_model::RulesContractManifestV1 {
+        rules_authority: mtgml_model::RulesAuthorityV1::ComprehensiveRules {
+            snapshot_id: "wotc-cr-2026-09-25-txt-20260925-sha256-8d860e451f20f38865b725b42d82feb714c725373dd8f3b32b8652b3eeb070ca".to_owned(),
+        },
+        capability_closure: Some(vec![
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/basic-priority".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/cleanup-reset".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/combat-damage".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/combat-phase".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/damage-and-life".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/declare-attackers".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/declare-blockers".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/draw-card".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/state-based-actions-combat".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/turn-structure".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/zone-incarnation".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+        ]),
+    }
+}
+
+pub fn magic_bounded_turn_0_1_0_semantic_manifest() -> mtgml_model::SemanticContractManifestV1 {
+    mtgml_model::SemanticContractManifestV1 {
+        rules_contract_id: magic_bounded_turn_0_1_0_rules_contract_id(),
+        format_contract_id: None,
+        content_contract_id: None,
+    }
+}
+
+pub fn magic_bounded_turn_0_1_0_rules_contract_id() -> RulesContractIdV1 {
+    RulesContractIdV1::parse(SEMANTIC_CONTRACT_CATALOG_MAGIC_BOUNDED_TURN_0_1_0_RULES_CONTRACT_HEX)
+        .expect("generated canonical hex")
+}
+
+pub fn magic_bounded_turn_0_1_0_semantic_contract_id() -> SemanticContractIdV1 {
+    SemanticContractIdV1::parse(
+        SEMANTIC_CONTRACT_CATALOG_MAGIC_BOUNDED_TURN_0_1_0_SEMANTIC_CONTRACT_HEX,
+    )
+    .expect("generated canonical hex")
+}

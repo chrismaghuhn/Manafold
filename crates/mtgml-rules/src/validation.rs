@@ -69,4 +69,6 @@ pub enum TransitionViolation {
     TurnStructure,
     #[error("priority event sequence does not compose to the final state")]
     Priority,
+    #[error("combat declaration or completion event is invalid")]
+    Combat,
 }

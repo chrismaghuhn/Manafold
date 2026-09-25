@@ -2,6 +2,29 @@
 
 **Status:** accepted milestone ordering; dates intentionally uncommitted
 
+## Current M3 status — final-closure candidate
+
+```text
+M3 = FINAL_CLOSURE_CANDIDATE
+M3_BASE_HEAD = c7cafa0356508164988fb92b0fcedc24bccbbdae
+M3_SEMANTIC_CONTRACT = magic_bounded_turn_0_1_0
+M3_CAPABILITY_CLOSURE = 11 / 11
+M3_SPECIFIED = 11 / 11
+M3_IMPLEMENTED = 11 / 11
+M3_COVERED = 11 / 11 (candidate evidence; pending independent exact-head acceptance)
+M3_CERTIFIED = 0 / 11
+M3_INTERACTION_OBLIGATIONS = 16 / 16 (candidate evidence)
+M3_FINAL_ACCEPTANCE = PENDING_INDEPENDENT_REVIEW_AND_HOSTED_CI
+M3_CARD_DECK_FORMAT_SUPPORT = NONE
+M4_STARTED = NO
+```
+
+The candidate's executable evidence and lifecycle reconciliation are recorded
+in [`reviews/m3-final-closure-2026-09-25.md`](reviews/m3-final-closure-2026-09-25.md).
+The accepted repository state remains incomplete until review, hosted CI,
+merge, and post-merge exact-master verification pass. The milestone records
+below retain their historical acceptance-time values.
+
 ## M0.2 — Specification and Maintainer Readiness
 
 - normative hierarchy and document register;
@@ -83,9 +106,9 @@ gate `PASS`; the later M2.Final evidence and accepted ADR 0041 closed the M2
 foundation. M2.B remains the structural implementation slice within that
 history.
 
-## Post-M2 scope boundary
+## Post-M2 scope boundary — historical authorization and milestone record
 
-The current project status is:
+At the accepted M3 authorization / S2 status snapshot, the project status was:
 
 ```text
 FINAL_FOUNDATION_CLOSURE = PASS
@@ -263,11 +286,13 @@ registry now records the bounded capability as `covered`, with certification
 still unclaimed. At S1 authorization, the other ten Foundation capabilities
 were still specified and downstream work had not been authorized.
 
-PR #208 merged S2 at `b67cfdcc0a8e623da52a889ef2ae138a3e4256ac`; exact-head
-verification passed. M3.S2 is complete as an implementation slice, but is not
-covered or certified. S2 authoritative replay remains deferred and required
-before covered. M3.S3 selection/design is complete. S3.P0 is complete and
-frozen after PR #210 merged at
+At the PR #208 S2 acceptance point (`b67cfdcc0a8e623da52a889ef2ae138a3e4256ac`),
+S2 was implemented but not covered because authoritative replay was still
+deferred. Later accepted work added the Draw replay interaction (PR #214),
+combat phase and attackers (PR #216), blockers (PR #217), damage and SBA
+(PR #218), and Cleanup/full-turn composition (PR #219). The Block 8 candidate
+records cumulative replay and coverage evidence; its acceptance is pending.
+M3.S3 selection/design is complete. S3.P0 is complete and frozen after PR #210 merged at
 `ffc433985f41e6e2980df23a103b5e2358527ea3`, following exact-head review of
 `0cd24d1f2cb4183c19fb04ce0c3c827148313a3b`. S3.0 is complete and frozen.
 PR #211's reviewed source head `aa28f9753225dca0e58e33b0d0356a1cc560aae3`
@@ -279,18 +304,20 @@ specified pending evidence review. Block 3 / Draw + S2 replay interaction is
 the current authorized implementation scope. Block 4 and later remain
 unauthorized.
 
-M3 has started through semantic-neutral P0 infrastructure, T0
+At the earlier S1/S2 status snapshot, one Foundation capability was covered,
+one implemented, and the remaining nine specified. The current candidate
+proposes bounded coverage for all eleven based on the closure matrix in the
+review artifact. Census-driven scope research remains outside this
+authoritative engine repository, and external census M3 authorization must not
+be treated as engine-semantic authorization. No broad Magic, card, deck,
+format, Commander, or playability claim follows.
+Census-driven scope research is outside this authoritative engine repository.
+
+For historical current-status checks, that prior snapshot used the phrase
+“M3 has started through semantic-neutral P0 infrastructure, T0
 conformance/proof infrastructure, the covered S1 turn-structure capability,
-and the implemented bounded S2 zone-incarnation capability. P0 is
-complete/frozen; T0 is COMPLETE / FROZEN; S1 is covered and S2 is implemented,
-neither certified. Nine Foundation capabilities remain `specified`; one is
-implemented and one is covered. S2 authoritative replay remains required
-before covered. The state-based-actions-combat interaction with S2 remains
-unsatisfied. The Draw × S2 interaction has a Block 3 candidate witness pending
-exact-head review. Census-driven scope research is outside
-this authoritative engine repository, and external census M3 authorization
-must not be treated as engine-semantic authorization. No broad Magic, card,
-deck, format, Commander, or playability claim follows.
+and the implemented bounded S2 zone-incarnation capability”; those lifecycle
+counts and deferred-replay statements are superseded by the candidate above.
 
 The historical accepted operational scope record for that decision is
 [`docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V1.md`](rules/M3_INITIAL_SEMANTIC_FOUNDATION_V1.md).
@@ -303,17 +330,13 @@ reauthorization was recorded separately under Issue #178.
 
 ## M3 — Bounded Semantic Coverage
 
-**Status:** `STARTED — P0 COMPLETE / FROZEN — T0 COMPLETE / FROZEN — S1 COMPLETE / COVERED / NOT CERTIFIED`;
-the sections below describe the
-execution model for the remaining slices. M3.P0 infrastructure is merged and
-frozen; M3.T0 is finalized COMPLETE / FROZEN (Issue #178); M3.S1 is
-`COMPLETE / COVERED / NOT CERTIFIED` for the bounded turn-structure
-capability. Task 13 documentation/status/generated-contract closure and Task
-14 exact-head verification are complete. M3.S2 was merged by PR #208 and
-passed exact-head verification; it remains not covered while authoritative
-replay is deferred. S2 is complete / implemented / not covered / not certified.
+**Status:** `FINAL_CLOSURE_CANDIDATE — P0 COMPLETE / FROZEN — T0 COMPLETE / FROZEN`.
+The historical S1/S2 sequence below explains accepted intermediate slices;
+the current candidate status and evidence are recorded above. M3 remains
+bounded by Foundation V2 and is not marked complete or certified by this
+candidate.
 
-The planned execution order is:
+The accepted historical execution order through S2 was:
 
 ```text
 M3.P0 semantic-neutral state/persistence identity cut

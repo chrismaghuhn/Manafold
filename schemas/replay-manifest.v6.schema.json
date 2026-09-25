@@ -11,34 +11,219 @@
               "rules_manifest": {
                 "properties": {
                   "rules_authority": {
-                    "properties": {"variant": {"const": "comprehensive_rules"}},
-                    "required": ["variant"]
+                    "properties": {
+                      "variant": {
+                        "const": "comprehensive_rules"
+                      }
+                    },
+                    "required": [
+                      "variant"
+                    ]
                   },
                   "capability_closure": {
                     "type": "array",
                     "contains": {
                       "type": "object",
                       "properties": {
-                        "key": {"const": "rules/state-based-actions-combat"},
-                        "version": {"const": "0.1.0"}
+                        "key": {
+                          "const": "rules/state-based-actions-combat"
+                        },
+                        "version": {
+                          "const": "0.1.0"
+                        }
                       },
-                      "required": ["key", "version"]
+                      "required": [
+                        "key",
+                        "version"
+                      ]
                     }
                   }
                 },
-                "required": ["rules_authority", "capability_closure"]
+                "required": [
+                  "rules_authority",
+                  "capability_closure"
+                ]
               }
             },
-            "required": ["rules_manifest"]
+            "required": [
+              "rules_manifest"
+            ]
           }
         },
-        "required": ["semantic_contract"]
+        "required": [
+          "semantic_contract"
+        ]
       },
       "then": {
-        "properties": {
-          "schemas": {
+        "if": {
+          "properties": {
+            "semantic_contract": {
+              "properties": {
+                "rules_manifest": {
+                  "properties": {
+                    "capability_closure": {
+                      "contains": {
+                        "properties": {
+                          "key": {
+                            "const": "rules/combat-phase"
+                          }
+                        },
+                        "required": [
+                          "key"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "capability_closure"
+                  ]
+                }
+              },
+              "required": [
+                "rules_manifest"
+              ]
+            }
+          },
+          "required": [
+            "semantic_contract"
+          ]
+        },
+        "then": {
+          "if": {
             "properties": {
-              "observation_payload_codec": {"const": "magic-m3-observation.v1"}
+              "semantic_contract": {
+                "properties": {
+                  "rules_manifest": {
+                    "properties": {
+                      "capability_closure": {
+                        "contains": {
+                          "type": "object",
+                          "properties": {
+                            "key": {
+                              "const": "rules/combat-damage"
+                            }
+                          },
+                          "required": [
+                            "key"
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "capability_closure"
+                    ]
+                  }
+                },
+                "required": [
+                  "rules_manifest"
+                ]
+              }
+            },
+            "required": [
+              "semantic_contract"
+            ]
+          },
+          "then": {
+            "properties": {
+              "schemas": {
+                "properties": {
+                  "observation_payload_codec": {
+                    "const": "magic-combat-observation.v4"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "if": {
+              "properties": {
+                "semantic_contract": {
+                  "properties": {
+                    "rules_manifest": {
+                      "properties": {
+                        "capability_closure": {
+                          "const": [
+                            {
+                              "key": "rules/basic-priority",
+                              "version": "0.1.0"
+                            },
+                            {
+                              "key": "rules/combat-phase",
+                              "version": "0.1.0"
+                            },
+                            {
+                              "key": "rules/declare-attackers",
+                              "version": "0.1.0"
+                            },
+                            {
+                              "key": "rules/declare-blockers",
+                              "version": "0.1.0"
+                            },
+                            {
+                              "key": "rules/draw-card",
+                              "version": "0.1.0"
+                            },
+                            {
+                              "key": "rules/state-based-actions-combat",
+                              "version": "0.1.0"
+                            },
+                            {
+                              "key": "rules/turn-structure",
+                              "version": "0.1.0"
+                            },
+                            {
+                              "key": "rules/zone-incarnation",
+                              "version": "0.1.0"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "capability_closure"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "rules_manifest"
+                  ]
+                }
+              },
+              "required": [
+                "semantic_contract"
+              ]
+            },
+            "then": {
+              "properties": {
+                "schemas": {
+                  "properties": {
+                    "observation_payload_codec": {
+                      "const": "magic-combat-observation.v3"
+                    }
+                  }
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "schemas": {
+                  "properties": {
+                    "observation_payload_codec": {
+                      "const": "magic-combat-observation.v2"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "else": {
+          "properties": {
+            "schemas": {
+              "properties": {
+                "observation_payload_codec": {
+                  "const": "magic-m3-observation.v1"
+                }
+              }
             }
           }
         }
@@ -47,7 +232,9 @@
         "properties": {
           "schemas": {
             "properties": {
-              "observation_payload_codec": {"const": "synthetic-m3-observation.v1"}
+              "observation_payload_codec": {
+                "const": "synthetic-m3-observation.v1"
+              }
             }
           }
         }
@@ -69,8 +256,12 @@
     },
     "contract_id_nullable": {
       "anyOf": [
-        { "$ref": "#/$defs/contract_id" },
-        { "type": "null" }
+        {
+          "$ref": "#/$defs/contract_id"
+        },
+        {
+          "type": "null"
+        }
       ]
     },
     "counters": {
@@ -299,7 +490,7 @@
     "semantic_contract_manifest": {
       "additionalProperties": false,
       "properties": {
-         "content_contract_id": {
+        "content_contract_id": {
           "$ref": "#/$defs/contract_id_nullable"
         },
         "format_contract_id": {
@@ -414,7 +605,13 @@
           "const": "observation-envelope.v1"
         },
         "observation_payload_codec": {
-          "enum": ["synthetic-m3-observation.v1", "magic-m3-observation.v1"]
+          "enum": [
+            "synthetic-m3-observation.v1",
+            "magic-m3-observation.v1",
+            "magic-combat-observation.v2",
+            "magic-combat-observation.v3",
+            "magic-combat-observation.v4"
+          ]
         },
         "information_state": {
           "const": "information-state-envelope.v2"

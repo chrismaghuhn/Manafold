@@ -5,6 +5,9 @@ import json
 from collections.abc import Callable
 from typing import TypeVar
 
+from ._magic_combat_observation import MagicObservationV2
+from ._magic_combat_observation_v3 import MagicObservationV3
+from ._magic_combat_observation_v4 import MagicObservationV4
 from ._magic_observation import MagicObservation
 from ._synthetic_observation import SyntheticObservation
 from .canonical import canonical_json_bytes
@@ -65,6 +68,9 @@ _DECODERS: dict[str, Callable[[object], object]] = {
     "authoritative-replay.v3": AuthoritativeReplayV3.from_wire,
     "synthetic-m3-observation.v1": SyntheticObservation.from_wire,
     "magic-m3-observation.v1": MagicObservation.from_wire,
+    "magic-combat-observation.v2": MagicObservationV2.from_wire,
+    "magic-combat-observation.v3": MagicObservationV3.from_wire,
+    "magic-combat-observation.v4": MagicObservationV4.from_wire,
     "replay-manifest.v4": ReplayManifestV4.from_wire,
     "authoritative-replay.v4": AuthoritativeReplayV4.from_wire,
     "replay-manifest.v5": ReplayManifestV5.from_wire,
