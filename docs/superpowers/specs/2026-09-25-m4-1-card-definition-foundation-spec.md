@@ -422,18 +422,73 @@ defense: optional fixed signed 32-bit integer
 
 `PrintedManaSymbolV1` is a closed tagged value with exactly these variants:
 `generic(u32)` where the value is greater than zero, `white`, `blue`,
-`black`, `red`, `green`, and `colorless`. The printed sequence preserves
-source order and may repeat symbols. A zero-cost card uses an empty sequence;
-it does not encode a `generic(0)` symbol.
+`black`, `red`, `green`, `colorless`, and
+`hybrid(ManaColorV1, ManaColorV1)`. `ManaColorV1` is exactly `white`, `blue`,
+`black`, `red`, or `green`. A hybrid symbol contains two distinct colors in
+their printed order. The printed sequence preserves source order and may
+repeat symbols. A zero-cost card uses an empty sequence; it does not encode a
+`generic(0)` symbol.
 
 `mana_cost` is only the printed characteristic: its V1 closed symbol set is
-generic positive integer symbols, the five colored mana symbols, and
-colorless mana. It is not a cost/payment expression and carries no reduction,
-alternative, additional, hybrid, phyrexian, X-selection, or payment
-semantics. Unsupported printed symbols reject V1 structural validation rather
-than being converted to free-form text. A later need for a symbol outside
-this closed set requires a reviewed envelope/characteristic evolution before
-content using it can be admitted.
+generic positive integer symbols, the five colored mana symbols, colorless
+mana, and two-color hybrid symbols. Hybrid records only the printed
+characteristic; it does not state how a hybrid cost can legally be paid. This
+field is not a cost/payment expression and carries no reduction, alternative,
+additional, phyrexian, X-selection, or payment semantics. Unsupported printed
+symbols reject V1 structural validation rather than being converted to
+free-form text. A later need for a symbol outside this closed set requires a
+reviewed envelope/characteristic evolution before content using it can be
+admitted.
+
+### Locked R1×W1 characteristic-fit audit
+
+The live #222 lock list contains the following 26 unique names. This audit
+checks only whether the fields represented by `BaseCharacteristicsV1` can
+express the locked printed faces: name, printed mana cost, color indicator,
+type line, power/toughness, loyalty, and defense. It does not transcribe
+rules text, define card semantics, or claim support. Both split faces of Ojer
+Axonil, Deepest Might are counted. The audit used the locked names in live
+issue #222 and official Wizards card/release-note sources current on
+2026-09-25, including the [Foundations Release Notes](https://magic.wizards.com/en/news/feature/foundations-release-notes),
+[The Lost Caverns of Ixalan Release Notes](https://magic.wizards.com/en/news/feature/the-lost-caverns-of-ixalan-release-notes),
+and [Marvel's Spider-Man Release Notes](https://magic.wizards.com/en/news/feature/spider-man-release-notes). The official [Spider-Man and Pick-Two Draft article](https://magic.wizards.com/en/news/feature/spider-man-and-pick-two-draft) identifies Skyward Spider's white-blue hybrid pairing.
+
+| Locked unique name | Printed-face count | Mana-cost forms represented | Numeric fields present |
+| --- | ---: | --- | --- |
+| Fanatical Firebrand | 1 | red | power/toughness |
+| Hired Claw | 1 | red | power/toughness |
+| Magebane Lizard | 1 | generic, red | power/toughness |
+| Emberheart Challenger | 1 | generic, red | power/toughness |
+| Razorkin Needlehead | 1 | red ×2 | power/toughness |
+| Hearthborn Battler | 1 | generic, red | power/toughness |
+| Ojer Axonil, Deepest Might | 2 | generic, red ×2; back face has no mana cost | power/toughness on front only |
+| Nova Hellkite | 1 | generic, red ×2 | power/toughness |
+| Burst Lightning | 1 | red | none |
+| Lightning Strike | 1 | generic, red | none |
+| Mountain | 1 | no mana cost | none |
+| Rockface Village | 1 | no mana cost | none |
+| Plains | 1 | no mana cost | none |
+| Ethereal Armor | 1 | white | none |
+| Spellbook Vendor | 1 | generic, white | power/toughness |
+| Ruin-Lurker Bat | 1 | white | power/toughness |
+| Feather of Flight | 1 | generic, white | none |
+| Optimistic Scavenger | 1 | white | power/toughness |
+| Shardmage's Rescue | 1 | white | none |
+| Sheltered by Ghosts | 1 | generic, white | none |
+| Seam Rip | 1 | white | none |
+| Origin of Spider-Man | 1 | generic, white | none |
+| Skyward Spider | 1 | white/blue hybrid ×2 | power/toughness |
+| Abandoned Air Temple | 1 | no mana cost | none |
+| Evershrike's Gift | 1 | white | none |
+| Dryad Militant | 1 | green/white hybrid | power/toughness |
+
+All 26 names fit the declared fields and closed V1 printed-symbol set after
+including ordered two-color hybrid symbols. In this locked set, no face has a
+color indicator, loyalty, defense, variable `*` power/toughness, or an `X`,
+Phyrexian, snow, or other unsupported mana symbol. These observations bound
+only this fit audit; they do not assert that other content fits V1 or that any
+listed definition is admitted or executable. Ojer's two printed faces fit as
+two face records; M4.1 does not specify their runtime relationship or rules.
 
 Characteristic text is exact UTF-8 source text with no Unicode normalization
 or case folding. Field validation rejects empty required text, forbidden
@@ -909,7 +964,10 @@ lexicographic comparison of each color's canonical CBOR text encoding.
 `PrintedManaSymbolV1` is encoded as the two-element variant array
 `[variant_id_text, payload]`: `generic` carries a positive CBOR unsigned
 integer in `u32` range; `white`, `blue`, `black`, `red`, `green`, and
-`colorless` carry `null`. No other variant ID is valid.
+`colorless` carry `null`; `hybrid` carries a two-element array of distinct
+`ManaColorV1` canonical text values in printed order. Each `ManaColorV1` is
+one of `white`, `blue`, `black`, `red`, or `green`. No other variant ID is
+valid.
 
 `CardSemanticBindingV1` uses the same two-element closed variant form. Its
 M4.1 value is exactly `["unprofiled", null]`. The reserved profiled form is
@@ -1027,9 +1085,11 @@ evidence that any test has run.
 - identical manifest material yields identical content ID bytes;
 - the normative ContentContractManifestV1 canonical-CBOR known-answer vector
   matches exact preimage bytes and digest;
-- changing a profiled body under a test-only reviewed typed profile schema
-  changes content identity; the fixture schema is not admitted production
-  semantics;
+- for two bodies under a test-only reviewed typed profile schema, the
+  canonical manifest bytes differ when the body differs; this checks only the
+  canonical-encoding seam and must not invoke production
+  `ContentContractIdV1` minting or create a validated production content
+  contract; the fixture schema is not admitted production semantics;
 - changing every rule-relevant definition field changes the content manifest
   identity;
 - changing only source provenance or lowering-tool audit metadata preserves
