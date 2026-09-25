@@ -24,6 +24,10 @@ use crate::semantic_catalog_generated::{
     magic_combat_damage_0_1_0_rules_manifest,
     magic_combat_damage_0_1_0_semantic_contract_id,
     magic_combat_damage_0_1_0_semantic_manifest,
+    magic_bounded_turn_0_1_0_rules_contract_id,
+    magic_bounded_turn_0_1_0_rules_manifest,
+    magic_bounded_turn_0_1_0_semantic_contract_id,
+    magic_bounded_turn_0_1_0_semantic_manifest,
     magic_turn_structure_0_1_0_rules_contract_id,
     magic_turn_structure_0_1_0_rules_manifest,
     magic_turn_structure_0_1_0_semantic_contract_id,
@@ -121,7 +125,7 @@ fn known_meaning_is_distinct_from_supported_execution() {
 #[test]
 fn production_catalog_contains_exactly_generated_material() {
     let catalog = RuntimeSemanticCatalog::production();
-    assert_eq!(catalog.entry_count(), 8, "Synthetic, frozen S1, S3.A/B/C, combat, blockers, and damage identities");
+    assert_eq!(catalog.entry_count(), 9, "Synthetic, frozen profiles, combat, and bounded turn identities");
 
     let syn_id = synthetic_legacy_default_semantic_contract_id();
     let syn_entry = catalog.resolve(&syn_id).unwrap();

@@ -34,6 +34,7 @@ use mtgml_state::{
 use crate::endpoint::PlayerEndpointError;
 use crate::errors::{ControllerError, EnvironmentCommitError};
 use crate::semantic_catalog_generated::{
+    magic_bounded_turn_0_1_0_semantic_contract_id,
     magic_combat_attackers_0_1_0_semantic_contract_id,
     magic_combat_blockers_0_1_0_semantic_contract_id,
     magic_combat_damage_0_1_0_semantic_contract_id,
@@ -78,7 +79,9 @@ pub(crate) fn profile_for_execution_identity(
         Ok(ObservationProjectionProfile::MagicCombat)
     } else if identity.semantic_contract_id == magic_combat_blockers_0_1_0_semantic_contract_id() {
         Ok(ObservationProjectionProfile::MagicCombatBlockers)
-    } else if identity.semantic_contract_id == magic_combat_damage_0_1_0_semantic_contract_id() {
+    } else if identity.semantic_contract_id == magic_combat_damage_0_1_0_semantic_contract_id()
+        || identity.semantic_contract_id == magic_bounded_turn_0_1_0_semantic_contract_id()
+    {
         Ok(ObservationProjectionProfile::MagicCombatDamage)
     } else {
         Err(ControllerError::SemanticContractUnsupported)

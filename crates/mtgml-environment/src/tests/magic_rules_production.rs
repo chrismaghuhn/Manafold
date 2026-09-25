@@ -150,6 +150,26 @@ fn damage_backend(state: mtgml_state::EngineState) -> ReferenceEnvironmentBacken
     .expect("the combat damage identity admits its bounded state")
 }
 
+fn bounded_turn_backend(state: mtgml_state::EngineState) -> ReferenceEnvironmentBackend {
+    let mut replay = s3_replay_config();
+    replay.scenario_id = "rules/bounded-turn@0.1.0:cleanup".into();
+    replay.engine_build = "bounded-turn-candidate-test".into();
+    replay.rules_snapshot = "wotc-cr-2026-09-25-txt-20260925-sha256-8d860e451f20f38865b725b42d82feb714c725373dd8f3b32b8652b3eeb070ca".into();
+    replay.schemas.observation_payload_codec = mtgml_observation::MAGIC_OBSERVATION_SCHEMA_V4.into();
+    ReferenceEnvironmentBackend::new(ReferenceEnvironmentConfig {
+        state,
+        status: EpisodeStatus::Running,
+        limit_counters: EnvironmentLimitCounters::default(),
+        codec: CheckpointCodecIdentity {
+            codec_id: CHECKPOINT_CODEC_ID_V6.into(),
+            semantic_version: CHECKPOINT_CODEC_SEMANTIC_VERSION_V6.into(),
+        },
+        execution_identity: ReferenceEnvironmentBackend::magic_bounded_turn_execution_identity(),
+        replay,
+    })
+    .expect("the bounded-turn identity admits its bounded state")
+}
+
 fn stable_combat_state() -> mtgml_state::EngineState {
     let mut state = super::restore_admission::magic_sba_continuation_state();
     state.core.position = TurnPosition::PrecombatMain;
@@ -1969,6 +1989,17 @@ fn current_select_one_response(
         state_revision: request.state_revision,
         answer: DecisionAnswerV2::SelectOne {
             candidate_id: request.candidates[0].candidate_id,
+        },
+    }
+}
+
+fn current_select_many_response(request: &mtgml_decision::PlayerDecisionRequestV2) -> DecisionResponseV2 {
+    DecisionResponseV2 {
+        schema_version: mtgml_decision::DECISION_RESPONSE_V2_SCHEMA.into(),
+        player_decision_id: request.player_decision_id,
+        state_revision: request.state_revision,
+        answer: DecisionAnswerV2::SelectMany {
+            candidate_ids: request.candidates.iter().map(|candidate| candidate.candidate_id).collect(),
         },
     }
 }
@@ -3919,4 +3950,273 @@ fn combat_damage_rejection_and_hidden_world_projection_are_atomic() {
     assert_eq!(first.export_replay().unwrap(), replay_before);
     assert_eq!(player_fingerprint(&first, P1), p1_before);
     assert_eq!(player_fingerprint(&first, P2), p2_before);
+}
+
+#[test]
+fn bounded_turn_cleanup_resets_marks_and_hands_off_through_next_upkeep() {
+    let mut state = stable_combat_state();
+    state.core.position = TurnPosition::Ending {
+        step: mtgml_state::EndingStep::Cleanup,
+    };
+    state.combat = None;
+    state.core.priority = mtgml_state::PriorityState::None;
+    state.foundation_sources.get_mut(&GameObjectId(1)).unwrap().marked_damage = 1;
+    mtgml_state::validate_engine_state(&state).unwrap();
+    state.digest().unwrap();
+
+    let mut backend = bounded_turn_backend(state);
+    let transition = backend.execute_forced_progress().unwrap();
+    assert_eq!(transition.next_state.core.turn_number, 2);
+    assert_eq!(transition.next_state.core.active_player, P2);
+    assert_eq!(
+        transition.next_state.core.position,
+        TurnPosition::Beginning {
+            step: mtgml_state::BeginningStep::Upkeep,
+        }
+    );
+    assert!(transition.next_state.foundation_sources.values().all(|source| source.marked_damage == 0));
+    assert!(transition.next_state.execution.pending_decision.is_some());
+}
+
+#[test]
+fn bounded_turn_player_endpoints_carry_combat_damage_through_cleanup_and_replay() {
+    let (_, _, _, damage_checkpoint, _) =
+        run_combat_damage_case(&[(3, 4)], Some((2, 5)), 20, true);
+    let backend = bounded_turn_backend(damage_checkpoint.state.clone());
+    let initial = backend.checkpoint().unwrap();
+    let controller = TrustedEnvironmentController::new(backend);
+
+    // Both surviving combatants carry marks up to Cleanup.
+    assert_eq!(damage_checkpoint.state.foundation_sources[&GameObjectId(3)].marked_damage, 2);
+    assert_eq!(damage_checkpoint.state.foundation_sources[&GameObjectId(4)].marked_damage, 3);
+
+    let mut external_responses = 0usize;
+    for _ in 0..4 {
+        for actor in [P1, P2] {
+            let endpoint = controller.bind_player(actor).unwrap();
+            let request = endpoint.visible_decision().unwrap().unwrap();
+            assert_eq!(request.actor, actor);
+            endpoint.submit(current_select_one_response(&request)).unwrap();
+            external_responses += 1;
+        }
+    }
+
+    let final_checkpoint = controller.checkpoint().unwrap();
+    assert_eq!(
+        final_checkpoint.state.core.position,
+        TurnPosition::Beginning {
+            step: mtgml_state::BeginningStep::Upkeep,
+        }
+    );
+    assert_eq!(final_checkpoint.state.core.turn_number, 2);
+    assert_eq!(final_checkpoint.state.core.active_player, P2);
+    assert!(final_checkpoint
+        .state
+        .foundation_sources
+        .values()
+        .all(|source| source.marked_damage == 0));
+    assert_eq!(controller.export_replay().unwrap().steps.len(), external_responses);
+    let report = controller
+        .execute_replay_from_checkpoint(initial, controller.export_replay().unwrap())
+        .unwrap();
+    assert_eq!(report.final_checkpoint, final_checkpoint);
+}
+
+#[test]
+fn complete_bounded_turn_runs_from_untap_through_cleanup_with_explicit_endpoints() {
+    let mut state = blocker_fixture(1, 1, 0);
+    state.core.turn_number = 2;
+    state.core.active_player = P2;
+    state.core.position = TurnPosition::Beginning {
+        step: mtgml_state::BeginningStep::Untap,
+    };
+    state.core.priority = mtgml_state::PriorityState::None;
+    state.combat = None;
+    state.execution.pending_decision = None;
+    state.execution.continuations.clear();
+    state.zones.objects.get_mut(&GameObjectId(1)).unwrap().tapped = true;
+    state.zones.objects.get_mut(&GameObjectId(3)).unwrap().controller = P2;
+    state.zones.objects.get_mut(&GameObjectId(3)).unwrap().tapped = false;
+    state.zones.objects.get_mut(&GameObjectId(4)).unwrap().controller = P1;
+    state.zones.objects.get_mut(&GameObjectId(4)).unwrap().tapped = false;
+    state.zones.objects.get_mut(&GameObjectId(2)).unwrap().face_down = false;
+    state.foundation_sources.get_mut(&GameObjectId(3)).unwrap().base_characteristics =
+        BaseCharacteristics::Simple { power: 3, toughness: 4 };
+    state.foundation_sources.get_mut(&GameObjectId(4)).unwrap().base_characteristics =
+        BaseCharacteristics::Simple { power: 2, toughness: 5 };
+    mtgml_state::validate_engine_state(&state).unwrap();
+    state.digest().unwrap();
+
+    let mut backend = bounded_turn_backend(state);
+    backend.execute_forced_progress().unwrap(); // P2 Untap -> Upkeep.
+    backend.execute_forced_progress().unwrap(); // Open the first Upkeep priority Decision.
+    let initial = backend.checkpoint().unwrap();
+    let controller = TrustedEnvironmentController::new(backend);
+    assert_eq!(controller.fork().unwrap().checkpoint().unwrap(), initial);
+    let mut restored = bounded_turn_backend(initial.state.clone());
+    restored.restore(initial.clone()).unwrap();
+    assert_eq!(restored.checkpoint().unwrap(), initial);
+    let mut external_responses = 0usize;
+    let mut decisions = Vec::new();
+
+    let pass_window = |position: TurnPosition,
+                       controller: &TrustedEnvironmentController,
+                       external_responses: &mut usize,
+                       decisions: &mut Vec<(PlayerId, TurnPosition, usize)>| {
+        assert_eq!(controller.checkpoint().unwrap().state.core.position, position);
+        for actor in [P2, P1] {
+            let endpoint = controller.bind_player(actor).unwrap();
+            let request = endpoint.visible_decision().unwrap().unwrap();
+            assert_eq!(request.actor, actor);
+            decisions.push((actor, position, request.candidates.len()));
+            endpoint.submit(current_select_one_response(&request)).unwrap();
+            *external_responses += 1;
+        }
+    };
+
+    pass_window(
+        TurnPosition::Beginning { step: mtgml_state::BeginningStep::Upkeep },
+        &controller,
+        &mut external_responses,
+        &mut decisions,
+    );
+    pass_window(
+        TurnPosition::Beginning { step: mtgml_state::BeginningStep::Draw },
+        &controller,
+        &mut external_responses,
+        &mut decisions,
+    );
+    pass_window(TurnPosition::PrecombatMain, &controller, &mut external_responses, &mut decisions);
+    pass_window(
+        TurnPosition::Combat { step: mtgml_state::CombatStep::BeginningOfCombat },
+        &controller,
+        &mut external_responses,
+        &mut decisions,
+    );
+
+    let p2 = controller.bind_player(P2).unwrap();
+    let attackers = p2.visible_decision().unwrap().unwrap();
+    assert_eq!(attackers.actor, P2);
+    assert!(matches!(attackers.decision, mtgml_decision::DecisionDomainV2::ChooseMany { .. }));
+    assert_eq!(attackers.candidates.len(), 1);
+    decisions.push((P2, TurnPosition::Combat { step: mtgml_state::CombatStep::DeclareAttackers }, attackers.candidates.len()));
+    p2.submit(current_select_many_response(&attackers)).unwrap();
+    external_responses += 1;
+    pass_window(
+        TurnPosition::Combat { step: mtgml_state::CombatStep::DeclareAttackers },
+        &controller,
+        &mut external_responses,
+        &mut decisions,
+    );
+
+    let p1 = controller.bind_player(P1).unwrap();
+    let blockers = p1.visible_decision().unwrap().unwrap();
+    assert_eq!(blockers.actor, P1);
+    let blocker_candidate = blockers
+        .candidates
+        .iter()
+        .find(|candidate| matches!(candidate.intent, mtgml_decision::CandidateIntent::SelectObject { .. }))
+        .expect("the single eligible blocker is an explicit choice");
+    decisions.push((P1, TurnPosition::Combat { step: mtgml_state::CombatStep::DeclareBlockers }, blockers.candidates.len()));
+    p1.submit(DecisionResponseV2 {
+        schema_version: mtgml_decision::DECISION_RESPONSE_V2_SCHEMA.into(),
+        player_decision_id: blockers.player_decision_id,
+        state_revision: blockers.state_revision,
+        answer: DecisionAnswerV2::SelectOne { candidate_id: blocker_candidate.candidate_id },
+    }).unwrap();
+    external_responses += 1;
+    pass_window(
+        TurnPosition::Combat { step: mtgml_state::CombatStep::DeclareBlockers },
+        &controller,
+        &mut external_responses,
+        &mut decisions,
+    );
+    pass_window(
+        TurnPosition::Combat { step: mtgml_state::CombatStep::CombatDamage },
+        &controller,
+        &mut external_responses,
+        &mut decisions,
+    );
+    pass_window(
+        TurnPosition::Combat { step: mtgml_state::CombatStep::EndOfCombat },
+        &controller,
+        &mut external_responses,
+        &mut decisions,
+    );
+    pass_window(TurnPosition::PostcombatMain, &controller, &mut external_responses, &mut decisions);
+    pass_window(
+        TurnPosition::Ending { step: mtgml_state::EndingStep::EndStep },
+        &controller,
+        &mut external_responses,
+        &mut decisions,
+    );
+
+    let final_checkpoint = controller.checkpoint().unwrap();
+    assert_eq!(final_checkpoint.state.core.turn_number, 3);
+    assert_eq!(final_checkpoint.state.core.active_player, P1);
+    assert_eq!(final_checkpoint.state.core.position, TurnPosition::Beginning { step: mtgml_state::BeginningStep::Upkeep });
+    assert_eq!(final_checkpoint.state.core.priority, mtgml_state::PriorityState::HeldBy { player: P1, consecutive_passes: 0 });
+    assert_eq!(final_checkpoint.state.foundation_sources[&GameObjectId(3)].marked_damage, 0);
+    assert_eq!(final_checkpoint.state.foundation_sources[&GameObjectId(4)].marked_damage, 0);
+    assert!(final_checkpoint.state.zones.objects[&GameObjectId(3)].tapped, "the old active player's attacker stays tapped");
+    assert!(!final_checkpoint.state.zones.objects[&GameObjectId(1)].tapped, "the new active player's permanent untaps");
+    assert_eq!(controller.export_replay().unwrap().steps.len(), external_responses);
+    assert_eq!(decisions.len(), external_responses);
+    let replay = controller.export_replay().unwrap();
+    let report = controller.execute_replay_from_checkpoint(initial, replay).unwrap();
+    assert_eq!(report.final_checkpoint, final_checkpoint);
+}
+
+#[test]
+fn bounded_cleanup_overflow_rejections_preserve_checkpoint_replay_and_player_products() {
+    for exhaustion in ["turn", "events", "revision"] {
+        let mut state = stable_combat_state();
+        state.core.position = TurnPosition::Ending {
+            step: mtgml_state::EndingStep::Cleanup,
+        };
+        state.core.priority = mtgml_state::PriorityState::None;
+        state.combat = None;
+        state.foundation_sources.get_mut(&GameObjectId(1)).unwrap().marked_damage = 1;
+        state.foundation_sources.get_mut(&GameObjectId(3)).unwrap().marked_damage = 1;
+        if exhaustion == "turn" {
+            state.core.turn_number = u64::MAX;
+        } else if exhaustion == "events" {
+            state.allocators.next_rule_event_id = mtgml_model::RuleEventId(u64::MAX - 3);
+        } else {
+            state.revision = StateRevision(u64::MAX);
+        }
+        mtgml_state::validate_engine_state(&state).unwrap();
+        state.digest().unwrap();
+        let controller = TrustedEnvironmentController::new(bounded_turn_backend(state));
+        let checkpoint = controller.checkpoint().unwrap();
+        let replay = controller.export_replay().unwrap();
+        let p1 = player_fingerprint(&controller, P1);
+        let p2 = player_fingerprint(&controller, P2);
+
+        assert!(controller.execute_forced_progress().is_err(), "{exhaustion} exhaustion must reject");
+        assert_eq!(controller.checkpoint().unwrap(), checkpoint);
+        assert_eq!(controller.export_replay().unwrap(), replay);
+        assert_eq!(player_fingerprint(&controller, P1), p1);
+        assert_eq!(player_fingerprint(&controller, P2), p2);
+    }
+}
+
+#[test]
+fn combat_damage_contract_still_stops_at_marked_damage_cleanup() {
+    let mut state = stable_combat_state();
+    state.core.position = TurnPosition::Ending {
+        step: mtgml_state::EndingStep::Cleanup,
+    };
+    state.core.priority = mtgml_state::PriorityState::None;
+    state.combat = None;
+    state.foundation_sources.get_mut(&GameObjectId(1)).unwrap().marked_damage = 1;
+    mtgml_state::validate_engine_state(&state).unwrap();
+    state.digest().unwrap();
+    let controller = TrustedEnvironmentController::new(damage_backend(state));
+    let checkpoint = controller.checkpoint().unwrap();
+    let replay = controller.export_replay().unwrap();
+
+    assert!(controller.execute_forced_progress().is_err());
+    assert_eq!(controller.checkpoint().unwrap(), checkpoint);
+    assert_eq!(controller.export_replay().unwrap(), replay);
 }

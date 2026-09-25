@@ -59,8 +59,8 @@ class SourceOfTruthTests(unittest.TestCase):
         self.assertIsInstance(entries, list)
         self.assertEqual(
             len(entries),
-            8,
-            "production catalog must include the exact cumulative combat damage profile",
+            9,
+            "production catalog must include the exact bounded-turn profile",
         )
         # Entry 0: synthetic_legacy_default
         syn = entries[0]
@@ -165,6 +165,39 @@ class SourceOfTruthTests(unittest.TestCase):
         )
         self.assertIsNone(blockers["format_contract_id"])
         self.assertIsNone(blockers["content_contract_id"])
+        damage = entries[7]
+        self.assertEqual(damage["entry_id"], "magic_combat_damage_0_1_0")
+        self.assertEqual(
+            damage["rules_authority"],
+            {
+                "variant": "comprehensive_rules",
+                "snapshot_id": (
+                    "wotc-cr-2026-09-25-txt-20260925-sha256-"
+                    "8d860e451f20f38865b725b42d82feb714c725373dd8f3b32b8652b3eeb070ca"
+                ),
+            },
+        )
+        bounded_turn = entries[8]
+        self.assertEqual(bounded_turn["entry_id"], "magic_bounded_turn_0_1_0")
+        self.assertEqual(bounded_turn["rules_authority"], damage["rules_authority"])
+        self.assertEqual(
+            bounded_turn["capability_closure"],
+            [
+                {"key": "rules/basic-priority", "version": "0.1.0"},
+                {"key": "rules/cleanup-reset", "version": "0.1.0"},
+                {"key": "rules/combat-damage", "version": "0.1.0"},
+                {"key": "rules/combat-phase", "version": "0.1.0"},
+                {"key": "rules/damage-and-life", "version": "0.1.0"},
+                {"key": "rules/declare-attackers", "version": "0.1.0"},
+                {"key": "rules/declare-blockers", "version": "0.1.0"},
+                {"key": "rules/draw-card", "version": "0.1.0"},
+                {"key": "rules/state-based-actions-combat", "version": "0.1.0"},
+                {"key": "rules/turn-structure", "version": "0.1.0"},
+                {"key": "rules/zone-incarnation", "version": "0.1.0"},
+            ],
+        )
+        self.assertIsNone(bounded_turn["format_contract_id"])
+        self.assertIsNone(bounded_turn["content_contract_id"])
 
     def test_source_contains_no_hand_authored_identity(self) -> None:
         # BLOCKER regression: derived IDs are GENERATED, never hand-authored.

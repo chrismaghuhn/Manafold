@@ -132,6 +132,10 @@ impl MagicKernelProfile {
     fn allows_combat_damage(&self) -> bool {
         matches!(self, Self::Admitted(profile) if profile.allows_combat_damage_0_1_0())
     }
+
+    fn allows_cleanup_reset(&self) -> bool {
+        matches!(self, Self::Admitted(profile) if profile.allows_cleanup_reset_0_1_0())
+    }
 }
 
 impl MagicRulesKernel {
@@ -266,6 +270,21 @@ impl RulesKernel for MagicRulesKernel {
                         step: BeginningStep::Draw
                     }
                 ) && !self.profile.allows_draw_card()
+                {
+                    return Err(KernelExecutionError::UnsupportedStagePath);
+                }
+                if matches!(
+                    state.core.position,
+                    TurnPosition::Beginning {
+                        step: BeginningStep::Draw
+                    } | TurnPosition::PostcombatMain
+                ) && matches!(
+                    state.core.priority,
+                    mtgml_state::PriorityState::HeldBy {
+                        consecutive_passes: 1,
+                        ..
+                    }
+                ) && !self.profile.allows_cleanup_reset()
                 {
                     return Err(KernelExecutionError::UnsupportedStagePath);
                 }
@@ -1582,7 +1601,11 @@ impl MagicRulesKernel {
         ) {
             let profile = validate_turn_structure_support(state)
                 .map_err(KernelExecutionError::TurnStructure)?;
-            return self.advance_quiescent_cleanup(state, &profile);
+            return if self.profile.allows_cleanup_reset() {
+                self.advance_cleanup_reset(state, &profile)
+            } else {
+                self.advance_quiescent_cleanup(state, &profile)
+            };
         }
         let plan = crate::state_based_actions::derive_bounded_sba_round_plan(state)
             .map_err(|_| KernelExecutionError::UnsupportedStagePath)?;
@@ -2638,7 +2661,11 @@ impl MagicRulesKernel {
                 step: EndingStep::Cleanup,
             }
         ) {
-            return self.advance_quiescent_cleanup(state, &profile);
+            return if self.profile.allows_cleanup_reset() {
+                self.advance_cleanup_reset(state, &profile)
+            } else {
+                self.advance_quiescent_cleanup(state, &profile)
+            };
         }
 
         match unsupported_rules_boundary(position) {
@@ -2849,6 +2876,150 @@ impl MagicRulesKernel {
             workspace.core.position = to;
             Ok(())
         })
+    }
+
+    /// Bounded ordinary Cleanup: prove the pre/post SBA state is stable, clear
+    /// every live supported permanent's marked damage simultaneously, and hand
+    /// off the turn in the same atomic rules product.
+    fn advance_cleanup_reset(
+        &mut self,
+        state: &EngineState,
+        profile: &TurnStructureSupportProfile,
+    ) -> Result<TransitionResult, KernelExecutionError> {
+        let affected = crate::turn_structure::derive_cleanup_damage_reset_objects(
+            state,
+            profile.active_player(),
+        )
+        .map_err(|_| {
+            KernelExecutionError::UnsupportedRulesBoundary(UnsupportedRulesBoundary::CleanupReset)
+        })?;
+        let sba = crate::state_based_actions::derive_bounded_sba_round_plan(state)
+            .map_err(|_| KernelExecutionError::UnsupportedStagePath)?;
+        if !sba.selected_sba_actions.is_empty()
+            || !sba.apnap_owners.is_empty()
+            || !state.execution.continuations.is_empty()
+            || state.execution.pending_decision.is_some()
+            || state.core.priority != mtgml_state::PriorityState::None
+            || state.combat.is_some()
+        {
+            return Err(KernelExecutionError::UnsupportedStagePath);
+        }
+
+        let old_turn = profile.turn_number();
+        let old_active = profile.active_player();
+        let new_active = profile.other_player();
+        let new_turn = old_turn
+            .checked_add(1)
+            .ok_or(KernelExecutionError::TurnStructure(
+                TurnStructureError::TurnNumberOverflow,
+            ))?;
+        let from = profile.position();
+        let to = temporal_successor(from);
+        let next_revision = StateRevision(
+            state
+                .revision
+                .0
+                .checked_add(1)
+                .ok_or(KernelExecutionError::RevisionOverflow)?,
+        );
+        let affected_count =
+            u64::try_from(affected.len()).map_err(|_| KernelExecutionError::RuleEventIdOverflow)?;
+        let event_count = affected_count
+            .checked_add(3)
+            .ok_or(KernelExecutionError::RuleEventIdOverflow)?;
+        let after_event_range = state
+            .allocators
+            .next_rule_event_id
+            .0
+            .checked_add(event_count)
+            .ok_or(KernelExecutionError::RuleEventIdOverflow)?;
+
+        let event_capacity = affected
+            .len()
+            .checked_add(3)
+            .ok_or(KernelExecutionError::RuleEventIdOverflow)?;
+        let mut events = Vec::with_capacity(event_capacity);
+        for (offset, (object, damage)) in affected.iter().enumerate() {
+            let event_offset =
+                u64::try_from(offset).map_err(|_| KernelExecutionError::RuleEventIdOverflow)?;
+            let event_id = state
+                .allocators
+                .next_rule_event_id
+                .0
+                .checked_add(event_offset)
+                .ok_or(KernelExecutionError::RuleEventIdOverflow)?;
+            events.push(AuthoritativeRuleEvent {
+                event_id: RuleEventId(event_id),
+                state_revision: next_revision,
+                event: AuthoritativeRuleEventKind::MarkedDamageChanged {
+                    creature: *object,
+                    from: *damage,
+                    to: 0,
+                },
+            });
+        }
+        let base = after_event_range
+            .checked_sub(3)
+            .ok_or(KernelExecutionError::RuleEventIdOverflow)?;
+        events.extend([
+            AuthoritativeRuleEvent {
+                event_id: RuleEventId(base),
+                state_revision: next_revision,
+                event: AuthoritativeRuleEventKind::TurnNumberChanged {
+                    from: old_turn,
+                    to: new_turn,
+                },
+            },
+            AuthoritativeRuleEvent {
+                event_id: RuleEventId(
+                    base.checked_add(1)
+                        .ok_or(KernelExecutionError::RuleEventIdOverflow)?,
+                ),
+                state_revision: next_revision,
+                event: AuthoritativeRuleEventKind::ActivePlayerChanged {
+                    from: old_active,
+                    to: new_active,
+                },
+            },
+            AuthoritativeRuleEvent {
+                event_id: RuleEventId(
+                    base.checked_add(2)
+                        .ok_or(KernelExecutionError::RuleEventIdOverflow)?,
+                ),
+                state_revision: next_revision,
+                event: AuthoritativeRuleEventKind::TurnPositionChanged { from, to },
+            },
+        ]);
+        let mut next = state.clone();
+        next.revision = next_revision;
+        next.core.turn_number = new_turn;
+        next.core.active_player = new_active;
+        next.core.position = to;
+        let cleanup = build_accepted_product(state, next, events, |workspace| {
+            for (object, _) in &affected {
+                let source = workspace
+                    .foundation_sources
+                    .get_mut(object)
+                    .ok_or(KernelExecutionError::UnsupportedStagePath)?;
+                source.marked_damage = 0;
+            }
+            workspace.core.turn_number = new_turn;
+            workspace.core.active_player = new_active;
+            workspace.core.position = to;
+            Ok(())
+        })?;
+        // The reset only lowers marked damage. The pre-reset selected SBA set
+        // was empty, and no SBA can become newly applicable by clearing marks.
+        let untap_profile = validate_turn_structure_support(&cleanup.next_state)
+            .map_err(KernelExecutionError::TurnStructure)?;
+        let untap = self.ordinary_untap(&cleanup.next_state, &untap_profile)?;
+        let cleanup_and_untap = crate::product::compose_atomic_products(state, cleanup, untap)?;
+        let priority = crate::basic_priority::open_priority_window(&cleanup_and_untap.next_state)?;
+        let complete = crate::product::compose_atomic_products(state, cleanup_and_untap, priority)?;
+        validate_engine_state(&complete.next_state).map_err(KernelExecutionError::AfterState)?;
+        crate::validate_transition_contract(state, &complete)
+            .map_err(KernelExecutionError::TransitionContract)?;
+        Ok(complete)
     }
 }
 

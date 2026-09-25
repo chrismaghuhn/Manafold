@@ -235,6 +235,35 @@ pub fn validate_runtime_state_for_contract(
             if profile.allows_combat_attackers_0_1_0() {
                 return MagicRulesKernel::validate_combat_runtime_state(state, status);
             }
+            if profile.allows_cleanup_reset_0_1_0()
+                && state.core.position
+                    == (mtgml_state::TurnPosition::Ending {
+                        step: mtgml_state::EndingStep::Cleanup,
+                    })
+            {
+                if !matches!(status, EpisodeStatus::Running)
+                    || state.core.players.values().any(|player| player.has_lost)
+                    || state.core.priority != mtgml_state::PriorityState::None
+                    || state.execution.pending_decision.is_some()
+                    || !state.execution.continuations.is_empty()
+                    || state.combat.is_some()
+                {
+                    return Err(KernelExecutionError::UnsupportedStagePath);
+                }
+                let turn_profile = validate_turn_structure_support(state)
+                    .map_err(KernelExecutionError::TurnStructure)?;
+                crate::turn_structure::derive_cleanup_damage_reset_objects(
+                    state,
+                    turn_profile.active_player(),
+                )
+                .map_err(|_| KernelExecutionError::UnsupportedStagePath)?;
+                let sba = crate::state_based_actions::derive_bounded_sba_round_plan(state)
+                    .map_err(|_| KernelExecutionError::UnsupportedStagePath)?;
+                if !sba.selected_sba_actions.is_empty() || !sba.apnap_owners.is_empty() {
+                    return Err(KernelExecutionError::UnsupportedStagePath);
+                }
+                return Ok(());
+            }
             if matches!(
                 state.core.position,
                 mtgml_state::TurnPosition::Beginning {

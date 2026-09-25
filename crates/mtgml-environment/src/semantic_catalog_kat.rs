@@ -7,6 +7,8 @@
 //! persistence functions; drift fails the build.
 
 use crate::semantic_catalog_generated::{
+    magic_bounded_turn_0_1_0_rules_contract_id, magic_bounded_turn_0_1_0_rules_manifest,
+    magic_bounded_turn_0_1_0_semantic_contract_id, magic_bounded_turn_0_1_0_semantic_manifest,
     magic_combat_attackers_0_1_0_rules_contract_id, magic_combat_attackers_0_1_0_rules_manifest,
     magic_combat_attackers_0_1_0_semantic_contract_id,
     magic_combat_attackers_0_1_0_semantic_manifest, magic_combat_blockers_0_1_0_rules_contract_id,
@@ -35,6 +37,20 @@ use crate::semantic_catalog_generated::{
     SEMANTIC_CONTRACT_CATALOG_SYNTHETIC_LEGACY_DEFAULT_RULES_CONTRACT_HEX,
     SEMANTIC_CONTRACT_CATALOG_SYNTHETIC_LEGACY_DEFAULT_SEMANTIC_CONTRACT_HEX,
 };
+
+#[test]
+fn bounded_turn_contract_ids_recompute_from_generated_manifest_facts() {
+    let rules = mtgml_persistence::semantic_contract_digest::calculate_rules_contract_id_v1(
+        &magic_bounded_turn_0_1_0_rules_manifest(),
+    )
+    .expect("generated bounded-turn rules manifest is valid");
+    let semantic = mtgml_persistence::semantic_contract_digest::calculate_semantic_contract_id_v1(
+        &magic_bounded_turn_0_1_0_semantic_manifest(),
+    )
+    .expect("generated bounded-turn semantic manifest is valid");
+    assert_eq!(rules, magic_bounded_turn_0_1_0_rules_contract_id());
+    assert_eq!(semantic, magic_bounded_turn_0_1_0_semantic_contract_id());
+}
 
 #[test]
 fn rules_contract_id_recomputes_from_generated_manifest_facts() {
