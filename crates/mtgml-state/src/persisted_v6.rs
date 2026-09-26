@@ -19,19 +19,10 @@ pub enum ManaColorV1 {
     Colorless = 5,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ManaPoolV1 {
     pub unrestricted: [u32; 6],
     pub creature_spell_only: [u32; 6],
-}
-
-impl Default for ManaPoolV1 {
-    fn default() -> Self {
-        Self {
-            unrestricted: [0; 6],
-            creature_spell_only: [0; 6],
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -582,7 +573,7 @@ pub struct FullStateDigestInputV6 {
 
 impl FullStateDigestInputV6 {
     pub fn canonical_value(&self) -> Result<Value, PersistedV6Error> {
-        validate_legacy_components(
+        validate_legacy_components([
             &self.core_v1,
             &self.zones_v1,
             &self.allocators_v3,
@@ -592,7 +583,7 @@ impl FullStateDigestInputV6 {
             &self.combat,
             &self.foundation_sources,
             &self.format_v1,
-        )?;
+        ])?;
         Ok(array([
             Value::Text("full-state-digest-input.v6".to_owned()),
             Value::Text("mtgml.full-state-digest.v6".to_owned()),
@@ -619,7 +610,7 @@ impl FullStateDigestInputV6 {
         let fields = parse_array(value, 14)?;
         parse_text(&fields[0], "full-state-digest-input.v6")?;
         parse_text(&fields[1], "mtgml.full-state-digest.v6")?;
-        validate_legacy_components(
+        validate_legacy_components([
             &fields[3],
             &fields[4],
             &fields[5],
@@ -629,7 +620,7 @@ impl FullStateDigestInputV6 {
             &fields[10],
             &fields[11],
             &fields[12],
-        )?;
+        ])?;
         let input = Self {
             revision: parse_u64(&fields[2])?,
             core_v1: fields[3].clone(),
@@ -675,17 +666,9 @@ impl FullStateDigestInputV6 {
     }
 }
 
-fn validate_legacy_components(
-    core: &Value,
-    zones: &Value,
-    allocators: &Value,
-    random: &Value,
-    knowledge: &Value,
-    perspective_identities: &Value,
-    combat: &Value,
-    foundation_sources: &Value,
-    format: &Value,
-) -> Result<(), PersistedV6Error> {
+fn validate_legacy_components(components: [&Value; 9]) -> Result<(), PersistedV6Error> {
+    let [core, zones, allocators, random, knowledge, perspective_identities, combat, foundation_sources, format] =
+        components;
     parse_array(core, 5)?;
     parse_array(zones, 5)?;
     let allocator_values = parse_array(allocators, 8)?;
