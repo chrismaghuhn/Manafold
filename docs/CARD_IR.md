@@ -6,8 +6,10 @@
 The immutable content envelope, content identity, provenance separation,
 validation, and non-authorizing preflight are owned by the normative
 [Card Definition and Content Contract V1](contracts/CARD_DEFINITION_CONTRACT.md).
-That foundation does not make executable Card-IR vocabulary stable or admit
-a semantic profile.
+The M4.1 foundation does not make executable Card-IR vocabulary stable. The
+M4.2 profiled-content prerequisite adds structural validation and immutable
+identity for exactly `basic-land@1.0.0`; it does not authorize that profile for
+gameplay or make a general executable Card-IR vocabulary stable.
 
 ## Required properties
 
@@ -54,7 +56,11 @@ M4.1 freezes only the closed immutable content foundation. It does not
 execute content or define a general Magic semantic language. The former
 `ExperimentalEffect` scaffold had no compatibility entitlement and has been
 removed; its variants were not promoted or renamed. The first executable
-profile and first real selected content belong to M4.2.
+profile and first real selected content belong to M4.2. The narrow
+profiled-content prerequisite recognizes the closed Mountain/Plains body for
+canonical content validation and identity only. Requirement closure,
+provenance verification, executable admission, and rules execution remain
+separate later work; a typed profile is not a card-support claim.
 
 ## Maintainer rule
 

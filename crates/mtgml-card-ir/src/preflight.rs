@@ -105,9 +105,9 @@ pub fn content_validation_only(
         .close_definition_roots(supplied_content_contract_id, roots)
         .map_err(ContentPreflightErrorV1::DefinitionClosure)?;
 
-    // UnprofiledV1 contains no executable semantics and therefore derives no
-    // capability roots. Explicit roots are additive and references contribute
-    // further definitions whose own explicit roots are included here.
+    // Content validation does not authorize executable profile semantics or
+    // derive their capability roots. Explicit roots remain additive and
+    // references contribute further definitions' explicit roots.
     let mut derived = Vec::<CapabilityRequirementV1>::new();
     let mut explicit = Vec::<CapabilityRequirementV1>::new();
     for id in &reachable_definitions {
@@ -137,8 +137,10 @@ pub fn content_validation_only(
 fn derived_requirement_roots(
     _definition: &crate::CardDefinitionEnvelopeV1,
 ) -> Vec<CapabilityRequirementV1> {
-    // M4.1 admits only UnprofiledV1, which carries no semantic requirements.
-    // A later reviewed profile owns its closed derivation descriptor.
+    // The profiled-content prerequisite validates and identifies the closed
+    // basic-land body, but profile requirement derivation remains deferred to
+    // the later executable-admission work. Content validation alone does not
+    // authorize a rules path.
     Vec::new()
 }
 
