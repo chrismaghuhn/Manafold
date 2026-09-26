@@ -96,6 +96,12 @@ Replay V7's `content_contract` JSON child must use the exact Spec-defined closed
 
 **Stop:** generator source cannot express the exact closed variants; existing schemas conflict with the Spec; any old fixture needs reblessing; ProfiledV1 outer seam would change.
 
+**Phase boundary clarification:** this phase freezes the normative profile
+identity/body contract, schemas, and detached vectors only. It does not add a
+production `ProfiledV1` Card IR decoder or enable `ContentContractIdV1` for
+profiled manifests. That narrow production codec/identity prerequisite is the
+separate slice immediately before Phase 7 and Phase 8 below.
+
 ## 5. Phase 2 — successor RED fixtures and canonical vectors
 
 **Goal:** make every successor contract fail on missing/wrong bytes before implementing writers.
@@ -247,6 +253,42 @@ Replay V7's `content_contract` JSON child must use the exact Spec-defined closed
 
 **Stop:** a trusted ID appears in any public output; information digest needs reinterpretation; event duplicate loses/duplicates a semantic occurrence; paired-state public bytes differ without authorized cause; observation and `next_decision` duplicate or disagree on candidate authority; implementation attempts to generate or infer legal candidates in the observation layer.
 
+## Prerequisite before Phase 7 and Phase 8 — profiled content contract
+
+**Goal:** implement only the typed `basic-land@1.0.0` profiled content syntax, canonical codec, and existing `ContentContractIdV1` calculation needed by Replay V7 and state/catalog joins. This prerequisite is a separate reviewable implementation slice; it does not pull all of Phase 9 forward.
+
+**Entry:** the docs-only prerequisite amendment to this Plan and the Semantic Spec is independently accepted and merged to master. Sync that accepted master commit into the non-current integration branch through the normal reviewed workflow, record the exact new integration head, and create the prerequisite implementation branch/worktree from it. Phase 7 and Phase 8 remain blocked until this implementation is merged and independently accepted on the integration branch.
+
+**Files likely touched:**
+
+- `crates/mtgml-card-ir/src/lib.rs`
+- `crates/mtgml-card-ir/src/preflight.rs` only to preserve the distinction between content validation and executable admission
+- `crates/mtgml-card-ir/tests/`
+- `crates/mtgml-persistence/src/content_contract_digest.rs`
+- existing content golden/negative test owners, without changing historical unprofiled fixtures
+
+**RED first:**
+
+- valid Mountain and Plains `ProfiledV1` bodies decode to the closed typed profile and re-encode to the exact accepted Phase-2 canonical content bytes;
+- their `ContentContractIdV1` values equal the already frozen Phase-2 vectors, computed through the existing V1 digest envelope;
+- malformed/unknown profile ID, body label, subtype, profile/type-line mismatch, face/ability shape mismatch, unknown binding variant, noncanonical CBOR, and trailing bytes reject;
+- every historical unprofiled content fixture still has byte-identical canonical encoding and identity;
+- `content_validation_only` recognizes the structurally valid profile, while gameplay construction remains rejected as `NoExecutableProfileAdmitted` until the later executable-admission work.
+
+**Implementation work:**
+
+- add the typed `ProfiledV1` representation for exactly `basic-land@1.0.0` and `BasicLandProfileV1 { subtype: Mountain | Plains }`;
+- implement closed CBOR parse/encode for the reserved ProfiledV1 shape and structural body/definition invariants from the Semantic Spec;
+- allow `calculate_content_contract_id_v1` to hash this validated canonical profile manifest under its existing domain/schema framing, without a second identity route;
+- keep executable preflight, requirement derivation, Oracle provenance verification, capability lifecycle, and RulesKernel selection fail-closed and deferred to Phase 9/10;
+- preserve all unprofiled V1 bytes/digests exactly and do not regenerate their fixtures.
+
+**Focused checks:** Card IR/content and persistence content-digest tests; Phase-2 content KATs; `.venv/bin/python scripts/validate_schemas.py`; `.venv/bin/python scripts/verify_repository.py`; `cargo fmt --all -- --check`; `git diff --check`; `just check-fast` when the worktree's pinned environment is available.
+
+**Commit boundary:** one independently reviewable content-codec/identity prerequisite PR to the integration branch. Do not include Replay V7 or Phase 8 state helpers.
+
+**Stop:** the accepted Phase-2 content KAT cannot be reproduced through the existing V1 digest framing; any unprofiled historical identity changes; executable Magic admission is required to decode/hash the body; an alternate content decoder or content-ID path appears necessary; or any rules/capability behavior would need to be inferred here.
+
 ## 10. Phase 7 — Replay V7 detached support
 
 **Goal:** bind successor inputs/state/checkpoint identities end-to-end without changing the current Replay V6 runtime.
@@ -278,6 +320,8 @@ Replay V7's `content_contract` JSON child must use the exact Spec-defined closed
 **Commit boundary:** V7 Rust DTO/validation; then execution/recorder/Python parity.
 
 **Stop:** replay omits an identity already present in V6; deterministic control data is implicit; replay trusts event logs rather than re-execution; historical fixture is changed.
+
+**Entry dependency:** the profiled content contract prerequisite above must be merged and independently accepted on the integration branch. Replay V7 must consume the existing closed typed Card IR decoder and existing `ContentContractIdV1` calculator; it may not add a replay-local profile parser or identity implementation.
 
 ## 11. Phase 8 — semantic family constructors and validation
 
@@ -311,9 +355,11 @@ Replay V7's `content_contract` JSON child must use the exact Spec-defined closed
 
 **Stop:** state facts need string keys, uncontrolled timestamp, new allocator, callbacks, history reconstruction or unsupported counter/face types.
 
-## 12. Phase 9 — Profiled CardDefinition and reusable capability requirements
+**Entry dependency:** the profiled content contract prerequisite above must be merged and independently accepted on the integration branch so definition/face/ability references can join to the typed content catalog. This does not authorize ability candidate generation or activation legality.
 
-**Goal:** admit the exact Mountain/Plains profile structurally and derive its complete bounded requirements.
+## 12. Phase 9 — Profile evidence, requirement closure, and executable admission
+
+**Goal:** complete exact Mountain/Plains source provenance, derive its complete bounded requirements, and authorize the profile for the later RulesKernel integration. The prerequisite above already owns the typed ProfiledV1 codec, structural body validation, and ContentContractIdV1 calculation.
 
 **Files likely touched:**
 
@@ -324,13 +370,11 @@ Replay V7's `content_contract` JSON child must use the exact Spec-defined closed
 - `cards/definitions/` or the repository's current content directory, only after source provenance record bytes are pinned
 - profile schema/codec and content golden tests
 
-**RED first:** exact valid Mountain/Plains catalog/profile bodies; unknown/malformed body; mismatch with type line/FaceKey/AbilityKey; author-suppressed requirements; content digest semantic mutation; provenance snapshot/record/source digest verification.
+**RED first:** exact pinned Oracle provenance/catalog evidence; author-suppressed or incomplete capability requirements; recursive requirement closure; content-child/catalog identity match; executable admission remains closed until all Phase 9 obligations pass.
 
 **Implementation work:**
 
-- add only `basic-land@1.0.0` under the unchanged ID grammar and its typed Mountain/Plains body;
 - construct the executable `SemanticContractManifestV1` with the verified Mountain/Plains `ContentContractIdV1`, and verify it is carried through `SemanticContractIdV1` and `ExecutionIdentityV1` into checkpoint/replay identity;
-- validate FaceKey 0 and local AbilityKey 0;
 - derive `rules/land-play@0.1.0`, `rules/basic-land-mana@0.1.0`, `rules/mana-pool@0.1.0` plus recursive existing requirements from Spec;
 - add missing capability definitions as specified/implemented lifecycle only through their normal owner docs and RED obligations; do not claim covered/certified;
 - use exact Oracle bulk source record bytes, UUID, codec identity and computed digest; do not use the later live Scryfall response;
@@ -338,7 +382,10 @@ Replay V7's `content_contract` JSON child must use the exact Spec-defined closed
 
 **Focused tests:** Card IR/content/prefight tests and generated registry/schema drift checks; `just check-fast`.
 
-**Commit boundary:** profile contract/validator; then content records and recursive requirements.
+**Commit boundary:** pinned provenance/content records; then recursive
+requirements and executable-admission evidence. The ProfiledV1 codec,
+structural body validation, and V1 content-ID calculation belong exclusively
+to the prerequisite slice above.
 
 **Stop:** outer CardDefinition envelope or ContentContractId identity needs change; pinned snapshot record bytes cannot be recovered/verified; name selects a handler; requirement closure misses a root.
 
@@ -469,14 +516,15 @@ This plan does not authorize Lightning Strike, casting/payment, general stack ex
 
 ## 19. Expected review/commit decomposition
 
-Target six independently reviewable implementation PRs on the dedicated integration branch, followed by one final PR that alone activates the integrated successor on master:
+Target seven independently reviewable implementation PRs on the dedicated integration branch, followed by one final PR that alone activates the integrated successor on master:
 
 1. successor normative schemas, catalog identities and RED/golden fixtures;
 2. detached state DTOs and canonical FullStateDigestV6;
 3. StateDeltaV2 plus checkpoint/digest V7;
 4. Decision V3, ObservedEvent/PlayerStep V3, payload codec and Python/schema parity;
-5. Replay V7 plus state-family validation/conformance support;
-6. content profile, content-child replay verification, reusable requirements and RulesKernel producer integration on the non-current integration branch;
-7. final master-activation PR containing the full coherent successor runtime, exact-head gates and all accepted review fixes.
+5. the profiled content contract codec/identity prerequisite specified above;
+6. Replay V7 plus state-family validation/conformance support;
+7. Phase 9 provenance, derived requirement closure, executable profile admission, and RulesKernel producer integration on the non-current integration branch;
+8. final master-activation PR containing the full coherent successor runtime, exact-head gates and all accepted review fixes.
 
 If repository PR policy cannot support stacked PRs, keep semantic commits on one integration branch and open one final master PR after all component reviews. PR count never justifies exposing an incomplete successor as current authority.
