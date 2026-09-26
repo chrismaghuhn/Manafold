@@ -43,8 +43,9 @@ Oracle source: Scryfall bulk data current 2026-09-25. Oracle Cards timestamp `20
 | CheckpointDigest | CheckpointDigestV6; `environment-checkpoint-digest-input.v6`, `mtgml.checkpoint-digest.v6` | Closed input includes V5 digest and execution identity | Exact historical identity | H1 required |
 | Replay manifest/step/container/recorder/schema inventory | Replay V6 and InitialEnvironmentIdentityV6 | Directly type-bind V5/V6 identities and schema IDs | Detached validation/read; archived runtime execution | H1 required |
 | Decision request/response | Decision V2, closed CandidateIntent; generic DecisionResponseV2 | New PlayLand intent cannot overload CastSpell/SelectObject; generic response may remain | Exact old request meaning | Request cut H1; response no change likely |
-| EngineCandidateBinding | Decision/rules binding | ActivateAbility has ID but no authoritative source/definition/face/ability mapping | Existing gap, not a migration | Typed derivable binding needed H1 |
-| Player decision wire / PlayerStep | Request V2 / PlayerStep V2 | Closed action vocabulary; PlayerStep embeds request/actions/events | Old schema immutable | H1 request and PlayerStep cut |
+| EngineCandidateBinding / ability authority | `ActivateAbility { ability: AbilityInstanceId }`; `PerspectiveIdentityStateV2` persists opaque↔instance mapping | Current contracts identify an ability instance but do not bind it to source object, content contract, CardDefinition, FaceKey and AbilityKey | Existing architecture gap; replacement binding effects remain unresolved | Focused design required H1; persistent state remains UNKNOWN |
+| Player decision wire / PlayerStep | Request V2 / PlayerStep V2 | Closed action vocabulary; PlayerStep embeds request/actions and `Vec<ObservedEventEnvelopeV2>` | Old schema immutable | H1 request, observed-event and PlayerStep cuts |
+| ObservedEventEnvelope | ObservedEventEnvelopeV2 | Closed V2 event union has no mana change/add/empty event; PlayerStep directly embeds it | V2 exact historical meaning | H1 successor required for public mana event evidence |
 | ObservationEnvelope / ObservationDigest | Envelope V1 and digest of canonical envelope bytes | Codec-ID plus bytes already allows a new named codec | Old codec meanings immutable | No envelope/digest cut |
 | Magic observation payload | Named codecs | New public mana/candidate view gets new codec; no reinterpretation | Existing codec IDs fixed | H1 new codec |
 | InformationStateDigest | V2 | Includes observation + retained knowledge; no new field if payload carries new view | Exact | No change likely |
@@ -74,8 +75,9 @@ Mana is per player and distinguishes W/U/B/R/G/C; generic is a cost symbol, not 
 | Land-play-used | NEW_AUTHORITATIVE_STATE_REQUIRED | Per-player turn-scoped fact, reset at correct boundary; bounded normal entitlement | LandPlayed event/delta; public action availability |
 | Hand→Battlefield/incarnation | EXISTING_AUTHORITATIVE_STATE | Existing zones/incarnation | Exact zone transition/object |
 | Tapped | EXISTING_AUTHORITATIVE_STATE | `GameObject.tapped` | Tap cost delta |
-| Ability authority | DERIVED_STATE_ONLY | Object incarnation + content-scoped Definition + FaceKey + AbilityKey | Opaque request-local candidate |
-| Persistent ability registry/allocator | NOT_REQUIRED_FOR_LOCKED_M4 | No registry for static basic ability; reject stale tuple | Never expose trusted IDs |
+| Ability authority | UNKNOWN_PENDING_DESIGN | Existing AbilityInstanceId + opaque mapping does not bind source/content/face/key | Candidate remains opaque to player |
+| Preferred ability direction | ARCHITECTURE_GAP / FOCUSED_DESIGN_REQUIRED | Investigate derivation from current incarnation + immutable content-scoped identity + FaceKey + AbilityKey rather than duplicate semantic state | Must prove trusted binding and stale-incarnation rejection |
+| Persistent ability state | UNKNOWN_PENDING_M4.2_DESIGN | Do not conclude registry/state unnecessary until binding and PerspectiveIdentity effects are specified | May affect Decision, digest, checkpoint, replay and observation |
 | Mana pool (six colors + closed restriction) | NEW_AUTHORITATIVE_STATE_REQUIRED | Per-player, bounded nonnegative amounts, restriction preserved | Public by CR 106.4b; mana add/spend/empty evidence |
 | Activation workspace | TRANSIENT_RULES_WORKSPACE | Validate source/controller/tapped/ability, produce typed mana | Atomic RulesKernel TransitionProduct |
 | Choice | DECISION/CONTINUATION_STATE | Player selects among legal source candidates; no AutoPay | Existing boundary, no continuation for immediate ability |
@@ -123,7 +125,7 @@ Current Scryfall Oracle identities resolved; this is dependency analysis, not im
 | Evershrike’s Gift `b5bc4adf-9105-4901-989c-63612314af5c` | Aura flying/+1/+0; graveyard `{1}{W}`, Blight 2 returns to hand at sorcery timing | Attachment; graveyard activation; -1/-1 counters/annihilation |
 | Dryad Militant `b8ca5877-9e4c-4b15-8c23-c70f61b01895` | Hybrid cost; instant/sorcery cards that would enter graveyard from anywhere are exiled instead | Hybrid payment; source-derived replacement and zone move |
 
-**W1_NEW_AUTHORITATIVE_STATE_UNION:** typed counters; attachments; token semantic identity; Saga/lore progression; type/characteristic changes; temporary durations; linked exile-return; permanent-to-graveyard turn history; trigger instances/nested choices; graveyard activation; source-derived replacement. Exact reusable fields/owners UNKNOWN / REQUIRES_FOCUSED_FOLLOWUP. No card-specific fields approved.
+**W1_NEW_AUTHORITATIVE_STATE_UNION:** typed counters; attachments; Saga/lore progression; type/characteristic changes; temporary durations; linked exile-return; permanent-to-graveyard turn history; trigger instances/nested choices; graveyard activation; source-derived replacement. Generated token identity itself is `EXISTING_STATE_POSSIBLY_SUFFICIENT` plus an `IMMUTABLE_CONTENT_REFERENCE`: `GameObject` already has optional `PhysicalCardId`, `CardDefinitionId`, `GameObjectId` allocation and zone identity, so identity may fit existing representation. Token creation/execution, definition validity and characteristics still require focused proof; identity itself is not established as new state. Other exact reusable fields/owners remain UNKNOWN / REQUIRES_FOCUSED_FOLLOWUP. No card-specific fields approved.
 
 ## 7. Full-game state-growth census
 
@@ -147,7 +149,7 @@ Decision V2 response can likely remain generic, but CandidateIntent is closed. P
 |---|---|---|
 | Pass priority | Existing | None |
 | Play land | Missing closed intent | H1 request/PlayerStep |
-| Basic mana ability | Intent exists, binding incomplete | H1 typed derivable binding |
+| Basic mana ability | Intent exists, authoritative ability binding incomplete | H1 focused binding design |
 | Cast spell | Incomplete stack/cost/target semantics | H2 |
 | Target selection | Generic selection may encode a candidate response, but target domains/legality and opaque candidate completeness are not established | H2/H3 focused review |
 | Mana source / payment | No AutoPay; candidate choice and restriction-aware payment are not yet implemented | H2/H3 focused review |
@@ -161,7 +163,7 @@ Decision V2 response can likely remain generic, but CandidateIntent is closed. P
 | Trigger ordering | No complete family established | Defer to reachable requirement |
 | Search / reorder | No complete family established | Defer to reachable requirement |
 
-H1 event/delta evidence must include land played, zone/incarnation, tap cost, mana production/clearing and resulting revision. StateDelta binds V5 before/after digest and EngineStateParts replacement, so types must advance with digest. Add typed event/operation only where semantic path requires it. Event enum growth alone does not force replay version if not serialized in versioned replay.
+H1 authoritative event/delta evidence must include land played, zone/incarnation, tap cost, mana production/clearing and resulting revision. StateDelta binds V5 before/after digest and EngineStateParts replacement, so types must advance with digest. Separately, PlayerStepV2 embeds the closed ObservedEventEnvelopeV2 family, whose event union has no mana-change event. The selected slice requires public mana transition evidence at the player boundary; therefore this audit recommends a new observed-event envelope/event-kind family with typed mana-change/production/empty evidence. Its successor name/version is not allocated here. The focused design must define exact payload fields and decide whether land play gets an additional projected event beyond existing object-move evidence. PlayerStep successor must bind the observed-event successor. This conclusion is based on the embedded closed player contract, not merely authoritative enum growth.
 
 Mana is public (CR 106.4b). New Magic payload codec can contain public pool and legal choices. ObservationEnvelopeV1 (codec ID + bytes), ObservationDigest and InformationStateDigestV2 (observation + retained knowledge) can remain if no envelope/knowledge semantics change. Use opaque request-local IDs only. Never expose GameObjectId, PhysicalCardId, AbilityInstanceId, raw GameState, internal CardDefinition IDs, capability closure, bindings or continuation internals. Nonacting perspectives see only authorized public data; require hidden-world noninterference.
 
@@ -173,6 +175,7 @@ Every new authoritative fact must enter EngineState validation and full digest; 
 | EnvironmentCheckpointV6 / CheckpointDigestV6 | New-runtime execution unsupported; archived matching runtime; detached exact verification where codec supports | None authorized |
 | Replay V6 | READABLE_VERIFIABLE_ONLY detached; archived-runtime execution | None authorized |
 | Decision/request/PlayerStep V2 | Exact historical schema; no reinterpretation | None authorized |
+| ObservedEventEnvelopeV2 | Exact historical event union; no reinterpretation | New current player contract uses successor event family |
 | Observation envelope/digest V1 and InformationStateDigestV2 | Remain executable for old payloads | New named codec, no migration |
 | ContentContractIdV1, ExecutionIdentityV1, SemanticContract V1, RNG V1 | Keep schema/meaning if reserved profile seam followed | No cut implied |
 
@@ -197,6 +200,7 @@ Every new authoritative fact must enter EngineState validation and full digest; 
 | InformationStateDigest | V2 | NO_CHANGE | H1 | New view in existing observation | Yes / no | Envelope | Exact | High |
 | Authoritative events | Closed Rust enum | REQUIRED | H1 | Typed land/mana events | Enum grows; no independent wire cut proved | Rules products | Preserve old variants | High |
 | SemanticDeltaOperation | Closed Rust enum | REQUIRED | H1 | Typed land/mana operations | Enum grows; no independent wire cut proved | StateDelta | Preserve old variants | High |
+| ObservedEventEnvelope / ObservedEventKind | V2 | REQUIRED | H1 | Closed player-visible union lacks mana change; PlayerStep embeds it | No / successor | PlayerStep, public mana event projection | V2 exact, no reinterpretation | High |
 | ExecutionIdentity | V1 | NO_CHANGE | H1 | Values only | Yes / no | Semantic contract | Exact | High |
 | SemanticContract | V1 | NO_CHANGE | H1 | Existing fields bind new IDs | Yes / no | Content/rules values | Exact | High |
 | RulesContract | Current manifest | NO_CHANGE | H1 | Capability keys/versions values | Yes if fields fit | Registry | Exact | Medium-high |
@@ -214,16 +218,16 @@ One coordinated state identity cut should cover only proven H1 plus immediate sh
 
 * Per-player six-color ManaPool with finite restriction class unrestricted / creature-spell-only (Rockface Village is in locked R1).
 * Per-player land-play-used-this-turn fact with bounded default entitlement/reset semantics.
-* No persistent ability registry: derive static ability from object incarnation + content-scoped CardDefinition + FaceKey + AbilityKey; repair typed candidate binding.
-* No new continuation, effect record, allocator or pregame state.
+* Ability authority is an architecture gap. Derivation from object incarnation + content-scoped CardDefinition + FaceKey + AbilityKey is the preferred direction, but persistent ability state remains UNKNOWN until focused design proves the binding, stale-incarnation checks, and PerspectiveIdentity/digest/checkpoint/replay effects.
+* No new continuation, effect record or pregame state is established for the basic-land path. Do not decide whether an ability allocator or persistent ability identity is needed until the focused authority design resolves it.
 
 Move together: EngineState, FullStateDigest input/type, StateDelta digest/replacement types, EnvironmentCheckpoint, CheckpointDigest, Replay manifest/step/container/recorder/schema inventory, InitialEnvironmentIdentity. This report assigns no version numbers. Old versions retain exact meaning; no automatic migration. FSD5 is detached verifiable; old checkpoint execution requires archived matching runtime; Replay V6 detached/readable-verifiable and archived-runtime executable.
 
-Separately, PlayLand request/action wire and PlayerStep require named schema/type successors. Generic DecisionResponseV2 can remain. ObservationEnvelope, ObservationDigest and InformationStateDigestV2 can remain; add a named Magic payload codec. Authoritative event/delta enums grow for land/mana evidence without independently forcing replay cut.
+Separately, PlayLand request/action wire, ObservedEventEnvelopeV2 and PlayerStep require named schema/type successors. Generic DecisionResponseV2 can remain. ObservationEnvelope, ObservationDigest and InformationStateDigestV2 can remain; add a named Magic payload codec. Authoritative event/delta enums grow for land/mana evidence without independently forcing replay cut; PlayerStep’s embedded observed-event schema is a separate required cut.
 
 ### CUT_B — consolidated before stateful R1/W1 implementation
 
-Oracle proves further state needs, but exact reusable schema/invariants are not frozen. Before the first affected M4.3/M4.4 card implementation, conduct one coordinated design for counters, turn histories, face/transformation, durations, attachments, generated-object identity, trigger/stack payload and linked exile only to reachable needs. If authoritative state is added, expect another FullStateDigest/StateDelta/checkpoint/checkpoint-digest/replay cut. Do not add speculative generic bags in CUT_A; a later justified cut is preferable to ambiguous frozen state.
+Oracle proves further state needs, but exact reusable schema/invariants are not frozen. Before the first affected M4.3/M4.4 card implementation, conduct one coordinated design for counters, turn histories, face/transformation, durations, attachments, generated-object creation/execution, trigger/stack payload and linked exile only to reachable needs. Existing GameObject/CardDefinition identity may suffice for tokens; do not count token identity itself as new state without proof. If authoritative state is added, expect another FullStateDigest/StateDelta/checkpoint/checkpoint-digest/replay cut. Do not add speculative generic bags in CUT_A; a later justified cut is preferable to ambiguous frozen state.
 
 ### H5 setup boundary
 
@@ -233,14 +237,16 @@ London mulligan round/keep/bottom choices require a typed continuation across ch
 |---|---|
 | ManaState? | Yes, six colors plus known closed restriction class. |
 | Land-play usage? | Yes; cannot reconstruct after land leaves. |
-| Persistent ability-instance authority? | No; derivable identity sufficient, current binding is a gap. |
+| Ability authority? | ARCHITECTURE_GAP / FOCUSED_DESIGN_REQUIRED; derivation is preferred, not proven. |
+| Persistent ability state? | UNKNOWN_PENDING_M4.2_DESIGN; examine PerspectiveIdentity and persistence consequences. |
 | Turn-action state? | Land use only now; other histories in CUT_B. |
-| New allocator? | No. |
+| New allocator? | None proven for the basic-land semantic path; revisit after ability-authority design. |
 | Continuation/effect record? | No for atomic land/mana. |
 | Pregame state? | No. |
 | Digest/StateDelta/checkpoint/checkpoint digest/replay? | Yes, coupled to new EngineState. |
 | Decision successor? | New PlayLand request; generic response may stay. |
-| PlayerStep successor? | Yes, current contract embeds request/action vocabulary. |
+| PlayerStep successor? | Yes, current contract embeds request/action and observed-event vocabulary. |
+| ObservedEventEnvelope successor? | REQUIRED; the closed V2 event union lacks public mana-change evidence. |
 | Observation successor? | New payload codec only; envelope/digests may stay. |
 
 ## 11. Deferred semantics, non-goals, stop conditions
