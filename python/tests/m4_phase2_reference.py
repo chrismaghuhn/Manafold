@@ -47,7 +47,7 @@ def encode(value: Any) -> bytes:
     if isinstance(value, str):
         raw = value.encode("utf-8")
         return _head(3, len(raw)) + raw
-    if isinstance(value, (list, tuple)):
+    if isinstance(value, list | tuple):
         return _head(4, len(value)) + b"".join(encode(item) for item in value)
     raise TypeError(f"unsupported reference-CBOR value: {type(value).__name__}")
 
