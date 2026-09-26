@@ -346,7 +346,7 @@ mod tests {
     use mtgml_state::{
         construct_synthetic_engine_state, AbilityAuthorityV1, AttachmentStateV1, AttachmentV1,
         CardRulesAuthoritativeStateV1, CounterKindV1, CounterStateV1, FaceStateV1, ManaPoolV1,
-        ManaStateV1, PlayerTurnHistoryV1, SyntheticResetInputs, SyntheticV4Setup,
+        ManaStateV1, PlayerTurnHistoryV1, StateDeltaV2, SyntheticResetInputs, SyntheticV4Setup,
         TurnHistoryStateV1,
     };
     use std::collections::BTreeMap;
@@ -402,6 +402,42 @@ mod tests {
         assert_eq!(fork, checkpoint);
         assert_eq!(fork.state_digest, checkpoint.state_digest);
         assert_eq!(fork.checkpoint_digest, checkpoint.checkpoint_digest);
+    }
+
+    #[test]
+    fn restore_and_fork_apply_the_same_v2_replacement_to_identical_state() {
+        let checkpoint = checkpoint();
+        let mut after = checkpoint.state.clone();
+        after
+            .predecessor_v5
+            .core
+            .players
+            .get_mut(&PlayerId(1))
+            .unwrap()
+            .life -= 1;
+        let delta = StateDeltaV2::between(&checkpoint.state, &after, Vec::new()).unwrap();
+
+        let restored = checkpoint.restore_detached().unwrap();
+        let forked = checkpoint
+            .fork_detached()
+            .unwrap()
+            .restore_detached()
+            .unwrap();
+        let restored_after = delta.apply(&restored).unwrap();
+        let forked_after = delta.apply(&forked).unwrap();
+        assert_eq!(restored_after, forked_after);
+        assert_eq!(
+            mtgml_state::calculate_full_state_digest_v6(
+                &restored_after.materialize(),
+                restored_after.card_rules_state.clone(),
+            )
+            .unwrap(),
+            mtgml_state::calculate_full_state_digest_v6(
+                &forked_after.materialize(),
+                forked_after.card_rules_state.clone(),
+            )
+            .unwrap()
+        );
     }
 
     #[test]
