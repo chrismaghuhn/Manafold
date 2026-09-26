@@ -1,0 +1,154 @@
+{
+  "final_identity": {
+    "checkpoint_codec_identity": {
+      "codec_id": "in-memory-reference",
+      "semantic_version": "7"
+    },
+    "checkpoint_digest": "ac93173f5822c87bc9c6856b1390298bfa258c1436a2c7441ef016bd7f6568dd",
+    "environment_limit_counters": {
+      "accepted_transitions": 0,
+      "decisions_submitted": 0,
+      "resource_units_consumed": 0,
+      "rule_events_emitted": 0,
+      "wall_clock_elapsed_millis": 0
+    },
+    "episode_status": {
+      "kind": "running"
+    },
+    "execution_identity": {
+      "program_kind": "magic_rules",
+      "semantic_contract_id": "bcb011f629603a39631ce0e1164cb672862f41b95f15bb2896fa211401f40592"
+    },
+    "full_state_digest": "a40d5047256cd7e315fca53c47474be3292f4de512bcdc451764e36c921024e0",
+    "state_revision": "2"
+  },
+  "manifest": {
+    "card_bundle": "bundle:m4-basic-land-phase2",
+    "decks": [
+      {
+        "deck_id": "deck:synthetic-p1",
+        "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+        "player": "1"
+      }
+    ],
+    "engine_build": "git:0000000",
+    "execution_identity": {
+      "program_kind": "magic_rules",
+      "semantic_contract_id": "bcb011f629603a39631ce0e1164cb672862f41b95f15bb2896fa211401f40592"
+    },
+    "format_policy_snapshot": "commander:synthetic-v1",
+    "initial_identity": {
+      "checkpoint_codec_identity": {
+        "codec_id": "in-memory-reference",
+        "semantic_version": "7"
+      },
+      "checkpoint_digest": "ac93173f5822c87bc9c6856b1390298bfa258c1436a2c7441ef016bd7f6568dd",
+      "environment_limit_counters": {
+        "accepted_transitions": 0,
+        "decisions_submitted": 0,
+        "resource_units_consumed": 0,
+        "rule_events_emitted": 0,
+        "wall_clock_elapsed_millis": 0
+      },
+      "episode_status": {
+        "kind": "running"
+      },
+      "execution_identity": {
+        "program_kind": "magic_rules",
+        "semantic_contract_id": "bcb011f629603a39631ce0e1164cb672862f41b95f15bb2896fa211401f40592"
+      },
+      "full_state_digest": "a40d5047256cd7e315fca53c47474be3292f4de512bcdc451764e36c921024e0",
+      "state_revision": "2"
+    },
+    "kernel": {
+      "build_profile": "test",
+      "implementation_id": "mtgml-reference",
+      "semantic_version": "0.2.2"
+    },
+    "oracle_snapshot": "oracle-cards-20260925210158",
+    "randomness": {
+      "contract_id": "mtgml.rng.v1",
+      "root_seed_hex": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "rules_snapshot": "wotc-cr-2026-09-25-txt-20260925-sha256-8d860e451f20f38865b725b42d82feb714c725373dd8f3b32b8652b3eeb070ca",
+    "schema_version": "replay-manifest.v7",
+    "schemas": {
+      "decision": "player-decision-request.v3",
+      "decision_response": "decision-response.v2",
+      "information_state": "information-state-envelope.v2",
+      "observation": "observation-envelope.v1",
+      "observation_payload_codec": "magic-basic-land-observation.v1",
+      "observed_event": "observed-event-envelope.v3",
+      "player_step": "player-step.v3",
+      "replay_step": "replay-step.v7"
+    },
+    "semantic_contract": {
+      "content_contract": {
+        "content_contract_id": "80d26c187739664e880948e767e44ed9791aa7c25e7ef703e6d63385311fb346",
+        "manifest_canonical_cbor_base64": "g3gcY29udGVudC1jb250cmFjdC1tYW5pZmVzdC52MXgZbXRnbWwuY29udGVudC1jb250cmFjdC52MYKHeBtjYXJkLWRlZmluaXRpb24tZW52ZWxvcGUudjEBgYIAh2hNb3VudGFpbvaAg4FlQmFzaWOBZExhbmSBaE1vdW50YWlu9vb2gYIAAIJocHJvZmlsZWSCcGJhc2ljLWxhbmRAMS4wLjCCdWJhc2ljLWxhbmQtcHJvZmlsZS52MWhtb3VudGFpboCAh3gbY2FyZC1kZWZpbml0aW9uLWVudmVsb3BlLnYxAoGCAIdmUGxhaW5z9oCDgWVCYXNpY4FkTGFuZIFmUGxhaW5z9vb2gYIAAIJocHJvZmlsZWSCcGJhc2ljLWxhbmRAMS4wLjCCdWJhc2ljLWxhbmQtcHJvZmlsZS52MWZwbGFpbnOAgA=="
+      },
+      "manifest": {
+        "content_contract_id": "80d26c187739664e880948e767e44ed9791aa7c25e7ef703e6d63385311fb346",
+        "format_contract_id": null,
+        "rules_contract_id": "af8ec3cf8d5e7d47b1a58be63b25b69ca23391ad4610882de673ae6ee819b161"
+      },
+      "rules_manifest": {
+        "capability_closure": [
+          {
+            "key": "rules/basic-priority",
+            "version": "0.1.0"
+          },
+          {
+            "key": "rules/land-play",
+            "version": "0.1.0"
+          },
+          {
+            "key": "rules/turn-structure",
+            "version": "0.1.0"
+          },
+          {
+            "key": "rules/zone-incarnation",
+            "version": "0.1.0"
+          }
+        ],
+        "rules_authority": {
+          "snapshot_id": "wotc-cr-2026-09-25-txt-20260925-sha256-8d860e451f20f38865b725b42d82feb714c725373dd8f3b32b8652b3eeb070ca",
+          "variant": "comprehensive_rules"
+        }
+      },
+      "semantic_contract_id": "bcb011f629603a39631ce0e1164cb672862f41b95f15bb2896fa211401f40592"
+    }
+  },
+  "schema_version": "authoritative-replay.v7",
+  "steps": [
+    {
+      "accepted": false,
+      "actor": "1",
+      "checkpoint_digest_after": "ac93173f5822c87bc9c6856b1390298bfa258c1436a2c7441ef016bd7f6568dd",
+      "checkpoint_digest_before": "ac93173f5822c87bc9c6856b1390298bfa258c1436a2c7441ef016bd7f6568dd",
+      "environment_limit_counters_after": {
+        "accepted_transitions": 0,
+        "decisions_submitted": 0,
+        "resource_units_consumed": 0,
+        "rule_events_emitted": 0,
+        "wall_clock_elapsed_millis": 0
+      },
+      "episode_status_after": {
+        "kind": "running"
+      },
+      "full_state_digest_after": "a40d5047256cd7e315fca53c47474be3292f4de512bcdc451764e36c921024e0",
+      "response": {
+        "answer": {
+          "candidate_id": 4294967295,
+          "kind": "select_one"
+        },
+        "player_decision_id": "1",
+        "schema_version": "decision-response.v2",
+        "state_revision": "2"
+      },
+      "state_revision_after": "2",
+      "state_revision_before": "2",
+      "step_index": 0
+    }
+  ]
+}

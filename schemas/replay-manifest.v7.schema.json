@@ -246,31 +246,45 @@
                       ]
                     },
                     "capability_closure": {
-                      "type": "array",
-                      "contains": {
-                        "type": "object",
-                        "properties": {
-                          "key": {
-                            "const": "rules/land-play"
-                          },
-                          "version": {
-                            "const": "0.1.0"
-                          }
+                      "const": [
+                        {
+                          "key": "rules/basic-land-mana",
+                          "version": "0.1.0"
                         },
-                        "required": [
-                          "key",
-                          "version"
-                        ]
-                      }
+                        {
+                          "key": "rules/basic-priority",
+                          "version": "0.1.0"
+                        },
+                        {
+                          "key": "rules/land-play",
+                          "version": "0.1.0"
+                        },
+                        {
+                          "key": "rules/mana-pool",
+                          "version": "0.1.0"
+                        },
+                        {
+                          "key": "rules/turn-structure",
+                          "version": "0.1.0"
+                        },
+                        {
+                          "key": "rules/zone-incarnation",
+                          "version": "0.1.0"
+                        }
+                      ]
                     }
                   },
                   "required": [
                     "rules_authority",
                     "capability_closure"
                   ]
+                },
+                "content_contract": {
+                  "type": "object"
                 }
               },
               "required": [
+                "content_contract",
                 "rules_manifest"
               ]
             }

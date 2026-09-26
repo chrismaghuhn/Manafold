@@ -219,7 +219,10 @@ def validate_authoritative_state(value: Any) -> None:
         ids.append(entry[0])
         semantic_keys.append((entry[1], entry[2]))
     ordered_unique(ids, "ability instance IDs")
-    ordered_unique(semantic_keys, "ability semantic keys")
+    require(
+        len(semantic_keys) == len(set(semantic_keys)),
+        "ability semantic keys contain duplicates",
+    )
 
 
 def validate_basic_land_content_manifest(value: Any) -> bytes:
@@ -263,7 +266,7 @@ def validate_basic_land_content_manifest(value: Any) -> bytes:
         if not (
             isinstance(chars, list)
             and len(chars) == 7
-            and chars[0].lower() == subtype
+            and isinstance(chars[0], str)
             and chars[3] == [["Basic"], ["Land"], [subtype.title()]]
         ):
             raise ValueError("profile/type-line mismatch")

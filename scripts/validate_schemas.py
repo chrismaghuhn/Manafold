@@ -136,6 +136,14 @@ SCHEMA_NEGATIVE_CASES = [
         "replay-manifest.v7.schema.json#content-contract-child",
         "schemas/negative/replay-v7-content-child-missing-padding.json",
     ),
+    (
+        "replay-manifest.v7.schema.json",
+        "schemas/negative/replay-v7-land-play-incomplete-basic-land-closure.json",
+    ),
+    (
+        "authoritative-replay.v7.schema.json",
+        "schemas/negative/authoritative-replay-v7-land-play-incomplete-basic-land-closure.json",
+    ),
 ]
 SCHEMA_POSITIVE_CASES = [
     (

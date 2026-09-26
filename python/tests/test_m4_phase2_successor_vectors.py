@@ -133,6 +133,18 @@ class FullStateV6VectorTests(unittest.TestCase):
         )
         self.assertEqual(vector["mana_restriction_order"], ["unrestricted", "creature_spell_only"])
 
+    def test_ability_authority_orders_only_by_instance_id(self) -> None:
+        vector = read_json("persistence/golden/full-state-digest-v6-kat.v1.json")
+        positive = vector["ability_authority_order_positive_kat"]
+        family = copy.deepcopy(vector["card_rules_authoritative_state"])
+        family[6] = positive["rows"]
+        validate_authoritative_state(family)
+        self.assertEqual(family[6], [[1, 20, 0], [2, 10, 0]])
+        payload = encode(v6_input(family))
+        self.assertEqual(payload.hex(), positive["canonical_payload_hex"])
+        _, digest = digest_envelope(vector["semantic_domain"], vector["input_schema"], payload)
+        self.assertEqual(digest, positive["expected_digest"])
+
     def test_every_authoritative_field_has_a_frozen_mutation_digest(self) -> None:
         vector = read_json("persistence/golden/full-state-digest-v6-kat.v1.json")
         family = vector["card_rules_authoritative_state"]
@@ -301,6 +313,34 @@ class ContentAndReplayV7VectorTests(unittest.TestCase):
             )
             with self.subTest(mutation=mutation):
                 self.assertNotEqual(actual, base_id)
+
+    def test_card_name_does_not_select_basic_land_semantics(self) -> None:
+        vector = read_json("persistence/golden/content-contract-basic-land-v1-kat.v1.json")
+        original = copy.deepcopy(vector["content_manifest_value"])
+        renamed = copy.deepcopy(original)
+        renamed[2][0][2][0][1][0] = "Some Weird Test Land"
+
+        original_payload = validate_basic_land_content_manifest(original)
+        renamed_payload = validate_basic_land_content_manifest(renamed)
+        _, original_id = digest_envelope(
+            "mtgml.content-contract.v1", "content-contract-manifest.v1", original_payload
+        )
+        _, renamed_id = digest_envelope(
+            "mtgml.content-contract.v1", "content-contract-manifest.v1", renamed_payload
+        )
+
+        self.assertNotEqual(original_id, renamed_id)
+        self.assertEqual(
+            vector["rules_manifest_value"][3],
+            [
+                ["rules/basic-land-mana", "0.1.0"],
+                ["rules/basic-priority", "0.1.0"],
+                ["rules/land-play", "0.1.0"],
+                ["rules/mana-pool", "0.1.0"],
+                ["rules/turn-structure", "0.1.0"],
+                ["rules/zone-incarnation", "0.1.0"],
+            ],
+        )
 
 
 class DecisionAndPublicFixtureTests(unittest.TestCase):
