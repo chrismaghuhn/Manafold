@@ -424,7 +424,7 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         registry = json.loads(
             (ROOT / "cards" / "capabilities" / "registry.json").read_text(encoding="utf-8")
         )
-        expected = {
+        historical_m3_covered = {
             "rules/basic-priority",
             "rules/cleanup-reset",
             "rules/combat-damage",
@@ -437,9 +437,29 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             "rules/turn-structure",
             "rules/zone-incarnation",
         }
+        phase9_specified = {
+            "rules/basic-land-mana",
+            "rules/land-play",
+            "rules/mana-pool",
+        }
         entries = registry["entries"]
-        self.assertEqual({entry["key"] for entry in entries}, expected)
-        self.assertEqual(len(entries), 11)
+        entries_by_key = {entry["key"]: entry for entry in entries}
+        self.assertEqual(len(entries_by_key), len(entries))
+        self.assertTrue(historical_m3_covered <= entries_by_key.keys())
+        self.assertEqual(
+            {key for key in historical_m3_covered if entries_by_key[key]["lifecycle"] == "covered"},
+            historical_m3_covered,
+        )
+        self.assertEqual(
+            {key for key in entries_by_key if key not in historical_m3_covered},
+            phase9_specified,
+        )
+        self.assertEqual(
+            {key for key in phase9_specified if entries_by_key[key]["lifecycle"] == "specified"},
+            phase9_specified,
+        )
+        self.assertTrue(all(entries_by_key[key]["version"] == "0.1.0" for key in phase9_specified))
+        self.assertEqual(len(entries), len(historical_m3_covered) + len(phase9_specified))
         turn_structure = next(entry for entry in entries if entry["key"] == "rules/turn-structure")
         zone_incarnation = next(
             entry for entry in entries if entry["key"] == "rules/zone-incarnation"
@@ -460,7 +480,8 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         other_entries = [
             entry
             for entry in entries
-            if entry
+            if entry["key"] not in phase9_specified
+            and entry
             not in (
                 turn_structure,
                 zone_incarnation,
@@ -630,12 +651,12 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
                 self.assertTrue(entry["conformance_cases"])
                 self.assertEqual(entry["benchmark_scenarios"], [])
 
-        self.assertEqual(sum(entry["lifecycle"] == "specified" for entry in entries), 0)
+        self.assertEqual(sum(entry["lifecycle"] == "specified" for entry in entries), 3)
         self.assertEqual(sum(entry["lifecycle"] == "implemented" for entry in entries), 0)
         self.assertEqual(sum(entry["lifecycle"] == "covered" for entry in entries), 11)
         self.assertEqual(sum(entry["lifecycle"] == "certified" for entry in entries), 0)
         self.assertEqual(
-            sum(len(entry.get("dependencies", [])) for entry in entries),
+            sum(len(entries_by_key[key].get("dependencies", [])) for key in historical_m3_covered),
             13,
         )
 

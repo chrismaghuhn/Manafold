@@ -52,7 +52,64 @@
         },
         "required": [
           "semantic_contract"
-        ]
+        ],
+        "not": {
+          "properties": {
+            "semantic_contract": {
+              "properties": {
+                "rules_manifest": {
+                  "properties": {
+                    "capability_closure": {
+                      "const": [
+                        {
+                          "key": "rules/basic-land-mana",
+                          "version": "0.1.0"
+                        },
+                        {
+                          "key": "rules/basic-priority",
+                          "version": "0.1.0"
+                        },
+                        {
+                          "key": "rules/land-play",
+                          "version": "0.1.0"
+                        },
+                        {
+                          "key": "rules/mana-pool",
+                          "version": "0.1.0"
+                        },
+                        {
+                          "key": "rules/state-based-actions-combat",
+                          "version": "0.1.0"
+                        },
+                        {
+                          "key": "rules/turn-structure",
+                          "version": "0.1.0"
+                        },
+                        {
+                          "key": "rules/zone-incarnation",
+                          "version": "0.1.0"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "capability_closure"
+                  ]
+                },
+                "content_contract": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "rules_manifest",
+                "content_contract"
+              ]
+            }
+          },
+          "required": [
+            "semantic_contract"
+          ]
+        }
       },
       "then": {
         "if": {
@@ -261,6 +318,10 @@
                         },
                         {
                           "key": "rules/mana-pool",
+                          "version": "0.1.0"
+                        },
+                        {
+                          "key": "rules/state-based-actions-combat",
                           "version": "0.1.0"
                         },
                         {

@@ -2,6 +2,16 @@
   "entries": [
     {
       "dependencies": [
+        "rules/mana-pool",
+        "rules/zone-incarnation"
+      ],
+      "key": "rules/basic-land-mana",
+      "lifecycle": "specified",
+      "lifecycle_rank": 1,
+      "version": "0.1.0"
+    },
+    {
+      "dependencies": [
         "rules/state-based-actions-combat",
         "rules/turn-structure"
       ],
@@ -73,6 +83,24 @@
       "key": "rules/draw-card",
       "lifecycle": "covered",
       "lifecycle_rank": 3,
+      "version": "0.1.0"
+    },
+    {
+      "dependencies": [
+        "rules/basic-priority",
+        "rules/turn-structure",
+        "rules/zone-incarnation"
+      ],
+      "key": "rules/land-play",
+      "lifecycle": "specified",
+      "lifecycle_rank": 1,
+      "version": "0.1.0"
+    },
+    {
+      "dependencies": [],
+      "key": "rules/mana-pool",
+      "lifecycle": "specified",
+      "lifecycle_rank": 1,
       "version": "0.1.0"
     },
     {

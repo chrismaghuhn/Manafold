@@ -1,0 +1,33 @@
+{
+  "schema_version": "m4-phase9-replay-v7-admission-fixtures.v1",
+  "fixture_purpose": "final-phase9-basic-land-closure-admission",
+  "historical_fixture_disposition": {
+    "index": "m4-phase2-wire-vector-index.v1.json",
+    "bytes_preserved": true,
+    "final_admission_authority": false,
+    "reason": "Phase 2 froze provisional six-node bytes; Phase 9 derives the complete seven-node closure from the accepted capability registry."
+  },
+  "final_basic_land_capability_closure": [
+    "rules/basic-land-mana@0.1.0",
+    "rules/basic-priority@0.1.0",
+    "rules/land-play@0.1.0",
+    "rules/mana-pool@0.1.0",
+    "rules/state-based-actions-combat@0.1.0",
+    "rules/turn-structure@0.1.0",
+    "rules/zone-incarnation@0.1.0"
+  ],
+  "fixtures": [
+    {
+      "contract": "replay-manifest.v7",
+      "path": "schemas/examples/replay-manifest-v7-phase9-admitted-basic-land.json",
+      "expected_validity": "valid-final-admission-example",
+      "sha256": "561c81d978b9521101518fabdafff4637b77ac263e7feb713f53d5724143d5be"
+    },
+    {
+      "contract": "authoritative-replay.v7-rejected-step",
+      "path": "schemas/examples/authoritative-replay-v7-phase9-admitted-rejected-step.json",
+      "expected_validity": "valid-final-admission-example",
+      "sha256": "5bd5f62021822ed976b1e83403fb93cd25aa07ec6afb5a2b14c0f0c2c9753a45"
+    }
+  ]
+}

@@ -2,6 +2,30 @@
   "entries": [
     {
       "authority_refs": [
+        "docs/superpowers/specs/2026-09-26-m4-unified-state-cut-semantic-spec.md",
+        "wotc-cr-2026-09-25-txt-20260925-sha256-8d860e451f20f38865b725b42d82feb714c725373dd8f3b32b8652b3eeb070ca"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/mana-pool",
+        "rules/zone-incarnation"
+      ],
+      "implementation_paths": [],
+      "information_risk": "none",
+      "key": "rules/basic-land-mana",
+      "lifecycle": "specified",
+      "notes": "Specified for later RulesKernel integration only. Phase 9 admission does not implement candidate generation, tap cost, mana production, or execution; no coverage or certification is claimed.",
+      "owners": [
+        "mana"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/basic-land-mana.md",
+      "summary": "Subtype-derived intrinsic mana ability requirements for the closed basic-land profile.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
         "docs/adr/0054-m3-pre-t0-hardening.md",
         "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
         "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f"
@@ -162,6 +186,43 @@
       "benchmark_scenarios": [],
       "category": "core_rule",
       "conformance_cases": [
+        "combat_damage_unblocked_assignment_is_typed_public_and_replay_exact",
+        "combat_damage_simultaneously_marks_and_performs_post_damage_sba",
+        "zero_power_has_no_damage_event_and_lethal_player_damage_has_no_priority",
+        "foundation_v2_exact_turn_composition_closes_through_p2_draw"
+      ],
+      "dependencies": [],
+      "implementation_paths": [
+        "crates/mtgml-state/src/damage.rs",
+        "crates/mtgml-state/src/core.rs",
+        "crates/mtgml-state/src/delta.rs",
+        "crates/mtgml-rules/src/combat_damage.rs",
+        "crates/mtgml-rules/src/events.rs",
+        "crates/mtgml-rules/src/semantic_cursor.rs",
+        "crates/mtgml-environment/src/player_projection.rs",
+        "crates/mtgml-observation/src/magic_observation.rs",
+        "crates/mtgml-environment/src/tests/magic_rules_production.rs"
+      ],
+      "information_risk": "high",
+      "key": "rules/damage-and-life",
+      "lifecycle": "covered",
+      "notes": "Covered for the bounded Foundation V2 M3 scope by the listed executable cases and cumulative interaction evidence. Unsupported behavior reaches a fail closed boundary. No certification, card, deck, format, Commander, broad Magic, or playability support is claimed.",
+      "owners": [
+        "damage"
+      ],
+      "spec_path": "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
+      "summary": "Basic combat-damage results for life and marked creature damage.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "docs/adr/0054-m3-pre-t0-hardening.md",
+        "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
+        "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [
         "three_attacker_decision_represents_each_legal_subset_once",
         "zero_eligible_attackers_still_require_an_explicit_empty_response",
         "nine_eligible_attackers_fail_before_decision_without_mutation",
@@ -248,32 +309,77 @@
       "benchmark_scenarios": [],
       "category": "core_rule",
       "conformance_cases": [
-        "combat_damage_unblocked_assignment_is_typed_public_and_replay_exact",
-        "combat_damage_simultaneously_marks_and_performs_post_damage_sba",
-        "zero_power_has_no_damage_event_and_lethal_player_damage_has_no_priority",
-        "foundation_v2_exact_turn_composition_closes_through_p2_draw"
+        "m3.draw.upkeep-pass-s2-priority-replay",
+        "m3.draw.hidden-world-noninterference",
+        "m3.draw.rejection-atomicity",
+        "m3.draw.postdraw-order-restore-fork"
       ],
-      "dependencies": [],
+      "dependencies": [
+        "rules/turn-structure",
+        "rules/zone-incarnation"
+      ],
       "implementation_paths": [
-        "crates/mtgml-state/src/damage.rs",
-        "crates/mtgml-state/src/core.rs",
-        "crates/mtgml-state/src/delta.rs",
-        "crates/mtgml-rules/src/combat_damage.rs",
-        "crates/mtgml-rules/src/events.rs",
-        "crates/mtgml-rules/src/semantic_cursor.rs",
-        "crates/mtgml-environment/src/player_projection.rs",
-        "crates/mtgml-observation/src/magic_observation.rs",
+        "crates/mtgml-rules/src/magic.rs",
+        "crates/mtgml-rules/src/contract.rs",
+        "crates/mtgml-rules/src/product.rs",
+        "crates/mtgml-environment/src/reference.rs",
         "crates/mtgml-environment/src/tests/magic_rules_production.rs"
       ],
       "information_risk": "high",
-      "key": "rules/damage-and-life",
+      "key": "rules/draw-card",
       "lifecycle": "covered",
       "notes": "Covered for the bounded Foundation V2 M3 scope by the listed executable cases and cumulative interaction evidence. Unsupported behavior reaches a fail closed boundary. No certification, card, deck, format, Commander, broad Magic, or playability support is claimed.",
       "owners": [
-        "damage"
+        "turn"
       ],
       "spec_path": "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
-      "summary": "Basic combat-damage results for life and marked creature damage.",
+      "summary": "One ordinary draw-step card draw.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "docs/superpowers/specs/2026-09-26-m4-unified-state-cut-semantic-spec.md",
+        "wotc-cr-2026-09-25-txt-20260925-sha256-8d860e451f20f38865b725b42d82feb714c725373dd8f3b32b8652b3eeb070ca"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/basic-priority",
+        "rules/turn-structure",
+        "rules/zone-incarnation"
+      ],
+      "implementation_paths": [],
+      "information_risk": "none",
+      "key": "rules/land-play",
+      "lifecycle": "specified",
+      "notes": "Specified for later RulesKernel integration only. Phase 9 admission does not implement play legality, candidate generation, or execution; no coverage or certification is claimed.",
+      "owners": [
+        "land"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/land-play.md",
+      "summary": "Bounded land-play special-action requirements for the admitted profile.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "docs/superpowers/specs/2026-09-26-m4-unified-state-cut-semantic-spec.md",
+        "wotc-cr-2026-09-25-txt-20260925-sha256-8d860e451f20f38865b725b42d82feb714c725373dd8f3b32b8652b3eeb070ca"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "none",
+      "key": "rules/mana-pool",
+      "lifecycle": "specified",
+      "notes": "Specified for later RulesKernel integration only. Phase 9 admission does not implement production, spending, payment, or pool transitions; no coverage or certification is claimed.",
+      "owners": [
+        "mana"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/mana-pool.md",
+      "summary": "Closed six-type, two-restriction mana-pool state and lifetime requirements.",
       "version": "0.1.0"
     },
     {
@@ -310,42 +416,6 @@
       ],
       "spec_path": "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
       "summary": "Bounded selected state-based-action fixed point for the combat foundation.",
-      "version": "0.1.0"
-    },
-    {
-      "authority_refs": [
-        "docs/adr/0054-m3-pre-t0-hardening.md",
-        "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
-        "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f"
-      ],
-      "benchmark_scenarios": [],
-      "category": "core_rule",
-      "conformance_cases": [
-        "m3.draw.upkeep-pass-s2-priority-replay",
-        "m3.draw.hidden-world-noninterference",
-        "m3.draw.rejection-atomicity",
-        "m3.draw.postdraw-order-restore-fork"
-      ],
-      "dependencies": [
-        "rules/turn-structure",
-        "rules/zone-incarnation"
-      ],
-      "implementation_paths": [
-        "crates/mtgml-rules/src/magic.rs",
-        "crates/mtgml-rules/src/contract.rs",
-        "crates/mtgml-rules/src/product.rs",
-        "crates/mtgml-environment/src/reference.rs",
-        "crates/mtgml-environment/src/tests/magic_rules_production.rs"
-      ],
-      "information_risk": "high",
-      "key": "rules/draw-card",
-      "lifecycle": "covered",
-      "notes": "Covered for the bounded Foundation V2 M3 scope by the listed executable cases and cumulative interaction evidence. Unsupported behavior reaches a fail closed boundary. No certification, card, deck, format, Commander, broad Magic, or playability support is claimed.",
-      "owners": [
-        "turn"
-      ],
-      "spec_path": "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
-      "summary": "One ordinary draw-step card draw.",
       "version": "0.1.0"
     },
     {

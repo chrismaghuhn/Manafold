@@ -35,11 +35,12 @@ const CHECKPOINT_CODEC_VERSION_V7: &str = "7";
 const MAX_CONTENT_MANIFEST_BYTES: usize = 64 * 1024 * 1024;
 const MAX_CONTENT_MANIFEST_BASE64_CHARS: usize = 89_478_488;
 const BASIC_LAND_OBSERVATION_CODEC: &str = "magic-basic-land-observation.v1";
-const BASIC_LAND_CAPABILITY_CLOSURE: [(&str, &str); 6] = [
+const BASIC_LAND_CAPABILITY_CLOSURE: [(&str, &str); 7] = [
     ("rules/basic-land-mana", "0.1.0"),
     ("rules/basic-priority", "0.1.0"),
     ("rules/land-play", "0.1.0"),
     ("rules/mana-pool", "0.1.0"),
+    ("rules/state-based-actions-combat", "0.1.0"),
     ("rules/turn-structure", "0.1.0"),
     ("rules/zone-incarnation", "0.1.0"),
 ];

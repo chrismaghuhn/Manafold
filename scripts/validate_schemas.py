@@ -204,11 +204,11 @@ SCHEMA_POSITIVE_CASES = [
     ),
     (
         "replay-manifest.v7.schema.json",
-        "schemas/examples/replay-manifest.v7.json",
+        "schemas/examples/replay-manifest-v7-phase9-admitted-basic-land.json",
     ),
     (
         "authoritative-replay.v7.schema.json",
-        "schemas/examples/authoritative-replay-v7-rejected-step.json",
+        "schemas/examples/authoritative-replay-v7-phase9-admitted-rejected-step.json",
     ),
 ]
 

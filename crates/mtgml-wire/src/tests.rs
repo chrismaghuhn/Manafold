@@ -23,11 +23,11 @@ fn every_shared_negative_fixture_is_rejected_with_the_expected_code() {
 fn detached_replay_v7_has_canonical_wire_without_becoming_a_named_current_decoder() {
     for (bytes, decode_manifest) in [
         (
-            include_bytes!("../../../schemas/examples/replay-manifest.v7.json").as_slice(),
+            include_bytes!("../../../schemas/examples/replay-manifest-v7-phase9-admitted-basic-land.json").as_slice(),
             true,
         ),
         (
-            include_bytes!("../../../schemas/examples/authoritative-replay-v7-rejected-step.json")
+            include_bytes!("../../../schemas/examples/authoritative-replay-v7-phase9-admitted-rejected-step.json")
                 .as_slice(),
             false,
         ),

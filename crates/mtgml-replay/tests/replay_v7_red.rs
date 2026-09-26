@@ -7,9 +7,26 @@ use mtgml_replay::{
 };
 use serde_json::Value;
 
-const MANIFEST: &[u8] = include_bytes!("../../../schemas/examples/replay-manifest.v7.json");
-const REPLAY: &[u8] =
-    include_bytes!("../../../schemas/examples/authoritative-replay-v7-rejected-step.json");
+const MANIFEST: &[u8] =
+    include_bytes!("../../../schemas/examples/replay-manifest-v7-phase9-admitted-basic-land.json");
+const REPLAY: &[u8] = include_bytes!(
+    "../../../schemas/examples/authoritative-replay-v7-phase9-admitted-rejected-step.json"
+);
+
+#[test]
+fn phase2_provisional_v7_examples_remain_frozen_but_do_not_claim_final_admission() {
+    let provisional: ReplayManifestV7 = serde_json::from_slice(include_bytes!(
+        "../../../schemas/examples/replay-manifest.v7.json"
+    ))
+    .expect("historical provisional fixture remains parseable");
+    assert!(provisional.validate().is_err());
+
+    let provisional_replay: AuthoritativeReplayV7 = serde_json::from_slice(include_bytes!(
+        "../../../schemas/examples/authoritative-replay-v7-rejected-step.json"
+    ))
+    .expect("historical rejected-step fixture remains parseable");
+    assert!(provisional_replay.validate().is_err());
+}
 
 #[test]
 fn valid_v7_manifest_verifies_content_child_and_contract_identity_chain() {
@@ -87,7 +104,7 @@ fn phase_two_content_child_negative_vectors_are_consumed() {
 
 #[test]
 fn content_child_rejects_duplicate_and_unknown_json_fields() {
-    let duplicate = include_str!("../../../schemas/examples/replay-manifest.v7.json")
+    let duplicate = include_str!("../../../schemas/examples/replay-manifest-v7-phase9-admitted-basic-land.json")
         .replace(
             "\"content_contract_id\": \"80d26c187739664e880948e767e44ed9791aa7c25e7ef703e6d63385311fb346\",",
             "\"content_contract_id\": \"80d26c187739664e880948e767e44ed9791aa7c25e7ef703e6d63385311fb346\",\"content_contract_id\": \"80d26c187739664e880948e767e44ed9791aa7c25e7ef703e6d63385311fb346\",",
@@ -127,6 +144,36 @@ fn replay_v7_rejects_wrong_schema_identity_and_step_revision_link() {
     replay["steps"][0]["actor"] = Value::String("9".into());
     let parsed: AuthoritativeReplayV7 = serde_json::from_value(replay).unwrap();
     assert!(parsed.validate().is_err());
+}
+
+#[test]
+fn phase9_complete_closure_is_required_for_basic_land_v7_codec() {
+    let mut manifest: ReplayManifestV7 = serde_json::from_slice(MANIFEST).unwrap();
+    manifest
+        .semantic_contract
+        .rules_manifest
+        .capability_closure
+        .as_mut()
+        .unwrap()
+        .retain(|entry| entry.key != "rules/state-based-actions-combat");
+    let rules_id = semantic_contract_digest::calculate_rules_contract_id_v1(
+        &manifest.semantic_contract.rules_manifest,
+    )
+    .unwrap();
+    manifest.semantic_contract.manifest.rules_contract_id = rules_id;
+    let semantic_id = semantic_contract_digest::calculate_semantic_contract_id_v1(
+        &manifest.semantic_contract.manifest,
+    )
+    .unwrap();
+    manifest.semantic_contract.semantic_contract_id = semantic_id.clone();
+    manifest.execution_identity.semantic_contract_id = semantic_id;
+    manifest.initial_identity.execution_identity = manifest.execution_identity.clone();
+    recompute_checkpoint_digest(&mut manifest);
+
+    assert_eq!(
+        manifest.validate(),
+        Err(ReplayValidationError::ReplayStepIdentity)
+    );
 }
 
 #[test]
