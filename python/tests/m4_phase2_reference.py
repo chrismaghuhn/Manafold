@@ -116,9 +116,7 @@ def digest_envelope(domain: str, schema: str, payload: bytes) -> tuple[bytes, st
         schema.encode("ascii"),
         payload,
     )
-    envelope = ENVELOPE_ID + b"".join(
-        len(field).to_bytes(8, "big") + field for field in fields
-    )
+    envelope = ENVELOPE_ID + b"".join(len(field).to_bytes(8, "big") + field for field in fields)
     return envelope, hashlib.sha256(envelope).hexdigest()
 
 
@@ -143,18 +141,28 @@ def validate_authoritative_state(value: Any) -> None:
         require(isinstance(entry, list) and len(entry) == 3, "mana player arity")
         require(isinstance(entry[1], list) and isinstance(entry[2], list), "mana buckets shape")
         require(len(entry[1]) == 6 and len(entry[2]) == 6, "mana bucket arity")
-        require(all(isinstance(n, int) and 0 <= n <= 0xFFFFFFFF for n in entry[1] + entry[2]), "mana count range")
+        require(
+            all(isinstance(n, int) and 0 <= n <= 0xFFFFFFFF for n in entry[1] + entry[2]),
+            "mana count range",
+        )
         players.append(entry[0])
     ordered_unique(players, "mana players")
 
     history = value[2]
     require(isinstance(history, list) and len(history) == 4, "turn history arity")
-    require(isinstance(history[0], int) and 0 <= history[0] <= 0xFFFFFFFFFFFFFFFF, "turn number range")
+    require(
+        isinstance(history[0], int) and 0 <= history[0] <= 0xFFFFFFFFFFFFFFFF, "turn number range"
+    )
     history_players = []
     for entry in history[1]:
         require(isinstance(entry, list) and len(entry) == 7, "player history arity")
         require(isinstance(entry[1], int) and entry[1] in (0, 1), "land play count range")
-        require(all(isinstance(n, int) and 0 <= n <= 0xFFFFFFFF for n in (entry[2], entry[3], entry[5])), "turn history count range")
+        require(
+            all(
+                isinstance(n, int) and 0 <= n <= 0xFFFFFFFF for n in (entry[2], entry[3], entry[5])
+            ),
+            "turn history count range",
+        )
         require(isinstance(entry[4], bool) and isinstance(entry[6], bool), "turn history boolean")
         history_players.append(entry[0])
     ordered_unique(history_players, "history players")
@@ -186,7 +194,10 @@ def validate_authoritative_state(value: Any) -> None:
     sources = []
     for edge in attachments:
         require(isinstance(edge, list) and len(edge) == 4, "attachment edge arity")
-        require(0 <= edge[2] <= 0xFFFFFFFFFFFFFFFF and 0 <= edge[3] <= 0xFFFFFFFF, "attachment timestamp range")
+        require(
+            0 <= edge[2] <= 0xFFFFFFFFFFFFFFFF and 0 <= edge[3] <= 0xFFFFFFFF,
+            "attachment timestamp range",
+        )
         sources.append(edge[0])
     ordered_unique(sources, "attachment sources")
 

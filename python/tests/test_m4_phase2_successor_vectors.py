@@ -72,43 +72,45 @@ def _mutated_families(base: list[Any]) -> dict[str, list[Any]]:
     operations = {"mana.player": lambda s: s[1][0].__setitem__(0, 3)}
     colors = ("white", "blue", "black", "red", "green", "colorless")
     for index, color in enumerate(colors):
-        operations[f"mana.unrestricted.{color}"] = (
-            lambda s, i=index: s[1][0][1].__setitem__(i, s[1][0][1][i] + 1)
+        operations[f"mana.unrestricted.{color}"] = lambda s, i=index: s[1][0][1].__setitem__(
+            i, s[1][0][1][i] + 1
         )
-        operations[f"mana.creature_spell_only.{color}"] = (
-            lambda s, i=index: s[1][0][2].__setitem__(i, s[1][0][2][i] + 1)
+        operations[f"mana.creature_spell_only.{color}"] = lambda s, i=index: s[1][0][2].__setitem__(
+            i, s[1][0][2][i] + 1
         )
-    operations.update({
-        "mana.restriction": lambda s: (
-            s[1][0][1].__setitem__(0, 2),
-            s[1][0][2].__setitem__(0, 0),
-        ),
-        "mana.u32_boundary": lambda s: s[1][1][2].__setitem__(5, 0xFFFFFFFE),
-        "mana.explicit_zero": lambda s: s[1][1][1].__setitem__(0, 1),
-        "history.turn_number": lambda s: s[2].__setitem__(0, 2),
-        "history.land_plays_used": lambda s: s[2][1][0].__setitem__(1, 0),
-        "history.spells_cast_total": lambda s: s[2][1][0].__setitem__(2, 3),
-        "history.noncreature_spells_cast": lambda s: s[2][1][0].__setitem__(3, 2),
-        "history.lost_life": lambda s: s[2][1][0].__setitem__(4, False),
-        "history.red_noncombat_damage": lambda s: s[2][1][0].__setitem__(5, 4),
-        "history.permanent_to_graveyard": lambda s: s[2][1][0].__setitem__(6, False),
-        "history.target_object": lambda s: s[2][2][0].__setitem__(0, 3),
-        "history.target_controller": lambda s: s[2][2][0].__setitem__(1, 1),
-        "history.once_ability_object": lambda s: s[2][3][0].__setitem__(0, 2),
-        "history.once_ability_key": lambda s: s[2][3][0].__setitem__(1, 1),
-        "counter.object": lambda s: s[3][0].__setitem__(0, 2),
-        "counter.kind": lambda s: s[3][0][1][0].__setitem__(0, 1),
-        "counter.count": lambda s: s[3][0][1][0].__setitem__(1, 3),
-        "attachment.source": lambda s: s[4][0].__setitem__(0, 4),
-        "attachment.target": lambda s: s[4][0].__setitem__(1, 2),
-        "attachment.timestamp_revision": lambda s: s[4][0].__setitem__(2, 3),
-        "attachment.timestamp_operation": lambda s: s[4][0].__setitem__(3, 1),
-        "face.object": lambda s: s[5][0].__setitem__(0, 2),
-        "face.key": lambda s: s[5][0].__setitem__(1, 1),
-        "ability.instance": lambda s: s[6][0].__setitem__(0, 2),
-        "ability.source": lambda s: s[6][0].__setitem__(1, 2),
-        "ability.key": lambda s: s[6][0].__setitem__(2, 1),
-    })
+    operations.update(
+        {
+            "mana.restriction": lambda s: (
+                s[1][0][1].__setitem__(0, 2),
+                s[1][0][2].__setitem__(0, 0),
+            ),
+            "mana.u32_boundary": lambda s: s[1][1][2].__setitem__(5, 0xFFFFFFFE),
+            "mana.explicit_zero": lambda s: s[1][1][1].__setitem__(0, 1),
+            "history.turn_number": lambda s: s[2].__setitem__(0, 2),
+            "history.land_plays_used": lambda s: s[2][1][0].__setitem__(1, 0),
+            "history.spells_cast_total": lambda s: s[2][1][0].__setitem__(2, 3),
+            "history.noncreature_spells_cast": lambda s: s[2][1][0].__setitem__(3, 2),
+            "history.lost_life": lambda s: s[2][1][0].__setitem__(4, False),
+            "history.red_noncombat_damage": lambda s: s[2][1][0].__setitem__(5, 4),
+            "history.permanent_to_graveyard": lambda s: s[2][1][0].__setitem__(6, False),
+            "history.target_object": lambda s: s[2][2][0].__setitem__(0, 3),
+            "history.target_controller": lambda s: s[2][2][0].__setitem__(1, 1),
+            "history.once_ability_object": lambda s: s[2][3][0].__setitem__(0, 2),
+            "history.once_ability_key": lambda s: s[2][3][0].__setitem__(1, 1),
+            "counter.object": lambda s: s[3][0].__setitem__(0, 2),
+            "counter.kind": lambda s: s[3][0][1][0].__setitem__(0, 1),
+            "counter.count": lambda s: s[3][0][1][0].__setitem__(1, 3),
+            "attachment.source": lambda s: s[4][0].__setitem__(0, 4),
+            "attachment.target": lambda s: s[4][0].__setitem__(1, 2),
+            "attachment.timestamp_revision": lambda s: s[4][0].__setitem__(2, 3),
+            "attachment.timestamp_operation": lambda s: s[4][0].__setitem__(3, 1),
+            "face.object": lambda s: s[5][0].__setitem__(0, 2),
+            "face.key": lambda s: s[5][0].__setitem__(1, 1),
+            "ability.instance": lambda s: s[6][0].__setitem__(0, 2),
+            "ability.source": lambda s: s[6][0].__setitem__(1, 2),
+            "ability.key": lambda s: s[6][0].__setitem__(2, 1),
+        }
+    )
     results = {}
     for name, operation in operations.items():
         changed = copy.deepcopy(base)
@@ -126,7 +128,9 @@ class FullStateV6VectorTests(unittest.TestCase):
         self.assertEqual(payload.hex(), vector["canonical_payload_hex"])
         _, digest = digest_envelope(vector["semantic_domain"], vector["input_schema"], payload)
         self.assertEqual(digest, vector["expected_digest"])
-        self.assertEqual(vector["mana_color_order"], ["white", "blue", "black", "red", "green", "colorless"])
+        self.assertEqual(
+            vector["mana_color_order"], ["white", "blue", "black", "red", "green", "colorless"]
+        )
         self.assertEqual(vector["mana_restriction_order"], ["unrestricted", "creature_spell_only"])
 
     def test_every_authoritative_field_has_a_frozen_mutation_digest(self) -> None:
@@ -181,10 +185,14 @@ class CheckpointV7VectorTests(unittest.TestCase):
         vector = read_json("persistence/golden/checkpoint-digest-v7-kat.v1.json")
         base = checkpoint_value(vector["full_state_digest"], vector["semantic_contract_id"])
         changes = {
-            "full_state_digest": lambda x: x[2].__setitem__(5, bytes([x[2][5][0] ^ 1]) + x[2][5][1:]),
+            "full_state_digest": lambda x: x[2].__setitem__(
+                5, bytes([x[2][5][0] ^ 1]) + x[2][5][1:]
+            ),
             "status": lambda x: x.__setitem__(3, ["truncated", ["external_stop", []]]),
             "counter": lambda x: x[4].__setitem__(0, 1),
-            "semantic_contract_id": lambda x: x.__setitem__(6, [x[6][0], bytes([x[6][1][0] ^ 1]) + x[6][1][1:]]),
+            "semantic_contract_id": lambda x: x.__setitem__(
+                6, [x[6][0], bytes([x[6][1][0] ^ 1]) + x[6][1][1:]]
+            ),
             "codec_version": lambda x: x[5].__setitem__(1, "6"),
         }
         self.assertEqual(set(changes), set(vector["mutation_digests"]))
@@ -243,18 +251,28 @@ class ContentAndReplayV7VectorTests(unittest.TestCase):
         vector = read_json("schemas/examples/replay-manifest.v7.json")
         child = vector["semantic_contract"]["content_contract"]
         content = read_json("persistence/golden/content-contract-basic-land-v1-kat.v1.json")
-        self.assertEqual(verify_content_child(child, content["content_contract_id"]), content["content_contract_id"])
-        self.assertEqual(base64.b64decode(child["manifest_canonical_cbor_base64"], validate=True).hex(), content["canonical_payload_hex"])
+        self.assertEqual(
+            verify_content_child(child, content["content_contract_id"]),
+            content["content_contract_id"],
+        )
+        self.assertEqual(
+            base64.b64decode(child["manifest_canonical_cbor_base64"], validate=True).hex(),
+            content["canonical_payload_hex"],
+        )
 
     def test_content_child_semantic_negative_vectors_reject(self) -> None:
         data = read_json("schemas/negative/m4-phase2-replay-child-semantic-negatives.json")
         for case in data["cases"]:
             with self.subTest(case=case["case"]):
                 with self.assertRaises(ValueError):
-                    verify_content_child(case["content_contract"], case["parent_content_contract_id"])
+                    verify_content_child(
+                        case["content_contract"], case["parent_content_contract_id"]
+                    )
 
     def test_duplicate_content_child_json_key_is_rejected_before_mapping(self) -> None:
-        raw = (ROOT / "schemas/negative/replay-v7-content-child-duplicate-field.jsonraw").read_text()
+        raw = (
+            ROOT / "schemas/negative/replay-v7-content-child-duplicate-field.jsonraw"
+        ).read_text()
 
         def no_duplicate_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
             result = {}
@@ -298,9 +316,7 @@ class DecisionAndPublicFixtureTests(unittest.TestCase):
             raw = (ROOT / fixture["path"]).read_bytes()
             with self.subTest(path=fixture["path"]):
                 self.assertEqual(fixture["expected_validity"], "valid-schema-example")
-                self.assertEqual(
-                    hashlib.sha256(raw).hexdigest(), fixture["sha256"]
-                )
+                self.assertEqual(hashlib.sha256(raw).hexdigest(), fixture["sha256"])
 
     def test_play_land_order_is_fixed_and_candidate_ids_are_dense(self) -> None:
         request = read_json("schemas/examples/player-decision-request-v3-ordering.json")
@@ -313,7 +329,11 @@ class DecisionAndPublicFixtureTests(unittest.TestCase):
             ids = [candidate["candidate_id"] for candidate in case["request"]["candidates"]]
             intents = [candidate["intent"]["kind"] for candidate in case["request"]["candidates"]]
             with self.subTest(case=case["case"]):
-                self.assertTrue(len(ids) != len(set(ids)) or ids != list(range(len(ids))) or intents != ["pass_priority", "play_land", "cast_spell", "activate_ability"])
+                self.assertTrue(
+                    len(ids) != len(set(ids))
+                    or ids != list(range(len(ids)))
+                    or intents != ["pass_priority", "play_land", "cast_spell", "activate_ability"]
+                )
 
     def test_observed_event_and_step_face_at_entry_vectors(self) -> None:
         event = read_json("schemas/examples/observed-event-v3-entry-back-tapped.json")
@@ -330,17 +350,39 @@ class DecisionAndPublicFixtureTests(unittest.TestCase):
 
     def test_observation_contains_only_ordered_public_identity_forms(self) -> None:
         value = read_json("schemas/examples/magic-basic-land-observation-v1-ordered.json")
-        self.assertEqual([int(x["player"]) for x in value["mana_pools"]], sorted(int(x["player"]) for x in value["mana_pools"]))
-        self.assertEqual([int(x["object"]) for x in value["counters"]], sorted(int(x["object"]) for x in value["counters"]))
-        self.assertEqual([int(x["source"]) for x in value["attachments"]], sorted(int(x["source"]) for x in value["attachments"]))
-        self.assertEqual([int(x["object"]) for x in value["faces"]], sorted(int(x["object"]) for x in value["faces"]))
-        forbidden = {"game_object_id", "physical_card_id", "ability_instance_id", "card_definition_id", "face_key", "ability_key", "content_contract_id"}
+        self.assertEqual(
+            [int(x["player"]) for x in value["mana_pools"]],
+            sorted(int(x["player"]) for x in value["mana_pools"]),
+        )
+        self.assertEqual(
+            [int(x["object"]) for x in value["counters"]],
+            sorted(int(x["object"]) for x in value["counters"]),
+        )
+        self.assertEqual(
+            [int(x["source"]) for x in value["attachments"]],
+            sorted(int(x["source"]) for x in value["attachments"]),
+        )
+        self.assertEqual(
+            [int(x["object"]) for x in value["faces"]],
+            sorted(int(x["object"]) for x in value["faces"]),
+        )
+        forbidden = {
+            "game_object_id",
+            "physical_card_id",
+            "ability_instance_id",
+            "card_definition_id",
+            "face_key",
+            "ability_key",
+            "content_contract_id",
+        }
+
         def keys(item: Any) -> set[str]:
             if isinstance(item, dict):
                 return set(item) | set().union(*(keys(v) for v in item.values()))
             if isinstance(item, list):
                 return set().union(*(keys(v) for v in item)) if item else set()
             return set()
+
         self.assertFalse(keys(value) & forbidden)
 
 
