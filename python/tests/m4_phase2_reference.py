@@ -131,6 +131,14 @@ def validate_authoritative_state(value: Any) -> None:
         require(keys == sorted(keys), f"{name} is not canonically ordered")
         require(len(keys) == len(set(keys)), f"{name} contains duplicates")
 
+    def require_u32(value: Any, name: str, *, minimum: int = 0) -> None:
+        # bool subclasses int in Python, but the wire contract distinguishes
+        # CBOR booleans from unsigned integer values.
+        require(type(value) is int and minimum <= value <= 0xFFFFFFFF, f"{name} u32 range")
+
+    def require_u64(value: Any, name: str) -> None:
+        require(type(value) is int and 0 <= value <= 0xFFFFFFFFFFFFFFFF, f"{name} u64 range")
+
     require(isinstance(value, list) and len(value) == 7, "state record arity")
     require(value[0] == "card-rules-authoritative-state.v1", "state record tag")
 
@@ -139,38 +147,38 @@ def validate_authoritative_state(value: Any) -> None:
     players = []
     for entry in mana:
         require(isinstance(entry, list) and len(entry) == 3, "mana player arity")
+        require_u64(entry[0], "mana player ID")
         require(isinstance(entry[1], list) and isinstance(entry[2], list), "mana buckets shape")
         require(len(entry[1]) == 6 and len(entry[2]) == 6, "mana bucket arity")
-        require(
-            all(isinstance(n, int) and 0 <= n <= 0xFFFFFFFF for n in entry[1] + entry[2]),
-            "mana count range",
-        )
+        for n in entry[1] + entry[2]:
+            require_u32(n, "mana count")
         players.append(entry[0])
     ordered_unique(players, "mana players")
 
     history = value[2]
     require(isinstance(history, list) and len(history) == 4, "turn history arity")
-    require(
-        isinstance(history[0], int) and 0 <= history[0] <= 0xFFFFFFFFFFFFFFFF, "turn number range"
-    )
+    require_u64(history[0], "turn number")
     history_players = []
     for entry in history[1]:
         require(isinstance(entry, list) and len(entry) == 7, "player history arity")
-        require(isinstance(entry[1], int) and entry[1] in (0, 1), "land play count range")
-        require(
-            all(
-                isinstance(n, int) and 0 <= n <= 0xFFFFFFFF for n in (entry[2], entry[3], entry[5])
-            ),
-            "turn history count range",
-        )
+        require_u64(entry[0], "history player ID")
+        require_u32(entry[1], "land play count")
+        for n in (entry[2], entry[3], entry[5]):
+            require_u32(n, "turn history count")
         require(isinstance(entry[4], bool) and isinstance(entry[6], bool), "turn history boolean")
         history_players.append(entry[0])
     ordered_unique(history_players, "history players")
     targets = history[2]
     require(all(isinstance(x, list) and len(x) == 2 for x in targets), "target occurrence arity")
+    for target, controller in targets:
+        require_u64(target, "target object ID")
+        require_u64(controller, "targeting controller ID")
     ordered_unique([tuple(x) for x in targets], "target occurrences")
     used = history[3]
     require(all(isinstance(x, list) and len(x) == 2 for x in used), "once ability arity")
+    for source, ability_key in used:
+        require_u64(source, "once ability source ID")
+        require_u32(ability_key, "once ability key")
     ordered_unique([tuple(x) for x in used], "once ability entries")
 
     counters = value[3]
@@ -178,13 +186,14 @@ def validate_authoritative_state(value: Any) -> None:
     objects = []
     for entry in counters:
         require(isinstance(entry, list) and len(entry) == 2, "counter object arity")
+        require_u64(entry[0], "counter object ID")
         objects.append(entry[0])
         tags = []
         for counter in entry[1]:
             require(isinstance(counter, list) and len(counter) == 2, "counter entry arity")
             tag, count = counter
-            require(tag in (0, 1, 2), "unknown counter kind")
-            require(isinstance(count, int) and 1 <= count <= 0xFFFFFFFF, "counter count range")
+            require(type(tag) is int and tag in (0, 1, 2), "unknown counter kind")
+            require_u32(count, "counter count", minimum=1)
             tags.append(tag)
         ordered_unique(tags, "counter kinds")
     ordered_unique(objects, "counter objects")
@@ -194,10 +203,10 @@ def validate_authoritative_state(value: Any) -> None:
     sources = []
     for edge in attachments:
         require(isinstance(edge, list) and len(edge) == 4, "attachment edge arity")
-        require(
-            0 <= edge[2] <= 0xFFFFFFFFFFFFFFFF and 0 <= edge[3] <= 0xFFFFFFFF,
-            "attachment timestamp range",
-        )
+        require_u64(edge[0], "attachment source ID")
+        require_u64(edge[1], "attachment target ID")
+        require_u64(edge[2], "attachment revision")
+        require_u32(edge[3], "attachment operation ordinal")
         sources.append(edge[0])
     ordered_unique(sources, "attachment sources")
 
@@ -206,7 +215,8 @@ def validate_authoritative_state(value: Any) -> None:
     face_objects = []
     for entry in faces:
         require(isinstance(entry, list) and len(entry) == 2, "face entry arity")
-        require(isinstance(entry[1], int) and 0 <= entry[1] <= 0xFFFFFFFF, "face key range")
+        require_u64(entry[0], "face object ID")
+        require_u32(entry[1], "face key")
         face_objects.append(entry[0])
     ordered_unique(face_objects, "face objects")
 
@@ -215,7 +225,9 @@ def validate_authoritative_state(value: Any) -> None:
     ids, semantic_keys = [], []
     for entry in abilities:
         require(isinstance(entry, list) and len(entry) == 3, "ability authority arity")
-        require(isinstance(entry[2], int) and 0 <= entry[2] <= 0xFFFFFFFF, "ability key range")
+        require_u64(entry[0], "ability instance ID")
+        require_u64(entry[1], "ability source ID")
+        require_u32(entry[2], "ability key")
         ids.append(entry[0])
         semantic_keys.append((entry[1], entry[2]))
     ordered_unique(ids, "ability instance IDs")
@@ -313,3 +325,68 @@ def verify_content_child(child: Any, parent_content_id: str) -> str:
     if actual_id != child_id:
         raise ValueError("content child digest mismatch")
     return actual_id
+
+
+def verify_checkpoint_digest_v7(
+    value: Any, supplied_digest: str, expected_semantic_contract_id: str
+) -> str:
+    """Verify the detached V7 digest input and its checkpoint bindings."""
+
+    def require(condition: bool, message: str) -> None:
+        if not condition:
+            raise ValueError(message)
+
+    require(isinstance(value, list) and len(value) == 7, "checkpoint input arity")
+    require(value[0] == "environment-checkpoint-digest-input.v7", "checkpoint input schema")
+    require(value[1] == "mtgml.checkpoint-digest.v7", "checkpoint semantic domain")
+    state_ref = value[2]
+    require(isinstance(state_ref, list) and len(state_ref) == 6, "full-state reference arity")
+    require(
+        state_ref[:5]
+        == [
+            "mtgml.digest-envelope.v1",
+            "sha-256",
+            "mtgml.full-state-digest.v6",
+            "mtgml.canonical-cbor.v1",
+            "full-state-digest-input.v6",
+        ],
+        "full-state successor identity",
+    )
+    require(type(state_ref[5]) is bytes and len(state_ref[5]) == 32, "full-state digest width")
+    require(isinstance(value[4], list) and len(value[4]) == 5, "environment counter arity")
+    require(
+        all(type(counter) is int and 0 <= counter <= 0xFFFFFFFFFFFFFFFF for counter in value[4]),
+        "environment counter range",
+    )
+    require(value[5] == ["in-memory-reference", "7"], "checkpoint codec identity")
+    execution_identity = value[6]
+    require(
+        isinstance(execution_identity, list)
+        and len(execution_identity) == 2
+        and type(execution_identity[1]) is bytes
+        and len(execution_identity[1]) == 32,
+        "execution identity shape",
+    )
+    require(
+        isinstance(expected_semantic_contract_id, str)
+        and len(expected_semantic_contract_id) == 64
+        and all(c in "0123456789abcdef" for c in expected_semantic_contract_id),
+        "expected semantic contract ID format",
+    )
+    require(
+        execution_identity[1].hex() == expected_semantic_contract_id,
+        "semantic contract identity mismatch",
+    )
+    require(
+        isinstance(supplied_digest, str)
+        and len(supplied_digest) == 64
+        and all(c in "0123456789abcdef" for c in supplied_digest),
+        "checkpoint digest format",
+    )
+    _, actual_digest = digest_envelope(
+        "mtgml.checkpoint-digest.v7",
+        "environment-checkpoint-digest-input.v7",
+        encode(value),
+    )
+    require(actual_digest == supplied_digest, "checkpoint digest mismatch")
+    return actual_digest

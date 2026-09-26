@@ -18,6 +18,7 @@ from m4_phase2_reference import (
     encode,
     validate_authoritative_state,
     validate_basic_land_content_manifest,
+    verify_checkpoint_digest_v7,
     verify_content_child,
 )
 
@@ -163,6 +164,30 @@ class FullStateV6VectorTests(unittest.TestCase):
             with self.subTest(case=case["case"]), self.assertRaises(ValueError):
                 validate_authoritative_state(case["family"])
 
+    def test_unsigned_fields_reject_booleans_and_out_of_range_values(self) -> None:
+        vector = read_json("persistence/golden/full-state-digest-v6-kat.v1.json")
+        base = vector["card_rules_authoritative_state"]
+        mutations = {
+            "boolean mana count": lambda x: x[1][0][1].__setitem__(0, True),
+            "negative player ID": lambda x: x[1][0].__setitem__(0, -1),
+            "negative GameObjectId": lambda x: x[3][0].__setitem__(0, -1),
+            "negative target GameObjectId": lambda x: x[2][2][0].__setitem__(0, -1),
+            "negative controller PlayerId": lambda x: x[2][2][0].__setitem__(1, -1),
+            "negative AbilityInstanceId": lambda x: x[6][0].__setitem__(0, -1),
+            "u64 overflow object ID": lambda x: x[5][0].__setitem__(0, 1 << 64),
+            "mana count above u32": lambda x: x[1][0][1].__setitem__(0, 1 << 32),
+            "turn-history count above u32": lambda x: x[2][1][0].__setitem__(2, 1 << 32),
+            "boolean attachment revision": lambda x: x[4][0].__setitem__(2, True),
+            "attachment revision above u64": lambda x: x[4][0].__setitem__(2, 1 << 64),
+            "attachment ordinal above u32": lambda x: x[4][0].__setitem__(3, 1 << 32),
+            "boolean counter kind": lambda x: x[3][0][1][0].__setitem__(0, True),
+        }
+        for name, mutate in mutations.items():
+            changed = copy.deepcopy(base)
+            mutate(changed)
+            with self.subTest(case=name), self.assertRaises(ValueError):
+                validate_authoritative_state(changed)
+
     def test_fixed_positional_orders_and_legacy_vectors_are_frozen(self) -> None:
         vector = read_json("persistence/golden/full-state-digest-v6-kat.v1.json")
         family = vector["card_rules_authoritative_state"]
@@ -191,6 +216,12 @@ class CheckpointV7VectorTests(unittest.TestCase):
         )
         self.assertEqual(digest, vector["expected_digest"])
         self.assertEqual(len(value), 7)
+        self.assertEqual(
+            verify_checkpoint_digest_v7(
+                value, vector["expected_digest"], vector["semantic_contract_id"]
+            ),
+            vector["expected_digest"],
+        )
 
     def test_checkpoint_identity_mutations_change_kat(self) -> None:
         vector = read_json("persistence/golden/checkpoint-digest-v7-kat.v1.json")
@@ -218,6 +249,35 @@ class CheckpointV7VectorTests(unittest.TestCase):
                 )
                 self.assertEqual(digest, vector["mutation_digests"][name])
                 self.assertNotEqual(digest, vector["expected_digest"])
+
+    def test_checkpoint_v7_successor_negatives_reject(self) -> None:
+        vector = read_json("persistence/golden/checkpoint-digest-v7-kat.v1.json")
+        data = read_json("persistence/negative/m4-phase2-checkpoint-v7-negatives.v1.json")
+        expected_id = vector["semantic_contract_id"]
+        for case in data["cases"]:
+            value = checkpoint_value(vector["full_state_digest"], expected_id)
+            supplied_digest = vector["expected_digest"]
+            if case["mutation"] == "full_state_v5_reference":
+                value[2][2] = "mtgml.full-state-digest.v5"
+                value[2][4] = "full-state-digest-input.v5"
+            elif case["mutation"] == "wrong_domain":
+                value[1] = "mtgml.checkpoint-digest.v6"
+            elif case["mutation"] == "wrong_input_schema":
+                value[0] = "environment-checkpoint-digest-input.v6"
+            elif case["mutation"] == "codec_v6":
+                value[5][1] = "6"
+            elif case["mutation"] == "semantic_contract_mismatch":
+                value[6][1] = bytes([value[6][1][0] ^ 1]) + value[6][1][1:]
+            elif case["mutation"] == "bad_supplied_digest":
+                supplied_digest = "0" * 64
+            elif case["mutation"] == "historical_v6_artifact_as_v7":
+                value[2][2] = "mtgml.full-state-digest.v5"
+                value[2][4] = "full-state-digest-input.v5"
+                value[5][1] = "6"
+            else:
+                self.fail(f"unknown frozen checkpoint negative: {case['mutation']}")
+            with self.subTest(case=case["case"]), self.assertRaises(ValueError):
+                verify_checkpoint_digest_v7(value, supplied_digest, expected_id)
 
 
 class ContentAndReplayV7VectorTests(unittest.TestCase):
