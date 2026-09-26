@@ -119,11 +119,14 @@ identity. Exact shape, size bounds and mismatch rejection rules are in the
 [accepted M4 Semantic Spec](superpowers/specs/2026-09-26-m4-unified-state-cut-semantic-spec.md).
 
 Replay V6 retains its exact historical non-null-content rejection and all
-existing bytes; it is not expanded to carry content. V7 remains a detached
-successor. Its checkpoint-digest primitive and detached checkpoint/restore/fork
-value path exist now; Replay V7 and runtime activation remain unimplemented
-until all planned wire, replay and acceptance evidence passes the sole
-activation boundary.
+existing bytes; it is not expanded to carry content. The integration branch
+implements Replay V7 as a detached structural contract: canonical typed
+manifest/replay wire values, content-child verification, identity/link checks,
+and a recorder builder over supplied authoritative results. This is not a V7
+environment executor and does not claim response re-execution or semantic
+parity. Replay V6 remains the current runtime authority. The V7 execution seam
+belongs to the integrated successor runtime; full direct/restore/fork/replay
+parity remains an acceptance obligation for the later replay-closure phase.
 
 `FullStateDigestV4`, Checkpoint V5 and Replay V5 retain their exact historical
 meaning and bytes. V4 digest and V5 checkpoint/replay artifacts are never
