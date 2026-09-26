@@ -220,6 +220,53 @@ fn magic_basic_land_projection_uses_opaque_public_ids_and_verified_content_faces
 }
 
 #[test]
+fn verified_catalog_rejects_unknown_face_key_before_observation_projection() {
+    let mut parts = basic_land_parts(seed());
+    let object = *parts.card_rules_state.faces.faces.keys().next().unwrap();
+    parts.card_rules_state.faces.faces.insert(object, 99);
+    let catalog = catalog_for(&[1, 2]);
+    let (identity, semantic, rules) = execution_authority(&catalog);
+    assert_eq!(
+        crate::player_projection::project_magic_basic_land_observation_v1(
+            &parts,
+            PlayerId(1),
+            &identity,
+            &semantic,
+            &rules,
+            &catalog,
+        ),
+        Err(PlayerEndpointError::ServiceUnavailable)
+    );
+}
+
+#[test]
+fn verified_catalog_rejects_ability_key_missing_from_the_selected_face() {
+    let mut parts = basic_land_parts(seed());
+    let source = *parts.predecessor_v5.zones.objects.keys().next().unwrap();
+    parts.predecessor_v5.allocators.next_ability_id = mtgml_model::AbilityInstanceId(2);
+    parts.card_rules_state.abilities.by_instance.insert(
+        mtgml_model::AbilityInstanceId(1),
+        mtgml_state::AbilityAuthorityV1 {
+            source,
+            ability_key: 77,
+        },
+    );
+    let catalog = catalog_for(&[1, 2]);
+    let (identity, semantic, rules) = execution_authority(&catalog);
+    assert_eq!(
+        crate::player_projection::project_magic_basic_land_observation_v1(
+            &parts,
+            PlayerId(1),
+            &identity,
+            &semantic,
+            &rules,
+            &catalog,
+        ),
+        Err(PlayerEndpointError::ServiceUnavailable)
+    );
+}
+
+#[test]
 fn hidden_rng_change_preserves_basic_land_observation_bytes_and_digest() {
     let a = basic_land_parts(seed());
     let other_seed = mtgml_random::RootSeed256::from_lower_hex(&"99".repeat(32)).unwrap();

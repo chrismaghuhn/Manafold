@@ -67,7 +67,7 @@ pub struct CounterStateV1 {
     pub counters: BTreeMap<GameObjectId, BTreeMap<CounterKindV1, u32>>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct AttachmentTimestampV1 {
     pub revision: StateRevision,
     pub operation_ordinal: u32,
@@ -212,11 +212,10 @@ impl ManaStateV1 {
 
 impl TurnHistoryStateV1 {
     pub fn validate(&self) -> Result<(), PersistedV6Error> {
-        if self
-            .players
-            .values()
-            .any(|history| history.land_plays_used > 1)
-        {
+        if self.players.values().any(|history| {
+            history.land_plays_used > 1
+                || history.noncreature_spells_cast > history.spells_cast_total
+        }) {
             return Err(PersistedV6Error::InvalidStructure);
         }
         Ok(())
@@ -379,6 +378,18 @@ impl CounterStateV1 {
 }
 
 impl AttachmentStateV1 {
+    fn validate(&self) -> Result<(), PersistedV6Error> {
+        let mut timestamps = BTreeSet::new();
+        if self
+            .by_source
+            .values()
+            .any(|edge| !timestamps.insert(edge.timestamp))
+        {
+            return Err(PersistedV6Error::InvalidStructure);
+        }
+        Ok(())
+    }
+
     fn to_value(&self) -> Value {
         array(self.by_source.iter().map(|(source, edge)| {
             array([
@@ -503,6 +514,7 @@ impl CardRulesAuthoritativeStateV1 {
         self.mana.validate()?;
         self.turn_history.validate()?;
         self.abilities.validate()?;
+        self.attachments.validate()?;
         if self
             .counters
             .counters

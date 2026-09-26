@@ -7,7 +7,7 @@
 use std::collections::BTreeSet;
 
 use crate::{validate_engine_state, CardRulesAuthoritativeStateV1, EngineState, EngineStateParts};
-use mtgml_model::{GameObjectId, ZoneKind};
+use mtgml_model::{AbilityInstanceId, GameObjectId, ZoneKind};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EngineStatePartsV2 {
@@ -28,6 +28,28 @@ impl EngineStatePartsV2 {
 
     pub fn materialize(&self) -> EngineState {
         self.predecessor_v5.clone().into()
+    }
+
+    /// Registers currently existing ability identities in canonical
+    /// `(source GameObjectId, AbilityKey)` order using the existing allocator.
+    /// The registry and allocator commit together only after full state
+    /// validation succeeds.
+    pub fn register_ability_authorities(
+        &mut self,
+        identities: impl IntoIterator<Item = (GameObjectId, u32)>,
+    ) -> Result<Vec<AbilityInstanceId>, EngineStatePartsV2Error> {
+        let live: BTreeSet<_> = self.predecessor_v5.zones.objects.keys().copied().collect();
+        let mut candidate = self.clone();
+        let mut next_id = candidate.predecessor_v5.allocators.next_ability_id;
+        let allocated = candidate
+            .card_rules_state
+            .abilities
+            .allocate_sorted(&mut next_id, identities, &live)
+            .map_err(|_| EngineStatePartsV2Error::AbilityRegistration)?;
+        candidate.predecessor_v5.allocators.next_ability_id = next_id;
+        candidate.validate()?;
+        *self = candidate;
+        Ok(allocated)
     }
 
     pub fn validate(&self) -> Result<(), EngineStatePartsV2Error> {
@@ -55,29 +77,20 @@ impl EngineStatePartsV2 {
 
         let live: BTreeSet<GameObjectId> = state.zones.objects.keys().copied().collect();
         let abilities = &self.card_rules_state.abilities.by_instance;
-        if abilities
-            .keys()
-            .any(|ability| ability.0 >= state.allocators.next_ability_id.0)
-        {
-            return Err(EngineStatePartsV2Error::AbilityAllocator);
-        }
+        self.card_rules_state
+            .abilities
+            .validate_allocator_semantics(state.allocators.next_ability_id)
+            .map_err(|_| EngineStatePartsV2Error::AbilityAllocator)?;
         if self
             .card_rules_state
             .turn_history
-            .target_occurrences
-            .iter()
-            .any(|(object, player)| !live.contains(object) || !players.contains(player))
-            || self
-                .card_rules_state
-                .turn_history
-                .once_ability_used
-                .iter()
-                .any(|(object, key)| {
-                    !live.contains(object)
-                        || !abilities.values().any(|authority| {
-                            authority.source == *object && authority.ability_key == *key
-                        })
-                })
+            .validate_context(
+                state.core.turn_number,
+                &players,
+                &live,
+                &self.card_rules_state.abilities,
+            )
+            .is_err()
         {
             return Err(EngineStatePartsV2Error::HistoryReference);
         }
@@ -98,30 +111,27 @@ impl EngineStatePartsV2 {
                     .get(object)
                     .is_some_and(|location| location.zone == ZoneKind::Battlefield)
         };
+        let battlefield: BTreeSet<_> = live.iter().copied().filter(on_battlefield).collect();
         if self
             .card_rules_state
             .counters
-            .counters
-            .keys()
-            .any(|object| !on_battlefield(object))
+            .validate_battlefield(&battlefield)
+            .is_err()
             || self
                 .card_rules_state
                 .attachments
-                .by_source
-                .iter()
-                .any(|(source, edge)| !on_battlefield(source) || !on_battlefield(&edge.target))
+                .validate_battlefield(&battlefield)
+                .is_err()
             || self
                 .card_rules_state
                 .faces
-                .faces
-                .keys()
-                .any(|object| !live.contains(object))
+                .validate_live_objects(&live)
+                .is_err()
             || self
                 .card_rules_state
                 .abilities
-                .by_instance
-                .values()
-                .any(|ability| !live.contains(&ability.source))
+                .validate_live_sources(state.allocators.next_ability_id, &live)
+                .is_err()
         {
             return Err(EngineStatePartsV2Error::ObjectReference);
         }
@@ -147,6 +157,8 @@ pub enum EngineStatePartsV2Error {
     HistoryReference,
     #[error("active opaque ability identity has no V6 ability authority")]
     AbilityAuthorityReference,
+    #[error("V6 ability-authority registration is invalid or exhausted")]
+    AbilityRegistration,
 }
 
 #[cfg(test)]
@@ -282,5 +294,32 @@ mod tests {
             .insert(AbilityInstanceId(1), OpaqueAbilityId(1));
         identity.next_opaque_ability_id = OpaqueAbilityId(2);
         state.validate().unwrap();
+    }
+
+    #[test]
+    fn attachment_edges_require_live_battlefield_source_and_target() {
+        let mut state = parts();
+        let source = *state
+            .predecessor_v5
+            .zones
+            .locations
+            .iter()
+            .find(|(_, location)| location.zone == ZoneKind::Battlefield)
+            .map(|(object, _)| object)
+            .unwrap();
+        state.card_rules_state.attachments.by_source.insert(
+            source,
+            crate::AttachmentV1 {
+                target: GameObjectId(u64::MAX),
+                timestamp: crate::AttachmentTimestampV1 {
+                    revision: mtgml_model::StateRevision(1),
+                    operation_ordinal: 0,
+                },
+            },
+        );
+        assert_eq!(
+            state.validate(),
+            Err(EngineStatePartsV2Error::ObjectReference)
+        );
     }
 }
