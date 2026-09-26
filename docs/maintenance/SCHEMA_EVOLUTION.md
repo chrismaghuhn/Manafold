@@ -3,6 +3,20 @@
 **Status:** accepted schema-evolution policy  
 **Stability:** normative
 
+## Accepted M4 successor cut (2026-09-26; not current writers)
+
+The accepted M4 Semantic Spec allocates one coupled successor family:
+FullStateDigestV6 / input V6, StateDeltaV2, Checkpoint V7 / digest V7, Replay
+V7, Decision request V3, ObservedEventEnvelopeV3, PlayerStepV3 and the named
+`magic-basic-land-observation.v1` payload. Their identities, canonical forms,
+cross-field rules, and predecessor dispositions are defined in the accepted
+[M4 Semantic Spec](../superpowers/specs/2026-09-26-m4-unified-state-cut-semantic-spec.md).
+
+The new JSON schemas are additive. Existing V2/V6 schema files and fixtures
+must remain unchanged. Replay V7 carries content-child CBOR via the accepted
+strict Base64 transport; it does not introduce a JSON CardDefinition manifest.
+The successor families remain non-current until a complete detached
+implementation passes the plan's gates and is atomically activated.
 
 1. name the exact semantic surface and current version;
 2. add/modify reader and writer fixtures before producer code;

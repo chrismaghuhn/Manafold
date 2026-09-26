@@ -86,6 +86,26 @@ body type, exact encoding, semantic meaning, and requirement derivation before
 content using it can be admitted or hashed. Unknown fields, duplicate fields,
 unknown variants, and unknown profile IDs fail closed.
 
+## Accepted M4.2 basic-land profile successor (not current runtime)
+
+The accepted M4 unified-state Semantic Spec defines the first closed profile
+as `basic-land@1.0.0`, using the unchanged M4.1 profile-ID grammar and the
+unchanged outer `CardDefinitionEnvelopeV1` / `ContentContractManifestV1`
+shapes. Its body is exactly
+`BasicLandProfileV1 { subtype: BasicLandSubtypeV1 }`, where the closed subtype
+is `Mountain | Plains`; canonical content encoding is the fixed array
+`["basic-land-profile.v1", "mountain" | "plains"]`. The subtype must agree
+with the sole face's type line and derives, rather than stores, the basic
+land's intrinsic mana ability under CR 305.6. The body is requirement-derived
+and admits no optional fields, map, extension, opcode, or string dispatcher.
+
+This is an additive successor admission contract. It does not change the
+M4.1 production validator's existing `UnprofiledV1` behavior or reinterpret
+any M4.1 content bytes. The new detached content verifier may admit only this
+separately specified ProfiledV1 body, after canonical identity and typed
+validation; it becomes executable only at the unified state cut's sole
+activation boundary. No other profile is admitted by this addition.
+
 Definitions in a manifest are unique and sorted by numeric ID. Repeating an
 ID is invalid even if the values are byte-identical. The invariant is:
 

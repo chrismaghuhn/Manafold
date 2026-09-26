@@ -1081,6 +1081,27 @@ preimage and known-answer fixture. `CheckpointDigestV5` retains its exact V5
 preimage over a V4 full-state reference and codec `/5`; it is never re-bound
 to V5 state or codec `/6`.
 
+## Accepted M4 successor identity contract (not current runtime)
+
+The accepted M4 Semantic Spec allocates `FullStateDigestV6` with input schema
+`full-state-digest-input.v6` and domain `mtgml.full-state-digest.v6`. It
+preserves the V5 top-level semantic order and adds one fixed
+`card-rules-authoritative-state.v1` element containing the closed Mana,
+TurnHistory, Counter, Attachment, Face, and AbilityAuthority records. Their
+exact typed fields, ordering, ranges, and canonical CBOR arrays are specified
+in the [accepted M4 state-cut Semantic Spec](superpowers/specs/2026-09-26-m4-unified-state-cut-semantic-spec.md).
+No runtime V6 writer exists until the ordered implementation plan is
+completed; V5 remains current until the sole activation boundary.
+
+The same accepted design allocates `EnvironmentCheckpointV7` and
+`CheckpointDigestV7`, with `environment-checkpoint-digest-input.v7`,
+`mtgml.checkpoint-digest.v7`, and codec identity
+`["in-memory-reference", "7"]`. Its seven-element canonical payload binds
+the FullStateDigestV6 reference, status, environment counters, codec identity,
+and complete ExecutionIdentityV1. The exact payload and historical V6
+disposition are in the accepted Semantic Spec. These successor identities do
+not change current V5/V6 bytes or make an incomplete successor executable.
+
 # Conversion and reader rules
 
 Runtime `EngineState` converts fallibly into the detached V3 semantic input.

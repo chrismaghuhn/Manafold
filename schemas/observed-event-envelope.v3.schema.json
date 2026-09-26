@@ -1,0 +1,381 @@
+{
+  "$id": "observed-event-envelope.v3.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "$defs": {
+    "uint": {
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "type": "string"
+    },
+    "nullable_uint": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/uint"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "zone": {
+      "enum": [
+        "library",
+        "hand",
+        "battlefield",
+        "graveyard",
+        "exile",
+        "stack",
+        "command",
+        "ante",
+        "outside"
+      ]
+    },
+    "event": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "from": {
+              "$ref": "#/$defs/zone"
+            },
+            "kind": {
+              "const": "object_moved"
+            },
+            "new_object": {
+              "$ref": "#/$defs/nullable_uint"
+            },
+            "old_object": {
+              "$ref": "#/$defs/nullable_uint"
+            },
+            "to": {
+              "$ref": "#/$defs/zone"
+            },
+            "entering_face": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "front",
+                    "back"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "tapped": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "old_object",
+            "new_object",
+            "from",
+            "to",
+            "entering_face",
+            "tapped"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "object_ceased_to_exist"
+            },
+            "object": {
+              "$ref": "#/$defs/uint"
+            }
+          },
+          "required": [
+            "kind",
+            "object"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "from": {
+              "maximum": 9223372036854775807,
+              "minimum": -9223372036854775808,
+              "type": "integer"
+            },
+            "kind": {
+              "const": "life_changed"
+            },
+            "player": {
+              "$ref": "#/$defs/uint"
+            },
+            "to": {
+              "maximum": 9223372036854775807,
+              "minimum": -9223372036854775808,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "kind",
+            "player",
+            "from",
+            "to"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "object_tapped"
+            },
+            "object": {
+              "$ref": "#/$defs/uint"
+            },
+            "tapped": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "kind",
+            "object",
+            "tapped"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "actor": {
+              "$ref": "#/$defs/uint"
+            },
+            "kind": {
+              "const": "decision_available"
+            }
+          },
+          "required": [
+            "kind",
+            "actor"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "exclusive_upper_bound": {
+              "maximum": 18446744073709551615,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "kind": {
+              "const": "random_outcome_visible"
+            },
+            "label": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "value": {
+              "maximum": 18446744073709551615,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "kind",
+            "label",
+            "exclusive_upper_bound",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "kind": {
+              "const": "public_outcome"
+            }
+          },
+          "required": [
+            "kind",
+            "code"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "cause": {
+              "enum": [
+                "produced",
+                "emptied"
+              ]
+            },
+            "kind": {
+              "const": "mana_pool_changed"
+            },
+            "player": {
+              "$ref": "#/$defs/uint"
+            },
+            "pool_after": {
+              "additionalProperties": false,
+              "properties": {
+                "unrestricted": {
+                  "items": {
+                    "maximum": 4294967295,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "maxItems": 6,
+                  "minItems": 6,
+                  "type": "array"
+                },
+                "creature_spell_only": {
+                  "items": {
+                    "maximum": 4294967295,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "maxItems": 6,
+                  "minItems": 6,
+                  "type": "array"
+                }
+              },
+              "required": [
+                "unrestricted",
+                "creature_spell_only"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "kind",
+            "player",
+            "pool_after",
+            "cause"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "object": {
+              "$ref": "#/$defs/uint"
+            },
+            "kind": {
+              "const": "counters_changed"
+            },
+            "counter_kind": {
+              "enum": [
+                "plus_one_plus_one",
+                "minus_one_minus_one",
+                "lore"
+              ]
+            },
+            "from": {
+              "maximum": 4294967295,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "to": {
+              "maximum": 4294967295,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "kind",
+            "object",
+            "counter_kind",
+            "from",
+            "to"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "source": {
+              "$ref": "#/$defs/uint"
+            },
+            "kind": {
+              "const": "attachment_changed"
+            },
+            "old_target": {
+              "$ref": "#/$defs/nullable_uint"
+            },
+            "new_target": {
+              "$ref": "#/$defs/nullable_uint"
+            }
+          },
+          "required": [
+            "kind",
+            "source",
+            "old_target",
+            "new_target"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "object": {
+              "$ref": "#/$defs/uint"
+            },
+            "kind": {
+              "const": "object_face_changed"
+            },
+            "face": {
+              "enum": [
+                "front",
+                "back"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "object",
+            "face"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "u32": {
+      "maximum": 4294967295,
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "properties": {
+    "event": {
+      "$ref": "#/$defs/event"
+    },
+    "schema_version": {
+      "const": "observed-event-envelope.v3"
+    },
+    "sequence": {
+      "$ref": "#/$defs/uint"
+    },
+    "state_revision": {
+      "$ref": "#/$defs/uint"
+    }
+  },
+  "required": [
+    "schema_version",
+    "sequence",
+    "state_revision",
+    "event"
+  ],
+  "title": "ObservedEventEnvelope V3",
+  "type": "object"
+}

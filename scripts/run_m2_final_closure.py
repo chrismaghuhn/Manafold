@@ -765,6 +765,7 @@ SCHEMA_INVENTORY_ALLOWED: frozenset[str] = frozenset(
         "authoritative-replay.v4.schema.json",
         "authoritative-replay.v5.schema.json",
         "authoritative-replay.v6.schema.json",
+        "authoritative-replay.v7.schema.json",
         "bundle-certification.v1.schema.json",
         "bundle-manifest.v1.schema.json",
         "capability-registry.v1.schema.json",
@@ -777,6 +778,8 @@ SCHEMA_INVENTORY_ALLOWED: frozenset[str] = frozenset(
         "information-state-envelope.v1.schema.json",
         "information-state-envelope.v2.schema.json",
         "magic-m3-observation.v1.schema.json",
+        # M4 Phase 1 successor schema declaration; runtime codec is detached.
+        "magic-basic-land-observation.v1.schema.json",
         # Explicit Block 4 observation successor; V1 remains byte-frozen.
         "magic-combat-observation.v2.schema.json",
         # Explicit Block 5 successor; V1/V2 remain byte-frozen.
@@ -787,16 +790,20 @@ SCHEMA_INVENTORY_ALLOWED: frozenset[str] = frozenset(
         "observation-envelope.v1.schema.json",
         "observed-event-envelope.v1.schema.json",
         "observed-event-envelope.v2.schema.json",
+        "observed-event-envelope.v3.schema.json",
         "player-decision-request.v1.schema.json",
         "player-decision-request.v2.schema.json",
+        "player-decision-request.v3.schema.json",
         "player-step.v1.schema.json",
         "player-step.v2.schema.json",
+        "player-step.v3.schema.json",
         "replay-manifest.v1.schema.json",
         "replay-manifest.v2.schema.json",
         "replay-manifest.v3.schema.json",
         "replay-manifest.v4.schema.json",
         "replay-manifest.v5.schema.json",
         "replay-manifest.v6.schema.json",
+        "replay-manifest.v7.schema.json",
         "synthetic-m3-observation.v1.schema.json",
         "scope-impact-report.v1.schema.json",
     }
@@ -1044,7 +1051,7 @@ def check_schema_inventory_pinned(root: Path) -> str:
     if forbidden:
         raise ScopeCheckFailure(f"forbidden later-milestone schema artifacts present: {forbidden}")
     return (
-        "schema inventory matches the pinned M2 inventory plus the reviewed combat payload "
+        "schema inventory matches the pinned M2 inventory plus reviewed combat/M4 successor "
         f"successor ({len(schemas)} schemas)"
     )
 

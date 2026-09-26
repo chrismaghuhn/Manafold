@@ -1,0 +1,312 @@
+{
+  "$id": "magic-basic-land-observation.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "active_player": {
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "type": "string"
+    },
+    "pending_sba_ordering": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "completed_orders": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "ordered_objects": {
+                    "items": {
+                      "pattern": "^(0|[1-9][0-9]*)$",
+                      "type": "string"
+                    },
+                    "minItems": 2,
+                    "type": "array"
+                  },
+                  "owner": {
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "owner",
+                  "ordered_objects"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "next_order_owner": {
+              "pattern": "^(0|[1-9][0-9]*)$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "completed_orders",
+            "next_order_owner"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "priority": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "none"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "held_by"
+            },
+            "player": {
+              "pattern": "^(0|[1-9][0-9]*)$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "player"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "schema_version": {
+      "const": "magic-basic-land-observation.v1"
+    },
+    "turn_number": {
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "type": "string"
+    },
+    "turn_position": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "beginning"
+            },
+            "step": {
+              "enum": [
+                "untap",
+                "upkeep",
+                "draw"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "step"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "precombat_main"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "combat"
+            },
+            "step": {
+              "enum": [
+                "beginning_of_combat",
+                "declare_attackers",
+                "declare_blockers",
+                "combat_damage",
+                "end_of_combat"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "step"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "postcombat_main"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "ending"
+            },
+            "step": {
+              "enum": [
+                "end_step",
+                "cleanup"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "step"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "mana_pools": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "player": {
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string"
+          },
+          "unrestricted": {
+            "items": {
+              "maximum": 4294967295,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "maxItems": 6,
+            "minItems": 6,
+            "type": "array"
+          },
+          "creature_spell_only": {
+            "items": {
+              "maximum": 4294967295,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "maxItems": 6,
+            "minItems": 6,
+            "type": "array"
+          }
+        },
+        "required": [
+          "player",
+          "unrestricted",
+          "creature_spell_only"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "counters": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "object": {
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string"
+          },
+          "counter_kind": {
+            "enum": [
+              "plus_one_plus_one",
+              "minus_one_minus_one",
+              "lore"
+            ]
+          },
+          "count": {
+            "maximum": 4294967295,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "object",
+          "counter_kind",
+          "count"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "attachments": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string"
+          },
+          "target": {
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "target"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "faces": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "object": {
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string"
+          },
+          "face": {
+            "enum": [
+              "front",
+              "back"
+            ]
+          }
+        },
+        "required": [
+          "object",
+          "face"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "active_player",
+    "turn_number",
+    "turn_position",
+    "priority",
+    "pending_sba_ordering",
+    "mana_pools",
+    "counters",
+    "attachments",
+    "faces"
+  ],
+  "title": "Magic Basic Land Observation V1",
+  "type": "object"
+}

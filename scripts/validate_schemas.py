@@ -13,6 +13,7 @@ WIRE_MAPPING = {
     "player-decision-request.v1": "player-decision-request.v1.schema.json",
     "decision-response.v1": "decision-response.v1.schema.json",
     "player-decision-request.v2": "player-decision-request.v2.schema.json",
+    "player-decision-request.v3": "player-decision-request.v3.schema.json",
     "decision-response.v2": "decision-response.v2.schema.json",
     "episode-status.v1": "episode-status.v1.schema.json",
     "observed-event-envelope.v1": "observed-event-envelope.v1.schema.json",
@@ -25,7 +26,9 @@ WIRE_MAPPING = {
     "authoritative-replay.v2": "authoritative-replay.v2.schema.json",
     "information-state-envelope.v2": "information-state-envelope.v2.schema.json",
     "observed-event-envelope.v2": "observed-event-envelope.v2.schema.json",
+    "observed-event-envelope.v3": "observed-event-envelope.v3.schema.json",
     "player-step.v2": "player-step.v2.schema.json",
+    "player-step.v3": "player-step.v3.schema.json",
     "replay-manifest.v3": "replay-manifest.v3.schema.json",
     "authoritative-replay.v3": "authoritative-replay.v3.schema.json",
     "magic-m3-observation.v1": "magic-m3-observation.v1.schema.json",
@@ -33,12 +36,15 @@ WIRE_MAPPING = {
     "magic-combat-observation.v3": "magic-combat-observation.v3.schema.json",
     "magic-combat-observation.v4": "magic-combat-observation.v4.schema.json",
     "synthetic-m3-observation.v1": "synthetic-m3-observation.v1.schema.json",
+    "magic-basic-land-observation.v1": "magic-basic-land-observation.v1.schema.json",
     "replay-manifest.v4": "replay-manifest.v4.schema.json",
     "authoritative-replay.v4": "authoritative-replay.v4.schema.json",
     "replay-manifest.v5": "replay-manifest.v5.schema.json",
     "authoritative-replay.v5": "authoritative-replay.v5.schema.json",
     "replay-manifest.v6": "replay-manifest.v6.schema.json",
     "authoritative-replay.v6": "authoritative-replay.v6.schema.json",
+    "replay-manifest.v7": "replay-manifest.v7.schema.json",
+    "authoritative-replay.v7": "authoritative-replay.v7.schema.json",
 }
 ARTIFACT_CASES = [
     ("capability-registry.v1.schema.json", "cards/capabilities/registry.json"),
@@ -68,6 +74,74 @@ ARTIFACT_CASES = [
         "contracts/catalog/contract-vocabulary.v1.json",
     ),
     ("golden-path-index.v1.schema.json", "examples/golden-path/index.json"),
+]
+SCHEMA_NEGATIVE_CASES = [
+    (
+        "player-decision-request.v3.schema.json",
+        "schemas/negative/player-decision-request-v3-unknown-version.json",
+    ),
+    (
+        "player-decision-request.v3.schema.json",
+        "schemas/negative/player-decision-request-v3-unknown-field.json",
+    ),
+    (
+        "observed-event-envelope.v3.schema.json",
+        "schemas/negative/observed-event-v3-object-moved-missing-entry-fields.json",
+    ),
+    (
+        "observed-event-envelope.v3.schema.json",
+        "schemas/negative/observed-event-v3-unknown-kind.json",
+    ),
+    (
+        "replay-manifest.v7.schema.json#content-contract-child",
+        "schemas/negative/replay-v7-content-child-unknown-field.json",
+    ),
+    (
+        "replay-manifest.v7.schema.json#content-contract-child",
+        "schemas/negative/replay-v7-content-child-invalid-base64.json",
+    ),
+    (
+        "replay-manifest.v7.schema.json#content-presence-rule",
+        "schemas/negative/replay-v7-content-presence-mismatch.json",
+    ),
+    (
+        "replay-manifest.v7.schema.json#content-presence-rule",
+        "schemas/negative/replay-v7-content-id-without-child.json",
+    ),
+]
+SCHEMA_POSITIVE_CASES = [
+    (
+        "player-decision-request.v3.schema.json",
+        "schemas/examples/player-decision-request-v3-play-land.json",
+    ),
+    (
+        "observed-event-envelope.v3.schema.json",
+        "schemas/examples/observed-event-v3-object-moved.json",
+    ),
+    (
+        "observed-event-envelope.v3.schema.json",
+        "schemas/examples/observed-event-v3-mana-pool-changed.json",
+    ),
+    (
+        "observed-event-envelope.v3.schema.json",
+        "schemas/examples/observed-event-v3-counters-changed.json",
+    ),
+    (
+        "observed-event-envelope.v3.schema.json",
+        "schemas/examples/observed-event-v3-attachment-changed.json",
+    ),
+    (
+        "observed-event-envelope.v3.schema.json",
+        "schemas/examples/observed-event-v3-face-changed.json",
+    ),
+    (
+        "player-step.v3.schema.json",
+        "schemas/examples/player-step-v3.json",
+    ),
+    (
+        "magic-basic-land-observation.v1.schema.json",
+        "schemas/examples/magic-basic-land-observation-v1.json",
+    ),
 ]
 
 
@@ -118,6 +192,7 @@ def validate_wire_schema_inventory(
         schema = load(schema_root / name)
         if not isinstance(schema, dict):
             raise ValueError(f"wire schema must be an object: {name}")
+        jsonschema.Draft202012Validator.check_schema(schema)
         schema_id = schema.get("$id")
         if schema_id != name:
             raise ValueError(f"wire schema $id must match filename: {name} has {schema_id!r}")
@@ -129,6 +204,22 @@ def validate_wire_schema_inventory(
 
 def main() -> None:
     validate_wire_schema_inventory(load(ROOT / "schemas" / "README.json"))
+    for schema_name, fixture_rel in SCHEMA_POSITIVE_CASES:
+        jsonschema.Draft202012Validator(load(ROOT / "schemas" / schema_name)).validate(
+            load(ROOT / fixture_rel)
+        )
+    for schema_ref, fixture_rel in SCHEMA_NEGATIVE_CASES:
+        schema_name, _, fragment = schema_ref.partition("#")
+        schema = load(ROOT / "schemas" / schema_name)
+        if fragment == "content-contract-child":
+            schema = schema["$defs"]["semantic_contract_material"]["properties"][
+                "content_contract"
+            ]["oneOf"][1]
+        elif fragment == "content-presence-rule":
+            schema = schema["$defs"]["semantic_contract_material"]["allOf"][0]
+        fixture = load(ROOT / fixture_rel)
+        if jsonschema.Draft202012Validator(schema).is_valid(fixture):
+            raise ValueError(f"schema accepted negative fixture: {fixture_rel}")
     manifest = load(ROOT / "wire/golden/manifest.json")
     assert isinstance(manifest, dict)
     fixtures = manifest["fixtures"]
@@ -142,7 +233,9 @@ def main() -> None:
         )
     print(
         f"PASS: {len(fixtures)} wire fixtures and"
-        f" {len(ARTIFACT_CASES)} maintainer artifacts validated against schemas"
+        f" {len(ARTIFACT_CASES)} maintainer artifacts validated against schemas; "
+        f"{len(SCHEMA_POSITIVE_CASES)} successor-schema examples accepted and "
+        f"{len(SCHEMA_NEGATIVE_CASES)} negative cases rejected"
     )
 
 
