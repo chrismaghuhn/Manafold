@@ -29,6 +29,14 @@ pub enum LifecycleProjectionError {
 
 type ProjectionResult<T> = Result<T, LifecycleProjectionError>;
 
+/// Entry facts already authorized for one perspective and visible occurrence.
+/// This type carries projection input only; it does not derive Magic rules.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AuthorizedBattlefieldEntryFactsV3 {
+    pub entering_face: Option<mtgml_observation::ObservedFaceV1>,
+    pub tapped: Option<bool>,
+}
+
 fn resolve(
     authorized: bool,
     object: mtgml_model::GameObjectId,
@@ -187,4 +195,72 @@ pub fn project_occurrence_envelopes(
         }
     }
     Ok(envelopes)
+}
+
+/// Projects the same rules-owned, perspective-authorized occurrences as V2,
+/// encoding them with the detached V3 event shape. New M4 state event
+/// producers are intentionally added by their owning RulesKernel work; this
+/// adapter cannot manufacture such events.
+pub fn project_occurrence_envelopes_v3(
+    before: &EngineState,
+    after: &EngineState,
+    events: &[mtgml_rules::AuthoritativeRuleEvent],
+) -> ProjectionResult<BTreeMap<PlayerId, Vec<mtgml_observation::ObservedEventEnvelopeV3>>> {
+    project_occurrence_envelopes(before, after, events)?
+        .into_iter()
+        .map(|(player, envelopes)| {
+            let projected = envelopes
+                .into_iter()
+                .map(mtgml_observation::ObservedEventEnvelopeV3::try_from)
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|_| LifecycleProjectionError::InvalidObservedEvent)?;
+            Ok((player, projected))
+        })
+        .collect()
+}
+
+/// Adds already-authorized face/tapped facts to visible battlefield-entry
+/// occurrences after the V2 audience and opaque-identity projection. Facts
+/// must identify an existing visible V3 `object_moved` entry by perspective
+/// and sequence; this function neither creates events nor infers entry rules.
+pub fn project_occurrence_envelopes_v3_with_entry_facts(
+    before: &EngineState,
+    after: &EngineState,
+    events: &[mtgml_rules::AuthoritativeRuleEvent],
+    entry_facts: &BTreeMap<(PlayerId, VisibleSequence), AuthorizedBattlefieldEntryFactsV3>,
+) -> ProjectionResult<BTreeMap<PlayerId, Vec<mtgml_observation::ObservedEventEnvelopeV3>>> {
+    use mtgml_observation::ObservedEventKindV3;
+
+    let mut projected = project_occurrence_envelopes_v3(before, after, events)?;
+    for ((perspective, sequence), facts) in entry_facts {
+        if facts.entering_face.is_none() && facts.tapped.is_none() {
+            return Err(LifecycleProjectionError::InvalidObservedEvent);
+        }
+        let Some(envelope) = projected.get_mut(perspective).and_then(|envelopes| {
+            envelopes
+                .iter_mut()
+                .find(|event| event.sequence == *sequence)
+        }) else {
+            return Err(LifecycleProjectionError::InvalidObservedEvent);
+        };
+        let ObservedEventKindV3::ObjectMoved {
+            new_object: Some(_),
+            to: mtgml_model::ZoneKind::Battlefield,
+            entering_face,
+            tapped,
+            ..
+        } = &mut envelope.event
+        else {
+            return Err(LifecycleProjectionError::InvalidObservedEvent);
+        };
+        if entering_face.is_some() || tapped.is_some() {
+            return Err(LifecycleProjectionError::InvalidObservedEvent);
+        }
+        *entering_face = facts.entering_face;
+        *tapped = facts.tapped;
+        envelope
+            .validate()
+            .map_err(|_| LifecycleProjectionError::InvalidObservedEvent)?;
+    }
+    Ok(projected)
 }

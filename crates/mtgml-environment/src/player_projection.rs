@@ -6,15 +6,20 @@
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use mtgml_decision::PlayerDecisionRequestV2;
-use mtgml_model::{EpisodeStatus, ExecutionIdentityV1, ExecutionProgramV1, PlayerId};
+use mtgml_model::{
+    EpisodeStatus, ExecutionIdentityV1, ExecutionProgramV1, PlayerId, RulesAuthorityV1,
+    RulesContractManifestV1, SemanticContractManifestV1,
+};
 use mtgml_observation::{
-    InformationStateDigestInputV2, ObservationEnvelope, ObservedEventEnvelopeV2,
-    PlayerInformationStateV2, PlayerKnowledgeCauseV1, PlayerKnowledgeChannelV1,
-    PlayerKnowledgeInvalidationReasonV1, PlayerKnowledgeProvenanceV1, PlayerKnownLocationFactV1,
-    PlayerKnownLocationV1, PlayerKnownObjectV1, PlayerStepSubmissionV1, PlayerStepV2,
-    SyntheticBeginningStep, SyntheticCombatStep, SyntheticEndingStep, SyntheticObservation,
-    SyntheticPriority, SyntheticTurnPosition, INFORMATION_STATE_SCHEMA_V2, OBSERVATION_SCHEMA,
-    PLAYER_STEP_SCHEMA_V2, SYNTHETIC_OBSERVATION_SCHEMA_V1,
+    AttachmentObservationV1, CounterObservationV1, FaceObservationV1,
+    InformationStateDigestInputV2, MagicBasicLandObservationV1, ManaPoolObservationV1,
+    ObservationEnvelope, ObservedEventEnvelopeV2, ObservedFaceV1, PlayerInformationStateV2,
+    PlayerKnowledgeCauseV1, PlayerKnowledgeChannelV1, PlayerKnowledgeInvalidationReasonV1,
+    PlayerKnowledgeProvenanceV1, PlayerKnownLocationFactV1, PlayerKnownLocationV1,
+    PlayerKnownObjectV1, PlayerStepSubmissionV1, PlayerStepV2, SyntheticBeginningStep,
+    SyntheticCombatStep, SyntheticEndingStep, SyntheticObservation, SyntheticPriority,
+    SyntheticTurnPosition, INFORMATION_STATE_SCHEMA_V2, OBSERVATION_SCHEMA, PLAYER_STEP_SCHEMA_V2,
+    SYNTHETIC_OBSERVATION_SCHEMA_V1,
 };
 use mtgml_observation::{
     MagicBlockedStatusV4, MagicCombatBlockerAssignmentV2, MagicCombatBlockerAssignmentV3,
@@ -26,10 +31,227 @@ use mtgml_observation::{
 };
 use mtgml_state::ContinuationPayloadV2;
 use mtgml_state::{
-    BeginningStep, CombatStep, EndingStep, EngineState, KnowledgeAcquisitionCause,
-    KnowledgeAcquisitionReason, KnowledgeHistoryChannel, KnowledgeInvalidationReason,
-    PriorityState, TurnPosition,
+    BeginningStep, CombatStep, CounterKindV1, EndingStep, EngineState, EngineStatePartsV2,
+    KnowledgeAcquisitionCause, KnowledgeAcquisitionReason, KnowledgeHistoryChannel,
+    KnowledgeInvalidationReason, PriorityState, TurnPosition,
 };
+
+/// Builds the detached M4 public-state observation from successor state and
+/// already verified content authority. It is intentionally not selected by
+/// any current runtime profile.
+pub fn project_magic_basic_land_observation_v1(
+    parts: &EngineStatePartsV2,
+    perspective: PlayerId,
+    execution_identity: &ExecutionIdentityV1,
+    semantic_manifest: &SemanticContractManifestV1,
+    rules_manifest: &RulesContractManifestV1,
+    catalog: &mtgml_card_ir::VerifiedContentCatalogV1,
+) -> Result<ObservationEnvelope, PlayerEndpointError> {
+    parts
+        .validate()
+        .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
+    let engine = parts.materialize();
+    if !engine.core.players.contains_key(&perspective) {
+        return Err(PlayerEndpointError::ServiceUnavailable);
+    }
+    rules_manifest
+        .validate()
+        .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
+    let rules_id =
+        mtgml_persistence::semantic_contract_digest::calculate_rules_contract_id_v1(rules_manifest)
+            .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
+    let semantic_id =
+        mtgml_persistence::semantic_contract_digest::calculate_semantic_contract_id_v1(
+            semantic_manifest,
+        )
+        .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
+    let Some(expected_content_id) = semantic_manifest.content_contract_id.as_ref() else {
+        return Err(PlayerEndpointError::ServiceUnavailable);
+    };
+    if execution_identity.program_kind != ExecutionProgramV1::MagicRules
+        || !matches!(
+            &rules_manifest.rules_authority,
+            RulesAuthorityV1::ComprehensiveRules { .. }
+        )
+        || rules_id != semantic_manifest.rules_contract_id
+        || semantic_id != execution_identity.semantic_contract_id
+        || expected_content_id != catalog.content_contract_id()
+        || parts.card_rules_state.faces.faces.len() != engine.zones.objects.len()
+    {
+        return Err(PlayerEndpointError::ServiceUnavailable);
+    }
+    let content_id = catalog.content_contract_id();
+    let mut public_faces = std::collections::BTreeMap::new();
+    for object in engine.zones.objects.values() {
+        let definition = catalog
+            .get(content_id, object.card_definition)
+            .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
+        let face_key = parts
+            .card_rules_state
+            .faces
+            .faces
+            .get(&object.id)
+            .ok_or(PlayerEndpointError::ServiceUnavailable)?;
+        let face_index = definition
+            .faces
+            .iter()
+            .position(|face| face.face_key.0 == *face_key)
+            .ok_or(PlayerEndpointError::ServiceUnavailable)?;
+        let orientation = match face_index {
+            0 => ObservedFaceV1::Front,
+            1 => ObservedFaceV1::Back,
+            _ => return Err(PlayerEndpointError::ServiceUnavailable),
+        };
+        if !object.face_down {
+            public_faces.insert(object.id, orientation);
+        }
+    }
+    for authority in parts.card_rules_state.abilities.by_instance.values() {
+        let source = engine
+            .zones
+            .objects
+            .get(&authority.source)
+            .ok_or(PlayerEndpointError::ServiceUnavailable)?;
+        let definition = catalog
+            .get(content_id, source.card_definition)
+            .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
+        let face_key = parts
+            .card_rules_state
+            .faces
+            .faces
+            .get(&authority.source)
+            .ok_or(PlayerEndpointError::ServiceUnavailable)?;
+        if !definition.ability_identities.iter().any(|identity| {
+            identity.face_key.0 == *face_key && identity.ability_key.0 == authority.ability_key
+        }) {
+            return Err(PlayerEndpointError::ServiceUnavailable);
+        }
+    }
+    project_magic_basic_land_observation_from_verified_faces(parts, perspective, &public_faces)
+}
+
+fn project_magic_basic_land_observation_from_verified_faces(
+    parts: &EngineStatePartsV2,
+    perspective: PlayerId,
+    public_faces: &std::collections::BTreeMap<mtgml_model::GameObjectId, ObservedFaceV1>,
+) -> Result<ObservationEnvelope, PlayerEndpointError> {
+    parts
+        .validate()
+        .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
+    let state = parts.materialize();
+    let identity = state
+        .perspective_identities
+        .players
+        .get(&perspective)
+        .ok_or(PlayerEndpointError::ServiceUnavailable)?;
+    let public_battlefield = |object: mtgml_model::GameObjectId| {
+        state.zones.locations.get(&object).is_some_and(|location| {
+            location.zone == mtgml_model::ZoneKind::Battlefield
+                && matches!(
+                    location.visibility,
+                    mtgml_state::VisibilityPartition::Public
+                        | mtgml_state::VisibilityPartition::FaceDown
+                )
+        })
+    };
+    let opaque = |object: mtgml_model::GameObjectId| {
+        identity
+            .object_to_opaque
+            .get(&object)
+            .copied()
+            .ok_or(PlayerEndpointError::ServiceUnavailable)
+    };
+    let mut value = MagicBasicLandObservationV1 {
+        schema_version: mtgml_observation::MAGIC_BASIC_LAND_OBSERVATION_SCHEMA_V1.into(),
+        active_player: state.core.active_player,
+        turn_number: state.core.turn_number.to_string(),
+        turn_position: public_turn_position(state.core.position),
+        priority: public_priority(state.core.priority),
+        pending_sba_ordering: project_sba_ordering(&state, perspective)?,
+        mana_pools: parts
+            .card_rules_state
+            .mana
+            .pools
+            .iter()
+            .map(|(player, pool)| ManaPoolObservationV1 {
+                player: *player,
+                unrestricted: pool.unrestricted,
+                creature_spell_only: pool.creature_spell_only,
+            })
+            .collect(),
+        counters: Vec::new(),
+        attachments: Vec::new(),
+        faces: Vec::new(),
+    };
+    for (object, counters) in &parts.card_rules_state.counters.counters {
+        if !public_battlefield(*object) {
+            continue;
+        }
+        for (kind, count) in counters {
+            value.counters.push(CounterObservationV1 {
+                object: opaque(*object)?,
+                counter_kind: match kind {
+                    CounterKindV1::PlusOnePlusOne => {
+                        mtgml_observation::PublicCounterKindV1::PlusOnePlusOne
+                    }
+                    CounterKindV1::MinusOneMinusOne => {
+                        mtgml_observation::PublicCounterKindV1::MinusOneMinusOne
+                    }
+                    CounterKindV1::Lore => mtgml_observation::PublicCounterKindV1::Lore,
+                },
+                count: *count,
+            });
+        }
+    }
+    for (source, edge) in &parts.card_rules_state.attachments.by_source {
+        if public_battlefield(*source) && public_battlefield(edge.target) {
+            value.attachments.push(AttachmentObservationV1 {
+                source: opaque(*source)?,
+                target: opaque(edge.target)?,
+            });
+        }
+    }
+    for (object, face) in public_faces {
+        if public_battlefield(*object)
+            && state
+                .zones
+                .objects
+                .get(object)
+                .is_some_and(|value| !value.face_down)
+        {
+            value.faces.push(FaceObservationV1 {
+                object: opaque(*object)?,
+                face: match face {
+                    ObservedFaceV1::Front => mtgml_observation::PublicFaceV1::Front,
+                    ObservedFaceV1::Back => mtgml_observation::PublicFaceV1::Back,
+                },
+            });
+        }
+    }
+    value.mana_pools.sort_by_key(|entry| entry.player);
+    value
+        .counters
+        .sort_by_key(|entry| (entry.object, entry.counter_kind));
+    value.attachments.sort_by_key(|entry| entry.source);
+    value.faces.sort_by_key(|entry| entry.object);
+    value
+        .validate()
+        .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
+    let payload = mtgml_wire::encode_canonical(&value)
+        .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
+    let observation = ObservationEnvelope {
+        schema_version: OBSERVATION_SCHEMA.into(),
+        perspective,
+        state_revision: state.revision,
+        payload_codec: mtgml_observation::MAGIC_BASIC_LAND_OBSERVATION_SCHEMA_V1.into(),
+        payload_base64: STANDARD.encode(&payload),
+        digest: mtgml_model::ObservationDigest::from_canonical_bytes(&payload),
+    };
+    observation
+        .validate()
+        .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
+    Ok(observation)
+}
 
 use crate::endpoint::PlayerEndpointError;
 use crate::errors::{ControllerError, EnvironmentCommitError};

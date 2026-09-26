@@ -2,10 +2,10 @@ use crate::canonical_json::encode_canonical;
 use crate::contract::WireContract;
 use crate::error::WireError;
 use mtgml_observation::{
-    InformationStateDigestInputV2, InformationStateEnvelope, MagicObservation, MagicObservationV2,
-    MagicObservationV3, MagicObservationV4, ObservationEnvelope, ObservedEventEnvelope,
-    ObservedEventEnvelopeV2, PlayerInformationStateV2, PlayerStep, PlayerStepV2,
-    SyntheticObservation,
+    InformationStateDigestInputV2, InformationStateEnvelope, MagicBasicLandObservationV1,
+    MagicObservation, MagicObservationV2, MagicObservationV3, MagicObservationV4,
+    ObservationEnvelope, ObservedEventEnvelope, ObservedEventEnvelopeV2, ObservedEventEnvelopeV3,
+    PlayerInformationStateV2, PlayerStep, PlayerStepV2, PlayerStepV3, SyntheticObservation,
 };
 
 impl WireContract for ObservationEnvelope {
@@ -47,6 +47,17 @@ impl WireContract for MagicObservationV4 {
     fn validate_wire(&self) -> Result<(), WireError> {
         self.validate().map_err(|error| {
             WireError::new("semantic.magic_combat_observation_v4", error.to_string())
+        })
+    }
+}
+
+impl WireContract for MagicBasicLandObservationV1 {
+    fn validate_wire(&self) -> Result<(), WireError> {
+        self.validate().map_err(|error| {
+            WireError::new(
+                "semantic.magic_basic_land_observation_v1",
+                error.to_string(),
+            )
         })
     }
 }
@@ -113,10 +124,25 @@ impl WireContract for ObservedEventEnvelopeV2 {
     }
 }
 
+impl WireContract for ObservedEventEnvelopeV3 {
+    fn validate_wire(&self) -> Result<(), WireError> {
+        self.validate()
+            .map_err(|error| WireError::new("semantic.observed_event_v3", error.to_string()))
+    }
+}
+
 impl WireContract for PlayerStepV2 {
     fn validate_wire(&self) -> Result<(), WireError> {
         self.validate()
             .map_err(|error| WireError::new("semantic.player_step", error.to_string()))?;
+        verify_information_state_digest_v2(&self.information_state)
+    }
+}
+
+impl WireContract for PlayerStepV3 {
+    fn validate_wire(&self) -> Result<(), WireError> {
+        self.validate()
+            .map_err(|error| WireError::new("semantic.player_step_v3", error.to_string()))?;
         verify_information_state_digest_v2(&self.information_state)
     }
 }

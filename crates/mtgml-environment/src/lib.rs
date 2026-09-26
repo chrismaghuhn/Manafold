@@ -38,6 +38,7 @@ pub use endpoint::{PlayerEndpoint, PlayerEndpointError, PlayerEndpointHandle};
 pub use errors::ControllerError;
 pub use errors::ReplayExecutionError;
 pub use mtgml_model::{CheckpointCodecIdentity, EnvironmentLimitCounters};
+pub use player_projection::project_magic_basic_land_observation_v1;
 // Task 3 generated catalog module: unconditional compile surface — it is the
 // production input Task 8 consumes. Only the KAT is test-only.
 mod semantic_catalog_generated;
