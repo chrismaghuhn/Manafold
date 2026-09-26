@@ -72,6 +72,81 @@ fn full_state_digest_v6_rejects_predecessor_and_noncanonical_fixtures() {
 }
 
 #[test]
+fn full_state_digest_v6_rejects_unknown_legacy_component_variants() {
+    let (_, input) = phase2_v6_fixture();
+    let baseline = input.canonical_payload().unwrap();
+    let digest = crate::digest_v6::calculate_full_state_digest_v6_payload(&baseline).unwrap();
+    type Mutation = (&'static str, Box<dyn Fn(&mut Value)>);
+    let mutations: [Mutation; 5] = [
+        (
+            "unknown turn position",
+            Box::new(|value| {
+                let Value::Array(top) = value else { unreachable!() };
+                let Value::Array(core) = &mut top[3] else { unreachable!() };
+                let Value::Array(position) = &mut core[3] else { unreachable!() };
+                position[0] = Value::Text("totally_unknown_turn_state".into());
+            }),
+        ),
+        (
+            "unknown zone kind",
+            Box::new(|value| {
+                let Value::Array(top) = value else { unreachable!() };
+                let Value::Array(zones) = &mut top[4] else { unreachable!() };
+                let Value::Array(locations) = &mut zones[1] else { unreachable!() };
+                let Value::Array(first) = &mut locations[0] else { unreachable!() };
+                let Value::Array(location) = &mut first[1] else { unreachable!() };
+                location[0] = Value::Text("unknown_zone".into());
+            }),
+        ),
+        (
+            "malformed random stream key",
+            Box::new(|value| {
+                let Value::Array(top) = value else { unreachable!() };
+                let Value::Array(random) = &mut top[7] else { unreachable!() };
+                random[2] = Value::Array(vec![Value::Array(vec![
+                    Value::Bytes(vec![0xff]),
+                    Value::Unsigned(0),
+                ])]);
+            }),
+        ),
+        (
+            "unknown knowledge provenance",
+            Box::new(|value| {
+                let Value::Array(top) = value else { unreachable!() };
+                let Value::Array(players) = &mut top[8] else { unreachable!() };
+                let Value::Array(first_player) = &mut players[0] else { unreachable!() };
+                let Value::Array(active) = &mut first_player[2] else { unreachable!() };
+                let Value::Array(first_active) = &mut active[0] else { unreachable!() };
+                first_active[5] = Value::Array(vec![
+                    Value::Text("unknown_provenance".into()),
+                    Value::Null,
+                ]);
+            }),
+        ),
+        (
+            "malformed perspective identity row",
+            Box::new(|value| {
+                let Value::Array(top) = value else { unreachable!() };
+                let Value::Array(players) = &mut top[9] else { unreachable!() };
+                let Value::Array(first_player) = &mut players[0] else { unreachable!() };
+                let Value::Array(object_mappings) = &mut first_player[1] else { unreachable!() };
+                let Value::Array(first_mapping) = &mut object_mappings[0] else { unreachable!() };
+                first_mapping.pop();
+            }),
+        ),
+    ];
+    for (name, mutate) in mutations {
+        let mut value = mtgml_persistence::cbor::decode_canonical(&baseline).unwrap();
+        mutate(&mut value);
+        let payload = mtgml_persistence::cbor::encode_canonical(&value).unwrap();
+        assert!(
+            crate::verify_full_state_digest_v6(&payload, &digest).is_err(),
+            "accepted malformed legacy component: {name}"
+        );
+    }
+}
+
+#[test]
 fn full_state_digest_v6_consumes_phase2_state_shape_negatives() {
     let fixture: serde_json::Value = serde_json::from_str(include_str!(
         "../../../../schemas/negative/m4-phase2-v6-state-shapes.json"
@@ -101,6 +176,18 @@ fn full_state_digest_v6_rejects_empty_counter_object_rows() {
         Value::Array(Vec::new()),
     ])]);
     assert!(crate::CardRulesAuthoritativeStateV1::from_value(&family).is_err());
+}
+
+#[test]
+fn full_state_digest_v6_typed_producer_rejects_empty_counter_maps() {
+    let mut state = crate::CardRulesAuthoritativeStateV1::default();
+    state.counters.counters.insert(
+        mtgml_model::GameObjectId(1),
+        std::collections::BTreeMap::new(),
+    );
+    assert!(state.validate().is_err());
+    assert!(state.canonical_value().is_err());
+    assert!(crate::canonical_state_bytes_v6(&synthetic_state(), state).is_err());
 }
 
 #[test]
@@ -330,6 +417,158 @@ fn execution_v3_persists_play_land_without_adding_current_decision_runtime() {
     };
     binding[0] = Value::Text("play_land".to_owned());
     assert!(crate::PersistedExecutionV3::from_value(out_of_order).is_err());
+}
+
+#[test]
+fn execution_v3_rejects_unowned_predecessor_variants_and_impossible_domains() {
+    let (_, input) = phase2_v6_fixture();
+    let base = input.execution_v3.canonical_value().clone();
+
+    let mut unknown_continuation = base.clone();
+    let Value::Array(fields) = &mut unknown_continuation else {
+        unreachable!();
+    };
+    let Value::Array(continuations) = &mut fields[1] else {
+        unreachable!();
+    };
+    let Value::Array(continuation) = &mut continuations[0] else {
+        unreachable!();
+    };
+    let Value::Array(payload) = &mut continuation[4] else {
+        unreachable!();
+    };
+    payload[0] = Value::Text("totally_unknown_continuation".into());
+    assert!(crate::PersistedExecutionV3::from_value(unknown_continuation).is_err());
+
+    for unsupported_index in 2..5 {
+        let mut unsupported = base.clone();
+        let Value::Array(fields) = &mut unsupported else {
+            unreachable!();
+        };
+        fields[unsupported_index] = Value::Array(vec![Value::Array(vec![Value::Text(
+            "unowned_payload".into(),
+        )])]);
+        assert!(crate::PersistedExecutionV3::from_value(unsupported).is_err());
+    }
+
+    let mut empty_choose_one = base.clone();
+    let Value::Array(fields) = &mut empty_choose_one else {
+        unreachable!();
+    };
+    let Value::Array(request) = &mut fields[0] else {
+        unreachable!();
+    };
+    request[5] = Value::Array(vec![Value::Text("choose_one".into()), Value::Null]);
+    request[6] = Value::Array(Vec::new());
+    assert!(crate::PersistedExecutionV3::from_value(empty_choose_one).is_err());
+
+    let mut impossible_many = base.clone();
+    let Value::Array(fields) = &mut impossible_many else {
+        unreachable!();
+    };
+    let Value::Array(request) = &mut fields[0] else {
+        unreachable!();
+    };
+    request[5] = Value::Array(vec![
+        Value::Text("choose_many".into()),
+        Value::Array(vec![Value::Unsigned(1), Value::Unsigned(2)]),
+    ]);
+    request[6] = Value::Array(Vec::new());
+    assert!(crate::PersistedExecutionV3::from_value(impossible_many).is_err());
+
+    let mut impossible_order = input.execution_v3.canonical_value().clone();
+    let Value::Array(fields) = &mut impossible_order else {
+        unreachable!();
+    };
+    let Value::Array(request) = &mut fields[0] else {
+        unreachable!();
+    };
+    request[5] = Value::Array(vec![
+        Value::Text("order".into()),
+        Value::Array(vec![Value::Unsigned(1), Value::Unsigned(2)]),
+    ]);
+    request[6] = Value::Array(Vec::new());
+    assert!(crate::PersistedExecutionV3::from_value(impossible_order).is_err());
+
+    let mut inverted_number = base.clone();
+    let Value::Array(fields) = &mut inverted_number else {
+        unreachable!();
+    };
+    let Value::Array(request) = &mut fields[0] else {
+        unreachable!();
+    };
+    request[5] = Value::Array(vec![
+        Value::Text("choose_number".into()),
+        Value::Array(vec![Value::Signed(2), Value::Signed(1)]),
+    ]);
+    request[6] = Value::Array(Vec::new());
+    assert!(crate::PersistedExecutionV3::from_value(inverted_number).is_err());
+
+    let mut unsigned_number = base;
+    let Value::Array(fields) = &mut unsigned_number else {
+        unreachable!();
+    };
+    let Value::Array(request) = &mut fields[0] else {
+        unreachable!();
+    };
+    request[5] = Value::Array(vec![
+        Value::Text("choose_number".into()),
+        Value::Array(vec![Value::Unsigned(0), Value::Unsigned(1_u64 << 63)]),
+    ]);
+    request[6] = Value::Array(Vec::new());
+    assert!(crate::PersistedExecutionV3::from_value(unsigned_number).is_err());
+}
+
+#[test]
+fn execution_v3_preserves_closed_continuation_stage_and_link_invariants() {
+    let (_, input) = phase2_v6_fixture();
+    let base = input.execution_v3.canonical_value().clone();
+
+    let mut malformed_assembly = base.clone();
+    let Value::Array(fields) = &mut malformed_assembly else {
+        unreachable!();
+    };
+    let Value::Array(continuations) = &mut fields[1] else {
+        unreachable!();
+    };
+    let Value::Array(continuation) = &mut continuations[0] else {
+        unreachable!();
+    };
+    let Value::Array(payload) = &mut continuation[4] else {
+        unreachable!();
+    };
+    match payload[0] {
+        Value::Text(ref tag) if tag == "synthetic_m2_assembly" => {
+            let Value::Array(assembly) = &mut payload[1] else {
+                unreachable!();
+            };
+            let Value::Array(stage) = &mut assembly[0] else {
+                unreachable!();
+            };
+            stage[0] = Value::Text("choose_members".into());
+            // choose_members requires a previously selected count.
+            assembly[1] = Value::Null;
+        }
+        Value::Text(ref tag) if tag == "magic_sba_graveyard_order_v1" => {
+            let Value::Array(sba) = &mut payload[1] else {
+                unreachable!();
+            };
+            // An ordering continuation must retain the selected SBA action set.
+            sba[1] = Value::Array(Vec::new());
+        }
+        _ => panic!("unexpected frozen continuation payload"),
+    }
+    assert!(crate::PersistedExecutionV3::from_value(malformed_assembly).is_err());
+
+    let mut unlinked = base;
+    let Value::Array(fields) = &mut unlinked else {
+        unreachable!();
+    };
+    let Value::Array(request) = &mut fields[0] else {
+        unreachable!();
+    };
+    request[7] = Value::Null;
+    assert!(crate::PersistedExecutionV3::from_value(unlinked).is_err());
 }
 
 /// Frozen historical V4 known answer for the canonical synthetic reset state.

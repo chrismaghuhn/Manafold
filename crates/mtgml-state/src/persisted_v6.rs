@@ -501,7 +501,7 @@ impl CardRulesAuthoritativeStateV1 {
             .counters
             .counters
             .values()
-            .any(|values| values.values().any(|n| *n == 0))
+            .any(|values| values.is_empty() || values.values().any(|n| *n == 0))
         {
             return Err(PersistedV6Error::InvalidStructure);
         }
@@ -669,36 +669,761 @@ impl FullStateDigestInputV6 {
 fn validate_legacy_components(components: [&Value; 9]) -> Result<(), PersistedV6Error> {
     let [core, zones, allocators, random, knowledge, perspective_identities, combat, foundation_sources, format] =
         components;
-    parse_array(core, 5)?;
-    parse_array(zones, 5)?;
-    let allocator_values = parse_array(allocators, 8)?;
-    for value in allocator_values {
+    validate_core_v5(core)?;
+    validate_zones_v5(zones)?;
+    for value in parse_array(allocators, 8)? {
         parse_u64(value)?;
     }
-    parse_array(random, 3)?;
-    parse_array(knowledge, 2)?;
-    parse_array(perspective_identities, 2)?;
-    match combat {
-        Value::Null => {}
-        Value::Array(values) if values.len() == 3 || values.len() == 5 => {}
-        _ => return Err(PersistedV6Error::InvalidStructure),
+    validate_random_v5(random)?;
+    validate_knowledge_v5(knowledge)?;
+    validate_perspective_v5(perspective_identities)?;
+    validate_combat_v5(combat)?;
+    validate_foundation_sources_v5(foundation_sources)?;
+    validate_format_v5(format)?;
+    Ok(())
+}
+
+fn parse_bool(value: &Value) -> Result<(), PersistedV6Error> {
+    if matches!(value, Value::Bool(_)) {
+        Ok(())
+    } else {
+        Err(PersistedV6Error::InvalidStructure)
     }
-    if !matches!(foundation_sources, Value::Array(_)) {
+}
+
+fn parse_i64(value: &Value) -> Result<(), PersistedV6Error> {
+    parse_i64_value(value).map(|_| ())
+}
+
+fn parse_i64_value(value: &Value) -> Result<i64, PersistedV6Error> {
+    match value {
+        Value::Signed(value) => Ok(*value),
+        Value::Unsigned(value) => {
+            i64::try_from(*value).map_err(|_| PersistedV6Error::InvalidStructure)
+        }
+        _ => Err(PersistedV6Error::InvalidStructure),
+    }
+}
+
+fn validate_turn_position_v5(value: &Value) -> Result<(), PersistedV6Error> {
+    let fields = parse_array(value, 2)?;
+    let Value::Text(tag) = &fields[0] else {
+        return Err(PersistedV6Error::InvalidStructure);
+    };
+    match tag.as_str() {
+        "beginning" if matches!(&fields[1], Value::Text(step) if matches!(step.as_str(), "untap" | "upkeep" | "draw")) => {
+            Ok(())
+        }
+        "combat" if matches!(&fields[1], Value::Text(step) if matches!(step.as_str(), "beginning_of_combat" | "declare_attackers" | "declare_blockers" | "combat_damage" | "end_of_combat")) => {
+            Ok(())
+        }
+        "ending" if matches!(&fields[1], Value::Text(step) if matches!(step.as_str(), "end_step" | "cleanup")) => {
+            Ok(())
+        }
+        "precombat_main" | "postcombat_main" if matches!(fields[1], Value::Null) => Ok(()),
+        _ => Err(PersistedV6Error::InvalidStructure),
+    }
+}
+
+fn validate_core_v5(value: &Value) -> Result<(), PersistedV6Error> {
+    let fields = parse_array(value, 5)?;
+    let mut previous = None;
+    for player in parse_list(&fields[0])? {
+        let player = parse_array(player, 3)?;
+        let id = parse_u64(&player[0])?;
+        if previous.is_some_and(|last| last >= id) {
+            return Err(PersistedV6Error::InvalidStructure);
+        }
+        previous = Some(id);
+        parse_i64(&player[1])?;
+        parse_bool(&player[2])?;
+    }
+    if previous.is_none() {
         return Err(PersistedV6Error::InvalidStructure);
     }
-    parse_array(format, 2)?;
+    parse_u64(&fields[1])?;
+    parse_u64(&fields[2])?;
+    validate_turn_position_v5(&fields[3])?;
+    let priority = parse_array(&fields[4], 2)?;
+    match &priority[0] {
+        Value::Text(tag) if tag == "none" && matches!(priority[1], Value::Null) => Ok(()),
+        Value::Text(tag) if tag == "held_by" => {
+            let held = parse_array(&priority[1], 2)?;
+            parse_u64(&held[0])?;
+            if parse_u64(&held[1])? > 1 {
+                return Err(PersistedV6Error::InvalidStructure);
+            }
+            Ok(())
+        }
+        _ => Err(PersistedV6Error::InvalidStructure),
+    }
+}
+
+fn validate_zone_kind_v5(value: &Value) -> Result<(), PersistedV6Error> {
+    if matches!(value, Value::Text(tag) if matches!(tag.as_str(), "library" | "hand" | "battlefield" | "graveyard" | "exile" | "stack" | "command" | "ante" | "outside"))
+    {
+        Ok(())
+    } else {
+        Err(PersistedV6Error::InvalidStructure)
+    }
+}
+
+fn validate_visibility_v5(value: &Value) -> Result<(), PersistedV6Error> {
+    if matches!(value, Value::Text(tag) if matches!(tag.as_str(), "public" | "owner_only" | "face_down" | "private_group"))
+    {
+        Ok(())
+    } else {
+        Err(PersistedV6Error::InvalidStructure)
+    }
+}
+
+fn validate_optional_u64(value: &Value) -> Result<(), PersistedV6Error> {
+    if matches!(value, Value::Null) {
+        Ok(())
+    } else {
+        parse_u64(value).map(|_| ())
+    }
+}
+
+fn validate_zone_key_v5(value: &Value) -> Result<(), PersistedV6Error> {
+    let fields = parse_array(value, 4)?;
+    validate_zone_kind_v5(&fields[0])?;
+    validate_optional_u64(&fields[1])?;
+    validate_visibility_v5(&fields[2])?;
+    if !matches!(fields[3], Value::Null | Value::Text(_)) {
+        return Err(PersistedV6Error::InvalidStructure);
+    }
     Ok(())
+}
+
+fn validate_zone_position_v5(value: &Value) -> Result<(), PersistedV6Error> {
+    let fields = parse_array(value, 2)?;
+    match &fields[0] {
+        Value::Text(tag) if tag == "unordered" && matches!(fields[1], Value::Null) => Ok(()),
+        Value::Text(tag) if matches!(tag.as_str(), "top" | "bottom" | "index") => {
+            parse_u32(&fields[1]).map(|_| ())
+        }
+        _ => Err(PersistedV6Error::InvalidStructure),
+    }
+}
+
+fn validate_zone_location_v5(value: &Value) -> Result<(), PersistedV6Error> {
+    let fields = parse_array(value, 5)?;
+    validate_zone_kind_v5(&fields[0])?;
+    validate_optional_u64(&fields[1])?;
+    validate_zone_position_v5(&fields[2])?;
+    validate_visibility_v5(&fields[3])?;
+    if !matches!(fields[4], Value::Null | Value::Text(_)) {
+        return Err(PersistedV6Error::InvalidStructure);
+    }
+    Ok(())
+}
+
+fn validate_zones_v5(value: &Value) -> Result<(), PersistedV6Error> {
+    let fields = parse_array(value, 5)?;
+    let mut previous_object = None;
+    for row in parse_list(&fields[0])? {
+        let row = parse_array(row, 7)?;
+        let id = parse_u64(&row[0])?;
+        if previous_object.is_some_and(|last| last >= id) {
+            return Err(PersistedV6Error::InvalidStructure);
+        }
+        previous_object = Some(id);
+        validate_optional_u64(&row[1])?;
+        for index in [2, 3, 4] {
+            parse_u64(&row[index])?;
+        }
+        parse_bool(&row[5])?;
+        parse_bool(&row[6])?;
+    }
+    let mut previous_location = None;
+    for row in parse_list(&fields[1])? {
+        let row = parse_array(row, 2)?;
+        let id = parse_u64(&row[0])?;
+        if previous_location.is_some_and(|last| last >= id) {
+            return Err(PersistedV6Error::InvalidStructure);
+        }
+        previous_location = Some(id);
+        validate_zone_location_v5(&row[1])?;
+    }
+    let mut previous_key_bytes: Option<Vec<u8>> = None;
+    for row in parse_list(&fields[2])? {
+        let row = parse_array(row, 2)?;
+        validate_zone_key_v5(&row[0])?;
+        let key_bytes = mtgml_persistence::cbor::encode_canonical(&row[0])?;
+        if previous_key_bytes
+            .as_ref()
+            .is_some_and(|last| last >= &key_bytes)
+        {
+            return Err(PersistedV6Error::InvalidStructure);
+        }
+        previous_key_bytes = Some(key_bytes);
+        validate_u64_array(&row[1])?;
+    }
+    let mut previous_stack = None;
+    for row in parse_list(&fields[3])? {
+        let row = parse_array(row, 4)?;
+        let id = parse_u64(&row[0])?;
+        if previous_stack.is_some_and(|last| last >= id) {
+            return Err(PersistedV6Error::InvalidStructure);
+        }
+        previous_stack = Some(id);
+        parse_u64(&row[1])?;
+        validate_optional_u64(&row[2])?;
+        validate_optional_u64(&row[3])?;
+    }
+    validate_u64_array(&fields[4])
+}
+
+fn validate_random_v5(value: &Value) -> Result<(), PersistedV6Error> {
+    let fields = parse_array(value, 3)?;
+    if fields[0] != Value::Text("mtgml.rng.v1".into())
+        || !matches!(&fields[1], Value::Bytes(seed) if seed.len() == 32)
+    {
+        return Err(PersistedV6Error::InvalidStructure);
+    }
+    let mut previous_key: Option<&[u8]> = None;
+    for row in parse_list(&fields[2])? {
+        let row = parse_array(row, 2)?;
+        let Value::Bytes(key) = &row[0] else {
+            return Err(PersistedV6Error::InvalidStructure);
+        };
+        mtgml_random::RandomStreamKeyV1::from_canonical_bytes(key)
+            .map_err(|_| PersistedV6Error::InvalidStructure)?;
+        if previous_key.is_some_and(|last| last >= key.as_slice()) {
+            return Err(PersistedV6Error::InvalidStructure);
+        }
+        previous_key = Some(key);
+        parse_u64(&row[1])?;
+    }
+    Ok(())
+}
+
+fn validate_provenance_v5(
+    value: &Value,
+    next_visible_sequence: u64,
+) -> Result<(), PersistedV6Error> {
+    let fields = parse_array(value, 2)?;
+    let Value::Text(tag) = &fields[0] else {
+        return Err(PersistedV6Error::InvalidStructure);
+    };
+    match tag.as_str() {
+        "initial_configuration" if matches!(fields[1], Value::Null) => Ok(()),
+        "observed" => {
+            let observed = parse_array(&fields[1], 3)?;
+            let Value::Text(channel) = &observed[0] else {
+                return Err(PersistedV6Error::InvalidStructure);
+            };
+            if parse_u64(&observed[1])? >= next_visible_sequence {
+                return Err(PersistedV6Error::InvalidStructure);
+            }
+            let Value::Text(cause) = &observed[2] else {
+                return Err(PersistedV6Error::InvalidStructure);
+            };
+            if !matches!(
+                (channel.as_str(), cause.as_str()),
+                ("public", "public_event" | "explicit_reveal")
+                    | ("private", "private_look" | "own_private_identity")
+            ) {
+                return Err(PersistedV6Error::InvalidStructure);
+            }
+            Ok(())
+        }
+        _ => Err(PersistedV6Error::InvalidStructure),
+    }
+}
+
+fn validate_location_fact_v5(
+    value: &Value,
+    next_visible_sequence: u64,
+) -> Result<(), PersistedV6Error> {
+    let fields = parse_array(value, 2)?;
+    validate_zone_location_v5(&fields[0])?;
+    validate_provenance_v5(&fields[1], next_visible_sequence)
+}
+
+fn validate_history_facts_v5(
+    value: &Value,
+    next_visible_sequence: u64,
+) -> Result<(), PersistedV6Error> {
+    for fact in parse_list(value)? {
+        validate_location_fact_v5(fact, next_visible_sequence)?;
+    }
+    Ok(())
+}
+
+fn validate_knowledge_v5(value: &Value) -> Result<(), PersistedV6Error> {
+    let mut previous_player = None;
+    for row in parse_list(value)? {
+        let row = parse_array(row, 4)?;
+        let player = parse_u64(&row[0])?;
+        if previous_player.is_some_and(|last| last >= player) {
+            return Err(PersistedV6Error::InvalidStructure);
+        }
+        previous_player = Some(player);
+        let next_visible_sequence = parse_u64(&row[1])?;
+        let mut previous_active = None;
+        for active in parse_list(&row[2])? {
+            let active = parse_array(active, 6)?;
+            let opaque = parse_u64(&active[0])?;
+            if previous_active.is_some_and(|last| last >= opaque) {
+                return Err(PersistedV6Error::InvalidStructure);
+            }
+            previous_active = Some(opaque);
+            validate_optional_u64(&active[1])?;
+            validate_optional_u64(&active[2])?;
+            if !matches!(active[3], Value::Null) {
+                validate_location_fact_v5(&active[3], next_visible_sequence)?;
+            }
+            validate_history_facts_v5(&active[4], next_visible_sequence)?;
+            validate_provenance_v5(&active[5], next_visible_sequence)?;
+        }
+        let mut previous_retired = None;
+        for retired in parse_list(&row[3])? {
+            let retired = parse_array(retired, 7)?;
+            let opaque = parse_u64(&retired[0])?;
+            if previous_retired.is_some_and(|last| last >= opaque) {
+                return Err(PersistedV6Error::InvalidStructure);
+            }
+            previous_retired = Some(opaque);
+            validate_optional_u64(&retired[1])?;
+            validate_optional_u64(&retired[2])?;
+            if !matches!(retired[3], Value::Null) {
+                validate_location_fact_v5(&retired[3], next_visible_sequence)?;
+            }
+            validate_history_facts_v5(&retired[4], next_visible_sequence)?;
+            validate_provenance_v5(&retired[5], next_visible_sequence)?;
+            let invalidation = parse_array(&retired[6], 2)?;
+            if matches!(&invalidation[0], Value::Array(values) if values.first() == Some(&Value::Text("initial_configuration".into())))
+            {
+                return Err(PersistedV6Error::InvalidStructure);
+            }
+            validate_provenance_v5(&invalidation[0], next_visible_sequence)?;
+            if !matches!(&invalidation[1], Value::Text(reason) if matches!(reason.as_str(), "hidden_transition" | "randomization" | "shuffle" | "explicit_forget"))
+            {
+                return Err(PersistedV6Error::InvalidStructure);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_pair_rows(value: &Value) -> Result<(), PersistedV6Error> {
+    let mut previous = None;
+    for row in parse_list(value)? {
+        let row = parse_array(row, 2)?;
+        let pair = (parse_u64(&row[0])?, parse_u64(&row[1])?);
+        if previous.is_some_and(|last| last >= pair) {
+            return Err(PersistedV6Error::InvalidStructure);
+        }
+        previous = Some(pair);
+    }
+    Ok(())
+}
+
+fn validate_id_set(value: &Value) -> Result<(), PersistedV6Error> {
+    let mut previous = None;
+    for item in parse_list(value)? {
+        let id = parse_u64(item)?;
+        if previous.is_some_and(|last| last >= id) {
+            return Err(PersistedV6Error::InvalidStructure);
+        }
+        previous = Some(id);
+    }
+    Ok(())
+}
+
+fn validate_perspective_v5(value: &Value) -> Result<(), PersistedV6Error> {
+    let mut previous_player = None;
+    for row in parse_list(value)? {
+        let row = parse_array(row, 8)?;
+        let player = parse_u64(&row[0])?;
+        if previous_player.is_some_and(|last| last >= player) {
+            return Err(PersistedV6Error::InvalidStructure);
+        }
+        previous_player = Some(player);
+        validate_pair_rows(&row[1])?;
+        validate_pair_rows(&row[2])?;
+        parse_u64(&row[3])?;
+        parse_u64(&row[4])?;
+        parse_u64(&row[5])?;
+        validate_id_set(&row[6])?;
+        validate_id_set(&row[7])?;
+    }
+    Ok(())
+}
+
+fn validate_combat_v5(value: &Value) -> Result<(), PersistedV6Error> {
+    if matches!(value, Value::Null) {
+        return Ok(());
+    }
+    let fields = match value {
+        Value::Array(fields) if fields.len() == 3 || fields.len() == 5 => fields,
+        _ => return Err(PersistedV6Error::InvalidStructure),
+    };
+    parse_u64(&fields[0])?;
+    validate_id_set(&fields[1])?;
+    let mut previous_attacker = None;
+    for row in parse_list(&fields[2])? {
+        let row = parse_array(row, 2)?;
+        let attacker = parse_u64(&row[0])?;
+        if previous_attacker.is_some_and(|last| last >= attacker) {
+            return Err(PersistedV6Error::InvalidStructure);
+        }
+        previous_attacker = Some(attacker);
+        validate_optional_u64(&row[1])?;
+    }
+    if fields.len() == 5 {
+        validate_id_set(&fields[3])?;
+        parse_bool(&fields[4])?;
+    }
+    Ok(())
+}
+
+fn validate_foundation_sources_v5(value: &Value) -> Result<(), PersistedV6Error> {
+    let mut previous_object = None;
+    for row in parse_list(value)? {
+        let row = parse_array(row, 5)?;
+        let object = parse_u64(&row[0])?;
+        if previous_object.is_some_and(|last| last >= object) {
+            return Err(PersistedV6Error::InvalidStructure);
+        }
+        previous_object = Some(object);
+        if row[1] != Value::Text("creature".into()) {
+            return Err(PersistedV6Error::InvalidStructure);
+        }
+        let characteristics = parse_array(&row[2], 2)?;
+        if characteristics[0] != Value::Text("simple".into()) {
+            return Err(PersistedV6Error::InvalidStructure);
+        }
+        let power_toughness = parse_array(&characteristics[1], 2)?;
+        parse_i64(&power_toughness[0])?;
+        parse_i64(&power_toughness[1])?;
+        parse_u64(&row[3])?;
+        let history = parse_array(&row[4], 2)?;
+        match &history[0] {
+            Value::Text(tag) if tag == "before_turn_start" => {
+                parse_u64(&history[1])?;
+            }
+            Value::Text(tag) if tag == "during_turn" => {
+                let during = parse_array(&history[1], 2)?;
+                parse_u64(&during[0])?;
+                validate_turn_position_v5(&during[1])?;
+            }
+            _ => return Err(PersistedV6Error::InvalidStructure),
+        }
+    }
+    Ok(())
+}
+
+fn validate_format_v5(value: &Value) -> Result<(), PersistedV6Error> {
+    let fields = parse_array(value, 2)?;
+    match &fields[0] {
+        Value::Text(tag) if tag == "none" && matches!(fields[1], Value::Null) => Ok(()),
+        Value::Text(tag) if tag == "commander" => {
+            let commander = parse_array(&fields[1], 3)?;
+            for row in parse_list(&commander[0])? {
+                let row = parse_array(row, 2)?;
+                parse_u64(&row[0])?;
+                validate_id_set(&row[1])?;
+            }
+            for row in parse_list(&commander[1])? {
+                let row = parse_array(row, 2)?;
+                parse_u64(&row[0])?;
+                parse_u32(&row[1])?;
+            }
+            for row in parse_list(&commander[2])? {
+                let row = parse_array(row, 2)?;
+                parse_u64(&row[0])?;
+                let mut previous_player = None;
+                for damage in parse_list(&row[1])? {
+                    let damage = parse_array(damage, 2)?;
+                    let player = parse_u64(&damage[0])?;
+                    if previous_player.is_some_and(|last| last >= player) {
+                        return Err(PersistedV6Error::InvalidStructure);
+                    }
+                    previous_player = Some(player);
+                    parse_u32(&damage[1])?;
+                }
+            }
+            Ok(())
+        }
+        _ => Err(PersistedV6Error::InvalidStructure),
+    }
 }
 
 pub fn validate_execution_v3(value: &Value) -> Result<(), PersistedV6Error> {
     let fields = parse_array(value, 5)?;
-    if !matches!(fields[0], Value::Null) {
+    let pending = if matches!(fields[0], Value::Null) {
+        None
+    } else {
         validate_pending_request(&fields[0])?;
-    }
-    for field in &fields[1..] {
-        if !matches!(field, Value::Array(_)) {
+        Some(parse_array(&fields[0], 8)?)
+    };
+    let continuations = validate_continuations(&fields[1])?;
+    validate_execution_continuation_link(pending, continuations)?;
+    // The accepted V5 producer explicitly fails closed while these successor
+    // payload families have no typed semantic authority. V6 carries the same
+    // predecessor meaning and must not authorize arbitrary future records.
+    for field in &fields[2..] {
+        if !matches!(field, Value::Array(entries) if entries.is_empty()) {
             return Err(PersistedV6Error::InvalidStructure);
         }
+    }
+    Ok(())
+}
+
+fn validate_continuations(value: &Value) -> Result<Vec<&[Value]>, PersistedV6Error> {
+    let Value::Array(records) = value else {
+        return Err(PersistedV6Error::InvalidStructure);
+    };
+    if records.len() > 1 {
+        return Err(PersistedV6Error::InvalidStructure);
+    }
+    let mut previous_id = None;
+    let mut validated = Vec::with_capacity(records.len());
+    for record in records {
+        let record = parse_array(record, 5)?;
+        let id = parse_u64(&record[0])?;
+        if previous_id.is_some_and(|previous| previous >= id) {
+            return Err(PersistedV6Error::InvalidStructure);
+        }
+        previous_id = Some(id);
+        parse_u64(&record[1])?;
+        parse_u64(&record[2])?;
+        parse_u32(&record[3])?;
+        let payload = parse_array(&record[4], 2)?;
+        let Value::Text(tag) = &payload[0] else {
+            return Err(PersistedV6Error::InvalidStructure);
+        };
+        match tag.as_str() {
+            "synthetic_m2_assembly" => validate_assembly_payload(&payload[1])?,
+            "magic_sba_graveyard_order_v1" => validate_sba_order_payload(&payload[1])?,
+            _ => return Err(PersistedV6Error::InvalidStructure),
+        }
+        validated.push(record);
+    }
+    Ok(validated)
+}
+
+fn validate_execution_continuation_link(
+    pending: Option<&[Value]>,
+    continuations: Vec<&[Value]>,
+) -> Result<(), PersistedV6Error> {
+    let Some(record) = continuations.first().copied() else {
+        if pending.is_some_and(|request| !matches!(request[7], Value::Null)) {
+            return Err(PersistedV6Error::InvalidStructure);
+        }
+        return Ok(());
+    };
+    let Some(request) = pending else {
+        return Err(PersistedV6Error::InvalidStructure);
+    };
+    let continuation_id = parse_u64(&record[0])?;
+    if parse_u64(&request[7])? != continuation_id
+        || parse_u64(&record[1])? != parse_u64(&request[3])?
+        || parse_u64(&record[2])? > parse_u64(&request[2])?
+    {
+        return Err(PersistedV6Error::InvalidStructure);
+    }
+    let payload = parse_array(&record[4], 2)?;
+    let expected_stage = match &payload[0] {
+        Value::Text(tag) if tag == "synthetic_m2_assembly" => {
+            let assembly = parse_array(&payload[1], 4)?;
+            let stage = parse_array(&assembly[0], 2)?;
+            match &stage[0] {
+                Value::Text(stage) if stage == "choose_count" => 0,
+                Value::Text(stage) if stage == "choose_members" => 1,
+                Value::Text(stage) if stage == "order_members" => 2,
+                _ => return Err(PersistedV6Error::InvalidStructure),
+            }
+        }
+        Value::Text(tag) if tag == "magic_sba_graveyard_order_v1" => {
+            let sba = parse_array(&payload[1], 5)?;
+            let next = parse_u32(&sba[3])?;
+            let expected_created = parse_u64(&sba[0])?
+                .checked_add(1)
+                .ok_or(PersistedV6Error::InvalidStructure)?;
+            let expected_revision = expected_created
+                .checked_add(u64::from(next))
+                .ok_or(PersistedV6Error::InvalidStructure)?;
+            if parse_u64(&record[2])? != expected_created
+                || parse_u64(&request[2])? != expected_revision
+            {
+                return Err(PersistedV6Error::InvalidStructure);
+            }
+            u32::from(u16::try_from(next).unwrap_or(u16::MAX))
+        }
+        _ => return Err(PersistedV6Error::InvalidStructure),
+    };
+    if parse_u32(&record[3])? != expected_stage {
+        return Err(PersistedV6Error::InvalidStructure);
+    }
+    Ok(())
+}
+
+fn validate_assembly_payload(value: &Value) -> Result<(), PersistedV6Error> {
+    let fields = parse_array(value, 4)?;
+    let stage = parse_array(&fields[0], 2)?;
+    let Value::Text(stage_tag) = &stage[0] else {
+        return Err(PersistedV6Error::InvalidStructure);
+    };
+    if !matches!(stage[1], Value::Null) {
+        return Err(PersistedV6Error::InvalidStructure);
+    }
+    let selected_count = match &fields[1] {
+        Value::Null => None,
+        value => Some(parse_u32(value)?),
+    };
+    validate_u32_array(&fields[2])?;
+    validate_u32_array(&fields[3])?;
+    let Value::Array(selected_piece_keys) = &fields[2] else {
+        unreachable!("validate_u32_array checked the array")
+    };
+    let Value::Array(ordered_piece_keys) = &fields[3] else {
+        unreachable!("validate_u32_array checked the array")
+    };
+    match stage_tag.as_str() {
+        "choose_count"
+            if selected_count.is_none()
+                && selected_piece_keys.is_empty()
+                && ordered_piece_keys.is_empty() =>
+        {
+            Ok(())
+        }
+        "choose_members"
+            if selected_count.is_some_and(|count| count <= 3)
+                && selected_piece_keys.is_empty()
+                && ordered_piece_keys.is_empty() =>
+        {
+            Ok(())
+        }
+        "order_members"
+            if selected_count.is_some_and(|count| {
+                count <= 3 && usize::try_from(count).ok() == Some(selected_piece_keys.len())
+            }) && ordered_piece_keys.is_empty()
+                && selected_piece_keys
+                    .windows(2)
+                    .all(|pair| parse_u32(&pair[0]).ok() < parse_u32(&pair[1]).ok()) =>
+        {
+            Ok(())
+        }
+        _ => Err(PersistedV6Error::InvalidStructure),
+    }
+}
+
+fn validate_sba_order_payload(value: &Value) -> Result<(), PersistedV6Error> {
+    let fields = parse_array(value, 5)?;
+    parse_u64(&fields[0])?;
+    let Value::Array(actions) = &fields[1] else {
+        return Err(PersistedV6Error::InvalidStructure);
+    };
+    let mut previous_action_key: Option<(u8, u64)> = None;
+    for action in actions {
+        let action = parse_array(action, 2)?;
+        let Value::Text(tag) = &action[0] else {
+            return Err(PersistedV6Error::InvalidStructure);
+        };
+        match tag.as_str() {
+            "player_loses" => {
+                let player = parse_u64(&action[1])?;
+                let key = (0, player);
+                if previous_action_key.is_some_and(|previous| previous >= key) {
+                    return Err(PersistedV6Error::InvalidStructure);
+                }
+                previous_action_key = Some(key);
+            }
+            "object_to_owner_graveyard" => {
+                let payload = parse_array(&action[1], 2)?;
+                let object = parse_u64(&payload[0])?;
+                let key = (1, object);
+                if previous_action_key.is_some_and(|previous| previous >= key) {
+                    return Err(PersistedV6Error::InvalidStructure);
+                }
+                previous_action_key = Some(key);
+                let Value::Array(causes) = &payload[1] else {
+                    return Err(PersistedV6Error::InvalidStructure);
+                };
+                if causes.is_empty() {
+                    return Err(PersistedV6Error::InvalidStructure);
+                }
+                let mut previous_cause = None;
+                for cause in causes {
+                    let Value::Text(cause) = cause else {
+                        return Err(PersistedV6Error::InvalidStructure);
+                    };
+                    let rank = match cause.as_str() {
+                        "zero_toughness" => 0,
+                        "lethal_damage" => 1,
+                        _ => return Err(PersistedV6Error::InvalidStructure),
+                    };
+                    if previous_cause.is_some_and(|previous| previous >= rank) {
+                        return Err(PersistedV6Error::InvalidStructure);
+                    }
+                    previous_cause = Some(rank);
+                }
+            }
+            _ => return Err(PersistedV6Error::InvalidStructure),
+        }
+    }
+    if actions.is_empty() {
+        return Err(PersistedV6Error::InvalidStructure);
+    }
+    let Value::Array(owners) = &fields[2] else {
+        return Err(PersistedV6Error::InvalidStructure);
+    };
+    let mut seen_owners = std::collections::BTreeSet::new();
+    for owner in owners {
+        let owner = parse_u64(owner)?;
+        if !seen_owners.insert(owner) {
+            // The canonical APNAP order is not numeric order; only uniqueness
+            // is checked here, while the state-level validator proves order.
+            return Err(PersistedV6Error::InvalidStructure);
+        }
+    }
+    let next_owner_index = parse_u32(&fields[3])?;
+    let Value::Array(completed) = &fields[4] else {
+        return Err(PersistedV6Error::InvalidStructure);
+    };
+    if owners.is_empty()
+        || usize::try_from(next_owner_index).ok() != Some(completed.len())
+        || usize::try_from(next_owner_index)
+            .ok()
+            .is_none_or(|index| index >= owners.len())
+    {
+        return Err(PersistedV6Error::InvalidStructure);
+    }
+    for (index, order) in completed.iter().enumerate() {
+        let order = parse_array(order, 2)?;
+        if parse_u64(&order[0])? != parse_u64(&owners[index])? {
+            return Err(PersistedV6Error::InvalidStructure);
+        }
+        validate_u64_array(&order[1])?;
+        let Value::Array(objects) = &order[1] else {
+            unreachable!("validate_u64_array checked the array")
+        };
+        let mut seen = std::collections::BTreeSet::new();
+        if objects.iter().any(|object| {
+            parse_u64(object)
+                .ok()
+                .is_none_or(|object| !seen.insert(object))
+        }) {
+            return Err(PersistedV6Error::InvalidStructure);
+        }
+    }
+    Ok(())
+}
+
+fn validate_u32_array(value: &Value) -> Result<(), PersistedV6Error> {
+    for item in parse_list(value)? {
+        parse_u32(item)?;
+    }
+    Ok(())
+}
+
+fn validate_u64_array(value: &Value) -> Result<(), PersistedV6Error> {
+    for item in parse_list(value)? {
+        parse_u64(item)?;
     }
     Ok(())
 }
@@ -712,7 +1437,6 @@ fn validate_pending_request(value: &Value) -> Result<(), PersistedV6Error> {
     {
         return Err(PersistedV6Error::InvalidStructure);
     }
-    validate_decision_domain(&request[5])?;
     let Value::Array(candidates) = &request[6] else {
         return Err(PersistedV6Error::InvalidStructure);
     };
@@ -728,22 +1452,23 @@ fn validate_pending_request(value: &Value) -> Result<(), PersistedV6Error> {
         }
         previous_order_key = Some(order_key);
     }
-    if matches!(&request[5], Value::Array(domain) if domain.first() == Some(&Value::Text("choose_number".to_owned())))
-        && !candidates.is_empty()
-    {
-        return Err(PersistedV6Error::InvalidStructure);
-    }
     match &request[7] {
-        Value::Null => Ok(()),
-        value => parse_u64(value).map(|_| ()),
+        Value::Null => {}
+        value => {
+            parse_u64(value)?;
+        }
     }
+    validate_decision_domain(&request[5], candidates.len())
 }
 
-fn validate_decision_domain(value: &Value) -> Result<(), PersistedV6Error> {
+fn validate_decision_domain(value: &Value, candidate_count: usize) -> Result<(), PersistedV6Error> {
     let fields = parse_array(value, 2)?;
     match &fields[0] {
-        Value::Text(tag) if tag == "choose_one" || tag == "confirm" => {
+        Value::Text(tag) if tag == "choose_one" => {
             if !matches!(fields[1], Value::Null) {
+                return Err(PersistedV6Error::InvalidStructure);
+            }
+            if candidate_count == 0 {
                 return Err(PersistedV6Error::InvalidStructure);
             }
         }
@@ -751,16 +1476,17 @@ fn validate_decision_domain(value: &Value) -> Result<(), PersistedV6Error> {
             let range = parse_array(&fields[1], 2)?;
             let minimum = parse_u32(&range[0])?;
             let maximum = parse_u32(&range[1])?;
-            if minimum > maximum {
+            if minimum > maximum || usize::try_from(minimum).unwrap_or(usize::MAX) > candidate_count
+            {
                 return Err(PersistedV6Error::InvalidStructure);
             }
         }
         Value::Text(tag) if tag == "choose_number" => {
             let range = parse_array(&fields[1], 2)?;
-            for endpoint in range {
-                if !matches!(endpoint, Value::Signed(_) | Value::Unsigned(_)) {
-                    return Err(PersistedV6Error::InvalidStructure);
-                }
+            let minimum = parse_i64_value(&range[0])?;
+            let maximum = parse_i64_value(&range[1])?;
+            if minimum > maximum || candidate_count != 0 {
+                return Err(PersistedV6Error::InvalidStructure);
             }
         }
         _ => return Err(PersistedV6Error::InvalidStructure),
@@ -783,7 +1509,7 @@ fn validate_candidate(intent: &Value, binding: &Value) -> Result<(u8, i128), Per
             require_null(&binding[1])?;
             (0, 0)
         }
-        "play_land" | "cast_spell" | "select_object" | "select_player" => {
+        "play_land" | "cast_spell" | "select_object" => {
             let key = i128::from(parse_u64(&intent[1])?);
             parse_u64(&binding[1])?;
             let rank = match tag.as_str() {
@@ -794,6 +1520,13 @@ fn validate_candidate(intent: &Value, binding: &Value) -> Result<(u8, i128), Per
             };
             (rank, key)
         }
+        "select_player" => {
+            let key = parse_u64(&intent[1])?;
+            if parse_u64(&binding[1])? != key {
+                return Err(PersistedV6Error::InvalidStructure);
+            }
+            (5, i128::from(key))
+        }
         "activate_ability" => {
             let key = i128::from(parse_u64(&intent[1])?);
             parse_u64(&binding[1])?;
@@ -801,7 +1534,9 @@ fn validate_candidate(intent: &Value, binding: &Value) -> Result<(u8, i128), Per
         }
         "select_mode" => {
             let key = i128::from(parse_u32(&intent[1])?);
-            parse_u32(&binding[1])?;
+            if parse_u32(&binding[1])? != key as u32 {
+                return Err(PersistedV6Error::InvalidStructure);
+            }
             (6, key)
         }
         "choose_boolean" => {
@@ -836,7 +1571,9 @@ fn validate_candidate(intent: &Value, binding: &Value) -> Result<(u8, i128), Per
 
 fn parse_integer(value: &Value) -> Result<i128, PersistedV6Error> {
     match value {
-        Value::Unsigned(value) => Ok(i128::from(*value)),
+        Value::Unsigned(value) => i64::try_from(*value)
+            .map(i128::from)
+            .map_err(|_| PersistedV6Error::InvalidStructure),
         Value::Signed(value) => Ok(i128::from(*value)),
         _ => Err(PersistedV6Error::InvalidStructure),
     }
