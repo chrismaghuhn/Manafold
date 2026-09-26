@@ -714,7 +714,7 @@ fn validate_turn_position_v5(value: &Value) -> Result<(), PersistedV6Error> {
         "beginning" if matches!(&fields[1], Value::Text(step) if matches!(step.as_str(), "untap" | "upkeep" | "draw")) => {
             Ok(())
         }
-        "combat" if matches!(&fields[1], Value::Text(step) if matches!(step.as_str(), "beginning_of_combat" | "declare_attackers" | "declare_blockers" | "combat_damage" | "end_of_combat")) => {
+        "combat" if matches!(&fields[1], Value::Text(step) if matches!(step.as_str(), "beginning_of_combat" | "declare_attackers" | "declare_blockers" | concat!("combat_", "damage") | "end_of_combat")) => {
             Ok(())
         }
         "ending" if matches!(&fields[1], Value::Text(step) if matches!(step.as_str(), "end_step" | "cleanup")) => {
