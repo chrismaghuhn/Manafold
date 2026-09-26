@@ -74,7 +74,7 @@ pub use persisted_v6::{
     FullStateDigestInputV6, ManaColorV1, ManaPoolV1, ManaRestrictionV1, ManaStateV1,
     PersistedExecutionV3, PersistedV6Error, PlayerTurnHistoryV1, TurnHistoryStateV1,
 };
-pub use semantic_mutations::StateFamilyMutationError;
+pub use semantic_mutations::{AttachmentChangeV1, StateFamilyMutationError};
 pub use validation::{validate_engine_state, EngineStateViolation};
 pub use zones::{
     GameObject, ObjectSnapshot, StackRecord, VisibilityPartition, ZoneKey, ZoneLocation,

@@ -6,8 +6,11 @@
 
 use std::collections::BTreeSet;
 
-use crate::{validate_engine_state, CardRulesAuthoritativeStateV1, EngineState, EngineStateParts};
-use mtgml_model::{AbilityInstanceId, GameObjectId, ZoneKind};
+use crate::{
+    validate_engine_state, AttachmentChangeV1, AttachmentStateV1, CardRulesAuthoritativeStateV1,
+    EngineState, EngineStateParts, StateFamilyMutationError,
+};
+use mtgml_model::{AbilityInstanceId, GameObjectId, StateRevision, ZoneKind};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EngineStatePartsV2 {
@@ -50,6 +53,44 @@ impl EngineStatePartsV2 {
         candidate.validate()?;
         *self = candidate;
         Ok(allocated)
+    }
+
+    /// Builds the attachment-family result for one transition from this exact
+    /// state revision. The caller's transition commit remains responsible for
+    /// committing the matching state revision and family together.
+    pub fn attachment_state_after_transition(
+        &self,
+        expected_revision: StateRevision,
+        changes: impl IntoIterator<Item = AttachmentChangeV1>,
+    ) -> Result<AttachmentStateV1, EngineStatePartsV2Error> {
+        if self.predecessor_v5.revision != expected_revision {
+            return Err(EngineStatePartsV2Error::AttachmentTimestamp);
+        }
+        let resulting_revision = StateRevision(
+            expected_revision
+                .0
+                .checked_add(1)
+                .ok_or(EngineStatePartsV2Error::AttachmentTimestamp)?,
+        );
+        let battlefield: BTreeSet<_> = self
+            .predecessor_v5
+            .zones
+            .locations
+            .iter()
+            .filter(|(_, location)| location.zone == ZoneKind::Battlefield)
+            .map(|(object, _)| *object)
+            .collect();
+        let mut candidate = self.card_rules_state.attachments.clone();
+        candidate
+            .apply_changes(expected_revision, resulting_revision, changes, &battlefield)
+            .map_err(|error| match error {
+                StateFamilyMutationError::InvalidTimestamp
+                | StateFamilyMutationError::DuplicateTimestamp => {
+                    EngineStatePartsV2Error::AttachmentTimestamp
+                }
+                _ => EngineStatePartsV2Error::AttachmentMutation,
+            })?;
+        Ok(candidate)
     }
 
     pub fn validate(&self) -> Result<(), EngineStatePartsV2Error> {
@@ -119,11 +160,6 @@ impl EngineStatePartsV2 {
             .is_err()
             || self
                 .card_rules_state
-                .attachments
-                .validate_battlefield(&battlefield)
-                .is_err()
-            || self
-                .card_rules_state
                 .faces
                 .validate_live_objects(&live)
                 .is_err()
@@ -135,6 +171,14 @@ impl EngineStatePartsV2 {
         {
             return Err(EngineStatePartsV2Error::ObjectReference);
         }
+        self.card_rules_state
+            .attachments
+            .validate_battlefield(&battlefield)
+            .map_err(|_| EngineStatePartsV2Error::ObjectReference)?;
+        self.card_rules_state
+            .attachments
+            .validate_revision(state.revision)
+            .map_err(|_| EngineStatePartsV2Error::AttachmentTimestamp)?;
         Ok(())
     }
 }
@@ -159,6 +203,10 @@ pub enum EngineStatePartsV2Error {
     AbilityAuthorityReference,
     #[error("V6 ability-authority registration is invalid or exhausted")]
     AbilityRegistration,
+    #[error("V6 attachment timestamp is newer than the authoritative state revision")]
+    AttachmentTimestamp,
+    #[error("V6 attachment mutation is invalid")]
+    AttachmentMutation,
 }
 
 #[cfg(test)]
@@ -321,5 +369,84 @@ mod tests {
             state.validate(),
             Err(EngineStatePartsV2Error::ObjectReference)
         );
+    }
+
+    #[test]
+    fn attachment_timestamp_cannot_reference_a_future_state_revision() {
+        let mut state = parts();
+        let battlefield: Vec<_> = state
+            .predecessor_v5
+            .zones
+            .locations
+            .iter()
+            .filter(|(_, location)| location.zone == ZoneKind::Battlefield)
+            .map(|(object, _)| *object)
+            .collect();
+        let Some(source) = battlefield.first() else {
+            panic!("fixture must have a battlefield object");
+        };
+        let current_revision = state.predecessor_v5.revision;
+        state.card_rules_state.attachments.by_source.insert(
+            *source,
+            crate::AttachmentV1 {
+                target: *source,
+                timestamp: crate::AttachmentTimestampV1 {
+                    revision: mtgml_model::StateRevision(current_revision.0 + 1),
+                    operation_ordinal: 0,
+                },
+            },
+        );
+        assert_eq!(
+            state.validate(),
+            Err(EngineStatePartsV2Error::AttachmentTimestamp)
+        );
+    }
+
+    #[test]
+    fn attachment_constructor_requires_exact_current_revision_and_preserves_parent_state() {
+        let state = parts();
+        let source = state
+            .predecessor_v5
+            .zones
+            .locations
+            .iter()
+            .find(|(_, location)| location.zone == ZoneKind::Battlefield)
+            .map(|(object, _)| *object)
+            .expect("fixture has a battlefield object");
+        let expected_revision = state.predecessor_v5.revision;
+        let before = state.clone();
+        let successor_attachments = state
+            .attachment_state_after_transition(
+                expected_revision,
+                [crate::AttachmentChangeV1 {
+                    source,
+                    target: source,
+                    operation_ordinal: 3,
+                }],
+            )
+            .unwrap();
+        assert_eq!(state, before);
+        assert_eq!(
+            successor_attachments.by_source[&source].timestamp.revision,
+            mtgml_model::StateRevision(expected_revision.0 + 1)
+        );
+        assert_eq!(
+            successor_attachments.by_source[&source]
+                .timestamp
+                .operation_ordinal,
+            3
+        );
+        assert_eq!(
+            state.attachment_state_after_transition(
+                mtgml_model::StateRevision(expected_revision.0 + 1),
+                [crate::AttachmentChangeV1 {
+                    source,
+                    target: source,
+                    operation_ordinal: 3,
+                }],
+            ),
+            Err(EngineStatePartsV2Error::AttachmentTimestamp)
+        );
+        assert_eq!(state, before);
     }
 }

@@ -3,8 +3,17 @@ use crate::{
     AttachmentV1, CounterKindV1, CounterStateV1, FaceStateV1, ManaColorV1, ManaPoolV1,
     ManaRestrictionV1, ManaStateV1, PlayerTurnHistoryV1, TurnHistoryStateV1,
 };
-use mtgml_model::{AbilityInstanceId, GameObjectId, PlayerId};
+use mtgml_model::{AbilityInstanceId, GameObjectId, PlayerId, StateRevision};
 use std::collections::{BTreeMap, BTreeSet};
+
+/// One attachment relation change in an accepted state transition. The
+/// operation ordinal comes from the transition's semantic operation sequence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AttachmentChangeV1 {
+    pub source: GameObjectId,
+    pub target: GameObjectId,
+    pub operation_ordinal: u32,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum StateFamilyMutationError {
@@ -452,7 +461,7 @@ impl AttachmentStateV1 {
         Ok(())
     }
 
-    pub fn attach(
+    pub(crate) fn attach(
         &mut self,
         source: GameObjectId,
         target: GameObjectId,
@@ -491,6 +500,64 @@ impl AttachmentStateV1 {
         }) {
             return Err(StateFamilyMutationError::WrongZone);
         }
+        Ok(())
+    }
+
+    pub fn validate_revision(
+        &self,
+        current_revision: StateRevision,
+    ) -> Result<(), StateFamilyMutationError> {
+        if self
+            .by_source
+            .values()
+            .any(|edge| edge.timestamp.revision > current_revision)
+        {
+            return Err(StateFamilyMutationError::InvalidTimestamp);
+        }
+        Ok(())
+    }
+
+    /// Applies an ordered relation-change batch for exactly one successor
+    /// revision. The helper derives every timestamp from that revision and the
+    /// operation ordinal; callers cannot provide a free-standing timestamp.
+    pub(crate) fn apply_changes(
+        &mut self,
+        expected_revision: StateRevision,
+        resulting_revision: StateRevision,
+        changes: impl IntoIterator<Item = AttachmentChangeV1>,
+        battlefield: &BTreeSet<GameObjectId>,
+    ) -> Result<(), StateFamilyMutationError> {
+        if expected_revision.0.checked_add(1) != Some(resulting_revision.0) {
+            return Err(StateFamilyMutationError::InvalidTimestamp);
+        }
+        self.validate_battlefield(battlefield)?;
+        self.validate_revision(expected_revision)?;
+        let mut changes: Vec<_> = changes.into_iter().collect();
+        changes.sort_by_key(|change| change.operation_ordinal);
+        if changes.is_empty() {
+            return Err(StateFamilyMutationError::InvalidValue);
+        }
+        if changes
+            .windows(2)
+            .any(|pair| pair[0].operation_ordinal == pair[1].operation_ordinal)
+        {
+            return Err(StateFamilyMutationError::Duplicate);
+        }
+
+        let mut candidate = self.clone();
+        for change in changes {
+            candidate.attach(
+                change.source,
+                change.target,
+                AttachmentTimestampV1 {
+                    revision: resulting_revision,
+                    operation_ordinal: change.operation_ordinal,
+                },
+                battlefield,
+            )?;
+        }
+        candidate.validate_revision(resulting_revision)?;
+        *self = candidate;
         Ok(())
     }
 
@@ -837,38 +904,99 @@ mod tests {
         let source = GameObjectId(1);
         let target = GameObjectId(2);
         let battlefield = BTreeSet::from([source, target]);
-        let timestamp = AttachmentTimestampV1 {
-            revision: StateRevision(9),
-            operation_ordinal: 0,
-        };
         let mut attachments = AttachmentStateV1::default();
         attachments
-            .attach(source, target, timestamp, &battlefield)
+            .apply_changes(
+                StateRevision(8),
+                StateRevision(9),
+                [AttachmentChangeV1 {
+                    source,
+                    target,
+                    operation_ordinal: 0,
+                }],
+                &battlefield,
+            )
             .unwrap();
         let before = attachments.clone();
         assert_eq!(
-            attachments.attach(GameObjectId(3), target, timestamp, &battlefield),
-            Err(StateFamilyMutationError::WrongZone)
-        );
-        assert_eq!(attachments, before);
-        assert_eq!(
-            attachments.attach(target, source, timestamp, &battlefield),
-            Err(StateFamilyMutationError::DuplicateTimestamp)
-        );
-        assert_eq!(attachments, before);
-        assert_eq!(
-            attachments.attach(
-                source,
-                target,
-                AttachmentTimestampV1 {
-                    revision: StateRevision(8),
+            attachments.apply_changes(
+                StateRevision(9),
+                StateRevision(11),
+                [AttachmentChangeV1 {
+                    source,
+                    target,
                     operation_ordinal: 0,
-                },
+                }],
                 &battlefield,
             ),
             Err(StateFamilyMutationError::InvalidTimestamp)
         );
         assert_eq!(attachments, before);
+        assert_eq!(
+            attachments.apply_changes(
+                StateRevision(9),
+                StateRevision(10),
+                [AttachmentChangeV1 {
+                    source: GameObjectId(3),
+                    target,
+                    operation_ordinal: 1,
+                }],
+                &battlefield,
+            ),
+            Err(StateFamilyMutationError::WrongZone)
+        );
+        assert_eq!(attachments, before);
+        assert_eq!(
+            attachments.apply_changes(
+                StateRevision(9),
+                StateRevision(10),
+                [
+                    AttachmentChangeV1 {
+                        source: target,
+                        target: source,
+                        operation_ordinal: 1,
+                    },
+                    AttachmentChangeV1 {
+                        source,
+                        target,
+                        operation_ordinal: 1,
+                    },
+                ],
+                &battlefield,
+            ),
+            Err(StateFamilyMutationError::Duplicate)
+        );
+        assert_eq!(attachments, before);
+        assert_eq!(
+            attachments.apply_changes(
+                StateRevision(7),
+                StateRevision(8),
+                [AttachmentChangeV1 {
+                    source,
+                    target,
+                    operation_ordinal: 0,
+                }],
+                &battlefield,
+            ),
+            Err(StateFamilyMutationError::InvalidTimestamp)
+        );
+        assert_eq!(attachments, before);
+        attachments
+            .apply_changes(
+                StateRevision(9),
+                StateRevision(10),
+                [AttachmentChangeV1 {
+                    source,
+                    target,
+                    operation_ordinal: 0,
+                }],
+                &battlefield,
+            )
+            .unwrap();
+        assert_eq!(
+            attachments.by_source[&source].timestamp.revision,
+            StateRevision(10)
+        );
     }
 
     #[test]
