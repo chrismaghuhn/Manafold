@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import copy
 import json
 import sys
@@ -11,10 +12,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "python" / "src"))
 
+from mtgml.content_contract_v1 import decode_content_contract_manifest_v1
 from mtgml.episode import EpisodeStatus
 from mtgml.errors import WireError
 from mtgml.persistence import (
     calculate_checkpoint_digest_v7,
+    calculate_content_contract_id_v1,
     calculate_rules_contract_id_v1,
     calculate_semantic_contract_id_v1,
 )
@@ -54,6 +57,34 @@ def _recompute_checkpoint(raw: dict[str, object]) -> None:
 
 
 class ReplayV7Tests(unittest.TestCase):
+    def test_rust_python_card_ir_decoder_shared_acceptance_vectors(self) -> None:
+        vectors = _read(
+            "crates/mtgml-card-ir/tests/fixtures/content_contract_manifest_parity.v1.json"
+        )
+        self.assertEqual(vectors["schema_version"], "content-contract-manifest-parity-v1")
+        for case in vectors["cases"]:
+            payload = bytes.fromhex(case["canonical_cbor_hex"])
+            try:
+                canonical = decode_content_contract_manifest_v1(payload)
+            except WireError:
+                accepted = False
+            else:
+                accepted = True
+                self.assertEqual(canonical, payload, case["case"])
+                child = ContentContractMaterialV1.from_wire(
+                    {
+                        "content_contract_id": calculate_content_contract_id_v1(canonical),
+                        "manifest_canonical_cbor_base64": base64.b64encode(canonical).decode(
+                            "ascii"
+                        ),
+                    }
+                )
+                self.assertEqual(
+                    child.manifest_canonical_cbor_base64,
+                    base64.b64encode(payload).decode("ascii"),
+                )
+            self.assertEqual(accepted, case["expected_valid"], case["case"])
+
     def test_v7_examples_are_typed_and_round_trip_exact_canonical_json(self) -> None:
         manifest_raw = _read("schemas/examples/replay-manifest.v7.json")
         replay_raw = _read("schemas/examples/authoritative-replay-v7-rejected-step.json")

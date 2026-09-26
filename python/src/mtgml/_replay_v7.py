@@ -17,6 +17,7 @@ from .canonical import (
     require_nonempty,
     uint_wire,
 )
+from .content_contract_v1 import decode_content_contract_manifest_v1
 from .decision import DecisionResponseV2
 from .episode import EpisodeStatus
 from .errors import WireError
@@ -28,18 +29,27 @@ from .persistence import (
     calculate_rules_contract_id_v1,
     calculate_semantic_contract_id_v1,
 )
-from .persistence import (
-    decode_canonical as decode_cbor,
-)
-from .persistence import (
-    encode_canonical as encode_cbor,
-)
 
 REPLAY_MANIFEST_SCHEMA_V7 = "replay-manifest.v7"
 REPLAY_FILE_SCHEMA_V7 = "authoritative-replay.v7"
 REPLAY_STEP_SCHEMA_V7 = "replay-step.v7"
 MAX_CONTENT_MANIFEST_BASE64_CHARS = 89_478_488
 MAX_CONTENT_MANIFEST_BYTES = 64 * 1024 * 1024
+__all__ = [
+    "CHECKPOINT_CODEC_ID_V7",
+    "CHECKPOINT_CODEC_VERSION_V7",
+    "REPLAY_FILE_SCHEMA_V7",
+    "REPLAY_MANIFEST_SCHEMA_V7",
+    "REPLAY_STEP_SCHEMA_V7",
+    "AuthoritativeReplayV7",
+    "ContentContractMaterialV1",
+    "InitialEnvironmentIdentityV7",
+    "ReplayManifestV7",
+    "ReplayRecorderV7",
+    "ReplaySchemaVersionsV7",
+    "ReplayStepV7",
+    "SemanticContractMaterialV7",
+]
 _BASIC_LAND_CLOSURE = [
     ("rules/basic-land-mana", "0.1.0"),
     ("rules/basic-priority", "0.1.0"),
@@ -48,65 +58,6 @@ _BASIC_LAND_CLOSURE = [
     ("rules/turn-structure", "0.1.0"),
     ("rules/zone-incarnation", "0.1.0"),
 ]
-
-
-def _validate_basic_land_manifest(value: object) -> bytes:
-    if not (
-        isinstance(value, list)
-        and len(value) == 3
-        and value[0] == "content-contract-manifest.v1"
-        and value[1] == "mtgml.content-contract.v1"
-        and isinstance(value[2], list)
-    ):
-        raise WireError("semantic.replay_manifest", "content manifest identity/shape is invalid")
-    definitions: list[int] = []
-    for row in value[2]:
-        if not isinstance(row, list) or len(row) != 7 or row[0] != "card-definition-envelope.v1":
-            raise WireError("semantic.replay_manifest", "content definition shape is invalid")
-        if type(row[1]) is not int or not 0 <= row[1] <= 2**64 - 1:
-            raise WireError("semantic.replay_manifest", "content definition id is invalid")
-        definitions.append(row[1])
-        binding = row[4]
-        if not (
-            isinstance(binding, list)
-            and len(binding) == 2
-            and binding[0] == "profiled"
-            and isinstance(binding[1], list)
-            and len(binding[1]) == 2
-            and binding[1][0] == "basic-land@1.0.0"
-            and isinstance(binding[1][1], list)
-            and len(binding[1][1]) == 2
-            and binding[1][1][0] == "basic-land-profile.v1"
-            and binding[1][1][1] in {"mountain", "plains"}
-        ):
-            raise WireError("semantic.replay_manifest", "content profile is invalid")
-        face = row[2]
-        subtype = binding[1][1][1]
-        if not (
-            isinstance(face, list)
-            and len(face) == 1
-            and isinstance(face[0], list)
-            and len(face[0]) == 2
-            and type(face[0][0]) is int
-            and face[0][0] == 0
-            and isinstance(face[0][1], list)
-            and len(face[0][1]) == 7
-            and face[0][1][3] == [["Basic"], ["Land"], [subtype.title()]]
-        ):
-            raise WireError("semantic.replay_manifest", "content face/profile shape is invalid")
-        ability_keys = row[3]
-        if not (
-            isinstance(ability_keys, list)
-            and len(ability_keys) == 1
-            and isinstance(ability_keys[0], list)
-            and len(ability_keys[0]) == 2
-            and all(type(value) is int and value == 0 for value in ability_keys[0])
-            and row[5:] == [[], []]
-        ):
-            raise WireError("semantic.replay_manifest", "content definition identity is invalid")
-    if definitions != sorted(definitions) or len(set(definitions)) != len(definitions):
-        raise WireError("semantic.replay_manifest", "content definitions are not canonical")
-    return encode_cbor(value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,13 +81,7 @@ class ContentContractMaterialV1:
             or base64.b64encode(raw).decode("ascii") != encoded
         ):
             raise WireError("semantic.replay_manifest", "content Base64 is noncanonical")
-        try:
-            manifest = decode_cbor(raw)
-        except ValueError as exc:
-            raise WireError("semantic.replay_manifest", "content CBOR is invalid") from exc
-        canonical = _validate_basic_land_manifest(manifest)
-        if canonical != raw:
-            raise WireError("semantic.replay_manifest", "content CBOR is noncanonical")
+        canonical = decode_content_contract_manifest_v1(raw)
         if calculate_content_contract_id_v1(canonical) != content_id:
             raise WireError("semantic.replay_manifest", "content child digest does not match")
         return cls(content_id, encoded)
@@ -348,6 +293,8 @@ def _program_authority_matches(program: str, authority: object) -> bool:
 def _expected_payload_codec(program: str, semantic: SemanticContractMaterialV7) -> str:
     manifest = semantic.rules_manifest
     authority = manifest.get("rules_authority")
+    if not isinstance(authority, dict):
+        raise WireError("semantic.replay_manifest", "rules authority is malformed")
     closure = manifest.get("capability_closure")
     if not _program_authority_matches(program, authority):
         raise WireError(
@@ -614,6 +561,8 @@ class ReplayManifestV7:
                 "semantic.replay_manifest", "execution identity does not match semantic contract"
             )
         authority = self.semantic_contract.rules_manifest["rules_authority"]
+        if not isinstance(authority, dict):
+            raise WireError("semantic.replay_manifest", "rules authority is malformed")
         if (
             authority["variant"] == "comprehensive_rules"
             and authority.get("snapshot_id") != self.rules_snapshot
