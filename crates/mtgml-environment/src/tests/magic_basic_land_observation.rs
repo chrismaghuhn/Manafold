@@ -10,7 +10,7 @@ use mtgml_model::{
     SemanticContractManifestV1, VisibleSequence,
 };
 use mtgml_observation::{
-    ObservationEnvelope, PlayerInformationStateV2, INFORMATION_STATE_SCHEMA_V2,
+    ObservationEnvelope, PlayerInformationStateV2, PlayerStepV3, INFORMATION_STATE_SCHEMA_V2,
 };
 use mtgml_state::{
     AbilityAuthorityStateV1, AttachmentStateV1, CardRulesAuthoritativeStateV1, CounterKindV1,
@@ -263,6 +263,31 @@ fn hidden_rng_change_preserves_basic_land_observation_bytes_and_digest() {
     assert_eq!(
         mtgml_wire::encode_canonical(&left_information).unwrap(),
         mtgml_wire::encode_canonical(&right_information).unwrap()
+    );
+
+    // Candidate legality is deliberately outside this projection. Two
+    // independently decoded, already supplied V3 requests with equivalent
+    // public semantics remain equal when composed into paired PlayerSteps.
+    let mut step_a: PlayerStepV3 = serde_json::from_str(include_str!(
+        "../../../../schemas/examples/player-step-v3-event-next-decision.json"
+    ))
+    .unwrap();
+    let mut step_b = step_a.clone();
+    for (step, information) in [
+        (&mut step_a, left_information),
+        (&mut step_b, right_information),
+    ] {
+        step.information_state = information;
+        step.observed_events.clear();
+        let decision = step.next_decision.as_mut().unwrap();
+        decision.actor = PlayerId(1);
+        decision.state_revision = step.information_state.state_revision;
+        step.validate().unwrap();
+    }
+    assert_eq!(step_a.next_decision, step_b.next_decision);
+    assert_eq!(
+        mtgml_wire::encode_canonical(&step_a).unwrap(),
+        mtgml_wire::encode_canonical(&step_b).unwrap()
     );
 }
 

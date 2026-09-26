@@ -86,6 +86,11 @@ class M4Phase6ObservationTests(unittest.TestCase):
         with self.assertRaises(WireError):
             PlayerStepV3.from_wire(rejected)
 
+    def test_player_step_v3_accepts_omitted_optional_next_decision(self) -> None:
+        value = fixture("schemas/examples/player-step-v3-no-next-decision.json")
+        step = PlayerStepV3.from_wire(value)
+        self.assertIsNone(step.next_decision)
+
 
 if __name__ == "__main__":
     unittest.main()

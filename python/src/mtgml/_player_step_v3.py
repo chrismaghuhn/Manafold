@@ -30,10 +30,10 @@ class PlayerStepV3:
                 "schema_version",
                 "information_state",
                 "observed_events",
-                "next_decision",
                 "status",
                 "submission",
             },
+            {"next_decision"},
         )
         if obj["schema_version"] != PLAYER_STEP_SCHEMA_V3 or not isinstance(
             obj["observed_events"], list
@@ -44,7 +44,7 @@ class PlayerStepV3:
             PlayerInformationStateV2.from_wire(obj["information_state"]),
             tuple(ObservedEventEnvelopeV3.from_wire(item) for item in obj["observed_events"]),
             None
-            if obj["next_decision"] is None
+            if obj.get("next_decision") is None
             else PlayerDecisionRequestV3.from_wire(obj["next_decision"]),
             EpisodeStatus.from_wire(obj["status"]),
             PlayerStepSubmissionV1.from_wire(obj["submission"]),

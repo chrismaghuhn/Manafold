@@ -15,6 +15,7 @@ use mtgml_observation::{
 };
 
 use mtgml_random::RootSeed256;
+use std::collections::BTreeMap;
 
 use mtgml_replay::{
     AuthoritativeReplayV6, DeckIdentityV1, KernelIdentityV1, ReplaySchemaVersionsV6,
@@ -591,6 +592,46 @@ fn observed_event_v3_projection_preserves_rules_owned_audience_and_opaque_substi
         serde_json::to_vec(&paired[&PlayerId(1)]).unwrap(),
         "another perspective's unauthorized occurrence changed P1 event bytes"
     );
+}
+
+#[test]
+fn authorized_v3_battlefield_entry_projects_face_and_tapped_in_one_move_event() {
+    let (before, result) = tracked_incarnation_product().unwrap();
+    let entry_facts = BTreeMap::from([(
+        (PlayerId(1), VisibleSequence(1)),
+        crate::lifecycle_projection::AuthorizedBattlefieldEntryFactsV3 {
+            entering_face: Some(mtgml_observation::ObservedFaceV1::Back),
+            tapped: Some(true),
+        },
+    )]);
+    let projected = crate::lifecycle_projection::project_occurrence_envelopes_v3_with_entry_facts(
+        &before,
+        &result.next_state,
+        &result.events,
+        &entry_facts,
+    )
+    .unwrap();
+    let p1 = &projected[&PlayerId(1)];
+    assert_eq!(
+        p1.len(),
+        2,
+        "entry facts must not synthesize a second event"
+    );
+    assert!(matches!(
+        &p1[0].event,
+        mtgml_observation::ObservedEventKindV3::ObjectMoved {
+            old_object: None,
+            new_object: Some(_),
+            to: mtgml_model::ZoneKind::Battlefield,
+            entering_face: Some(mtgml_observation::ObservedFaceV1::Back),
+            tapped: Some(true),
+            ..
+        }
+    ));
+    assert!(!p1.iter().any(|envelope| matches!(
+        envelope.event,
+        mtgml_observation::ObservedEventKindV3::ObjectFaceChanged { .. }
+    )));
 }
 
 #[test]

@@ -266,6 +266,12 @@ fn v3_successor_examples_deserialize_under_the_rust_contracts() {
     ))
     .unwrap();
     step.validate().unwrap();
+    let step_without_decision: PlayerStepV3 = serde_json::from_str(include_str!(
+        "../../../schemas/examples/player-step-v3-no-next-decision.json"
+    ))
+    .unwrap();
+    step_without_decision.validate().unwrap();
+    assert!(step_without_decision.next_decision.is_none());
     let mut event_and_decision: serde_json::Value = serde_json::from_str(include_str!(
         "../../../schemas/examples/player-step-v3-event-next-decision.json"
     ))

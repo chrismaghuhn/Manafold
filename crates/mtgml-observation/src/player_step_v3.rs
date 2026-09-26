@@ -10,22 +10,12 @@ use crate::observed_event_v3::ObservedEventEnvelopeV3;
 use crate::player_step::{PlayerStepSubmissionV1, PlayerSubmissionCodeV1};
 use crate::PLAYER_STEP_SCHEMA_V3;
 
-fn deserialize_required_next_decision<'de, D>(
-    deserializer: D,
-) -> Result<Option<PlayerDecisionRequestV3>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    Option::deserialize(deserializer)
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlayerStepV3 {
     pub schema_version: String,
     pub information_state: PlayerInformationStateV2,
     pub observed_events: Vec<ObservedEventEnvelopeV3>,
-    #[serde(deserialize_with = "deserialize_required_next_decision")]
     pub next_decision: Option<PlayerDecisionRequestV3>,
     pub status: EpisodeStatus,
     pub submission: PlayerStepSubmissionV1,
