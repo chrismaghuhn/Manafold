@@ -79,6 +79,8 @@ Expected final state identities are only those specified by the Spec: FullStateD
 
 **RED first:** add schema identity and unknown-version/unknown-field negative cases before Rust writer code. Add the proposed exact successor schemas, closed enum tags, content profile body array, canonical digest-input description, historical disposition table, and V7 replay schema inventory. Do not add production types first.
 
+Replay V7's `content_contract` JSON child must use the exact Spec-defined closed transport object: ContentContractIdV1 plus the canonical ContentContractManifestV1 CBOR payload in bounded canonical padded standard Base64. Keep the manifest a closed typed CBOR contract; do not add a Serde/JSON manifest DTO.
+
 **Implementation work:**
 
 - add the exact ProfiledV1 `basic-land@1.0.0` ID under the unchanged M4.1 grammar and its `basic-land-profile.v1` body contract;
@@ -257,13 +259,14 @@ Expected final state identities are only those specified by the Spec: FullStateD
 - `wire/golden/`, `wire/negative/`
 - Python replay version module/tests
 
-**RED first:** detached manifest identity validation; replay from V7 checkpoint with one V2 response per step; direct/replay digest/event/delta/next-request parity; malformed links, counters, schema IDs and final identity reject; complete replay catches a changed state field.
+**RED first:** detached manifest identity validation; strict content-child schema and wire codec vectors for exact canonical padded Base64; reject bad alphabet/padding, nonzero pad bits, whitespace, over-limit text, invalid/noncanonical CBOR, wrong child digest, mismatch with semantic manifest, and null/present child mismatch; replay from V7 checkpoint with one V2 response per step; direct/replay digest/event/delta/next-request parity; malformed links, counters, schema IDs and final identity reject; complete replay catches a changed state field.
 
 **Implementation work:**
 
 - add exact V7 manifest/step/file/recorder/schema-inventory/initial identity;
 - use FullStateDigestV6 and CheckpointDigestV7 only;
 - add `SemanticContractMaterialV7` with the semantic manifest, rules manifest, and `ContentContractMaterialV1` child exactly when `content_contract_id` is non-null; recompute and validate child and parent IDs plus equality with all `ExecutionIdentityV1` references;
+- encode the child as the exact Spec-defined JSON object (`content_contract_id`, `manifest_canonical_cbor_base64`); strict-decode the bounded standard Base64 to the existing canonical CBOR manifest decoder and require exact re-encoding. Do not derive a new JSON schema for the typed manifest;
 - require detached replay validation to verify the canonical content manifest against its `ContentContractIdV1`; require restore/runtime admission to match the supplied verified catalog to the replay/checkpoint's semantic child before executable state is exposed;
 - keep Replay V6 detached historical verifier intact;
 - do not store observed event output as a second replay authority.

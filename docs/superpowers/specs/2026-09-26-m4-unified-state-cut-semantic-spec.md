@@ -518,6 +518,45 @@ ContentContractMaterialV1 {
 }
 ```
 
+The internal typed form above is **not** serialized with Serde and does not
+imply a JSON representation for `ContentContractManifestV1`. Replay V7's JSON
+wire representation for the `content_contract` child is exactly:
+
+```json
+{
+  "content_contract_id": "<64 lowercase hexadecimal characters>",
+  "manifest_canonical_cbor_base64": "<canonical padded standard Base64>"
+}
+```
+
+The Base64 value encodes the complete canonical-CBOR payload of
+`ContentContractManifestV1` as specified by `content-contract-manifest.v1`;
+it does not encode the outer digest-envelope framing. It uses the standard
+Base64 alphabet (`A–Z`, `a–z`, `0–9`, `+`, `/`) with required `=` padding,
+no whitespace, and canonical zero pad bits. The wire decoder bounds the
+encoded string before allocation to the Base64 size corresponding to the
+existing 64 MiB canonical-CBOR payload limit, decodes strictly, invokes the
+closed `decode_content_manifest_v1` contract, re-encodes the typed manifest,
+and requires byte-for-byte equality with the decoded payload. It recomputes
+`ContentContractIdV1` from those canonical bytes and compares it with the
+child ID and `SemanticContractManifestV1.content_contract_id`. The child
+object has exactly the two fields shown; unknown or duplicate fields,
+uppercase/non-hex ID characters, malformed or noncanonical Base64, invalid
+CBOR, noncanonical manifest bytes, digest mismatch, and missing/extra child
+all reject before replay execution or checkpoint restore admission.
+
+When the semantic manifest's content ID is null, the wire value is exactly
+`"content_contract": null`; when it is non-null, exactly one object of the
+shape above is required. The V7 JSON Schema must express the closed object,
+lowercase ID pattern `^[0-9a-f]{64}$`, Base64 alphabet/padding shape
+`^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$`,
+minimum encoded length 4, and maximum encoded length 89,478,488 characters
+(`4 * ceil(67,108,864 / 3)`, for a 64 MiB decoded payload);
+the typed decoder remains responsible for strict Base64 canonicality, CBOR
+canonicality, child/parent digest equality, and content semantic validation.
+This transport form introduces no generic JSON/CBOR field, Serde DTO for the
+content manifest, or alternate content identity encoding.
+
 For this executable Magic profile, `manifest.content_contract_id` is non-null and exactly equals `content_contract.content_contract_id`; absent ID requires absent child, and present ID requires exactly one child. The detached V7 verifier recomputes the ContentContractIdV1 from the child's exact canonical manifest bytes, validates the closed definition/profile structure, recomputes SemanticContractIdV1 from its manifest, recomputes RulesContractIdV1 from the rules manifest, checks all child IDs and all three ExecutionIdentityV1 occurrences, and checks rules-snapshot consistency under ADR 0055. Runtime restore additionally requires its verified catalog bytes/ID to equal this child material before making state executable. Provenance remains a separate audit artifact because it is excluded from ContentContractId; V7 verifies semantic content identity and does not claim provenance or rules correctness. When the semantic manifest's content ID is null, the child is absent as required by ADR 0055; V6 retains its historical non-null-content rejection.
 
 `ReplayStepV7` retains the exact V6 fields: step index, actor, before CheckpointDigestV7, before revision, one DecisionResponseV2, accepted flag, after revision, after FullStateDigestV6, after status, after environment counters, and after CheckpointDigestV7. `AuthoritativeReplayV7` contains schema version, manifest, ordered steps, and final InitialEnvironmentIdentityV7. `ReplayRecorderV7` records these same typed identities and inputs. Initial and step records bind FullStateDigestV6 and CheckpointDigestV7. Existing Replay V6 control/provenance fields remain unchanged except successor schema identities and typed references. One explicit DecisionResponseV2 remains the replay input per step; no event-as-input or forced choice is added. The Recorder records only explicit response/control inputs and resulting identities, not projected events as a second authority.
