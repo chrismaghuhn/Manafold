@@ -726,7 +726,7 @@ class RegistryRelationTests(unittest.TestCase):
             <= runner.COMMON_NAMED_CONTRACTS
         )
 
-    def test_m4_phase1_schema_only_successors_are_explicit(self) -> None:
+    def test_schema_only_successors_exclude_typed_replay_v7_owners(self) -> None:
         self.assertEqual(
             runner.SCHEMA_ONLY_SUCCESSORS,
             frozenset(
@@ -735,10 +735,15 @@ class RegistryRelationTests(unittest.TestCase):
                     "observed-event-envelope.v3",
                     "player-step.v3",
                     "magic-basic-land-observation.v1",
-                    "replay-manifest.v7",
-                    "authoritative-replay.v7",
                 }
             ),
+        )
+        self.assertTrue(
+            {
+                "replay-manifest.v7",
+                "authoritative-replay.v7",
+            }
+            <= runner.COMMON_NAMED_CONTRACTS
         )
 
     def test_live_decoder_registry_relation_passes(self) -> None:

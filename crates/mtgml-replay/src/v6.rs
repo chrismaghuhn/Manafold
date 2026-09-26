@@ -35,7 +35,7 @@ const DECLARE_BLOCKERS_CAPABILITY_KEY: &str = "rules/declare-blockers";
 const TURN_STRUCTURE_CAPABILITY_KEY: &str = "rules/turn-structure";
 const ZONE_INCARNATION_CAPABILITY_KEY: &str = "rules/zone-incarnation";
 
-fn forced_progress_revision_budget(
+pub(crate) fn forced_progress_revision_budget(
     execution: &ExecutionIdentityV1,
     rules: &RulesContractManifestV1,
     observation_codec: &str,
@@ -171,7 +171,7 @@ fn forced_progress_revision_budget(
     }
 }
 
-fn observation_codec_supported(rules: &RulesContractManifestV1, codec: &str) -> bool {
+pub(crate) fn observation_codec_supported(rules: &RulesContractManifestV1, codec: &str) -> bool {
     let magic_semantics_admitted = matches!(
         &rules.rules_authority,
         RulesAuthorityV1::ComprehensiveRules { .. }

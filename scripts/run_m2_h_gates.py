@@ -488,9 +488,8 @@ ADAPTER_PUBLIC_METHODS = frozenset(
 # Pinned decoder-registry relation (drift regression, NOT completeness).
 #
 # Plan §G.6: three-way equality would permanently contradict the deliberately
-# kept Python-only digest-input registry entry. M4 Phase 1 also admits an
-# exact set of schema-only successor declarations before Rust/Python runtime
-# decoders are implemented; those contracts are not current decoders.
+# kept Python-only digest-input registry entry. Schema-only successors may
+# have detached typed owners without joining this shared runtime decoder set.
 # ---------------------------------------------------------------------------
 
 COMMON_NAMED_CONTRACTS = frozenset(
@@ -529,6 +528,8 @@ COMMON_NAMED_CONTRACTS = frozenset(
         "authoritative-replay.v5",
         "replay-manifest.v6",
         "authoritative-replay.v6",
+        "replay-manifest.v7",
+        "authoritative-replay.v7",
     }
 )
 
@@ -550,8 +551,6 @@ SCHEMA_ONLY_SUCCESSORS = frozenset(
         "observed-event-envelope.v3",
         "player-step.v3",
         "magic-basic-land-observation.v1",
-        "replay-manifest.v7",
-        "authoritative-replay.v7",
     }
 )
 

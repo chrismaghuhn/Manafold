@@ -40,12 +40,14 @@ from .replay import (
     AuthoritativeReplayV4,
     AuthoritativeReplayV5,
     AuthoritativeReplayV6,
+    AuthoritativeReplayV7,
     ReplayManifestV1,
     ReplayManifestV2,
     ReplayManifestV3,
     ReplayManifestV4,
     ReplayManifestV5,
     ReplayManifestV6,
+    ReplayManifestV7,
 )
 
 T = TypeVar("T")
@@ -85,6 +87,8 @@ _DECODERS: dict[str, Callable[[object], object]] = {
     "authoritative-replay.v5": AuthoritativeReplayV5.from_wire,
     "replay-manifest.v6": ReplayManifestV6.from_wire,
     "authoritative-replay.v6": AuthoritativeReplayV6.from_wire,
+    "replay-manifest.v7": ReplayManifestV7.from_wire,
+    "authoritative-replay.v7": AuthoritativeReplayV7.from_wire,
 }
 
 
@@ -99,9 +103,18 @@ def decode_canonical(contract: str, payload: bytes) -> object:
     decoder = _DECODERS.get(contract)
     if decoder is None:
         raise WireError("fixture.unknown_contract", f"unknown contract {contract}")
+
+    def reject_duplicate_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("duplicate object key")
+            result[key] = value
+        return result
+
     try:
-        raw = json.loads(payload.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raw = json.loads(payload.decode("utf-8"), object_pairs_hook=reject_duplicate_pairs)
+    except (UnicodeDecodeError, ValueError) as exc:
         raise WireError("decode.invalid_json", str(exc)) from exc
     try:
         result = decoder(raw)

@@ -7,8 +7,8 @@ use std::collections::BTreeSet;
 use mtgml_card_ir::VerifiedContentCatalogV1;
 use mtgml_model::{
     CheckpointCodecIdentity, CheckpointDigestV7, EnvironmentLimitCounters, EpisodeStatus,
-    ExecutionIdentityV1, ExecutionProgramV1, FullStateDigestV6, PlayerId, RulesAuthorityV1,
-    RulesContractManifestV1, SemanticContractManifestV1,
+    ExecutionIdentityV1, ExecutionProgramV1, FullStateDigestV6, PlayerId, RulesContractManifestV1,
+    SemanticContractManifestV1,
 };
 use mtgml_state::{calculate_full_state_digest_v6, EngineStatePartsV2};
 use thiserror::Error;
@@ -164,18 +164,9 @@ impl EnvironmentCheckpointV7 {
         if let Some(catalog) = content_catalog {
             validate_catalog_state(&self.state, catalog)?;
         }
-        let program_matches = matches!(
-            (
-                &self.execution_identity.program_kind,
-                &rules_manifest.rules_authority
-            ),
-            (
-                ExecutionProgramV1::SyntheticRulesCompat,
-                RulesAuthorityV1::SyntheticLegacy
-            ) | (
-                ExecutionProgramV1::MagicRules,
-                RulesAuthorityV1::ComprehensiveRules { .. }
-            )
+        let program_matches = mtgml_model::execution_program_matches_rules_authority(
+            self.execution_identity.program_kind,
+            &rules_manifest.rules_authority,
         );
         if !program_matches {
             return Err(CheckpointV7Error::ContractBinding);
@@ -346,7 +337,7 @@ pub enum CheckpointV7Error {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mtgml_model::{AbilityInstanceId, GameObjectId, PlayerId};
+    use mtgml_model::{AbilityInstanceId, GameObjectId, PlayerId, RulesAuthorityV1};
     use mtgml_random::RootSeed256;
     use mtgml_state::{
         construct_synthetic_engine_state, AbilityAuthorityV1, AttachmentStateV1, AttachmentV1,
