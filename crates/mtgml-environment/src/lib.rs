@@ -6,6 +6,7 @@
 
 mod boundary;
 pub mod checkpoint;
+pub mod checkpoint_v7;
 mod controller;
 mod endpoint;
 mod errors;
@@ -27,6 +28,10 @@ pub use checkpoint::{
     CHECKPOINT_CODEC_ID_V5, CHECKPOINT_CODEC_ID_V6, CHECKPOINT_CODEC_SEMANTIC_VERSION_V5,
     CHECKPOINT_CODEC_SEMANTIC_VERSION_V6, ENVIRONMENT_CHECKPOINT_SCHEMA_V5,
     ENVIRONMENT_CHECKPOINT_SCHEMA_V6,
+};
+pub use checkpoint_v7::{
+    CheckpointV7Error, EnvironmentCheckpointV7, CHECKPOINT_CODEC_ID_V7,
+    CHECKPOINT_CODEC_SEMANTIC_VERSION_V7, ENVIRONMENT_CHECKPOINT_SCHEMA_V7,
 };
 pub use controller::{EnvironmentBackend, TrustedEnvironmentController};
 pub use endpoint::{PlayerEndpoint, PlayerEndpointError, PlayerEndpointHandle};

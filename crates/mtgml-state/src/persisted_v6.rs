@@ -19,6 +19,12 @@ pub enum ManaColorV1 {
     Colorless = 5,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ManaRestrictionV1 {
+    Unrestricted,
+    CreatureSpellOnly,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ManaPoolV1 {
     pub unrestricted: [u32; 6],

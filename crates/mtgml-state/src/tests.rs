@@ -26,6 +26,82 @@ fn synthetic_state() -> EngineState {
     .unwrap()
 }
 
+fn v6_parts(state: &EngineState) -> EngineStatePartsV2 {
+    let mut card_rules_state = CardRulesAuthoritativeStateV1::default();
+    for player in state.core.players.keys().copied() {
+        card_rules_state
+            .mana
+            .pools
+            .insert(player, ManaPoolV1::default());
+        card_rules_state
+            .turn_history
+            .players
+            .insert(player, PlayerTurnHistoryV1::default());
+    }
+    card_rules_state.turn_history.turn_number = state.core.turn_number;
+    EngineStatePartsV2::from_state(state, card_rules_state)
+}
+
+#[test]
+fn state_delta_v2_validates_complete_replacement_and_v6_identities() {
+    let before = v6_parts(&synthetic_state());
+    before.validate().unwrap();
+    let mut after = before.clone();
+    after
+        .card_rules_state
+        .turn_history
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap()
+        .spells_cast_total = 1;
+    let delta = StateDeltaV2::between(&before, &after, Vec::new()).unwrap();
+    assert_eq!(delta.apply(&before).unwrap(), after);
+
+    let mut wrong_after = delta.clone();
+    wrong_after
+        .replacement
+        .card_rules_state
+        .mana
+        .pools
+        .get_mut(&PlayerId(1))
+        .unwrap()
+        .unrestricted[0] = 1;
+    assert_eq!(
+        wrong_after.apply(&before),
+        Err(DeltaApplicationV2Error::AfterMismatch)
+    );
+
+    let mut wrong_before = before.clone();
+    wrong_before
+        .card_rules_state
+        .mana
+        .pools
+        .get_mut(&PlayerId(1))
+        .unwrap()
+        .unrestricted[0] = 1;
+    assert_eq!(
+        delta.apply(&wrong_before),
+        Err(DeltaApplicationV2Error::BeforeMismatch)
+    );
+
+    let mut invalid_delta = delta.clone();
+    invalid_delta
+        .replacement
+        .card_rules_state
+        .counters
+        .counters
+        .insert(
+            GameObjectId(999),
+            BTreeMap::from([(CounterKindV1::Lore, 1)]),
+        );
+    assert!(matches!(
+        invalid_delta.apply(&before),
+        Err(DeltaApplicationV2Error::InvalidReplacement(
+            EngineStatePartsV2Error::ObjectReference
+        ))
+    ));
+}
+
 fn empty_shell() -> EngineState {
     let players = [PlayerId(1), PlayerId(2)];
     let mut state = EngineState {

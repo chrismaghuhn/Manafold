@@ -1115,8 +1115,9 @@ preserves the V5 top-level semantic order and adds one fixed
 TurnHistory, Counter, Attachment, Face, and AbilityAuthority records. Their
 exact typed fields, ordering, ranges, and canonical CBOR arrays are specified
 in the [accepted M4 state-cut Semantic Spec](superpowers/specs/2026-09-26-m4-unified-state-cut-semantic-spec.md).
-No runtime V6 writer exists until the ordered implementation plan is
-completed; V5 remains current until the sole activation boundary.
+The detached V6 DTO, canonical encoder, digest producer, and verifier are
+implemented. `EngineState::digest()` and the current runtime writer remain V5;
+the detached V6 APIs do not change current aliases or runtime authority.
 
 The same accepted design allocates `EnvironmentCheckpointV7` and
 `CheckpointDigestV7`, with `environment-checkpoint-digest-input.v7`,
@@ -1126,6 +1127,14 @@ the FullStateDigestV6 reference, status, environment counters, codec identity,
 and complete ExecutionIdentityV1. The exact payload and historical V6
 disposition are in the accepted Semantic Spec. These successor identities do
 not change current V5/V6 bytes or make an incomplete successor executable.
+
+The detached `StateDeltaV2` and `EnvironmentCheckpointV7` value types are
+implemented over `EngineStatePartsV2`. V7 checkpoint validation recomputes the
+complete V6 state identity and V7 checkpoint identity before returning a
+detached snapshot. Contract-binding admission can additionally verify the
+semantic manifest, rules manifest, and optional verified content catalog.
+This is not a current backend restore path: no V6/V7 runtime aliases,
+checkpoint controller, or replay path are activated.
 
 # Conversion and reader rules
 
