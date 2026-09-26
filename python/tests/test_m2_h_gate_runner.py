@@ -715,7 +715,7 @@ def _synthetic_registry(
 
 
 class RegistryRelationTests(unittest.TestCase):
-    """rust == COMMON, python == COMMON + exception, schemas == COMMON."""
+    """Rust is COMMON; Python has pinned extras; schemas are COMMON."""
 
     def test_replay_v6_contracts_are_pinned_as_common_named_contracts(self) -> None:
         self.assertTrue(
@@ -747,7 +747,7 @@ class RegistryRelationTests(unittest.TestCase):
 
     def test_relation_holds_on_the_pinned_sets(self) -> None:
         common = runner.COMMON_NAMED_CONTRACTS
-        python_set = common | runner.PYTHON_MECHANICAL_ONLY
+        python_set = common | runner.PYTHON_MECHANICAL_ONLY | runner.PYTHON_TYPED_SUCCESSORS
         with _synthetic_registry(
             _wire_fixtures_rs(common),
             _decoders_py(python_set),
@@ -761,18 +761,34 @@ class RegistryRelationTests(unittest.TestCase):
         common = runner.COMMON_NAMED_CONTRACTS
         with (
             _synthetic_registry(
-                _wire_fixtures_rs(common), _decoders_py(common), _validate_schemas_py(common)
+                _wire_fixtures_rs(common),
+                _decoders_py(common | runner.PYTHON_TYPED_SUCCESSORS),
+                _validate_schemas_py(common),
             ),
             self.assertRaises(runner.GateConfigurationError) as raised,
         ):
             runner.verify_registry_relation()
         message = str(raised.exception)
-        self.assertIn("python _DECODERS != COMMON union PYTHON_MECHANICAL_ONLY", message)
+        self.assertIn("python _DECODERS != COMMON union pinned Python decoder sets", message)
         self.assertIn("'information-state-digest-input.v2'", message)
+
+    def test_python_missing_typed_successor_decoder_entry_fails(self) -> None:
+        common = runner.COMMON_NAMED_CONTRACTS
+        python_set = common | runner.PYTHON_MECHANICAL_ONLY
+        with (
+            _synthetic_registry(
+                _wire_fixtures_rs(common),
+                _decoders_py(python_set),
+                _validate_schemas_py(common | runner.SCHEMA_ONLY_SUCCESSORS),
+            ),
+            self.assertRaises(runner.GateConfigurationError) as raised,
+        ):
+            runner.verify_registry_relation()
+        self.assertIn("'player-decision-request.v3'", str(raised.exception))
 
     def test_rust_gaining_an_extra_arm_fails_against_pinned_common(self) -> None:
         common = runner.COMMON_NAMED_CONTRACTS
-        python_set = common | runner.PYTHON_MECHANICAL_ONLY
+        python_set = common | runner.PYTHON_MECHANICAL_ONLY | runner.PYTHON_TYPED_SUCCESSORS
         with (
             _synthetic_registry(
                 _wire_fixtures_rs(common, extra_arm="bonus-contract.v9"),
@@ -786,7 +802,7 @@ class RegistryRelationTests(unittest.TestCase):
 
     def test_schema_mapping_drift_fails(self) -> None:
         common = runner.COMMON_NAMED_CONTRACTS
-        python_set = common | runner.PYTHON_MECHANICAL_ONLY
+        python_set = common | runner.PYTHON_MECHANICAL_ONLY | runner.PYTHON_TYPED_SUCCESSORS
         drifted = common - {"episode-status.v1"}
         with (
             _synthetic_registry(

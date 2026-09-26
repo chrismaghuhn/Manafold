@@ -17,6 +17,7 @@ from .decision import (
     PlayerDecisionRequest,
     PlayerDecisionRequestV2,
 )
+from .decision_v3 import PlayerDecisionRequestV3
 from .episode import EpisodeStatus
 from .errors import WireError
 from .events import ObservedEventEnvelope
@@ -50,6 +51,7 @@ _DECODERS: dict[str, Callable[[object], object]] = {
     "player-decision-request.v1": PlayerDecisionRequest.from_wire,
     "decision-response.v1": DecisionResponse.from_wire,
     "player-decision-request.v2": PlayerDecisionRequestV2.from_wire,
+    "player-decision-request.v3": PlayerDecisionRequestV3.from_wire,
     "decision-response.v2": DecisionResponseV2.from_wire,
     "episode-status.v1": EpisodeStatus.from_wire,
     "observed-event-envelope.v1": ObservedEventEnvelope.from_wire,
