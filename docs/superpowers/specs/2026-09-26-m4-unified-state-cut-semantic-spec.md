@@ -143,6 +143,53 @@ rules/mana-pool@0.1.0
 
 Their recursive requirements include the existing `rules/basic-priority`, `rules/turn-structure`, and `rules/zone-incarnation` versions admitted by the verified registry. Missing nodes remain MISSING until specified/implemented/covered; a profile does not make them supported. The roots are generic reusable capabilities and apply identically to both definitions. Requirement closure, not a card-name dispatch, selects execution semantics.
 
+### Required profiled-content codec and identity prerequisite
+
+The accepted M4.1 CardDefinition contract reserved the outer
+`ProfiledV1 { profile_id, closed typed body }` shape while admitting only
+`UnprofiledV1` in M4.1 production. Before Phase 7 Replay V7 or Phase 8
+cross-state/catalog validation begins, the implementation sequence MUST
+complete and independently accept the following narrow prerequisite for the
+already specified `basic-land@1.0.0` body:
+
+- `CardSemanticBindingV1` has a typed `ProfiledV1` representation containing
+  exactly `CardSemanticProfileId("basic-land@1.0.0")` and
+  `BasicLandProfileV1 { subtype: Mountain | Plains }`;
+- `ContentContractManifestV1` canonical encoding/decoding handles exactly
+  the reserved outer CBOR form and the closed body
+  `["profiled", ["basic-land@1.0.0", ["basic-land-profile.v1", subtype]]]`;
+- closed structural validation enforces the profile ID/body tag/subtype,
+  matching exact basic-land type line, one face at `FaceKey(0)`, and the
+  profile-defined `(FaceKey(0), AbilityKey(0))` identity before accepting the
+  manifest; unknown profile IDs, body tags, subtypes, shape changes, and
+  noncanonical CBOR reject;
+- `calculate_content_contract_id_v1` accepts that validated canonical
+  manifest using the existing `mtgml.content-contract.v1` /
+  `content-contract-manifest.v1` digest-envelope semantics. It does not add a
+  second digest path or identity dimension;
+- no successor content-manifest or content-ID version is allocated: the
+  manifest and `ContentContractIdV1` retain their existing V1 identities,
+  framing, and schema/digest identity;
+- every accepted historical `UnprofiledV1` payload continues to encode to
+  exactly its prior bytes and `ContentContractIdV1`. No old golden is
+  regenerated.
+
+This prerequisite establishes **content syntax, structural validity, and
+immutable content identity only**. It does not derive or admit capability
+requirements, verify pinned Oracle provenance, authorize execution, select a
+RulesKernel path, generate candidates, or claim card support. In particular,
+`content_validation_only` may recognize the closed profile body while
+`construct_gameplay_from_content` remains fail-closed with
+`NoExecutableProfileAdmitted` until the later profile-admission and atomic
+runtime-integration work. Content identity is not gameplay authorization.
+
+Phase 7 and Phase 8 depend on this prerequisite because Replay V7 must decode,
+re-encode, and re-hash the profiled content child, and state/catalog joins must
+resolve its typed definition, face, and ability identities. Neither phase may
+add an alternate content decoder or content-ID computation. Phase 9 retains
+provenance verification, derived capability closure, executable profile
+admission, and the remaining content-to-rules integration work.
+
 ## 4. Proposed contract identities and compatibility cut
 
 These identities are proposed as the smallest coherent successors. They become authoritative only after this Spec is accepted, implementation passes, and the exact current runtime is atomically activated.
