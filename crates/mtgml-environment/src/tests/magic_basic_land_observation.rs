@@ -1,8 +1,10 @@
 use super::*;
 use mtgml_card_ir::{
-    BaseCharacteristicsV1, CardDefinitionEnvelopeV1, CardSemanticBindingV1,
+    AbilityIdentityV1, BaseCharacteristicsV1, BasicLandProfileV1, BasicLandSubtypeV1,
+    CardDefinitionEnvelopeV1, CardSemanticBindingV1, CardSemanticProfileId,
     ContentContractManifestV1, DefinitionProvenanceRecordV1, FaceDefinitionV1, FaceKey,
     ProvenanceCatalogV1, SourceProvenanceV1, TypeLineV1, VerifiedContentCatalogV1,
+    BASIC_LAND_PROFILE_ID_V1,
 };
 use mtgml_decision::{
     CandidateIntentV3, DecisionDomainV2, DecisionVisibility, PlayerDecisionRequestV3,
@@ -26,29 +28,48 @@ use std::collections::BTreeMap;
 fn catalog_for(definition_ids: &[u64]) -> VerifiedContentCatalogV1 {
     let definitions = definition_ids
         .iter()
-        .map(|id| CardDefinitionEnvelopeV1 {
-            envelope_version: "card-definition-envelope.v1".to_owned(),
-            card_definition_id: CardDefinitionId(*id),
-            faces: vec![FaceDefinitionV1 {
-                face_key: FaceKey(0),
-                base_characteristics: BaseCharacteristicsV1 {
-                    name: format!("Fixture {id}"),
-                    mana_cost: None,
-                    color_indicator: vec![],
-                    type_line: TypeLineV1 {
-                        supertypes: vec!["Basic".into()],
-                        card_types: vec!["Land".into()],
-                        subtypes: vec!["Plains".into()],
+        .map(|id| {
+            let (name, subtype) = if *id == 1 {
+                ("Mountain", "Mountain")
+            } else {
+                ("Plains", "Plains")
+            };
+            CardDefinitionEnvelopeV1 {
+                envelope_version: "card-definition-envelope.v1".to_owned(),
+                card_definition_id: CardDefinitionId(*id),
+                faces: vec![FaceDefinitionV1 {
+                    face_key: FaceKey(0),
+                    base_characteristics: BaseCharacteristicsV1 {
+                        name: name.into(),
+                        mana_cost: None,
+                        color_indicator: vec![],
+                        type_line: TypeLineV1 {
+                            supertypes: vec!["Basic".into()],
+                            card_types: vec!["Land".into()],
+                            subtypes: vec![subtype.into()],
+                        },
+                        power_toughness: None,
+                        loyalty: None,
+                        defense: None,
                     },
-                    power_toughness: None,
-                    loyalty: None,
-                    defense: None,
+                }],
+                ability_identities: vec![AbilityIdentityV1 {
+                    ability_key: mtgml_card_ir::AbilityKey(0),
+                    face_key: FaceKey(0),
+                }],
+                semantic_binding: CardSemanticBindingV1::ProfiledV1 {
+                    profile_id: CardSemanticProfileId::parse(BASIC_LAND_PROFILE_ID_V1).unwrap(),
+                    body: BasicLandProfileV1 {
+                        subtype: if *id == 1 {
+                            BasicLandSubtypeV1::Mountain
+                        } else {
+                            BasicLandSubtypeV1::Plains
+                        },
+                    },
                 },
-            }],
-            ability_identities: vec![],
-            semantic_binding: CardSemanticBindingV1::UnprofiledV1,
-            definition_references: vec![],
-            explicit_additional_requirements: vec![],
+                definition_references: vec![],
+                explicit_additional_requirements: vec![],
+            }
         })
         .collect();
     let manifest = ContentContractManifestV1 {
@@ -217,6 +238,97 @@ fn magic_basic_land_projection_uses_opaque_public_ids_and_verified_content_faces
     ] {
         assert!(!encoded.contains(forbidden), "leaked {forbidden}");
     }
+}
+
+#[test]
+fn verified_catalog_rejects_unknown_face_key_before_observation_projection() {
+    let mut parts = basic_land_parts(seed());
+    let object = *parts.card_rules_state.faces.faces.keys().next().unwrap();
+    parts.card_rules_state.faces.faces.insert(object, 99);
+    let catalog = catalog_for(&[1, 2]);
+    let (identity, semantic, rules) = execution_authority(&catalog);
+    assert_eq!(
+        crate::player_projection::project_magic_basic_land_observation_v1(
+            &parts,
+            PlayerId(1),
+            &identity,
+            &semantic,
+            &rules,
+            &catalog,
+        ),
+        Err(PlayerEndpointError::ServiceUnavailable)
+    );
+}
+
+#[test]
+fn verified_catalog_rejects_ability_key_missing_from_the_selected_face() {
+    let mut parts = basic_land_parts(seed());
+    let source = *parts.predecessor_v5.zones.objects.keys().next().unwrap();
+    parts.predecessor_v5.allocators.next_ability_id = mtgml_model::AbilityInstanceId(2);
+    parts.card_rules_state.abilities.by_instance.insert(
+        mtgml_model::AbilityInstanceId(1),
+        mtgml_state::AbilityAuthorityV1 {
+            source,
+            ability_key: 77,
+        },
+    );
+    let catalog = catalog_for(&[1, 2]);
+    let (identity, semantic, rules) = execution_authority(&catalog);
+    assert_eq!(
+        crate::player_projection::project_magic_basic_land_observation_v1(
+            &parts,
+            PlayerId(1),
+            &identity,
+            &semantic,
+            &rules,
+            &catalog,
+        ),
+        Err(PlayerEndpointError::ServiceUnavailable)
+    );
+}
+
+#[test]
+fn verified_catalog_rejects_attachment_without_admitted_profile_semantics() {
+    let mut parts = basic_land_parts(seed());
+    let battlefield: Vec<_> = parts
+        .predecessor_v5
+        .zones
+        .locations
+        .iter()
+        .filter(|(_, location)| location.zone == mtgml_model::ZoneKind::Battlefield)
+        .map(|(object, _)| *object)
+        .collect();
+    let Some(source) = battlefield.first() else {
+        panic!("fixture must have a battlefield object");
+    };
+    parts.card_rules_state.attachments.by_source.insert(
+        *source,
+        mtgml_state::AttachmentV1 {
+            target: *source,
+            timestamp: mtgml_state::AttachmentTimestampV1 {
+                revision: parts.predecessor_v5.revision,
+                operation_ordinal: 0,
+            },
+        },
+    );
+    parts.validate().unwrap();
+
+    let catalog = catalog_for(&[1, 2]);
+    let (identity, semantic, rules) = execution_authority(&catalog);
+    let checkpoint = EnvironmentCheckpointV7::new(
+        parts,
+        EpisodeStatus::Running,
+        EnvironmentLimitCounters::default(),
+        identity,
+    )
+    .unwrap();
+    // The state/checkpoint digests were freshly computed and validate; the
+    // rejection belongs to content/profile admission, not stale identity bytes.
+    checkpoint.validate().unwrap();
+    assert_eq!(
+        checkpoint.restore_with_verified_contracts(&semantic, &rules, Some(&catalog)),
+        Err(crate::CheckpointV7Error::ContractBinding)
+    );
 }
 
 #[test]

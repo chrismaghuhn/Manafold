@@ -193,6 +193,12 @@ fn validate_catalog_state(
 ) -> Result<(), CheckpointV7Error> {
     let engine = state.materialize();
     let content_id = catalog.content_contract_id();
+    // No admitted content profile currently declares an attachment type or
+    // target domain. Do not treat structurally valid edges as executable
+    // content facts until such a profile contract exists.
+    if !state.card_rules_state.attachments.by_source.is_empty() {
+        return Err(CheckpointV7Error::ContractBinding);
+    }
     if state.card_rules_state.faces.faces.len() != engine.zones.objects.len() {
         return Err(CheckpointV7Error::ContractBinding);
     }
