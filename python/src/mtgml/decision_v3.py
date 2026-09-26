@@ -32,6 +32,12 @@ _ALLOWED_INTENTS = {
     "declare_number",
     "confirm",
 }
+_RESPONSE_KIND_BY_DECISION_KIND = {
+    "choose_one": "select_one",
+    "choose_many": "select_many",
+    "choose_number": "choose_number",
+    "order": "order",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -231,11 +237,13 @@ class PlayerDecisionRequestV3:
         self.validate()
         ids = {candidate.candidate_id for candidate in self.candidates}
         answer = response.answer
-        if self.decision.kind == "choose_one" and answer.kind == "select_one":
+        if answer.kind != _RESPONSE_KIND_BY_DECISION_KIND[self.decision.kind]:
+            raise WireError("semantic.decision_response", "response domain mismatch")
+        if self.decision.kind == "choose_one":
             if answer.candidate_id not in ids:
                 raise WireError("semantic.decision_response", "unknown candidate")
             return
-        if self.decision.kind in {"choose_many", "order"} and answer.kind == self.decision.kind:
+        if self.decision.kind in {"choose_many", "order"}:
             values = answer.candidate_ids
             if any(candidate_id not in ids for candidate_id in values):
                 raise WireError("semantic.decision_response", "unknown candidate")
@@ -249,7 +257,7 @@ class PlayerDecisionRequestV3:
             if not self.decision.minimum <= len(values) <= self.decision.maximum:
                 raise WireError("semantic.decision_response", "answer cardinality is out of bounds")
             return
-        if self.decision.kind == "choose_number" and answer.kind == "choose_number":
+        if self.decision.kind == "choose_number":
             assert self.decision.minimum is not None and self.decision.maximum is not None
             if (
                 answer.value is None
