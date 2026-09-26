@@ -1,6 +1,337 @@
 // Ownership fragment: canonical digest known-answer/mutation evidence. Included lexically by tests.rs so
 // every identity remains tests::<name>.
 
+fn json_to_cbor(value: &serde_json::Value) -> Value {
+    match value {
+        serde_json::Value::Null => Value::Null,
+        serde_json::Value::Bool(value) => Value::Bool(*value),
+        serde_json::Value::Number(value) => {
+            if let Some(value) = value.as_u64() {
+                Value::Unsigned(value)
+            } else {
+                Value::Signed(value.as_i64().expect("fixture integer fits i64"))
+            }
+        }
+        serde_json::Value::String(value) => Value::Text(value.clone()),
+        serde_json::Value::Array(values) => Value::Array(values.iter().map(json_to_cbor).collect()),
+        serde_json::Value::Object(_) => Value::Text("object-not-permitted".to_owned()),
+    }
+}
+
+fn phase2_v6_fixture() -> (serde_json::Value, crate::FullStateDigestInputV6) {
+    let vector: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../persistence/golden/full-state-digest-v6-kat.v1.json"
+    ))
+    .unwrap();
+    let family = json_to_cbor(&vector["card_rules_authoritative_state"]);
+    let card_state = crate::CardRulesAuthoritativeStateV1::from_value(&family).unwrap();
+    let v5 = decode_hex(
+        include_str!("../../tests/fixtures/magic-sba-graveyard-order-v5-input.hex").trim(),
+    );
+    let input = crate::FullStateDigestInputV6::from_phase2_v5_payload(&v5, card_state).unwrap();
+    (vector, input)
+}
+
+#[test]
+fn full_state_digest_v6_matches_phase2_frozen_kat_and_verifies() {
+    let (vector, input) = phase2_v6_fixture();
+    let payload = input.canonical_payload().unwrap();
+    assert_eq!(hex(&payload), vector["canonical_payload_hex"].as_str().unwrap());
+    let digest = crate::digest_v6::calculate_full_state_digest_v6_payload(&payload).unwrap();
+    assert_eq!(digest.to_string(), vector["expected_digest"].as_str().unwrap());
+    crate::verify_full_state_digest_v6(&payload, &digest).unwrap();
+
+    let wrong_digest = mtgml_model::FullStateDigestV6::from_digest_bytes([0xa5; 32]);
+    assert!(crate::verify_full_state_digest_v6(&payload, &wrong_digest).is_err());
+}
+
+#[test]
+fn full_state_digest_v6_rejects_predecessor_and_noncanonical_fixtures() {
+    let (vector, input) = phase2_v6_fixture();
+    let payload = input.canonical_payload().unwrap();
+    let digest = mtgml_model::FullStateDigestV6::parse(
+        vector["expected_digest"].as_str().unwrap().to_owned(),
+    )
+    .unwrap();
+    let predecessor = decode_hex(
+        include_str!("../../tests/fixtures/magic-sba-graveyard-order-v5-input.hex").trim(),
+    );
+    assert!(crate::verify_full_state_digest_v6(&predecessor, &digest).is_err());
+
+    for path in [
+        "../../persistence/negative/m4-v6-indefinite-array.cbor",
+        "../../persistence/negative/m4-v6-map-where-array-required.cbor",
+        "../../persistence/negative/m4-v6-noncanonical-integer.cbor",
+        "../../persistence/negative/m4-v6-trailing-value.cbor",
+    ] {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(path);
+        let invalid = std::fs::read(path).unwrap();
+        assert!(crate::verify_full_state_digest_v6(&invalid, &digest).is_err());
+    }
+    crate::verify_full_state_digest_v6(&payload, &digest).unwrap();
+}
+
+#[test]
+fn full_state_digest_v6_consumes_phase2_state_shape_negatives() {
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../schemas/negative/m4-phase2-v6-state-shapes.json"
+    ))
+    .unwrap();
+    let cases = fixture["cases"].as_array().unwrap();
+    assert!(cases.len() >= 14);
+    for case in cases {
+        let family = json_to_cbor(&case["family"]);
+        assert!(
+            crate::CardRulesAuthoritativeStateV1::from_value(&family).is_err(),
+            "accepted malformed state case: {}",
+            case["case"].as_str().unwrap()
+        );
+    }
+}
+
+#[test]
+fn full_state_digest_v6_rejects_empty_counter_object_rows() {
+    let (vector, _) = phase2_v6_fixture();
+    let mut family = json_to_cbor(&vector["card_rules_authoritative_state"]);
+    let Value::Array(fields) = &mut family else {
+        unreachable!();
+    };
+    fields[3] = Value::Array(vec![Value::Array(vec![
+        Value::Unsigned(1),
+        Value::Array(Vec::new()),
+    ])]);
+    assert!(crate::CardRulesAuthoritativeStateV1::from_value(&family).is_err());
+}
+
+#[test]
+fn full_state_digest_v6_matches_all_valid_phase2_mutation_vectors() {
+    let (vector, baseline_input) = phase2_v6_fixture();
+    let base = &vector["card_rules_authoritative_state"];
+    let mutations = vector["mutation_digests"].as_object().unwrap();
+    let expected_invalid = [
+        "mana.player",
+        "history.target_object",
+        "counter.object",
+        "face.object",
+    ];
+    let mut covered = std::collections::BTreeSet::new();
+    for (name, expected) in mutations {
+        let mut family = base.clone();
+        match name.as_str() {
+            "mana.player" => family[1][0][0] = serde_json::json!(3),
+            "mana.restriction" => {
+                family[1][0][1][0] = serde_json::json!(2);
+                family[1][0][2][0] = serde_json::json!(0);
+            }
+            "mana.u32_boundary" => family[1][1][2][5] = serde_json::json!(u32::MAX - 1),
+            "mana.explicit_zero" => family[1][1][1][0] = serde_json::json!(1),
+            name if name.starts_with("mana.unrestricted.") => {
+                let color = ["white", "blue", "black", "red", "green", "colorless"]
+                    .iter()
+                    .position(|color| name.ends_with(color))
+                    .unwrap();
+                family[1][0][1][color] = serde_json::json!(2);
+            }
+            name if name.starts_with("mana.creature_spell_only.") => {
+                let color = ["white", "blue", "black", "red", "green", "colorless"]
+                    .iter()
+                    .position(|color| name.ends_with(color))
+                    .unwrap();
+                family[1][0][2][color] = serde_json::json!(2);
+            }
+            "history.turn_number" => family[2][0] = serde_json::json!(2),
+            "history.land_plays_used" => family[2][1][0][1] = serde_json::json!(0),
+            "history.spells_cast_total" => family[2][1][0][2] = serde_json::json!(3),
+            "history.noncreature_spells_cast" => family[2][1][0][3] = serde_json::json!(2),
+            "history.lost_life" => family[2][1][0][4] = serde_json::json!(false),
+            "history.red_noncombat_damage" => family[2][1][0][5] = serde_json::json!(4),
+            "history.permanent_to_graveyard" => family[2][1][0][6] = serde_json::json!(false),
+            "history.target_object" => family[2][2][0][0] = serde_json::json!(3),
+            "history.target_controller" => family[2][2][0][1] = serde_json::json!(1),
+            "history.once_ability_object" => family[2][3][0][0] = serde_json::json!(2),
+            "history.once_ability_key" => family[2][3][0][1] = serde_json::json!(1),
+            "counter.object" => family[3][0][0] = serde_json::json!(2),
+            "counter.kind" => family[3][0][1][0][0] = serde_json::json!(1),
+            "counter.count" => family[3][0][1][0][1] = serde_json::json!(3),
+            "attachment.source" => family[4][0][0] = serde_json::json!(4),
+            "attachment.target" => family[4][0][1] = serde_json::json!(2),
+            "attachment.timestamp_revision" => family[4][0][2] = serde_json::json!(3),
+            "attachment.timestamp_operation" => family[4][0][3] = serde_json::json!(1),
+            "face.object" => family[5][0][0] = serde_json::json!(2),
+            "face.key" => family[5][0][1] = serde_json::json!(1),
+            "ability.instance" => family[6][0][0] = serde_json::json!(2),
+            "ability.source" => family[6][0][1] = serde_json::json!(2),
+            "ability.key" => family[6][0][2] = serde_json::json!(1),
+            unknown => panic!("unhandled Phase-2 mutation KAT: {unknown}"),
+        }
+        covered.insert(name.as_str());
+        let raw_state = json_to_cbor(&family);
+        let mut raw_input = mtgml_persistence::cbor::decode_canonical(
+            &baseline_input.canonical_payload().unwrap(),
+        )
+        .unwrap();
+        let Value::Array(raw_fields) = &mut raw_input else {
+            unreachable!();
+        };
+        raw_fields[13] = raw_state.clone();
+        let raw_payload = mtgml_persistence::cbor::encode_canonical(&raw_input).unwrap();
+        let raw_digest = crate::digest_v6::calculate_full_state_digest_v6_payload(&raw_payload)
+            .unwrap();
+        assert_eq!(raw_digest.to_string(), expected.as_str().unwrap(), "raw KAT {name}");
+
+        let typed = crate::CardRulesAuthoritativeStateV1::from_value(&raw_state);
+        if expected_invalid.contains(&name.as_str()) {
+            assert!(typed.is_err(), "invalid mutation unexpectedly became valid: {name}");
+            continue;
+        }
+        let mut input = baseline_input.clone();
+        input.card_rules_state = typed.unwrap();
+        let payload = input.canonical_payload().unwrap();
+        assert_eq!(payload, raw_payload, "typed encoder bytes for mutation {name}");
+        let digest = crate::digest_v6::calculate_full_state_digest_v6_payload(&payload).unwrap();
+        assert_eq!(
+            digest.to_string(),
+            expected.as_str().unwrap(),
+            "mutation vector {name}"
+        );
+    }
+    assert_eq!(covered.len(), mutations.len());
+}
+
+#[test]
+fn full_state_digest_v6_typed_collection_insertion_order_is_irrelevant() {
+    let (_, input) = phase2_v6_fixture();
+    let baseline = input.canonical_payload().unwrap();
+    let mut reordered = input;
+    let state = &mut reordered.card_rules_state;
+    state.mana.pools = state.mana.pools.iter().rev().map(|(k, v)| (*k, *v)).collect();
+    state.turn_history.players = state
+        .turn_history
+        .players
+        .iter()
+        .rev()
+        .map(|(k, v)| (*k, *v))
+        .collect();
+    state.turn_history.target_occurrences = state
+        .turn_history
+        .target_occurrences
+        .iter()
+        .rev()
+        .copied()
+        .collect();
+    state.turn_history.once_ability_used = state
+        .turn_history
+        .once_ability_used
+        .iter()
+        .rev()
+        .copied()
+        .collect();
+    state.counters.counters = state
+        .counters
+        .counters
+        .iter()
+        .rev()
+        .map(|(object, counters)| {
+            (
+                *object,
+                counters.iter().rev().map(|(kind, count)| (*kind, *count)).collect(),
+            )
+        })
+        .collect();
+    state.attachments.by_source = state
+        .attachments
+        .by_source
+        .iter()
+        .rev()
+        .map(|(source, edge)| (*source, *edge))
+        .collect();
+    state.faces.faces = state.faces.faces.iter().rev().map(|(k, v)| (*k, *v)).collect();
+    state.abilities.by_instance = state
+        .abilities
+        .by_instance
+        .iter()
+        .rev()
+        .map(|(k, v)| (*k, *v))
+        .collect();
+    assert_eq!(baseline, reordered.canonical_payload().unwrap());
+}
+
+#[test]
+fn full_state_digest_v6_is_explicit_and_does_not_change_current_v5_digest() {
+    let state = synthetic_state();
+    let v5_before = state.digest().unwrap();
+    let card_rules = crate::CardRulesAuthoritativeStateV1::default();
+    let payload = crate::canonical_state_bytes_v6(&state, card_rules.clone()).unwrap();
+    let v6 = crate::calculate_full_state_digest_v6(&state, card_rules).unwrap();
+    crate::verify_full_state_digest_v6(&payload, &v6).unwrap();
+    assert_eq!(state.digest().unwrap(), v5_before);
+}
+
+#[test]
+fn execution_v3_persists_play_land_without_adding_current_decision_runtime() {
+    let (_, input) = phase2_v6_fixture();
+    let mut execution = input.execution_v3.canonical_value().clone();
+    let Value::Array(execution_fields) = &mut execution else {
+        panic!("validated execution V3 is an array");
+    };
+    let Value::Array(request_fields) = &mut execution_fields[0] else {
+        panic!("fixture has a pending decision request");
+    };
+    let Value::Array(candidates) = &mut request_fields[6] else {
+        panic!("candidate list is an array");
+    };
+    let Value::Array(first_candidate) = &mut candidates[0] else {
+        panic!("candidate is a positional array");
+    };
+    let Value::Array(visible) = &mut first_candidate[1] else {
+        panic!("visible intent is a positional array");
+    };
+    visible[0] = Value::Text("play_land".to_owned());
+    let Value::Array(binding) = &mut first_candidate[2] else {
+        panic!("trusted binding is a positional array");
+    };
+    binding[0] = Value::Text("play_land".to_owned());
+    let mut input = input;
+    input.execution_v3 = crate::PersistedExecutionV3::from_value(execution).unwrap();
+    let payload = input.canonical_payload().unwrap();
+    let digest = crate::digest_v6::calculate_full_state_digest_v6_payload(&payload).unwrap();
+    crate::verify_full_state_digest_v6(&payload, &digest).unwrap();
+
+    let mut out_of_order = input.execution_v3.canonical_value().clone();
+    let Value::Array(execution_fields) = &mut out_of_order else {
+        unreachable!();
+    };
+    let Value::Array(request_fields) = &mut execution_fields[0] else {
+        unreachable!();
+    };
+    let Value::Array(candidates) = &mut request_fields[6] else {
+        unreachable!();
+    };
+    let Value::Array(first_candidate) = &mut candidates[0] else {
+        unreachable!();
+    };
+    let Value::Array(visible) = &mut first_candidate[1] else {
+        unreachable!();
+    };
+    visible[0] = Value::Text("select_object".to_owned());
+    let Value::Array(binding) = &mut first_candidate[2] else {
+        unreachable!();
+    };
+    binding[0] = Value::Text("select_object".to_owned());
+    let Value::Array(second_candidate) = &mut candidates[1] else {
+        unreachable!();
+    };
+    let Value::Array(visible) = &mut second_candidate[1] else {
+        unreachable!();
+    };
+    visible[0] = Value::Text("play_land".to_owned());
+    let Value::Array(binding) = &mut second_candidate[2] else {
+        unreachable!();
+    };
+    binding[0] = Value::Text("play_land".to_owned());
+    assert!(crate::PersistedExecutionV3::from_value(out_of_order).is_err());
+}
+
 /// Frozen historical V4 known answer for the canonical synthetic reset state.
 /// V4 bytes are evaluated only through the detached historical verifier.
 #[test]

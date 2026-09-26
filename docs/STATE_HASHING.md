@@ -1,6 +1,6 @@
 # State and Artifact Hashing
 
-**Status:** V1–V4 historical identity contracts; current V5 state / V6 checkpoint identity
+**Status:** V1–V4 historical identity contracts; current V5 state / V6 checkpoint identity; detached M4 FullStateDigestV6 successor
 **Stability:** normative identity separation and ADR-0038 persistence-codec specification
 
 ## Digest domains
@@ -16,6 +16,7 @@ Current/historical families include:
 | `FullStateDigestV3` | M2 full authoritative state with typed continuation/information/perspective-local visible identity semantics |
 | `FullStateDigestV4` | historical M3 state meaning; detached exact verifier only after S3.P0 |
 | `FullStateDigestV5` | current complete EngineState identity, including the typed Magic SBA-order continuation |
+| `FullStateDigestV6` | detached M4 successor identity; not current, not an EngineState alias, and not used by current checkpoint/replay paths |
 | `InformationStateDigest` | historical M1 information-state digest (`mtgml.information-state-digest.v1`) |
 | `InformationStateDigestV2` | M2 perspective-safe current observation + retained knowledge (`mtgml.information-state-digest.v2`) |
 | `ObservationDigest` | exact current observation bytes |
@@ -25,6 +26,30 @@ Current/historical families include:
 | `CheckpointDigestV6` | current checkpoint identity binding `FullStateDigestV5` and `ExecutionIdentityV1` |
 
 Digest identity provides content identity/divergence detection, not authenticity.
+
+## Detached FullStateDigestV6 successor
+
+The M4 Phase-3 implementation defines an explicit detached `FullStateDigestV6`
+identity. It is not returned by `EngineState::digest()` and does not alter the
+current V5 producer or V6 checkpoint identity. Its envelope uses domain
+`mtgml.full-state-digest.v6`, input schema `full-state-digest-input.v6`,
+`mtgml.canonical-cbor.v1`, and SHA-256. The canonical preimage is the fixed
+14-element array in the accepted M4 semantic specification: the unchanged V5
+positional components under the V6 header, followed by the closed
+`card-rules-authoritative-state.v1` record.
+
+That detached record contains typed Mana, TurnHistory, Counter, Attachment,
+Face, and AbilityAuthority state. Validation rejects noncanonical ordering,
+duplicates, invalid fixed tags, malformed record lengths, integer range/domain
+errors, and any `land_plays_used` value outside `{0,1}`. Its bytes use the
+shared canonical-CBOR and digest-envelope implementations. The detached
+verifier checks canonical decode/re-encode equality and the V6 digest identity;
+it does not make the result executable or replace later environment/catalog
+admission.
+
+V5 remains the current EngineState identity. Historical V5 artifacts and
+vectors retain their exact bytes and meaning; no migration or reinterpretation
+is introduced by the detached V6 implementation.
 
 ## Immutable content identity V1
 
