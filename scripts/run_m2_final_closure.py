@@ -810,6 +810,9 @@ SCHEMA_INVENTORY_ALLOWED: frozenset[str] = frozenset(
 )
 
 DECK_FILES_ALLOWED: frozenset[str] = frozenset({"example-deck-a.json", "example-deck-b.json"})
+M4_BASIC_LAND_DEFINITION_FILES_ALLOWED: frozenset[str] = frozenset(
+    {"README.md", "content-contract.v1.cbor", "provenance.v1.cbor"}
+)
 
 
 class ScopeCheckFailure(AssertionError):
@@ -1070,17 +1073,36 @@ def check_card_and_deck_artifacts_unclaimed(root: Path) -> str:
             f"cards/decks contains subdirectories (possible deck-lock work): "
             f"{sorted(deck_directories)}"
         )
-    definition_entries = {path.name for path in (root / "cards" / "definitions").iterdir()}
-    if definition_entries - {"example", ".gitkeep"}:
+    definitions_root = root / "cards" / "definitions"
+    definition_entries = {path.name for path in definitions_root.iterdir()}
+    allowed_definition_entries = {"example", ".gitkeep", "basic-land-v1"}
+    unexpected_definition_entries = definition_entries - allowed_definition_entries
+    if unexpected_definition_entries:
         raise ScopeCheckFailure(
-            f"cards/definitions contains non-example card work: {sorted(definition_entries)}"
+            "cards/definitions contains unreviewed card work: "
+            f"{sorted(unexpected_definition_entries)}"
         )
+    basic_land_dir = definitions_root / "basic-land-v1"
+    if "basic-land-v1" in definition_entries:
+        if basic_land_dir.is_symlink() or not basic_land_dir.is_dir():
+            raise ScopeCheckFailure("cards/definitions/basic-land-v1 must be a directory")
+        nested_directories = [path for path in basic_land_dir.rglob("*") if path.is_dir()]
+        actual_files = {path.name for path in basic_land_dir.iterdir() if path.is_file()}
+        if nested_directories or actual_files != M4_BASIC_LAND_DEFINITION_FILES_ALLOWED:
+            nested_directory_names = [path.name for path in nested_directories]
+            raise ScopeCheckFailure(
+                "cards/definitions/basic-land-v1 drifted from the exact Phase-9 allowlist "
+                f"(files={sorted(actual_files)}, directories={nested_directory_names})"
+            )
     generated_entries = [
         path.name for path in (root / "cards" / "generated").iterdir() if path.name != ".gitkeep"
     ]
     if generated_entries:
         raise ScopeCheckFailure(f"cards/generated contains artifacts: {generated_entries}")
-    return "card/deck trees contain only the pre-existing maintainer examples (no real-card claim)"
+    return (
+        "M2 card/deck scope remains unclaimed; only the exact reviewed Phase-9 "
+        "basic-land-v1 definition artifacts are additionally allowed"
+    )
 
 
 KERNEL_IMPL_PATTERN = re.compile(

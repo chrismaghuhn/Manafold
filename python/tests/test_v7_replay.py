@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import copy
+import hashlib
 import json
 import sys
 import unittest
@@ -85,9 +86,53 @@ class ReplayV7Tests(unittest.TestCase):
                 )
             self.assertEqual(accepted, case["expected_valid"], case["case"])
 
+    def test_phase2_v7_bytes_are_preserved_and_phase9_examples_have_distinct_identity(self) -> None:
+        historical = _read("persistence/golden/m4-phase2-wire-vector-index.v1.json")
+        frozen = {
+            "schemas/examples/replay-manifest.v7.json": (
+                "3a954d6571ed08a8967d302034c43482a3a651baa659cda35a940cbefdf4e09c"
+            ),
+            "schemas/examples/authoritative-replay-v7-rejected-step.json": (
+                "f0f52b46732233cc368dac6ce3b365081096973f4a39ba30fd306889a01f562a"
+            ),
+        }
+        indexed = {entry["path"]: entry["sha256"] for entry in historical["fixtures"]}
+        for path, expected in frozen.items():
+            raw = (ROOT / path).read_bytes()
+            self.assertEqual(indexed[path], expected)
+            self.assertEqual(hashlib.sha256(raw).hexdigest(), expected)
+            with self.subTest(path=path), self.assertRaises((WireError, ValueError)):
+                if "manifest" in path:
+                    ReplayManifestV7.from_wire(json.loads(raw))
+                else:
+                    AuthoritativeReplayV7.from_wire(json.loads(raw))
+
+        final_index = _read("persistence/golden/m4-phase9-replay-v7-admission-fixtures.v1.json")
+        self.assertEqual(final_index["schema_version"], "m4-phase9-replay-v7-admission-fixtures.v1")
+        self.assertEqual(
+            final_index["historical_fixture_disposition"]["index"],
+            "m4-phase2-wire-vector-index.v1.json",
+        )
+        self.assertTrue(final_index["historical_fixture_disposition"]["bytes_preserved"])
+        self.assertFalse(final_index["historical_fixture_disposition"]["final_admission_authority"])
+        final_manifest = ReplayManifestV7.from_wire(
+            _read("schemas/examples/replay-manifest-v7-phase9-admitted-basic-land.json")
+        )
+        closure = final_manifest.semantic_contract.rules_manifest["capability_closure"]
+        self.assertEqual(
+            [f"{entry['key']}@{entry['version']}" for entry in closure],
+            final_index["final_basic_land_capability_closure"],
+        )
+        for entry in final_index["fixtures"]:
+            raw = (ROOT / entry["path"]).read_bytes()
+            self.assertEqual(hashlib.sha256(raw).hexdigest(), entry["sha256"])
+            self.assertEqual(entry["expected_validity"], "valid-final-admission-example")
+
     def test_v7_examples_are_typed_and_round_trip_exact_canonical_json(self) -> None:
-        manifest_raw = _read("schemas/examples/replay-manifest.v7.json")
-        replay_raw = _read("schemas/examples/authoritative-replay-v7-rejected-step.json")
+        manifest_raw = _read("schemas/examples/replay-manifest-v7-phase9-admitted-basic-land.json")
+        replay_raw = _read(
+            "schemas/examples/authoritative-replay-v7-phase9-admitted-rejected-step.json"
+        )
         for contract, raw in (
             ("replay-manifest.v7", manifest_raw),
             ("authoritative-replay.v7", replay_raw),
@@ -98,10 +143,14 @@ class ReplayV7Tests(unittest.TestCase):
                 self.assertEqual(encode_canonical(parsed), canonical)
 
     def test_v7_manifest_accepts_both_valid_adr_0055_pairs(self) -> None:
-        magic = ReplayManifestV7.from_wire(_read("schemas/examples/replay-manifest.v7.json"))
+        magic = ReplayManifestV7.from_wire(
+            _read("schemas/examples/replay-manifest-v7-phase9-admitted-basic-land.json")
+        )
         self.assertEqual(magic.execution_identity.program_kind, "magic_rules")
 
-        synthetic = copy.deepcopy(_read("schemas/examples/replay-manifest.v7.json"))
+        synthetic = copy.deepcopy(
+            _read("schemas/examples/replay-manifest-v7-phase9-admitted-basic-land.json")
+        )
         rules = {"rules_authority": {"variant": "synthetic_legacy"}, "capability_closure": None}
         rules_id = calculate_rules_contract_id_v1(rules)
         semantic = {
@@ -128,7 +177,9 @@ class ReplayV7Tests(unittest.TestCase):
         )
 
     def test_phase9_complete_closure_is_required_for_basic_land_v7_codec(self) -> None:
-        candidate = copy.deepcopy(_read("schemas/examples/replay-manifest.v7.json"))
+        candidate = copy.deepcopy(
+            _read("schemas/examples/replay-manifest-v7-phase9-admitted-basic-land.json")
+        )
         semantic = candidate["semantic_contract"]
         closure = semantic["rules_manifest"]["capability_closure"]
         semantic["rules_manifest"]["capability_closure"] = [
@@ -147,7 +198,7 @@ class ReplayV7Tests(unittest.TestCase):
             ReplayManifestV7.from_wire(candidate)
 
     def test_v7_manifest_rejects_both_adr_0055_cross_pairs(self) -> None:
-        base = _read("schemas/examples/replay-manifest.v7.json")
+        base = _read("schemas/examples/replay-manifest-v7-phase9-admitted-basic-land.json")
         mutations = []
 
         magic_synthetic = copy.deepcopy(base)
@@ -190,7 +241,7 @@ class ReplayV7Tests(unittest.TestCase):
 
     def test_phase2_replay_child_negative_vectors_reject(self) -> None:
         vectors = _read("schemas/negative/m4-phase2-replay-child-semantic-negatives.json")
-        base = _read("schemas/examples/replay-manifest.v7.json")
+        base = _read("schemas/examples/replay-manifest-v7-phase9-admitted-basic-land.json")
         for case in vectors["cases"]:
             candidate = copy.deepcopy(base)
             candidate["semantic_contract"]["content_contract"] = case["content_contract"]
@@ -229,7 +280,7 @@ class ReplayV7Tests(unittest.TestCase):
 
     def test_authoritative_replay_v7_preserves_historical_v6_decoder(self) -> None:
         replay = AuthoritativeReplayV7.from_wire(
-            _read("schemas/examples/authoritative-replay-v7-rejected-step.json")
+            _read("schemas/examples/authoritative-replay-v7-phase9-admitted-rejected-step.json")
         )
         self.assertEqual(replay.schema_version, "authoritative-replay.v7")
 

@@ -4,7 +4,7 @@
       "codec_id": "in-memory-reference",
       "semantic_version": "7"
     },
-    "checkpoint_digest": "ac93173f5822c87bc9c6856b1390298bfa258c1436a2c7441ef016bd7f6568dd",
+    "checkpoint_digest": "c320bbd9684a395762564ed01168b49c77a244ab1f76511e50e00ce2f75f68e7",
     "environment_limit_counters": {
       "accepted_transitions": 0,
       "decisions_submitted": 0,
@@ -17,7 +17,7 @@
     },
     "execution_identity": {
       "program_kind": "magic_rules",
-      "semantic_contract_id": "bcb011f629603a39631ce0e1164cb672862f41b95f15bb2896fa211401f40592"
+      "semantic_contract_id": "d70f83aac7df7ea2ae545296644aa36c8e1d588f3338a51171d4a2e0996c8852"
     },
     "full_state_digest": "a40d5047256cd7e315fca53c47474be3292f4de512bcdc451764e36c921024e0",
     "state_revision": "2"
@@ -34,7 +34,7 @@
     "engine_build": "git:0000000",
     "execution_identity": {
       "program_kind": "magic_rules",
-      "semantic_contract_id": "bcb011f629603a39631ce0e1164cb672862f41b95f15bb2896fa211401f40592"
+      "semantic_contract_id": "d70f83aac7df7ea2ae545296644aa36c8e1d588f3338a51171d4a2e0996c8852"
     },
     "format_policy_snapshot": "commander:synthetic-v1",
     "initial_identity": {
@@ -42,7 +42,7 @@
         "codec_id": "in-memory-reference",
         "semantic_version": "7"
       },
-      "checkpoint_digest": "ac93173f5822c87bc9c6856b1390298bfa258c1436a2c7441ef016bd7f6568dd",
+      "checkpoint_digest": "c320bbd9684a395762564ed01168b49c77a244ab1f76511e50e00ce2f75f68e7",
       "environment_limit_counters": {
         "accepted_transitions": 0,
         "decisions_submitted": 0,
@@ -55,7 +55,7 @@
       },
       "execution_identity": {
         "program_kind": "magic_rules",
-        "semantic_contract_id": "bcb011f629603a39631ce0e1164cb672862f41b95f15bb2896fa211401f40592"
+        "semantic_contract_id": "d70f83aac7df7ea2ae545296644aa36c8e1d588f3338a51171d4a2e0996c8852"
       },
       "full_state_digest": "a40d5047256cd7e315fca53c47474be3292f4de512bcdc451764e36c921024e0",
       "state_revision": "2"
@@ -90,7 +90,7 @@
       "manifest": {
         "content_contract_id": "80d26c187739664e880948e767e44ed9791aa7c25e7ef703e6d63385311fb346",
         "format_contract_id": null,
-        "rules_contract_id": "af8ec3cf8d5e7d47b1a58be63b25b69ca23391ad4610882de673ae6ee819b161"
+        "rules_contract_id": "c08eee421ef3fb7bdc55a53a0f45c4ef6f95db47177a6271f2591ad167194d3c"
       },
       "rules_manifest": {
         "capability_closure": [
@@ -111,6 +111,10 @@
             "version": "0.1.0"
           },
           {
+            "key": "rules/state-based-actions-combat",
+            "version": "0.1.0"
+          },
+          {
             "key": "rules/turn-structure",
             "version": "0.1.0"
           },
@@ -124,7 +128,7 @@
           "variant": "comprehensive_rules"
         }
       },
-      "semantic_contract_id": "bcb011f629603a39631ce0e1164cb672862f41b95f15bb2896fa211401f40592"
+      "semantic_contract_id": "d70f83aac7df7ea2ae545296644aa36c8e1d588f3338a51171d4a2e0996c8852"
     }
   },
   "schema_version": "authoritative-replay.v7",
@@ -132,8 +136,8 @@
     {
       "accepted": false,
       "actor": "1",
-      "checkpoint_digest_after": "ac93173f5822c87bc9c6856b1390298bfa258c1436a2c7441ef016bd7f6568dd",
-      "checkpoint_digest_before": "ac93173f5822c87bc9c6856b1390298bfa258c1436a2c7441ef016bd7f6568dd",
+      "checkpoint_digest_after": "c320bbd9684a395762564ed01168b49c77a244ab1f76511e50e00ce2f75f68e7",
+      "checkpoint_digest_before": "c320bbd9684a395762564ed01168b49c77a244ab1f76511e50e00ce2f75f68e7",
       "environment_limit_counters_after": {
         "accepted_transitions": 0,
         "decisions_submitted": 0,

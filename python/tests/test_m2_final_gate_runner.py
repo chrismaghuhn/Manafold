@@ -1037,6 +1037,45 @@ class ScopeInventoryNegativeTests(unittest.TestCase):
             with self.assertRaises(final.ScopeCheckFailure):
                 final.check_schema_inventory_pinned(base)
 
+    def test_exact_phase9_basic_land_definition_allowlist_is_admitted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            decks = base / "cards" / "decks"
+            decks.mkdir(parents=True)
+            (decks / "example-deck-a.json").write_text("{}", encoding="utf-8")
+            (decks / "example-deck-b.json").write_text("{}", encoding="utf-8")
+            definitions = base / "cards" / "definitions"
+            (definitions / "example").mkdir(parents=True)
+            (definitions / ".gitkeep").write_text("", encoding="utf-8")
+            basic_land = definitions / "basic-land-v1"
+            basic_land.mkdir()
+            for name in final.M4_BASIC_LAND_DEFINITION_FILES_ALLOWED:
+                (basic_land / name).write_bytes(b"fixture")
+            (base / "cards" / "generated").mkdir(parents=True)
+
+            result = final.check_card_and_deck_artifacts_unclaimed(base)
+            self.assertIn("basic-land-v1", result)
+
+    def test_unlisted_definition_artifact_remains_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            decks = base / "cards" / "decks"
+            decks.mkdir(parents=True)
+            (decks / "example-deck-a.json").write_text("{}", encoding="utf-8")
+            (decks / "example-deck-b.json").write_text("{}", encoding="utf-8")
+            definitions = base / "cards" / "definitions"
+            (definitions / "example").mkdir(parents=True)
+            (definitions / ".gitkeep").write_text("", encoding="utf-8")
+            basic_land = definitions / "basic-land-v1"
+            basic_land.mkdir()
+            for name in final.M4_BASIC_LAND_DEFINITION_FILES_ALLOWED:
+                (basic_land / name).write_bytes(b"fixture")
+            (basic_land / "unreviewed.json").write_text("{}", encoding="utf-8")
+            (base / "cards" / "generated").mkdir(parents=True)
+
+            with self.assertRaises(final.ScopeCheckFailure):
+                final.check_card_and_deck_artifacts_unclaimed(base)
+
     def test_deck_subdirectory_is_rejected(self) -> None:
         import tempfile
 

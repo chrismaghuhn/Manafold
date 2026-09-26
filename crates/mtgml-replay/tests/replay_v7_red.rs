@@ -7,9 +7,26 @@ use mtgml_replay::{
 };
 use serde_json::Value;
 
-const MANIFEST: &[u8] = include_bytes!("../../../schemas/examples/replay-manifest.v7.json");
-const REPLAY: &[u8] =
-    include_bytes!("../../../schemas/examples/authoritative-replay-v7-rejected-step.json");
+const MANIFEST: &[u8] =
+    include_bytes!("../../../schemas/examples/replay-manifest-v7-phase9-admitted-basic-land.json");
+const REPLAY: &[u8] = include_bytes!(
+    "../../../schemas/examples/authoritative-replay-v7-phase9-admitted-rejected-step.json"
+);
+
+#[test]
+fn phase2_provisional_v7_examples_remain_frozen_but_do_not_claim_final_admission() {
+    let provisional: ReplayManifestV7 = serde_json::from_slice(include_bytes!(
+        "../../../schemas/examples/replay-manifest.v7.json"
+    ))
+    .expect("historical provisional fixture remains parseable");
+    assert!(provisional.validate().is_err());
+
+    let provisional_replay: AuthoritativeReplayV7 = serde_json::from_slice(include_bytes!(
+        "../../../schemas/examples/authoritative-replay-v7-rejected-step.json"
+    ))
+    .expect("historical rejected-step fixture remains parseable");
+    assert!(provisional_replay.validate().is_err());
+}
 
 #[test]
 fn valid_v7_manifest_verifies_content_child_and_contract_identity_chain() {
@@ -87,7 +104,7 @@ fn phase_two_content_child_negative_vectors_are_consumed() {
 
 #[test]
 fn content_child_rejects_duplicate_and_unknown_json_fields() {
-    let duplicate = include_str!("../../../schemas/examples/replay-manifest.v7.json")
+    let duplicate = include_str!("../../../schemas/examples/replay-manifest-v7-phase9-admitted-basic-land.json")
         .replace(
             "\"content_contract_id\": \"80d26c187739664e880948e767e44ed9791aa7c25e7ef703e6d63385311fb346\",",
             "\"content_contract_id\": \"80d26c187739664e880948e767e44ed9791aa7c25e7ef703e6d63385311fb346\",\"content_contract_id\": \"80d26c187739664e880948e767e44ed9791aa7c25e7ef703e6d63385311fb346\",",
