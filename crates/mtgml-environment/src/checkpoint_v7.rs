@@ -180,11 +180,7 @@ impl EnvironmentCheckpointV7 {
         if !program_matches {
             return Err(CheckpointV7Error::ContractBinding);
         }
-        let content_dependent_magic_state = self.execution_identity.program_kind
-            == ExecutionProgramV1::MagicRules
-            && (!self.state.card_rules_state.faces.faces.is_empty()
-                || !self.state.card_rules_state.abilities.by_instance.is_empty());
-        if content_dependent_magic_state
+        if self.execution_identity.program_kind == ExecutionProgramV1::MagicRules
             && (semantic_manifest.content_contract_id.is_none() || content_catalog.is_none())
         {
             return Err(CheckpointV7Error::ContractBinding);
@@ -574,7 +570,7 @@ mod tests {
     }
 
     #[test]
-    fn verified_magic_restore_requires_content_authority_for_faces_and_abilities() {
+    fn verified_magic_restore_always_requires_content_authority() {
         use mtgml_model::{CapabilityRequirementV1, ContentContractIdV1};
 
         let rules = RulesContractManifestV1 {
@@ -601,6 +597,9 @@ mod tests {
             .unwrap();
 
         for content_state in [
+            // Live GameObjects are content-backed even when a malformed
+            // snapshot has erased every explicit FaceState row.
+            checkpoint().state.card_rules_state.clone(),
             CardRulesAuthoritativeStateV1 {
                 faces: FaceStateV1 {
                     faces: BTreeMap::from([(GameObjectId(1), 0)]),
