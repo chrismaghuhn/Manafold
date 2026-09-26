@@ -56,6 +56,7 @@ pub const STABLE_WIRE_ERROR_CODES: &[&str] = &[
     "semantic.magic_m3_observation",
     "semantic.magic_combat_observation",
     "semantic.magic_combat_observation_v4",
+    "semantic.magic_basic_land_observation_v1",
     "semantic.observation",
     "semantic.information_state",
     "semantic.observed_event",

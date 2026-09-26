@@ -77,6 +77,10 @@ ARTIFACT_CASES = [
 ]
 SCHEMA_NEGATIVE_CASES = [
     (
+        "magic-basic-land-observation.v1.schema.json",
+        "schemas/negative/magic-basic-land-observation-v1-candidates.json",
+    ),
+    (
         "player-decision-request.v3.schema.json",
         "schemas/negative/player-decision-request-v3-unknown-version.json",
     ),

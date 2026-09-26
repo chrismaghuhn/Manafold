@@ -533,9 +533,16 @@ COMMON_NAMED_CONTRACTS = frozenset(
 )
 
 PYTHON_MECHANICAL_ONLY = frozenset({"information-state-digest-input.v2"})
-# Closed typed V3 request decoder. It is not yet a Rust persistence
-# decode_named arm; the Rust Decision V3 DTO is validated in its owner crate.
-PYTHON_TYPED_SUCCESSORS = frozenset({"player-decision-request.v3"})
+# Closed typed successor mirrors. They are not Rust persistence decode_named
+# arms; each Rust DTO is validated in its owning crate.
+PYTHON_TYPED_SUCCESSORS = frozenset(
+    {
+        "player-decision-request.v3",
+        "observed-event-envelope.v3",
+        "player-step.v3",
+        "magic-basic-land-observation.v1",
+    }
+)
 
 SCHEMA_ONLY_SUCCESSORS = frozenset(
     {
