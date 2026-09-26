@@ -174,6 +174,8 @@ class FullStateV6VectorTests(unittest.TestCase):
             "negative target GameObjectId": lambda x: x[2][2][0].__setitem__(0, -1),
             "negative controller PlayerId": lambda x: x[2][2][0].__setitem__(1, -1),
             "negative AbilityInstanceId": lambda x: x[6][0].__setitem__(0, -1),
+            "land plays used above locked allowance": lambda x: x[2][1][0].__setitem__(1, 2),
+            "boolean land plays used": lambda x: x[2][1][0].__setitem__(1, True),
             "u64 overflow object ID": lambda x: x[5][0].__setitem__(0, 1 << 64),
             "mana count above u32": lambda x: x[1][0][1].__setitem__(0, 1 << 32),
             "turn-history count above u32": lambda x: x[2][1][0].__setitem__(2, 1 << 32),
