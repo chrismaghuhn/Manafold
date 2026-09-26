@@ -120,8 +120,10 @@ identity. Exact shape, size bounds and mismatch rejection rules are in the
 
 Replay V6 retains its exact historical non-null-content rejection and all
 existing bytes; it is not expanded to carry content. V7 remains a detached
-successor until all planned state, wire, restore/fork and replay evidence is
-accepted and the sole activation boundary is merged.
+successor. Its checkpoint-digest primitive and detached checkpoint/restore/fork
+value path exist now; Replay V7 and runtime activation remain unimplemented
+until all planned wire, replay and acceptance evidence passes the sole
+activation boundary.
 
 `FullStateDigestV4`, Checkpoint V5 and Replay V5 retain their exact historical
 meaning and bytes. V4 digest and V5 checkpoint/replay artifacts are never

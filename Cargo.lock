@@ -191,6 +191,7 @@ name = "mtgml-environment"
 version = "0.2.2"
 dependencies = [
  "base64",
+ "mtgml-card-ir",
  "mtgml-decision",
  "mtgml-model",
  "mtgml-observation",
