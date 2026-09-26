@@ -611,6 +611,19 @@ For this executable Magic profile, `manifest.content_contract_id` is non-null an
 
 For identical V7 initial identity, content/rules/execution identity, RNG contract/seed, initial state and external responses, direct execution, checkpoint restore, fork and full authoritative replay must produce identical semantic state, event/delta sequence, next Decision and final digests. Checkpoint/fork/replay preserve ManaState, history, counters, edges/timestamps, faces, ability registry and opaque ability mappings exactly. Incidental allocators, HashMap iteration, pointer/debug formatting and request-local CandidateId cannot affect semantics.
 
+This is the integrated successor acceptance invariant. It does not require the
+detached Replay V7 representation layer to provide an executable successor
+backend. Phase 7 establishes closed Replay V7 DTOs, canonical wire form,
+identity/content-child verification, recorder construction from supplied
+authoritative products, and structural replay-link validation. It must not
+claim authoritative V7 re-execution or direct/replay semantic parity while
+the current executable environment remains typed to the predecessor runtime.
+The successor-only authoritative replay execution seam becomes implementable
+with the integrated successor execution path in Phase 10. Phase 11 owns the
+full direct/restore/fork/replay parity and tamper-detection acceptance
+evidence. This changes when the invariant is proved, not whether it is
+required before successor acceptance/activation.
+
 ## 18. RED and conformance obligations
 
 Implementation begins with failing RED evidence. Every rejected request verifies complete byte/semantic nonmutation: EngineState, all digests, StateRevision, global/perspective allocators, RNG, event/delta output, observations, visible sequences, next Decision, status and checkpoint identity.

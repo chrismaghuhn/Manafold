@@ -291,7 +291,7 @@ separate slice immediately before Phase 7 and Phase 8 below.
 
 ## 10. Phase 7 — Replay V7 detached support
 
-**Goal:** bind successor inputs/state/checkpoint identities end-to-end without changing the current Replay V6 runtime.
+**Goal:** implement closed, canonical, detached Replay V7 representation and structural verification without changing the current Replay V6 runtime. Phase 7 does not provide a V7 environment executor or claim authoritative response re-execution; those require the integrated successor execution path owned by Phase 10.
 
 **Files likely touched:**
 
@@ -303,7 +303,7 @@ separate slice immediately before Phase 7 and Phase 8 below.
 - `wire/golden/`, `wire/negative/`
 - Python replay version module/tests
 
-**RED first:** detached manifest identity validation; strict content-child schema and wire codec vectors for exact canonical padded Base64; reject bad alphabet/padding, nonzero pad bits, whitespace, over-limit text, invalid/noncanonical CBOR, wrong child digest, mismatch with semantic manifest, and null/present child mismatch; replay from V7 checkpoint with one V2 response per step; direct/replay digest/event/delta/next-request parity; malformed links, counters, schema IDs and final identity reject; complete replay catches a changed state field.
+**RED first:** detached manifest identity validation; strict content-child schema and wire codec vectors for exact canonical padded Base64; reject bad alphabet/padding, nonzero pad bits, whitespace, over-limit text, invalid/noncanonical CBOR, wrong child digest, mismatch with semantic manifest, and null/present child mismatch; structural Replay V7 step validation with one DecisionResponseV2 per step; malformed links, counters, schema IDs and final identity reject; altered state/checkpoint identity references reject when their enclosing recorded identities are not recomputed consistently. Direct/replay semantic parity and full re-execution tamper detection are explicitly deferred to Phase 11 after the Phase-10 executor exists.
 
 **Implementation work:**
 
@@ -312,14 +312,17 @@ separate slice immediately before Phase 7 and Phase 8 below.
 - add `SemanticContractMaterialV7` with the semantic manifest, rules manifest, and `ContentContractMaterialV1` child exactly when `content_contract_id` is non-null; recompute and validate child and parent IDs plus equality with all `ExecutionIdentityV1` references;
 - encode the child as the exact Spec-defined JSON object (`content_contract_id`, `manifest_canonical_cbor_base64`); strict-decode the bounded standard Base64 to the existing canonical CBOR manifest decoder and require exact re-encoding. Do not derive a new JSON schema for the typed manifest;
 - require detached replay validation to verify the canonical content manifest against its `ContentContractIdV1`; require restore/runtime admission to match the supplied verified catalog to the replay/checkpoint's semantic child before executable state is exposed;
+- provide a detached `ReplayRecorderV7` builder that accepts supplied authoritative V7 identities/results and validates each append/export; it must not claim to capture live execution until Phase 10 supplies the successor environment integration;
 - keep Replay V6 detached historical verifier intact;
 - do not store observed event output as a second replay authority.
 
-**Focused tests:** replay crate + environment replay tests; old Replay V6 goldens/fixtures unchanged; `just check-fast`.
+Phase 7 explicitly does not implement `EnvironmentBackend` V7 methods, restore-and-execute, RulesKernel re-execution, or equality claims for V7 state/event/delta/next-request trajectories. The V7 representation and identity contracts remain detached and non-current.
 
-**Commit boundary:** V7 Rust DTO/validation; then execution/recorder/Python parity.
+**Focused tests:** replay crate structural/content-child tests and serialization parity; existing Replay V6 environment/runtime tests and historical goldens/fixtures remain unchanged; `just check-fast`.
 
-**Stop:** replay omits an identity already present in V6; deterministic control data is implicit; replay trusts event logs rather than re-execution; historical fixture is changed.
+**Commit boundary:** V7 Rust DTO/validation; then detached recorder, Python/schema parity and canonical wire fixtures. Live environment capture and authoritative replay execution remain Phase 10/11 work as specified below.
+
+**Stop:** replay omits an identity already present in V6; deterministic control data is implicit; an implementation claims execution parity without a successor execution backend; replay treats event logs as control input; historical fixture is changed.
 
 **Entry dependency:** the profiled content contract prerequisite above must be merged and independently accepted on the integration branch. Replay V7 must consume the existing closed typed Card IR decoder and existing `ContentContractIdV1` calculator; it may not add a replay-local profile parser or identity implementation.
 
@@ -415,6 +418,7 @@ to the prerequisite slice above.
 - derive intrinsic mana ability from subtype/profile, never name;
 - keep mana payment/casting and non-basic abilities fail-closed;
 - build full transition product and validate all per-player projections before atomic commit.
+- add the successor-only authoritative Replay V7 execution seam only after the integrated successor state, decision, projection and RulesKernel path can execute the recorded DecisionResponseV2 sequence. This seam must re-execute responses and compare complete V7 checkpoint/state identity and successor products; it must not alter current V6 runtime aliases.
 
 **Focused tests:** `cargo test -p mtgml-rules --all-features --locked`; `cargo test -p mtgml-state --all-features --locked`; `cargo test -p mtgml-environment --all-features --locked`; then `just check-fast` and `just check`.
 
@@ -435,12 +439,14 @@ to the prerequisite slice above.
 - `wire/golden/`, `persistence/golden/`
 - conformance catalogue/fixtures under existing ownership
 
-**RED first:** the complete Spec RED matrix, paired-state noninterference, restore at just-before-land and just-before-mana ability boundaries, fork and same response, full replay, stale/fabricated candidate, hidden-world candidate/event parity, exact Ojer state constructor semantics, and all historical regression vectors.
+**RED first:** the complete Spec RED matrix, paired-state noninterference, restore at just-before-land and just-before-mana ability boundaries, fork and same response, full Replay V7 re-execution through the Phase-10 successor executor, stale/fabricated candidate, hidden-world candidate/event parity, exact Ojer state constructor semantics, and all historical regression vectors.
 
 **Implementation work:**
 
 - execute all RED and conformance vectors;
 - validate expected events and StateDelta independently of final board shape;
+- prove direct execution = checkpoint restore execution = fork execution = full authoritative Replay V7 execution for the complete semantic state, revision, FullStateDigestV6, CheckpointDigestV7, StateDeltaV2/transition products, authoritative and observed event sequences, next PlayerDecisionRequestV3, PlayerStepV3, counters, status and final identity;
+- mutate every authoritative state field in a replay trajectory and prove full re-execution detects divergence; structural self-consistency alone is not this proof;
 - add no new semantics discovered only by these tests without returning to Spec review.
 
 **Focused tests:** full relevant Rust/Python/schema/conformance sets; `just check-all` after integration; `just release-candidate` separately; `just archive-check` after last source change.
