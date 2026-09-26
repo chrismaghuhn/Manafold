@@ -1,0 +1,53 @@
+{
+  "schema_version": "magic-basic-land-observation.v1",
+  "active_player": "0",
+  "turn_number": "1",
+  "turn_position": {
+    "kind": "precombat_main"
+  },
+  "priority": {
+    "kind": "held_by",
+    "player": "0"
+  },
+  "pending_sba_ordering": null,
+  "mana_pools": [
+    {
+      "player": "0",
+      "unrestricted": [
+        0,
+        0,
+        0,
+        1,
+        0,
+        0
+      ],
+      "creature_spell_only": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "counters": [
+    {
+      "object": "7",
+      "counter_kind": "plus_one_plus_one",
+      "count": 1
+    }
+  ],
+  "attachments": [
+    {
+      "source": "8",
+      "target": "7"
+    }
+  ],
+  "faces": [
+    {
+      "object": "7",
+      "face": "back"
+    }
+  ]
+}

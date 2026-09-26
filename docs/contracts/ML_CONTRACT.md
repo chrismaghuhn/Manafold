@@ -12,3 +12,10 @@ matchmaking, curriculum, and model state. Request-local IDs are not dataset
 labels. Action abstractions are external, versioned, and cannot alter the
 authoritative replay. Every trajectory identifies engine, bundle, schemas,
 reward/action policies, and behavior metadata.
+
+The accepted M4 state-cut contract defines additive player wire successors:
+PlayerDecisionRequestV3, ObservedEventEnvelopeV3 and PlayerStepV3, with the
+named payload `magic-basic-land-observation.v1`. PlayerStepV3 continues to
+carry PlayerInformationStateV2 and DecisionResponseV2. These identities are
+not current writers until the complete successor runtime is atomically
+activated; predecessor schemas and fixtures retain their exact meanings.

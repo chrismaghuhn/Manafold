@@ -1,0 +1,14 @@
+{
+  "schema_version": "observed-event-envelope.v3",
+  "sequence": "0",
+  "state_revision": "1",
+  "event": {
+    "kind": "object_moved",
+    "old_object": "2",
+    "new_object": "3",
+    "from": "hand",
+    "to": "battlefield",
+    "entering_face": "front",
+    "tapped": false
+  }
+}

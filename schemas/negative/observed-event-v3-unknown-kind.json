@@ -1,0 +1,6 @@
+{
+  "schema_version": "observed-event-envelope.v3",
+  "sequence": "0",
+  "state_revision": "1",
+  "event": {"kind": "mana_added", "player": "0"}
+}

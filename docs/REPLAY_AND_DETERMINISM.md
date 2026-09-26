@@ -102,6 +102,27 @@ The `magic-m3-observation.v1` payload remains unchanged and contains no combat
 participation. The successor combat payload carries public combat state using
 perspective-local opaque object IDs.
 
+### V7 replay (accepted M4 successor design; not current runtime)
+
+The accepted M4 Semantic Spec allocates Replay V7 and its complete typed
+manifest, step, recorder, schema-inventory, and initial-environment identity
+family. V7 binds FullStateDigestV6 and CheckpointDigestV7, request V3,
+ObservedEventEnvelopeV3, PlayerStepV3, DecisionResponseV2 and the named
+`magic-basic-land-observation.v1` payload. Its semantic contract material
+includes the verified immutable content child. The JSON child is exactly a
+lowercase ContentContractIdV1 and `manifest_canonical_cbor_base64`, which is
+strict canonical padded standard Base64 of the canonical
+ContentContractManifestV1 CBOR payload (not digest-envelope bytes). Detached
+verification decodes, validates, re-encodes byte-identically, recomputes the
+content ID and checks equality with the semantic manifest and execution
+identity. Exact shape, size bounds and mismatch rejection rules are in the
+[accepted M4 Semantic Spec](superpowers/specs/2026-09-26-m4-unified-state-cut-semantic-spec.md).
+
+Replay V6 retains its exact historical non-null-content rejection and all
+existing bytes; it is not expanded to carry content. V7 remains a detached
+successor until all planned state, wire, restore/fork and replay evidence is
+accepted and the sole activation boundary is merged.
+
 `FullStateDigestV4`, Checkpoint V5 and Replay V5 retain their exact historical
 meaning and bytes. V4 digest and V5 checkpoint/replay artifacts are never
 reinterpreted as V5 state or V6 replay. V5 artifacts remain detached
