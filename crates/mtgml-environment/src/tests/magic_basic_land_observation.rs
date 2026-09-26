@@ -265,3 +265,138 @@ fn hidden_rng_change_preserves_basic_land_observation_bytes_and_digest() {
         mtgml_wire::encode_canonical(&right_information).unwrap()
     );
 }
+
+#[test]
+fn trusted_game_object_renaming_preserves_public_observation_and_information_bytes() {
+    let original = basic_land_parts(seed());
+    let mut renamed = original.clone();
+    let state = renamed.materialize();
+    let (old_id, location) = state
+        .zones
+        .locations
+        .iter()
+        .find(|(_, location)| location.zone == mtgml_model::ZoneKind::Battlefield)
+        .map(|(id, location)| (*id, location.clone()))
+        .expect("fixture has a battlefield object");
+    let new_id = mtgml_model::GameObjectId(10_000);
+    assert!(!state.zones.objects.contains_key(&new_id));
+
+    // Keep every perspective's public identity stable while changing the
+    // authoritative GameObjectId and all references to that incarnation.
+    for identity in renamed
+        .predecessor_v5
+        .perspective_identities
+        .players
+        .values_mut()
+    {
+        if let Some(opaque) = identity.object_to_opaque.remove(&old_id) {
+            identity.object_to_opaque.insert(new_id, opaque);
+            assert_eq!(
+                identity.opaque_to_object.insert(opaque, new_id),
+                Some(old_id)
+            );
+        }
+    }
+    let object = renamed
+        .predecessor_v5
+        .zones
+        .objects
+        .remove(&old_id)
+        .expect("fixture object exists");
+    let mut object = object;
+    object.id = new_id;
+    renamed.predecessor_v5.zones.objects.insert(new_id, object);
+    renamed
+        .predecessor_v5
+        .zones
+        .locations
+        .remove(&old_id)
+        .expect("fixture location exists");
+    renamed
+        .predecessor_v5
+        .zones
+        .locations
+        .insert(new_id, location);
+    for object_id in renamed
+        .predecessor_v5
+        .zones
+        .ordered_zones
+        .values_mut()
+        .flat_map(|objects| objects.iter_mut())
+    {
+        if *object_id == old_id {
+            *object_id = new_id;
+        }
+    }
+    renamed.predecessor_v5.allocators.next_object_id = mtgml_model::GameObjectId(new_id.0 + 1);
+    if let Some(pending) = renamed.predecessor_v5.execution.pending_decision.as_mut() {
+        for candidate in &mut pending.request.candidates {
+            match &mut candidate.trusted_binding {
+                mtgml_decision::EngineCandidateBinding::SelectObject { object }
+                    if *object == old_id =>
+                {
+                    *object = new_id;
+                }
+                _ => {}
+            }
+        }
+    }
+    if let Some(counts) = renamed.card_rules_state.counters.counters.remove(&old_id) {
+        renamed
+            .card_rules_state
+            .counters
+            .counters
+            .insert(new_id, counts);
+    }
+    if let Some(face) = renamed.card_rules_state.faces.faces.remove(&old_id) {
+        renamed.card_rules_state.faces.faces.insert(new_id, face);
+    }
+
+    original.validate().unwrap();
+    mtgml_state::validate_engine_state(&renamed.materialize()).unwrap();
+    renamed.validate().unwrap();
+
+    let catalog = catalog_for(&[1, 2]);
+    let (identity, semantic, rules) = execution_authority(&catalog);
+    let project = |parts: &EngineStatePartsV2| {
+        crate::player_projection::project_magic_basic_land_observation_v1(
+            parts,
+            PlayerId(1),
+            &identity,
+            &semantic,
+            &rules,
+            &catalog,
+        )
+        .unwrap()
+    };
+    let original_observation = project(&original);
+    let renamed_observation = project(&renamed);
+    assert_eq!(
+        mtgml_wire::encode_canonical(&original_observation).unwrap(),
+        mtgml_wire::encode_canonical(&renamed_observation).unwrap()
+    );
+    assert_eq!(original_observation.digest, renamed_observation.digest);
+
+    let make_information = |observation: ObservationEnvelope| {
+        let mut information = PlayerInformationStateV2 {
+            schema_version: INFORMATION_STATE_SCHEMA_V2.into(),
+            perspective: PlayerId(1),
+            state_revision: observation.state_revision,
+            current_observation: observation,
+            next_visible_sequence: VisibleSequence(1),
+            retained_knowledge: Vec::new(),
+            digest: InformationStateDigestV2::from_canonical_bytes(b"placeholder"),
+        };
+        let (_, digest) =
+            mtgml_wire::compute_information_state_digest_v2(&information.digest_input()).unwrap();
+        information.digest = digest;
+        information
+    };
+    let original_information = make_information(original_observation);
+    let renamed_information = make_information(renamed_observation);
+    assert_eq!(original_information.digest, renamed_information.digest);
+    assert_eq!(
+        mtgml_wire::encode_canonical(&original_information).unwrap(),
+        mtgml_wire::encode_canonical(&renamed_information).unwrap()
+    );
+}
