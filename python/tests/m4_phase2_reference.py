@@ -162,9 +162,7 @@ def validate_authoritative_state(value: Any) -> None:
     for entry in history[1]:
         require(isinstance(entry, list) and len(entry) == 7, "player history arity")
         require_u64(entry[0], "history player ID")
-        require(
-            type(entry[1]) is int and entry[1] in (0, 1), "land play count must be 0 or 1"
-        )
+        require(type(entry[1]) is int and entry[1] in (0, 1), "land play count must be 0 or 1")
         for n in (entry[2], entry[3], entry[5]):
             require_u32(n, "turn history count")
         require(isinstance(entry[4], bool) and isinstance(entry[6], bool), "turn history boolean")
