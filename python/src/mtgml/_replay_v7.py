@@ -55,6 +55,7 @@ _BASIC_LAND_CLOSURE = [
     ("rules/basic-priority", "0.1.0"),
     ("rules/land-play", "0.1.0"),
     ("rules/mana-pool", "0.1.0"),
+    ("rules/state-based-actions-combat", "0.1.0"),
     ("rules/turn-structure", "0.1.0"),
     ("rules/zone-incarnation", "0.1.0"),
 ]

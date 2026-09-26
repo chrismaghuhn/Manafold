@@ -127,6 +127,25 @@ class ReplayV7Tests(unittest.TestCase):
             "synthetic_rules_compat",
         )
 
+    def test_phase9_complete_closure_is_required_for_basic_land_v7_codec(self) -> None:
+        candidate = copy.deepcopy(_read("schemas/examples/replay-manifest.v7.json"))
+        semantic = candidate["semantic_contract"]
+        closure = semantic["rules_manifest"]["capability_closure"]
+        semantic["rules_manifest"]["capability_closure"] = [
+            entry for entry in closure if entry["key"] != "rules/state-based-actions-combat"
+        ]
+        semantic["manifest"]["rules_contract_id"] = calculate_rules_contract_id_v1(
+            semantic["rules_manifest"]
+        )
+        semantic_id = calculate_semantic_contract_id_v1(semantic["manifest"])
+        semantic["semantic_contract_id"] = semantic_id
+        candidate["execution_identity"]["semantic_contract_id"] = semantic_id
+        candidate["initial_identity"]["execution_identity"]["semantic_contract_id"] = semantic_id
+        _recompute_checkpoint(candidate)
+
+        with self.assertRaises(WireError):
+            ReplayManifestV7.from_wire(candidate)
+
     def test_v7_manifest_rejects_both_adr_0055_cross_pairs(self) -> None:
         base = _read("schemas/examples/replay-manifest.v7.json")
         mutations = []

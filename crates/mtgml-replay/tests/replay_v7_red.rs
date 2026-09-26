@@ -130,6 +130,36 @@ fn replay_v7_rejects_wrong_schema_identity_and_step_revision_link() {
 }
 
 #[test]
+fn phase9_complete_closure_is_required_for_basic_land_v7_codec() {
+    let mut manifest: ReplayManifestV7 = serde_json::from_slice(MANIFEST).unwrap();
+    manifest
+        .semantic_contract
+        .rules_manifest
+        .capability_closure
+        .as_mut()
+        .unwrap()
+        .retain(|entry| entry.key != "rules/state-based-actions-combat");
+    let rules_id = semantic_contract_digest::calculate_rules_contract_id_v1(
+        &manifest.semantic_contract.rules_manifest,
+    )
+    .unwrap();
+    manifest.semantic_contract.manifest.rules_contract_id = rules_id;
+    let semantic_id = semantic_contract_digest::calculate_semantic_contract_id_v1(
+        &manifest.semantic_contract.manifest,
+    )
+    .unwrap();
+    manifest.semantic_contract.semantic_contract_id = semantic_id.clone();
+    manifest.execution_identity.semantic_contract_id = semantic_id;
+    manifest.initial_identity.execution_identity = manifest.execution_identity.clone();
+    recompute_checkpoint_digest(&mut manifest);
+
+    assert_eq!(
+        manifest.validate(),
+        Err(ReplayValidationError::ReplayStepIdentity)
+    );
+}
+
+#[test]
 fn replay_v7_rejects_both_adr_0055_program_rules_cross_pairs() {
     let baseline: ReplayManifestV7 = serde_json::from_slice(MANIFEST).unwrap();
 
