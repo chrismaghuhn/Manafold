@@ -726,6 +726,21 @@ class RegistryRelationTests(unittest.TestCase):
             <= runner.COMMON_NAMED_CONTRACTS
         )
 
+    def test_m4_phase1_schema_only_successors_are_explicit(self) -> None:
+        self.assertEqual(
+            runner.SCHEMA_ONLY_SUCCESSORS,
+            frozenset(
+                {
+                    "player-decision-request.v3",
+                    "observed-event-envelope.v3",
+                    "player-step.v3",
+                    "magic-basic-land-observation.v1",
+                    "replay-manifest.v7",
+                    "authoritative-replay.v7",
+                }
+            ),
+        )
+
     def test_live_decoder_registry_relation_passes(self) -> None:
         detail = runner.verify_registry_relation()
         self.assertTrue(detail.startswith("relation holds:"), detail)
@@ -734,7 +749,9 @@ class RegistryRelationTests(unittest.TestCase):
         common = runner.COMMON_NAMED_CONTRACTS
         python_set = common | runner.PYTHON_MECHANICAL_ONLY
         with _synthetic_registry(
-            _wire_fixtures_rs(common), _decoders_py(python_set), _validate_schemas_py(common)
+            _wire_fixtures_rs(common),
+            _decoders_py(python_set),
+            _validate_schemas_py(common | runner.SCHEMA_ONLY_SUCCESSORS),
         ):
             self.assertEqual(runner.extract_rust_decode_named_contracts("t"), common)
             detail = runner.verify_registry_relation()

@@ -488,8 +488,9 @@ ADAPTER_PUBLIC_METHODS = frozenset(
 # Pinned decoder-registry relation (drift regression, NOT completeness).
 #
 # Plan §G.6: three-way equality would permanently contradict the deliberately
-# kept Python-only digest-input registry entry, so the relation below IS the
-# accepted contract.
+# kept Python-only digest-input registry entry. M4 Phase 1 also admits an
+# exact set of schema-only successor declarations before Rust/Python runtime
+# decoders are implemented; those contracts are not current decoders.
 # ---------------------------------------------------------------------------
 
 COMMON_NAMED_CONTRACTS = frozenset(
@@ -532,6 +533,17 @@ COMMON_NAMED_CONTRACTS = frozenset(
 )
 
 PYTHON_MECHANICAL_ONLY = frozenset({"information-state-digest-input.v2"})
+
+SCHEMA_ONLY_SUCCESSORS = frozenset(
+    {
+        "player-decision-request.v3",
+        "observed-event-envelope.v3",
+        "player-step.v3",
+        "magic-basic-land-observation.v1",
+        "replay-manifest.v7",
+        "authoritative-replay.v7",
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -1042,17 +1054,19 @@ def verify_registry_relation() -> str:
             f"extra={sorted(python_decoders - expected_python)} "
             f"missing={sorted(expected_python - python_decoders)}"
         )
-    if schema_mapping != COMMON_NAMED_CONTRACTS:
+    expected_schemas = COMMON_NAMED_CONTRACTS | SCHEMA_ONLY_SUCCESSORS
+    if schema_mapping != expected_schemas:
         problems.append(
-            f"schemas WIRE_MAPPING != COMMON: "
-            f"extra={sorted(schema_mapping - COMMON_NAMED_CONTRACTS)} "
-            f"missing={sorted(COMMON_NAMED_CONTRACTS - schema_mapping)}"
+            f"schemas WIRE_MAPPING != COMMON union SCHEMA_ONLY_SUCCESSORS: "
+            f"extra={sorted(schema_mapping - expected_schemas)} "
+            f"missing={sorted(expected_schemas - schema_mapping)}"
         )
     if problems:
         raise GateConfigurationError(f"{origin}: " + "; ".join(problems))
     return (
         f"relation holds: |COMMON|={len(COMMON_NAMED_CONTRACTS)}, "
-        f"|python exception|={len(PYTHON_MECHANICAL_ONLY)}"
+        f"|python exception|={len(PYTHON_MECHANICAL_ONLY)}, "
+        f"|schema-only successors|={len(SCHEMA_ONLY_SUCCESSORS)}"
     )
 
 
