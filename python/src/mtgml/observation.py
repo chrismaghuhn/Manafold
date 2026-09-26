@@ -8,6 +8,7 @@ from ._events_v2 import (
     ObservedEventEnvelopeV2,
     ObservedEventV2,
 )
+from ._events_v3 import ObservedEventEnvelopeV3, ObservedEventV3
 from ._generated_contract_vocab import OBSERVED_EVENT_KINDS, ZONE_KINDS
 from ._information_v2 import (
     INFORMATION_STATE_SCHEMA_V2,
@@ -20,6 +21,14 @@ from ._knowledge import (
     PlayerKnownLocationFactV1,
     PlayerKnownLocationV1,
     PlayerKnownObjectV1,
+)
+from ._magic_basic_land_observation_v1 import (
+    MAGIC_BASIC_LAND_OBSERVATION_SCHEMA_V1,
+    AttachmentObservationV1,
+    CounterObservationV1,
+    FaceObservationV1,
+    MagicBasicLandObservationV1,
+    ManaPoolObservationV1,
 )
 from ._magic_combat_observation import (
     MAGIC_OBSERVATION_SCHEMA_V2,
@@ -63,6 +72,7 @@ from ._player_step_v2 import (
     PlayerStepSubmissionV1,
     PlayerStepV2,
 )
+from ._player_step_v3 import PLAYER_STEP_SCHEMA_V3, PlayerStepV3
 from ._synthetic_observation import (
     SYNTHETIC_BEGINNING_STEPS,
     SYNTHETIC_COMBAT_STEPS,
@@ -91,6 +101,7 @@ from .events import ObservedEventEnvelope
 __all__ = [
     "INFORMATION_STATE_SCHEMA",
     "INFORMATION_STATE_SCHEMA_V2",
+    "MAGIC_BASIC_LAND_OBSERVATION_SCHEMA_V1",
     "MAGIC_OBSERVATION_SCHEMA_V1",
     "MAGIC_OBSERVATION_SCHEMA_V2",
     "MAGIC_OBSERVATION_SCHEMA_V3",
@@ -100,6 +111,7 @@ __all__ = [
     "OBSERVED_EVENT_SCHEMA_V2",
     "PLAYER_STEP_SCHEMA",
     "PLAYER_STEP_SCHEMA_V2",
+    "PLAYER_STEP_SCHEMA_V3",
     "PLAYER_SUBMISSION_CODES",
     "SYNTHETIC_BEGINNING_STEPS",
     "SYNTHETIC_COMBAT_STEPS",
@@ -108,9 +120,13 @@ __all__ = [
     "SYNTHETIC_PRIORITY_KINDS",
     "SYNTHETIC_TURN_KINDS",
     "ZONE_KINDS",
+    "AttachmentObservationV1",
+    "CounterObservationV1",
     "EpisodeStatus",
+    "FaceObservationV1",
     "InformationStateDigestInputV2",
     "InformationStateEnvelope",
+    "MagicBasicLandObservationV1",
     "MagicBlockedStatusV4",
     "MagicCombatBlockerAssignmentV2",
     "MagicCombatBlockerAssignmentV3",
@@ -126,10 +142,13 @@ __all__ = [
     "MagicObservationV4",
     "MagicPendingSbaOrdering",
     "MagicPlayerLifeV4",
+    "ManaPoolObservationV1",
     "ObservationEnvelope",
     "ObservedEventEnvelope",
     "ObservedEventEnvelopeV2",
+    "ObservedEventEnvelopeV3",
     "ObservedEventV2",
+    "ObservedEventV3",
     "PlayerDecisionRequest",
     "PlayerDecisionRequestV2",
     "PlayerInformationStateV2",
@@ -141,6 +160,7 @@ __all__ = [
     "PlayerStep",
     "PlayerStepSubmissionV1",
     "PlayerStepV2",
+    "PlayerStepV3",
     "SyntheticObservation",
     "SyntheticPriority",
     "SyntheticTurnPosition",

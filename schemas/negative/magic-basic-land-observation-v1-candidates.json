@@ -1,0 +1,13 @@
+{
+  "schema_version": "magic-basic-land-observation.v1",
+  "active_player": "0",
+  "turn_number": "1",
+  "turn_position": {"kind": "precombat_main"},
+  "priority": {"kind": "held_by", "player": "0"},
+  "pending_sba_ordering": null,
+  "mana_pools": [],
+  "counters": [],
+  "attachments": [],
+  "faces": [],
+  "candidates": []
+}

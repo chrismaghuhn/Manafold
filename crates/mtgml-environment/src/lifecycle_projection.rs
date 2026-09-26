@@ -188,3 +188,25 @@ pub fn project_occurrence_envelopes(
     }
     Ok(envelopes)
 }
+
+/// Projects the same rules-owned, perspective-authorized occurrences as V2,
+/// encoding them with the detached V3 event shape. New M4 state event
+/// producers are intentionally added by their owning RulesKernel work; this
+/// adapter cannot manufacture such events.
+pub fn project_occurrence_envelopes_v3(
+    before: &EngineState,
+    after: &EngineState,
+    events: &[mtgml_rules::AuthoritativeRuleEvent],
+) -> ProjectionResult<BTreeMap<PlayerId, Vec<mtgml_observation::ObservedEventEnvelopeV3>>> {
+    project_occurrence_envelopes(before, after, events)?
+        .into_iter()
+        .map(|(player, envelopes)| {
+            let projected = envelopes
+                .into_iter()
+                .map(mtgml_observation::ObservedEventEnvelopeV3::try_from)
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|_| LifecycleProjectionError::InvalidObservedEvent)?;
+            Ok((player, projected))
+        })
+        .collect()
+}

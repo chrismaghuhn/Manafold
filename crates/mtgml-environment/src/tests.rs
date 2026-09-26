@@ -5,8 +5,8 @@ use mtgml_decision::{DecisionAnswerV2, DecisionResponseV2, DECISION_RESPONSE_V2_
 
 use mtgml_model::{
     CandidateIdV1, CheckpointDigestV6, ContentDigest, ContinuationId, EpisodeStatus,
-    ExecutionIdentityV1, ExecutionProgramV1, FullStateDigestV5, PlayerDecisionIdV1, PlayerId,
-    PlayerOutcome, PlayerResult, StateRevision, TerminalReason, TruncationReason,
+    ExecutionIdentityV1, ExecutionProgramV1, FullStateDigestV5, OpaqueObjectId, PlayerDecisionIdV1,
+    PlayerId, PlayerOutcome, PlayerResult, StateRevision, TerminalReason, TruncationReason,
 };
 
 use mtgml_observation::{
@@ -19,6 +19,8 @@ use mtgml_random::RootSeed256;
 use mtgml_replay::{
     AuthoritativeReplayV6, DeckIdentityV1, KernelIdentityV1, ReplaySchemaVersionsV6,
 };
+
+mod magic_basic_land_observation;
 
 fn config(players: [PlayerId; 2]) -> SyntheticRulesEnvironmentConfig {
     SyntheticRulesEnvironmentConfig {
@@ -362,7 +364,7 @@ fn public_fingerprint(controller: &TrustedEnvironmentController) -> Vec<u8> {
     bytes
 }
 
-use mtgml_model::{GameObjectId, OpaqueObjectId, VisibleSequence};
+use mtgml_model::{GameObjectId, VisibleSequence};
 
 use mtgml_rules::TransitionResult;
 
@@ -517,6 +519,78 @@ fn two_perspective_outcome_product() -> (EngineState, TransitionResult) {
             .unwrap();
     }
     (before, transition.finish().unwrap())
+}
+
+#[test]
+fn observed_event_v3_projection_preserves_rules_owned_audience_and_opaque_substitution() {
+    let (before, result) = tracked_incarnation_product().unwrap();
+    let projected = crate::lifecycle_projection::project_occurrence_envelopes_v3(
+        &before,
+        &result.next_state,
+        &result.events,
+    )
+    .unwrap();
+    let p1 = &projected[&PlayerId(1)];
+    assert_eq!(p1.len(), 2);
+    match &p1[0].event {
+        mtgml_observation::ObservedEventKindV3::ObjectMoved {
+            old_object: None,
+            new_object: Some(OpaqueObjectId(2)),
+            entering_face: None,
+            tapped: None,
+            ..
+        } => {}
+        other => panic!("unexpected V3 appearance projection {other:?}"),
+    }
+    match &p1[1].event {
+        mtgml_observation::ObservedEventKindV3::ObjectMoved {
+            old_object: Some(OpaqueObjectId(2)),
+            new_object: None,
+            ..
+        } => {}
+        other => panic!("unexpected V3 disappearance projection {other:?}"),
+    }
+
+    let (before, result) = two_perspective_outcome_product();
+    let audience = crate::lifecycle_projection::project_occurrence_envelopes_v3(
+        &before,
+        &result.next_state,
+        &result.events,
+    )
+    .unwrap();
+    for (player, code) in [(PlayerId(1), "p1-outcome"), (PlayerId(2), "p2-outcome")] {
+        assert!(matches!(
+            &audience[&player][0].event,
+            mtgml_observation::ObservedEventKindV3::PublicOutcome { code: actual }
+                if actual == code
+        ));
+    }
+    let mut without_other_perspective = result.events.clone();
+    without_other_perspective.retain(|event| {
+        !matches!(
+            &event.event,
+            mtgml_rules::AuthoritativeRuleEventKind::PerspectiveOccurrence { lifecycle, .. }
+                if lifecycle.perspective == PlayerId(2)
+        )
+    });
+    let mut paired_after = result.next_state.clone();
+    paired_after
+        .knowledge
+        .players
+        .get_mut(&PlayerId(2))
+        .unwrap()
+        .next_visible_sequence = before.knowledge.players[&PlayerId(2)].next_visible_sequence;
+    let paired = crate::lifecycle_projection::project_occurrence_envelopes_v3(
+        &before,
+        &paired_after,
+        &without_other_perspective,
+    )
+    .unwrap();
+    assert_eq!(
+        serde_json::to_vec(&audience[&PlayerId(1)]).unwrap(),
+        serde_json::to_vec(&paired[&PlayerId(1)]).unwrap(),
+        "another perspective's unauthorized occurrence changed P1 event bytes"
+    );
 }
 
 #[test]
