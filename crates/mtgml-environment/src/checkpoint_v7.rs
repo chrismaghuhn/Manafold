@@ -180,6 +180,15 @@ impl EnvironmentCheckpointV7 {
         if !program_matches {
             return Err(CheckpointV7Error::ContractBinding);
         }
+        let content_dependent_magic_state = self.execution_identity.program_kind
+            == ExecutionProgramV1::MagicRules
+            && (!self.state.card_rules_state.faces.faces.is_empty()
+                || !self.state.card_rules_state.abilities.by_instance.is_empty());
+        if content_dependent_magic_state
+            && (semantic_manifest.content_contract_id.is_none() || content_catalog.is_none())
+        {
+            return Err(CheckpointV7Error::ContractBinding);
+        }
         Ok(self.state.clone())
     }
 
@@ -562,5 +571,171 @@ mod tests {
             ),
             Err(CheckpointV7Error::ContractBinding)
         );
+    }
+
+    #[test]
+    fn verified_magic_restore_requires_content_authority_for_faces_and_abilities() {
+        use mtgml_model::{CapabilityRequirementV1, ContentContractIdV1};
+
+        let rules = RulesContractManifestV1 {
+            rules_authority: RulesAuthorityV1::ComprehensiveRules {
+                snapshot_id: "review-fixture-cr-snapshot".to_owned(),
+            },
+            capability_closure: Some(vec![CapabilityRequirementV1 {
+                key: "rules/turn-structure".to_owned(),
+                version: "0.2.0".to_owned(),
+            }]),
+        };
+        let rules_id =
+            mtgml_persistence::semantic_contract_digest::calculate_rules_contract_id_v1(&rules)
+                .unwrap();
+        let semantic = SemanticContractManifestV1 {
+            rules_contract_id: rules_id,
+            format_contract_id: None,
+            content_contract_id: None,
+        };
+        let semantic_id =
+            mtgml_persistence::semantic_contract_digest::calculate_semantic_contract_id_v1(
+                &semantic,
+            )
+            .unwrap();
+
+        for content_state in [
+            CardRulesAuthoritativeStateV1 {
+                faces: FaceStateV1 {
+                    faces: BTreeMap::from([(GameObjectId(1), 0)]),
+                },
+                ..checkpoint().state.card_rules_state.clone()
+            },
+            CardRulesAuthoritativeStateV1 {
+                abilities: mtgml_state::AbilityAuthorityStateV1 {
+                    by_instance: BTreeMap::from([(
+                        AbilityInstanceId(1),
+                        AbilityAuthorityV1 {
+                            source: GameObjectId(1),
+                            ability_key: 0,
+                        },
+                    )]),
+                },
+                ..checkpoint().state.card_rules_state.clone()
+            },
+        ] {
+            let mut state = checkpoint().state;
+            if !content_state.abilities.by_instance.is_empty() {
+                state.predecessor_v5.allocators.next_ability_id = AbilityInstanceId(2);
+            }
+            state.card_rules_state = content_state;
+            let magic_checkpoint = EnvironmentCheckpointV7::new(
+                state,
+                EpisodeStatus::Running,
+                EnvironmentLimitCounters::default(),
+                ExecutionIdentityV1 {
+                    program_kind: ExecutionProgramV1::MagicRules,
+                    semantic_contract_id: semantic_id.clone(),
+                },
+            )
+            .unwrap();
+            assert!(magic_checkpoint.restore_detached().is_ok());
+            assert_eq!(
+                magic_checkpoint.restore_with_verified_contracts(&semantic, &rules, None),
+                Err(CheckpointV7Error::ContractBinding)
+            );
+        }
+
+        // A content ID without its verified child material remains rejected.
+        let with_content = SemanticContractManifestV1 {
+            content_contract_id: Some(ContentContractIdV1::parse("ab".repeat(32)).unwrap()),
+            ..semantic
+        };
+        let with_content_id =
+            mtgml_persistence::semantic_contract_digest::calculate_semantic_contract_id_v1(
+                &with_content,
+            )
+            .unwrap();
+        let mut state = checkpoint().state;
+        state
+            .card_rules_state
+            .faces
+            .faces
+            .insert(GameObjectId(1), 0);
+        let content_checkpoint = EnvironmentCheckpointV7::new(
+            state,
+            EpisodeStatus::Running,
+            EnvironmentLimitCounters::default(),
+            ExecutionIdentityV1 {
+                program_kind: ExecutionProgramV1::MagicRules,
+                semantic_contract_id: with_content_id,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            content_checkpoint.restore_with_verified_contracts(&with_content, &rules, None),
+            Err(CheckpointV7Error::ContractBinding)
+        );
+    }
+
+    #[test]
+    fn restore_and_fork_execute_the_same_response_to_identical_transition_products() {
+        use mtgml_decision::{DecisionAnswerV2, DecisionResponseV2, DECISION_RESPONSE_V2_SCHEMA};
+        use mtgml_model::{CandidateIdV1, PlayerDecisionIdV1, StateRevision};
+
+        let checkpoint = checkpoint();
+        let restored = checkpoint.restore_detached().unwrap();
+        let forked_checkpoint = checkpoint.fork_detached().unwrap();
+        let forked = forked_checkpoint.restore_detached().unwrap();
+        let response = DecisionResponseV2 {
+            schema_version: DECISION_RESPONSE_V2_SCHEMA.to_owned(),
+            player_decision_id: PlayerDecisionIdV1(1),
+            state_revision: StateRevision(0),
+            answer: DecisionAnswerV2::SelectOne {
+                candidate_id: CandidateIdV1(0),
+            },
+        };
+        let actor = PlayerId(1);
+        let mut restored_kernel =
+            mtgml_rules::ProgramKernelV1::for_program(ExecutionProgramV1::SyntheticRulesCompat)
+                .unwrap();
+        let mut forked_kernel =
+            mtgml_rules::ProgramKernelV1::for_program(ExecutionProgramV1::SyntheticRulesCompat)
+                .unwrap();
+        let restored_transition = restored_kernel
+            .apply(&restored.materialize(), actor, &response)
+            .unwrap();
+        let forked_transition = forked_kernel
+            .apply(&forked.materialize(), actor, &response)
+            .unwrap();
+
+        assert_eq!(restored_transition, forked_transition);
+        assert!(restored_transition.accepted);
+        assert_eq!(
+            restored_transition
+                .delta
+                .apply(&restored.materialize())
+                .unwrap(),
+            restored_transition.next_state
+        );
+        let restored_successor = EngineStatePartsV2 {
+            predecessor_v5: restored_transition.next_state.parts(),
+            card_rules_state: restored.card_rules_state.clone(),
+        };
+        let forked_successor = EngineStatePartsV2 {
+            predecessor_v5: forked_transition.next_state.parts(),
+            card_rules_state: forked.card_rules_state.clone(),
+        };
+        assert_eq!(restored_successor.validate(), Ok(()));
+        assert_eq!(forked_successor.validate(), Ok(()));
+        assert_eq!(
+            mtgml_state::calculate_full_state_digest_v6(
+                &restored_successor.materialize(),
+                restored_successor.card_rules_state.clone(),
+            )
+            .unwrap(),
+            mtgml_state::calculate_full_state_digest_v6(
+                &forked_successor.materialize(),
+                forked_successor.card_rules_state.clone(),
+            )
+            .unwrap()
+        );
+        assert_eq!(restored_transition.next_state.revision, StateRevision(1));
     }
 }
