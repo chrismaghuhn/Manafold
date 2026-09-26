@@ -41,8 +41,8 @@ player-surface closure (Rust ``PlayerEndpoint`` trait signatures, boundary
 error variants, Python ``PlayerClient`` protocol annotations,
 ``AdapterPlayerClient`` public surface), pinned per-contract
 SchemaContractDigest identities, the decoder-registry set relation
-(``COMMON_NAMED_CONTRACTS`` + the pinned ``PYTHON_MECHANICAL_ONLY``
-exception, never bare three-way equality), and transitive variant-closure
+(``COMMON_NAMED_CONTRACTS`` + the pinned Python-only decoder sets, never bare
+three-way equality), and transitive variant-closure
 pins cross-checked against the generated contract vocabulary and the JSON
 Schemas.
 """
@@ -349,7 +349,7 @@ GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
         check(
             CHECK_REGISTRY,
             "SUPPLEMENTAL: decoder registry relation rust == COMMON, "
-            "python == COMMON union PYTHON_MECHANICAL_ONLY, schemas == COMMON",
+            "python == COMMON union pinned Python decoder sets, schemas == COMMON",
         ),
         check(
             CHECK_VARIANTS,
@@ -533,6 +533,9 @@ COMMON_NAMED_CONTRACTS = frozenset(
 )
 
 PYTHON_MECHANICAL_ONLY = frozenset({"information-state-digest-input.v2"})
+# Closed typed V3 request decoder. It is not yet a Rust persistence
+# decode_named arm; the Rust Decision V3 DTO is validated in its owner crate.
+PYTHON_TYPED_SUCCESSORS = frozenset({"player-decision-request.v3"})
 
 SCHEMA_ONLY_SUCCESSORS = frozenset(
     {
@@ -1047,10 +1050,10 @@ def verify_registry_relation() -> str:
             f"extra={sorted(rust_arms - COMMON_NAMED_CONTRACTS)} "
             f"missing={sorted(COMMON_NAMED_CONTRACTS - rust_arms)}"
         )
-    expected_python = COMMON_NAMED_CONTRACTS | PYTHON_MECHANICAL_ONLY
+    expected_python = COMMON_NAMED_CONTRACTS | PYTHON_MECHANICAL_ONLY | PYTHON_TYPED_SUCCESSORS
     if python_decoders != expected_python:
         problems.append(
-            f"python _DECODERS != COMMON union PYTHON_MECHANICAL_ONLY: "
+            "python _DECODERS != COMMON union pinned Python decoder sets: "
             f"extra={sorted(python_decoders - expected_python)} "
             f"missing={sorted(expected_python - python_decoders)}"
         )
@@ -1066,6 +1069,7 @@ def verify_registry_relation() -> str:
     return (
         f"relation holds: |COMMON|={len(COMMON_NAMED_CONTRACTS)}, "
         f"|python exception|={len(PYTHON_MECHANICAL_ONLY)}, "
+        f"|typed successors|={len(PYTHON_TYPED_SUCCESSORS)}, "
         f"|schema-only successors|={len(SCHEMA_ONLY_SUCCESSORS)}"
     )
 
