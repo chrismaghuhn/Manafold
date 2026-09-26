@@ -1,0 +1,33 @@
+{
+  "schema_version": "checkpoint-digest-v7-kat.v1",
+  "purpose": "detached successor checkpoint digest reference vector; input uses the paired V6 full-state KAT and profiled content-bound semantic identity",
+  "canonical_payload_hex": "877826656e7669726f6e6d656e742d636865636b706f696e742d6469676573742d696e7075742e7637781a6d74676d6c2e636865636b706f696e742d6469676573742e76378678186d74676d6c2e6469676573742d656e76656c6f70652e7631677368612d323536781a6d74676d6c2e66756c6c2d73746174652d6469676573742e7636776d74676d6c2e63616e6f6e6963616c2d63626f722e7631781a66756c6c2d73746174652d6469676573742d696e7075742e76365820a40d5047256cd7e315fca53c47474be3292f4de512bcdc451764e36c921024e0826772756e6e696e67f68500000000008273696e2d6d656d6f72792d7265666572656e6365613782826b6d616769635f72756c6573f65820bcb011f629603a39631ce0e1164cb672862f41b95f15bb2896fa211401f40592",
+  "expected_digest": "ac93173f5822c87bc9c6856b1390298bfa258c1436a2c7441ef016bd7f6568dd",
+  "full_state_digest": "a40d5047256cd7e315fca53c47474be3292f4de512bcdc451764e36c921024e0",
+  "semantic_contract_id": "bcb011f629603a39631ce0e1164cb672862f41b95f15bb2896fa211401f40592",
+  "codec": [
+    "in-memory-reference",
+    "7"
+  ],
+  "status": [
+    "running",
+    null
+  ],
+  "environment_limit_counters": [
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "mutation_digests": {
+    "full_state_digest": "2ee1398d1ac56436de7bcdfba87383c63f6b5b2260347a06c6cce4880db5079c",
+    "status": "5db8452bc3aed639090f4c5947f12ca6f4431b611feddfa19b49c25bb6ac079c",
+    "counter": "0d18363cc266930992fed2c14331a41a878a8ba9bfad1a7b71245f37610e2d63",
+    "semantic_contract_id": "e17aaec1eb1d93d18c6de7c5fe9438366dadddd28d6dacd7691268cb5b4fee1d",
+    "codec_version": "e848667db6a5e216c8ab503efed93791e046d600bb15a9aca9d9358f92b590c6"
+  },
+  "fixture_purpose": "canonical-known-answer",
+  "expected_validity": "valid-detached-successor-vector",
+  "derivation_method": "The seven-element payload was assembled from the accepted Spec and paired content-bound semantic identity; python/tests/m4_phase2_reference.py encodes primitives and digest framing only, with static expected payload and digest constants."
+}

@@ -229,11 +229,77 @@
         }
       },
       "else": {
-        "properties": {
-          "schemas": {
-            "properties": {
-              "observation_payload_codec": {
-                "const": "synthetic-m3-observation.v1"
+        "if": {
+          "properties": {
+            "semantic_contract": {
+              "properties": {
+                "rules_manifest": {
+                  "properties": {
+                    "rules_authority": {
+                      "properties": {
+                        "variant": {
+                          "const": "comprehensive_rules"
+                        }
+                      },
+                      "required": [
+                        "variant"
+                      ]
+                    },
+                    "capability_closure": {
+                      "type": "array",
+                      "contains": {
+                        "type": "object",
+                        "properties": {
+                          "key": {
+                            "const": "rules/land-play"
+                          },
+                          "version": {
+                            "const": "0.1.0"
+                          }
+                        },
+                        "required": [
+                          "key",
+                          "version"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "rules_authority",
+                    "capability_closure"
+                  ]
+                }
+              },
+              "required": [
+                "rules_manifest"
+              ]
+            }
+          },
+          "required": [
+            "semantic_contract"
+          ]
+        },
+        "then": {
+          "properties": {
+            "schemas": {
+              "properties": {
+                "observation_payload_codec": {
+                  "const": "magic-basic-land-observation.v1"
+                }
+              }
+            }
+          },
+          "required": [
+            "schemas"
+          ]
+        },
+        "else": {
+          "properties": {
+            "schemas": {
+              "properties": {
+                "observation_payload_codec": {
+                  "const": "synthetic-m3-observation.v1"
+                }
               }
             }
           }
@@ -673,7 +739,8 @@
             "magic-m3-observation.v1",
             "magic-combat-observation.v2",
             "magic-combat-observation.v3",
-            "magic-combat-observation.v4"
+            "magic-combat-observation.v4",
+            "magic-basic-land-observation.v1"
           ]
         },
         "information_state": {

@@ -1,0 +1,161 @@
+{
+  "schema_version": "content-contract-basic-land-v1-kat.v1",
+  "profile_id": "basic-land@1.0.0",
+  "profile_body_label": "basic-land-profile.v1",
+  "definition_ids": [
+    1,
+    2
+  ],
+  "content_manifest_value": [
+    "content-contract-manifest.v1",
+    "mtgml.content-contract.v1",
+    [
+      [
+        "card-definition-envelope.v1",
+        1,
+        [
+          [
+            0,
+            [
+              "Mountain",
+              null,
+              [],
+              [
+                [
+                  "Basic"
+                ],
+                [
+                  "Land"
+                ],
+                [
+                  "Mountain"
+                ]
+              ],
+              null,
+              null,
+              null
+            ]
+          ]
+        ],
+        [
+          [
+            0,
+            0
+          ]
+        ],
+        [
+          "profiled",
+          [
+            "basic-land@1.0.0",
+            [
+              "basic-land-profile.v1",
+              "mountain"
+            ]
+          ]
+        ],
+        [],
+        []
+      ],
+      [
+        "card-definition-envelope.v1",
+        2,
+        [
+          [
+            0,
+            [
+              "Plains",
+              null,
+              [],
+              [
+                [
+                  "Basic"
+                ],
+                [
+                  "Land"
+                ],
+                [
+                  "Plains"
+                ]
+              ],
+              null,
+              null,
+              null
+            ]
+          ]
+        ],
+        [
+          [
+            0,
+            0
+          ]
+        ],
+        [
+          "profiled",
+          [
+            "basic-land@1.0.0",
+            [
+              "basic-land-profile.v1",
+              "plains"
+            ]
+          ]
+        ],
+        [],
+        []
+      ]
+    ]
+  ],
+  "canonical_payload_hex": "83781c636f6e74656e742d636f6e74726163742d6d616e69666573742e763178196d74676d6c2e636f6e74656e742d636f6e74726163742e76318287781b636172642d646566696e6974696f6e2d656e76656c6f70652e76310181820087684d6f756e7461696ef680838165426173696381644c616e6481684d6f756e7461696ef6f6f681820000826870726f66696c6564827062617369632d6c616e6440312e302e30827562617369632d6c616e642d70726f66696c652e7631686d6f756e7461696e808087781b636172642d646566696e6974696f6e2d656e76656c6f70652e7631028182008766506c61696e73f680838165426173696381644c616e648166506c61696e73f6f6f681820000826870726f66696c6564827062617369632d6c616e6440312e302e30827562617369632d6c616e642d70726f66696c652e763166706c61696e738080",
+  "content_contract_id": "80d26c187739664e880948e767e44ed9791aa7c25e7ef703e6d63385311fb346",
+  "rules_manifest_value": [
+    "rules-contract-manifest.v1",
+    "mtgml.rules-contract.v1",
+    [
+      "comprehensive_rules",
+      "wotc-cr-2026-09-25-txt-20260925-sha256-8d860e451f20f38865b725b42d82feb714c725373dd8f3b32b8652b3eeb070ca"
+    ],
+    [
+      [
+        "rules/basic-land-mana",
+        "0.1.0"
+      ],
+      [
+        "rules/basic-priority",
+        "0.1.0"
+      ],
+      [
+        "rules/land-play",
+        "0.1.0"
+      ],
+      [
+        "rules/mana-pool",
+        "0.1.0"
+      ],
+      [
+        "rules/turn-structure",
+        "0.1.0"
+      ],
+      [
+        "rules/zone-incarnation",
+        "0.1.0"
+      ]
+    ]
+  ],
+  "rules_manifest_canonical_payload_hex": "84781a72756c65732d636f6e74726163742d6d616e69666573742e7631776d74676d6c2e72756c65732d636f6e74726163742e76318273636f6d70726568656e736976655f72756c65737867776f74632d63722d323032362d30392d32352d7478742d32303236303932352d7368613235362d3864383630653435316632306633383836356237323562343264383266656237313463373235333733646438663362333262383635326233656562303730636186827572756c65732f62617369632d6c616e642d6d616e6165302e312e30827472756c65732f62617369632d7072696f7269747965302e312e30826f72756c65732f6c616e642d706c617965302e312e30826f72756c65732f6d616e612d706f6f6c65302e312e30827472756c65732f7475726e2d73747275637475726565302e312e30827672756c65732f7a6f6e652d696e6361726e6174696f6e65302e312e30",
+  "rules_contract_id": "af8ec3cf8d5e7d47b1a58be63b25b69ca23391ad4610882de673ae6ee819b161",
+  "semantic_manifest_value": [
+    "semantic-contract-manifest.v1",
+    "mtgml.semantic-contract.v1",
+    "af8ec3cf8d5e7d47b1a58be63b25b69ca23391ad4610882de673ae6ee819b161",
+    null,
+    "80d26c187739664e880948e767e44ed9791aa7c25e7ef703e6d63385311fb346"
+  ],
+  "semantic_manifest_canonical_payload_hex": "85781d73656d616e7469632d636f6e74726163742d6d616e69666573742e7631781a6d74676d6c2e73656d616e7469632d636f6e74726163742e76315820af8ec3cf8d5e7d47b1a58be63b25b69ca23391ad4610882de673ae6ee819b161f6582080d26c187739664e880948e767e44ed9791aa7c25e7ef703e6d63385311fb346",
+  "semantic_contract_id": "bcb011f629603a39631ce0e1164cb672862f41b95f15bb2896fa211401f40592",
+  "content_child_transport": {
+    "content_contract_id": "80d26c187739664e880948e767e44ed9791aa7c25e7ef703e6d63385311fb346",
+    "manifest_canonical_cbor_base64": "g3gcY29udGVudC1jb250cmFjdC1tYW5pZmVzdC52MXgZbXRnbWwuY29udGVudC1jb250cmFjdC52MYKHeBtjYXJkLWRlZmluaXRpb24tZW52ZWxvcGUudjEBgYIAh2hNb3VudGFpbvaAg4FlQmFzaWOBZExhbmSBaE1vdW50YWlu9vb2gYIAAIJocHJvZmlsZWSCcGJhc2ljLWxhbmRAMS4wLjCCdWJhc2ljLWxhbmQtcHJvZmlsZS52MWhtb3VudGFpboCAh3gbY2FyZC1kZWZpbml0aW9uLWVudmVsb3BlLnYxAoGCAIdmUGxhaW5z9oCDgWVCYXNpY4FkTGFuZIFmUGxhaW5z9vb2gYIAAIJocHJvZmlsZWSCcGJhc2ljLWxhbmRAMS4wLjCCdWJhc2ljLWxhbmQtcHJvZmlsZS52MWZwbGFpbnOAgA=="
+  },
+  "fixture_purpose": "canonical-content-identity-chain-known-answer",
+  "expected_validity": "valid-closed-mountain-plains-profile-pair",
+  "derivation_method": "Typed manifest/body arrays follow the accepted Spec. The detached primitive CBOR and digest-envelope reference computes ContentContractIdV1, RulesContractId, and SemanticContractId; test assertions compare against static canonical payloads and IDs."
+}
