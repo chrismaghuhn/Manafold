@@ -12,7 +12,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(Path(__file__).parent))
 
-from m4_phase2_reference import (  # noqa: E402
+from m4_phase2_reference import (
     decode,
     digest_envelope,
     encode,
@@ -148,9 +148,8 @@ class FullStateV6VectorTests(unittest.TestCase):
         data = read_json("schemas/negative/m4-phase2-v6-state-shapes.json")
         self.assertGreaterEqual(len(data["cases"]), 14)
         for case in data["cases"]:
-            with self.subTest(case=case["case"]):
-                with self.assertRaises(ValueError):
-                    validate_authoritative_state(case["family"])
+            with self.subTest(case=case["case"]), self.assertRaises(ValueError):
+                validate_authoritative_state(case["family"])
 
     def test_fixed_positional_orders_and_legacy_vectors_are_frozen(self) -> None:
         vector = read_json("persistence/golden/full-state-digest-v6-kat.v1.json")
@@ -263,11 +262,8 @@ class ContentAndReplayV7VectorTests(unittest.TestCase):
     def test_content_child_semantic_negative_vectors_reject(self) -> None:
         data = read_json("schemas/negative/m4-phase2-replay-child-semantic-negatives.json")
         for case in data["cases"]:
-            with self.subTest(case=case["case"]):
-                with self.assertRaises(ValueError):
-                    verify_content_child(
-                        case["content_contract"], case["parent_content_contract_id"]
-                    )
+            with self.subTest(case=case["case"]), self.assertRaises(ValueError):
+                verify_content_child(case["content_contract"], case["parent_content_contract_id"])
 
     def test_duplicate_content_child_json_key_is_rejected_before_mapping(self) -> None:
         raw = (

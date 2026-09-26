@@ -7,8 +7,8 @@ Phase-2 vectors; it contains no Magic legality or transition logic.
 
 from __future__ import annotations
 
-import hashlib
 import base64
+import hashlib
 from typing import Any
 
 ENVELOPE_ID = b"mtgml.digest-envelope.v1\x00"
