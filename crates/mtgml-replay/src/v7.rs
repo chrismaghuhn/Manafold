@@ -12,10 +12,10 @@ use mtgml_card_ir::{
 };
 use mtgml_decision::DecisionResponseV2;
 use mtgml_model::{
-    CheckpointCodecIdentity, CheckpointDigestV7, ContentContractIdV1, EnvironmentLimitCounters,
-    EpisodeStatus, ExecutionIdentityV1, ExecutionProgramV1, FullStateDigestV6, PlayerId,
-    RulesAuthorityV1, RulesContractManifestV1, SemanticContractIdV1, SemanticContractManifestV1,
-    StateRevision,
+    execution_program_matches_rules_authority, CheckpointCodecIdentity, CheckpointDigestV7,
+    ContentContractIdV1, EnvironmentLimitCounters, EpisodeStatus, ExecutionIdentityV1,
+    ExecutionProgramV1, FullStateDigestV6, PlayerId, RulesAuthorityV1, RulesContractManifestV1,
+    SemanticContractIdV1, SemanticContractManifestV1, StateRevision,
 };
 use mtgml_random::types::validate_seed_hex;
 use serde::de::Error as DeError;
@@ -269,6 +269,13 @@ impl ReplayManifestV7 {
         if self.schema_version != REPLAY_MANIFEST_SCHEMA_V7 {
             return Err(ReplayValidationError::SchemaVersion);
         }
+        self.semantic_contract.validate()?;
+        if !execution_program_matches_rules_authority(
+            self.execution_identity.program_kind,
+            &self.semantic_contract.rules_manifest.rules_authority,
+        ) {
+            return Err(ReplayValidationError::SemanticContractMismatch);
+        }
         let required = [
             self.engine_build.as_str(),
             self.kernel.implementation_id.as_str(),
@@ -324,7 +331,6 @@ impl ReplayManifestV7 {
             previous_player = Some(deck.player);
         }
         validate_status_for_players(&self.initial_identity.episode_status, &players)?;
-        self.semantic_contract.validate()?;
         if self.execution_identity.semantic_contract_id
             != self.semantic_contract.semantic_contract_id
             || self.initial_identity.execution_identity != self.execution_identity

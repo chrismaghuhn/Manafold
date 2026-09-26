@@ -528,6 +528,8 @@ COMMON_NAMED_CONTRACTS = frozenset(
         "authoritative-replay.v5",
         "replay-manifest.v6",
         "authoritative-replay.v6",
+        "replay-manifest.v7",
+        "authoritative-replay.v7",
     }
 )
 
@@ -549,8 +551,6 @@ SCHEMA_ONLY_SUCCESSORS = frozenset(
         "observed-event-envelope.v3",
         "player-step.v3",
         "magic-basic-land-observation.v1",
-        "replay-manifest.v7",
-        "authoritative-replay.v7",
     }
 )
 

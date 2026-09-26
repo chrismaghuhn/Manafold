@@ -1,4 +1,10 @@
-use mtgml_replay::{AuthoritativeReplayV7, ReplayManifestV7, ReplayRecorderV7};
+use mtgml_model::{
+    ExecutionProgramV1, RulesAuthorityV1, RulesContractManifestV1, SemanticContractManifestV1,
+};
+use mtgml_persistence::{checkpoint_digest, semantic_contract_digest};
+use mtgml_replay::{
+    AuthoritativeReplayV7, ReplayManifestV7, ReplayRecorderV7, ReplayValidationError,
+};
 use serde_json::Value;
 
 const MANIFEST: &[u8] = include_bytes!("../../../schemas/examples/replay-manifest.v7.json");
@@ -121,6 +127,70 @@ fn replay_v7_rejects_wrong_schema_identity_and_step_revision_link() {
     replay["steps"][0]["actor"] = Value::String("9".into());
     let parsed: AuthoritativeReplayV7 = serde_json::from_value(replay).unwrap();
     assert!(parsed.validate().is_err());
+}
+
+#[test]
+fn replay_v7_rejects_both_adr_0055_program_rules_cross_pairs() {
+    let baseline: ReplayManifestV7 = serde_json::from_slice(MANIFEST).unwrap();
+
+    let mut magic_with_synthetic = baseline.clone();
+    magic_with_synthetic.semantic_contract.rules_manifest = RulesContractManifestV1 {
+        rules_authority: RulesAuthorityV1::SyntheticLegacy,
+        capability_closure: None,
+    };
+    let rules_id = semantic_contract_digest::calculate_rules_contract_id_v1(
+        &magic_with_synthetic.semantic_contract.rules_manifest,
+    )
+    .unwrap();
+    magic_with_synthetic.semantic_contract.manifest = SemanticContractManifestV1 {
+        rules_contract_id: rules_id,
+        format_contract_id: None,
+        content_contract_id: None,
+    };
+    magic_with_synthetic.semantic_contract.content_contract = None;
+    magic_with_synthetic.schemas.observation_payload_codec =
+        "synthetic-m3-observation.v1".to_owned();
+    magic_with_synthetic.semantic_contract.semantic_contract_id =
+        semantic_contract_digest::calculate_semantic_contract_id_v1(
+            &magic_with_synthetic.semantic_contract.manifest,
+        )
+        .unwrap();
+    magic_with_synthetic.execution_identity.semantic_contract_id = magic_with_synthetic
+        .semantic_contract
+        .semantic_contract_id
+        .clone();
+    magic_with_synthetic.initial_identity.execution_identity =
+        magic_with_synthetic.execution_identity.clone();
+    recompute_checkpoint_digest(&mut magic_with_synthetic);
+    assert_eq!(
+        magic_with_synthetic.validate(),
+        Err(ReplayValidationError::SemanticContractMismatch)
+    );
+
+    let mut synthetic_with_magic = baseline;
+    synthetic_with_magic.execution_identity.program_kind = ExecutionProgramV1::SyntheticRulesCompat;
+    synthetic_with_magic.initial_identity.execution_identity =
+        synthetic_with_magic.execution_identity.clone();
+    recompute_checkpoint_digest(&mut synthetic_with_magic);
+    assert_eq!(
+        synthetic_with_magic.validate(),
+        Err(ReplayValidationError::SemanticContractMismatch)
+    );
+}
+
+fn recompute_checkpoint_digest(manifest: &mut ReplayManifestV7) {
+    manifest.initial_identity.checkpoint_digest =
+        checkpoint_digest::calculate_checkpoint_digest_v7(
+            &manifest
+                .initial_identity
+                .full_state_digest
+                .as_digest_reference(),
+            &manifest.initial_identity.episode_status,
+            &manifest.initial_identity.environment_limit_counters,
+            &manifest.initial_identity.checkpoint_codec_identity,
+            &manifest.initial_identity.execution_identity,
+        )
+        .unwrap();
 }
 
 #[test]
