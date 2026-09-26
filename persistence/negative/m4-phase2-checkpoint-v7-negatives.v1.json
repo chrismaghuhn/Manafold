@@ -1,0 +1,42 @@
+{
+  "schema_version": "m4-phase2-checkpoint-v7-negatives.v1",
+  "fixture_purpose": "detached-future-consumer-rejection-contract",
+  "expected_validity": "all-cases-rejected",
+  "cases": [
+    {
+      "case": "V5 full-state reference is not valid in CheckpointDigestV7",
+      "mutation": "full_state_v5_reference",
+      "expected_rejection": "successor_identity_mismatch"
+    },
+    {
+      "case": "wrong checkpoint semantic domain",
+      "mutation": "wrong_domain",
+      "expected_rejection": "domain_mismatch"
+    },
+    {
+      "case": "wrong checkpoint input schema",
+      "mutation": "wrong_input_schema",
+      "expected_rejection": "schema_mismatch"
+    },
+    {
+      "case": "predecessor checkpoint codec version",
+      "mutation": "codec_v6",
+      "expected_rejection": "codec_identity_mismatch"
+    },
+    {
+      "case": "checkpoint execution identity differs from admitted SemanticContractId",
+      "mutation": "semantic_contract_mismatch",
+      "expected_rejection": "semantic_contract_mismatch"
+    },
+    {
+      "case": "supplied CheckpointDigestV7 does not match canonical input",
+      "mutation": "bad_supplied_digest",
+      "expected_rejection": "digest_mismatch"
+    },
+    {
+      "case": "historical V6 checkpoint material presented as V7",
+      "mutation": "historical_v6_artifact_as_v7",
+      "expected_rejection": "successor_identity_mismatch"
+    }
+  ]
+}

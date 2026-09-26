@@ -85,6 +85,18 @@ SCHEMA_NEGATIVE_CASES = [
         "schemas/negative/player-decision-request-v3-unknown-field.json",
     ),
     (
+        "player-decision-request.v3.schema.json",
+        "schemas/negative/player-decision-request-v3-unknown-intent.json",
+    ),
+    (
+        "player-decision-request.v3.schema.json",
+        "schemas/negative/player-decision-request-v3-play-land-missing-object.json",
+    ),
+    (
+        "player-decision-request.v3.schema.json",
+        "schemas/negative/player-decision-request-v3-trusted-game-object-id.json",
+    ),
+    (
         "observed-event-envelope.v3.schema.json",
         "schemas/negative/observed-event-v3-object-moved-missing-entry-fields.json",
     ),
@@ -108,6 +120,30 @@ SCHEMA_NEGATIVE_CASES = [
         "replay-manifest.v7.schema.json#content-presence-rule",
         "schemas/negative/replay-v7-content-id-without-child.json",
     ),
+    (
+        "replay-manifest.v7.schema.json#content-contract-child",
+        "schemas/negative/replay-v7-content-child-uppercase-id.json",
+    ),
+    (
+        "replay-manifest.v7.schema.json#content-contract-child",
+        "schemas/negative/replay-v7-content-child-extra-padding.json",
+    ),
+    (
+        "replay-manifest.v7.schema.json#content-contract-child",
+        "schemas/negative/replay-v7-content-child-whitespace.json",
+    ),
+    (
+        "replay-manifest.v7.schema.json#content-contract-child",
+        "schemas/negative/replay-v7-content-child-missing-padding.json",
+    ),
+    (
+        "replay-manifest.v7.schema.json",
+        "schemas/negative/replay-v7-land-play-incomplete-basic-land-closure.json",
+    ),
+    (
+        "authoritative-replay.v7.schema.json",
+        "schemas/negative/authoritative-replay-v7-land-play-incomplete-basic-land-closure.json",
+    ),
 ]
 SCHEMA_POSITIVE_CASES = [
     (
@@ -115,8 +151,16 @@ SCHEMA_POSITIVE_CASES = [
         "schemas/examples/player-decision-request-v3-play-land.json",
     ),
     (
+        "player-decision-request.v3.schema.json",
+        "schemas/examples/player-decision-request-v3-ordering.json",
+    ),
+    (
         "observed-event-envelope.v3.schema.json",
         "schemas/examples/observed-event-v3-object-moved.json",
+    ),
+    (
+        "observed-event-envelope.v3.schema.json",
+        "schemas/examples/observed-event-v3-entry-back-tapped.json",
     ),
     (
         "observed-event-envelope.v3.schema.json",
@@ -139,8 +183,28 @@ SCHEMA_POSITIVE_CASES = [
         "schemas/examples/player-step-v3.json",
     ),
     (
+        "player-step.v3.schema.json",
+        "schemas/examples/player-step-v3-event-next-decision.json",
+    ),
+    (
+        "player-step.v3.schema.json",
+        "schemas/examples/player-step-v3-rejected-no-events.json",
+    ),
+    (
         "magic-basic-land-observation.v1.schema.json",
         "schemas/examples/magic-basic-land-observation-v1.json",
+    ),
+    (
+        "magic-basic-land-observation.v1.schema.json",
+        "schemas/examples/magic-basic-land-observation-v1-ordered.json",
+    ),
+    (
+        "replay-manifest.v7.schema.json",
+        "schemas/examples/replay-manifest.v7.json",
+    ),
+    (
+        "authoritative-replay.v7.schema.json",
+        "schemas/examples/authoritative-replay-v7-rejected-step.json",
     ),
 ]
 

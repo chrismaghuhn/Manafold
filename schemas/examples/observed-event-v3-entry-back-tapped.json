@@ -1,0 +1,14 @@
+{
+  "event": {
+    "entering_face": "back",
+    "from": "graveyard",
+    "kind": "object_moved",
+    "new_object": "9",
+    "old_object": "3",
+    "tapped": true,
+    "to": "battlefield"
+  },
+  "schema_version": "observed-event-envelope.v3",
+  "sequence": "8",
+  "state_revision": "14"
+}

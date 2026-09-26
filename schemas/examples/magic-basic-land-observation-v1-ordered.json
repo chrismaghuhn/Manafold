@@ -1,0 +1,85 @@
+{
+  "active_player": "0",
+  "attachments": [
+    {
+      "source": "4",
+      "target": "7"
+    },
+    {
+      "source": "8",
+      "target": "7"
+    }
+  ],
+  "counters": [
+    {
+      "count": 1,
+      "counter_kind": "minus_one_minus_one",
+      "object": "3"
+    },
+    {
+      "count": 2,
+      "counter_kind": "plus_one_plus_one",
+      "object": "7"
+    }
+  ],
+  "faces": [
+    {
+      "face": "front",
+      "object": "3"
+    },
+    {
+      "face": "back",
+      "object": "7"
+    }
+  ],
+  "mana_pools": [
+    {
+      "creature_spell_only": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "player": "0",
+      "unrestricted": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "creature_spell_only": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "player": "1",
+      "unrestricted": [
+        0,
+        0,
+        0,
+        1,
+        0,
+        0
+      ]
+    }
+  ],
+  "pending_sba_ordering": null,
+  "priority": {
+    "kind": "held_by",
+    "player": "0"
+  },
+  "schema_version": "magic-basic-land-observation.v1",
+  "turn_number": "1",
+  "turn_position": {
+    "kind": "precombat_main"
+  }
+}
