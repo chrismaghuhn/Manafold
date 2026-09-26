@@ -1122,19 +1122,34 @@ fn validate_format_v5(value: &Value) -> Result<(), PersistedV6Error> {
         Value::Text(tag) if tag == "none" && matches!(fields[1], Value::Null) => Ok(()),
         Value::Text(tag) if tag == "commander" => {
             let commander = parse_array(&fields[1], 3)?;
+            let mut previous_player = None;
             for row in parse_list(&commander[0])? {
                 let row = parse_array(row, 2)?;
-                parse_u64(&row[0])?;
+                let player = parse_u64(&row[0])?;
+                if previous_player.is_some_and(|previous| previous >= player) {
+                    return Err(PersistedV6Error::InvalidStructure);
+                }
+                previous_player = Some(player);
                 validate_id_set(&row[1])?;
             }
+            let mut previous_card = None;
             for row in parse_list(&commander[1])? {
                 let row = parse_array(row, 2)?;
-                parse_u64(&row[0])?;
+                let card = parse_u64(&row[0])?;
+                if previous_card.is_some_and(|previous| previous >= card) {
+                    return Err(PersistedV6Error::InvalidStructure);
+                }
+                previous_card = Some(card);
                 parse_u32(&row[1])?;
             }
+            let mut previous_card = None;
             for row in parse_list(&commander[2])? {
                 let row = parse_array(row, 2)?;
-                parse_u64(&row[0])?;
+                let card = parse_u64(&row[0])?;
+                if previous_card.is_some_and(|previous| previous >= card) {
+                    return Err(PersistedV6Error::InvalidStructure);
+                }
+                previous_card = Some(card);
                 let mut previous_player = None;
                 for damage in parse_list(&row[1])? {
                     let damage = parse_array(damage, 2)?;
@@ -1231,12 +1246,14 @@ fn validate_execution_continuation_link(
         Value::Text(tag) if tag == "synthetic_m2_assembly" => {
             let assembly = parse_array(&payload[1], 4)?;
             let stage = parse_array(&assembly[0], 2)?;
-            match &stage[0] {
+            let stage_index = match &stage[0] {
                 Value::Text(stage) if stage == "choose_count" => 0,
                 Value::Text(stage) if stage == "choose_members" => 1,
                 Value::Text(stage) if stage == "order_members" => 2,
                 _ => return Err(PersistedV6Error::InvalidStructure),
-            }
+            };
+            validate_assembly_request(assembly, request)?;
+            stage_index
         }
         Value::Text(tag) if tag == "magic_sba_graveyard_order_v1" => {
             let sba = parse_array(&payload[1], 5)?;
@@ -1252,12 +1269,124 @@ fn validate_execution_continuation_link(
             {
                 return Err(PersistedV6Error::InvalidStructure);
             }
+            let owners = parse_list(&sba[2])?;
+            let current_owner = owners
+                .get(usize::try_from(next).map_err(|_| PersistedV6Error::InvalidStructure)?)
+                .ok_or(PersistedV6Error::InvalidStructure)?;
+            if parse_u64(current_owner)? != parse_u64(&request[3])? {
+                return Err(PersistedV6Error::InvalidStructure);
+            }
+            validate_sba_order_request(request)?;
             u32::from(u16::try_from(next).unwrap_or(u16::MAX))
         }
         _ => return Err(PersistedV6Error::InvalidStructure),
     };
     if parse_u32(&record[3])? != expected_stage {
         return Err(PersistedV6Error::InvalidStructure);
+    }
+    Ok(())
+}
+
+fn validate_assembly_request(
+    assembly: &[Value],
+    request: &[Value],
+) -> Result<(), PersistedV6Error> {
+    let stage = parse_array(&assembly[0], 2)?;
+    let Value::Text(stage_tag) = &stage[0] else {
+        return Err(PersistedV6Error::InvalidStructure);
+    };
+    let Value::Array(candidates) = &request[6] else {
+        return Err(PersistedV6Error::InvalidStructure);
+    };
+    let domain = parse_array(&request[5], 2)?;
+    match stage_tag.as_str() {
+        "choose_count" => {
+            let Value::Text(domain_tag) = &domain[0] else {
+                return Err(PersistedV6Error::InvalidStructure);
+            };
+            if domain_tag != "choose_number" || !candidates.is_empty() {
+                return Err(PersistedV6Error::InvalidStructure);
+            }
+            let range = parse_array(&domain[1], 2)?;
+            if parse_i64_value(&range[0])? != i64::from(crate::SYNTHETIC_COUNT_MIN)
+                || parse_i64_value(&range[1])? != i64::from(crate::SYNTHETIC_COUNT_MAX)
+            {
+                return Err(PersistedV6Error::InvalidStructure);
+            }
+        }
+        "choose_members" | "order_members" => {
+            let count = parse_u32(&assembly[1])?;
+            let expected_domain = if stage_tag == "choose_members" {
+                "choose_many"
+            } else {
+                "order"
+            };
+            if !matches!(&domain[0], Value::Text(tag) if tag == expected_domain) {
+                return Err(PersistedV6Error::InvalidStructure);
+            }
+            let range = parse_array(&domain[1], 2)?;
+            if parse_u32(&range[0])? != count || parse_u32(&range[1])? != count {
+                return Err(PersistedV6Error::InvalidStructure);
+            }
+            let expected_modes: Vec<u32> = if stage_tag == "choose_members" {
+                (0..count).collect()
+            } else {
+                parse_u32_array(&assembly[2])?
+            };
+            if candidates.len() != expected_modes.len() {
+                return Err(PersistedV6Error::InvalidStructure);
+            }
+            for (index, (candidate, expected_mode)) in
+                candidates.iter().zip(expected_modes).enumerate()
+            {
+                let candidate = parse_array(candidate, 3)?;
+                if parse_u32(&candidate[0])? != index as u32
+                    || !is_mode_binding(&candidate[1], expected_mode)?
+                    || !is_mode_binding(&candidate[2], expected_mode)?
+                {
+                    return Err(PersistedV6Error::InvalidStructure);
+                }
+            }
+        }
+        _ => return Err(PersistedV6Error::InvalidStructure),
+    }
+    Ok(())
+}
+
+fn parse_u32_array(value: &Value) -> Result<Vec<u32>, PersistedV6Error> {
+    parse_list(value)?.iter().map(parse_u32).collect()
+}
+
+fn is_mode_binding(value: &Value, expected_mode: u32) -> Result<bool, PersistedV6Error> {
+    let fields = parse_array(value, 2)?;
+    Ok(
+        matches!(&fields[0], Value::Text(tag) if tag == "select_mode")
+            && parse_u32(&fields[1])? == expected_mode,
+    )
+}
+
+fn validate_sba_order_request(request: &[Value]) -> Result<(), PersistedV6Error> {
+    let Value::Array(candidates) = &request[6] else {
+        return Err(PersistedV6Error::InvalidStructure);
+    };
+    let domain = parse_array(&request[5], 2)?;
+    if !matches!(&domain[0], Value::Text(tag) if tag == "order") {
+        return Err(PersistedV6Error::InvalidStructure);
+    }
+    let range = parse_array(&domain[1], 2)?;
+    let count = u32::try_from(candidates.len()).map_err(|_| PersistedV6Error::InvalidStructure)?;
+    if parse_u32(&range[0])? != count || parse_u32(&range[1])? != count {
+        return Err(PersistedV6Error::InvalidStructure);
+    }
+    for candidate in candidates {
+        let candidate = parse_array(candidate, 3)?;
+        for field in [&candidate[1], &candidate[2]] {
+            let fields = parse_array(field, 2)?;
+            if !matches!(&fields[0], Value::Text(tag) if tag == "select_object") {
+                return Err(PersistedV6Error::InvalidStructure);
+            }
+            parse_u64(&fields[1])?;
+        }
     }
     Ok(())
 }

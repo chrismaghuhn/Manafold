@@ -147,6 +147,99 @@ fn full_state_digest_v6_rejects_unknown_legacy_component_variants() {
 }
 
 #[test]
+fn full_state_digest_v6_rejects_unordered_commander_predecessor_maps() {
+    let (_, input) = phase2_v6_fixture();
+    let bytes = input.canonical_payload().unwrap();
+    let base = mtgml_persistence::cbor::decode_canonical(&bytes).unwrap();
+    let make_commander = |designations: Vec<Value>, cast_counts: Vec<Value>, damage: Vec<Value>| {
+        Value::Array(vec![
+            Value::Text("commander".into()),
+            Value::Array(vec![
+                Value::Array(designations),
+                Value::Array(cast_counts),
+                Value::Array(damage),
+            ]),
+        ])
+    };
+    let designation = |player, object| {
+        Value::Array(vec![
+            Value::Unsigned(player),
+            Value::Array(vec![Value::Unsigned(object)]),
+        ])
+    };
+    let cast_count = |card| Value::Array(vec![Value::Unsigned(card), Value::Unsigned(1)]);
+    let damage_row = |card, player| {
+        Value::Array(vec![
+            Value::Unsigned(card),
+            Value::Array(vec![Value::Array(vec![
+                Value::Unsigned(player),
+                Value::Unsigned(1),
+            ])]),
+        ])
+    };
+    let cases = [
+        (
+            "swapped designations",
+            make_commander(
+                vec![designation(2, 2), designation(1, 1)],
+                vec![],
+                vec![],
+            ),
+        ),
+        (
+            "duplicate designation key",
+            make_commander(
+                vec![designation(1, 1), designation(1, 2)],
+                vec![],
+                vec![],
+            ),
+        ),
+        (
+            "swapped cast-count keys",
+            make_commander(
+                vec![],
+                vec![cast_count(20), cast_count(10)],
+                vec![],
+            ),
+        ),
+        (
+            "duplicate cast-count key",
+            make_commander(vec![], vec![cast_count(10), cast_count(10)], vec![]),
+        ),
+        (
+            "swapped damage-source keys",
+            make_commander(vec![], vec![], vec![damage_row(20, 1), damage_row(10, 1)]),
+        ),
+        (
+            "duplicate damage-source key",
+            make_commander(vec![], vec![], vec![damage_row(10, 1), damage_row(10, 2)]),
+        ),
+    ];
+    let mut valid_value = base.clone();
+    let Value::Array(valid_top) = &mut valid_value else {
+        unreachable!();
+    };
+    valid_top[12] = make_commander(
+        vec![designation(1, 1), designation(2, 2)],
+        vec![cast_count(10), cast_count(20)],
+        vec![damage_row(10, 1), damage_row(20, 2)],
+    );
+    assert!(crate::FullStateDigestInputV6::from_canonical_value(&valid_value).is_ok());
+
+    for (name, format) in cases {
+        let mut value = base.clone();
+        let Value::Array(top) = &mut value else {
+            unreachable!();
+        };
+        top[12] = format;
+        assert!(
+            crate::FullStateDigestInputV6::from_canonical_value(&value).is_err(),
+            "accepted noncanonical Commander predecessor map: {name}"
+        );
+    }
+}
+
+#[test]
 fn full_state_digest_v6_consumes_phase2_state_shape_negatives() {
     let fixture: serde_json::Value = serde_json::from_str(include_str!(
         "../../../../schemas/negative/m4-phase2-v6-state-shapes.json"
@@ -361,9 +454,14 @@ fn execution_v3_persists_play_land_without_adding_current_decision_runtime() {
     let Value::Array(execution_fields) = &mut execution else {
         panic!("validated execution V3 is an array");
     };
+    execution_fields[1] = Value::Array(vec![]);
     let Value::Array(request_fields) = &mut execution_fields[0] else {
         panic!("fixture has a pending decision request");
     };
+    // This fixture is repurposed as a standalone PlayLand persistence shape;
+    // do not leave the base fixture's assembly continuation attached to a
+    // request from an unrelated program stage.
+    request_fields[7] = Value::Null;
     let Value::Array(candidates) = &mut request_fields[6] else {
         panic!("candidate list is an array");
     };
@@ -569,6 +667,106 @@ fn execution_v3_preserves_closed_continuation_stage_and_link_invariants() {
     };
     request[7] = Value::Null;
     assert!(crate::PersistedExecutionV3::from_value(unlinked).is_err());
+}
+
+#[test]
+fn execution_v3_binds_assembly_continuation_to_its_exact_decision_stage() {
+    fn request_value(
+        stage: &str,
+        selected_count: Option<u64>,
+        selected_keys: &[u64],
+        domain: &str,
+        minimum: u64,
+        maximum: u64,
+        mode_candidates: &[u64],
+    ) -> Value {
+        let (_, input) = phase2_v6_fixture();
+        let mut execution = input.execution_v3.canonical_value().clone();
+        let Value::Array(fields) = &mut execution else {
+            unreachable!();
+        };
+        let Value::Array(request) = &mut fields[0] else {
+            unreachable!();
+        };
+        let request_id = 999_u64;
+        let mode_candidate = |id: usize, mode: u64| {
+            let visible = Value::Array(vec![
+                Value::Text("select_mode".into()),
+                Value::Unsigned(mode),
+            ]);
+            Value::Array(vec![
+                Value::Unsigned(id as u64),
+                visible.clone(),
+                visible,
+            ])
+        };
+        let candidates = if domain == "choose_one" {
+            vec![Value::Array(vec![
+                Value::Unsigned(0),
+                Value::Array(vec![Value::Text("pass_priority".into()), Value::Null]),
+                Value::Array(vec![Value::Text("pass_priority".into()), Value::Null]),
+            ])]
+        } else {
+            mode_candidates
+                .iter()
+                .enumerate()
+                .map(|(index, mode)| mode_candidate(index, *mode))
+                .collect()
+        };
+        request[5] = if domain == "choose_one" {
+            Value::Array(vec![Value::Text(domain.into()), Value::Null])
+        } else {
+            Value::Array(vec![
+                Value::Text(domain.into()),
+                Value::Array(vec![Value::Unsigned(minimum), Value::Unsigned(maximum)]),
+            ])
+        };
+        request[6] = Value::Array(candidates);
+        request[7] = Value::Unsigned(request_id);
+        let stage_index = match stage {
+            "choose_count" => 0,
+            "choose_members" => 1,
+            "order_members" => 2,
+            _ => unreachable!(),
+        };
+        let assembly = Value::Array(vec![
+            Value::Array(vec![Value::Text(stage.into()), Value::Null]),
+            selected_count.map_or(Value::Null, Value::Unsigned),
+            Value::Array(selected_keys.iter().copied().map(Value::Unsigned).collect()),
+            Value::Array(vec![]),
+        ]);
+        fields[1] = Value::Array(vec![Value::Array(vec![
+            Value::Unsigned(request_id),
+            request[3].clone(),
+            request[2].clone(),
+            Value::Unsigned(stage_index),
+            Value::Array(vec![Value::Text("synthetic_m2_assembly".into()), assembly]),
+        ])]);
+        execution
+    }
+
+    let valid_count = request_value("choose_count", None, &[], "choose_number", 0, 3, &[]);
+    assert!(crate::PersistedExecutionV3::from_value(valid_count).is_ok());
+    let wrong_count_domain =
+        request_value("choose_count", None, &[], "choose_one", 0, 0, &[]);
+    assert!(crate::PersistedExecutionV3::from_value(wrong_count_domain).is_err());
+    let wrong_count_range =
+        request_value("choose_count", None, &[], "choose_number", 1, 3, &[]);
+    assert!(crate::PersistedExecutionV3::from_value(wrong_count_range).is_err());
+
+    let valid_members = request_value("choose_members", Some(2), &[], "choose_many", 2, 2, &[0, 1]);
+    assert!(crate::PersistedExecutionV3::from_value(valid_members).is_ok());
+    let wrong_members_domain = request_value("choose_members", Some(2), &[], "order", 2, 2, &[0, 1]);
+    assert!(crate::PersistedExecutionV3::from_value(wrong_members_domain).is_err());
+    let wrong_members_surface =
+        request_value("choose_members", Some(2), &[], "choose_many", 2, 2, &[0, 2]);
+    assert!(crate::PersistedExecutionV3::from_value(wrong_members_surface).is_err());
+
+    let valid_order = request_value("order_members", Some(2), &[2, 5], "order", 2, 2, &[2, 5]);
+    assert!(crate::PersistedExecutionV3::from_value(valid_order).is_ok());
+    let wrong_order_range =
+        request_value("order_members", Some(2), &[2, 5], "order", 1, 2, &[2, 5]);
+    assert!(crate::PersistedExecutionV3::from_value(wrong_order_range).is_err());
 }
 
 /// Frozen historical V4 known answer for the canonical synthetic reset state.
