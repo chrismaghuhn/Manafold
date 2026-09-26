@@ -1087,6 +1087,13 @@
     {
       "change_process": "process-pr",
       "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-09-26-m4-unified-state-cut-semantic-spec.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
       "path": "docs/superpowers/plans/2026-09-25-m4-1-card-definition-foundation-implementation.md",
       "role": "process",
       "stability": "provisional"
