@@ -410,7 +410,7 @@ fn capability_lifecycle_below_explicit_threshold_rejects() {
 }
 
 #[test]
-fn strict_cbor_decoder_rejects_profile_variants_arity_order_and_trailing_data() {
+fn strict_cbor_decoder_rejects_unknown_profile_arity_order_and_trailing_data() {
     use mtgml_persistence::cbor::{self, Value};
 
     let mut value = cbor::decode_canonical(include_bytes!(
@@ -436,7 +436,7 @@ fn strict_cbor_decoder_rejects_profile_variants_arity_order_and_trailing_data() 
     let profiled = cbor::encode_canonical(&value).unwrap();
     assert_eq!(
         decode_content_manifest_v1(&profiled).unwrap_err().class,
-        mtgml_card_ir::ContentValidationErrorV1::ProfiledBindingNotAdmitted
+        mtgml_card_ir::ContentValidationErrorV1::UnknownSemanticProfile
     );
 
     let valid = encode_content_manifest_v1(&minimal_manifest()).unwrap();

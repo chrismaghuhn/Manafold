@@ -17,6 +17,8 @@ pub use preflight::{
 
 pub const CARD_DEFINITION_ENVELOPE_V1: &str = "card-definition-envelope.v1";
 pub const CONTENT_CONTRACT_MANIFEST_V1: &str = "content-contract-manifest.v1";
+pub const BASIC_LAND_PROFILE_ID_V1: &str = "basic-land@1.0.0";
+pub const BASIC_LAND_PROFILE_BODY_V1: &str = "basic-land-profile.v1";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct FaceKey(pub u32);
@@ -134,6 +136,21 @@ pub enum PrintedManaSymbolV1 {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CardSemanticBindingV1 {
     UnprofiledV1,
+    ProfiledV1 {
+        profile_id: CardSemanticProfileId,
+        body: BasicLandProfileV1,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BasicLandProfileV1 {
+    pub subtype: BasicLandSubtypeV1,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BasicLandSubtypeV1 {
+    Mountain,
+    Plains,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -345,16 +362,18 @@ fn validate_definition(
         previous_ability = Some(key);
     }
 
-    if !matches!(
-        definition.semantic_binding,
-        CardSemanticBindingV1::UnprofiledV1
-    ) {
-        return Err(ContentValidationDiagnosticV1::at(
-            ContentValidationErrorV1::ProfiledBindingNotAdmitted,
-            ContentValidationPathV1::SemanticBinding {
-                card_definition_id: definition.card_definition_id,
-            },
-        ));
+    match &definition.semantic_binding {
+        CardSemanticBindingV1::UnprofiledV1 => {}
+        CardSemanticBindingV1::ProfiledV1 { profile_id, body } => {
+            validate_basic_land_profile(definition, profile_id, *body).map_err(|class| {
+                ContentValidationDiagnosticV1::at(
+                    class,
+                    ContentValidationPathV1::SemanticBinding {
+                        card_definition_id: definition.card_definition_id,
+                    },
+                )
+            })?;
+        }
     }
     if let Err((class, target)) = validate_references(&definition.definition_references) {
         return Err(ContentValidationDiagnosticV1::at(
@@ -373,6 +392,39 @@ fn validate_definition(
                 key,
             },
         ));
+    }
+    Ok(())
+}
+
+fn validate_basic_land_profile(
+    definition: &CardDefinitionEnvelopeV1,
+    profile_id: &CardSemanticProfileId,
+    body: BasicLandProfileV1,
+) -> Result<(), ContentValidationErrorV1> {
+    if profile_id.as_str() != BASIC_LAND_PROFILE_ID_V1 {
+        return Err(ContentValidationErrorV1::UnknownSemanticProfile);
+    }
+    if definition.faces.len() != 1 || definition.faces[0].face_key != FaceKey(0) {
+        return Err(ContentValidationErrorV1::InvalidLocalIdentity);
+    }
+    let expected_subtype = match body.subtype {
+        BasicLandSubtypeV1::Mountain => "Mountain",
+        BasicLandSubtypeV1::Plains => "Plains",
+    };
+    let type_line = &definition.faces[0].base_characteristics.type_line;
+    if type_line.supertypes != ["Basic"]
+        || type_line.card_types != ["Land"]
+        || type_line.subtypes != [expected_subtype]
+    {
+        return Err(ContentValidationErrorV1::InvalidCharacteristic);
+    }
+    if definition.ability_identities
+        != [AbilityIdentityV1 {
+            ability_key: AbilityKey(0),
+            face_key: FaceKey(0),
+        }]
+    {
+        return Err(ContentValidationErrorV1::InvalidLocalReference);
     }
     Ok(())
 }
@@ -847,7 +899,26 @@ fn binding_from_value(value: Value) -> Result<CardSemanticBindingV1, ContentVali
         "unprofiled" if matches!(fields.remove(0), Value::Null) => {
             Ok(CardSemanticBindingV1::UnprofiledV1)
         }
-        "profiled" => Err(ContentValidationErrorV1::ProfiledBindingNotAdmitted),
+        "profiled" => {
+            let mut profile = array(fields.remove(0), 2)?;
+            let profile_id = CardSemanticProfileId::parse(take_text(profile.remove(0))?)?;
+            if profile_id.as_str() != BASIC_LAND_PROFILE_ID_V1 {
+                return Err(ContentValidationErrorV1::UnknownSemanticProfile);
+            }
+            let mut body = array(profile.remove(0), 2)?;
+            if take_text(body.remove(0))? != BASIC_LAND_PROFILE_BODY_V1 {
+                return Err(ContentValidationErrorV1::UnknownProfileBodyVariant);
+            }
+            let subtype = match take_text(body.remove(0))?.as_str() {
+                "mountain" => BasicLandSubtypeV1::Mountain,
+                "plains" => BasicLandSubtypeV1::Plains,
+                _ => return Err(ContentValidationErrorV1::UnknownProfileBodyVariant),
+            };
+            Ok(CardSemanticBindingV1::ProfiledV1 {
+                profile_id,
+                body: BasicLandProfileV1 { subtype },
+            })
+        }
         _ => Err(ContentValidationErrorV1::UnknownSemanticProfile),
     }
 }
@@ -956,7 +1027,7 @@ fn definition_value(definition: &CardDefinitionEnvelopeV1) -> Value {
                 .map(ability_value)
                 .collect(),
         ),
-        Value::Array(vec![Value::Text("unprofiled".to_owned()), Value::Null]),
+        binding_value(&definition.semantic_binding),
         Value::Array(
             definition
                 .definition_references
@@ -972,6 +1043,25 @@ fn definition_value(definition: &CardDefinitionEnvelopeV1) -> Value {
                 .collect(),
         ),
     ])
+}
+
+fn binding_value(binding: &CardSemanticBindingV1) -> Value {
+    match binding {
+        CardSemanticBindingV1::UnprofiledV1 => Value::Array(vec![text("unprofiled"), Value::Null]),
+        CardSemanticBindingV1::ProfiledV1 { profile_id, body } => {
+            let subtype = match body.subtype {
+                BasicLandSubtypeV1::Mountain => "mountain",
+                BasicLandSubtypeV1::Plains => "plains",
+            };
+            Value::Array(vec![
+                text("profiled"),
+                Value::Array(vec![
+                    text(profile_id.as_str()),
+                    Value::Array(vec![text(BASIC_LAND_PROFILE_BODY_V1), text(subtype)]),
+                ]),
+            ])
+        }
+    }
 }
 
 fn face_value(face: &FaceDefinitionV1) -> Value {
