@@ -229,7 +229,7 @@ Replay V7's `content_contract` JSON child must use the exact Spec-defined closed
 
 ## 9. Phase 6 — ObservedEvent V3, PlayerStep V3 and observation codec
 
-**Goal:** represent all newly public state without expanding trust exposure.
+**Goal:** represent newly public state facts without expanding trust exposure, and compose the separately authoritative Decision V3 request through `PlayerStepV3.next_decision`.
 
 **Files likely touched:**
 
@@ -243,7 +243,7 @@ Replay V7's `content_contract` JSON child must use the exact Spec-defined closed
 - `python/src/mtgml/` observation/step DTO modules and tests
 - `crates/mtgml-conformance/src/isolation/`
 
-**RED first:** event audiences and opaque substitution; public mana/counter/attachment/face projection; hidden-state paired noninterference; trusted-ID renaming invariance; wrong sequence/revision and rejected-step empty-event cases; PlayerStep V3 plus V3 request and V2 information state.
+**RED first:** event audiences and opaque substitution; public mana/counter/attachment/face projection; hidden-state paired noninterference; trusted-ID renaming invariance; wrong sequence/revision and rejected-step empty-event cases; PlayerStep V3 plus V3 request and V2 information state. Prove the observation payload rejects a `candidates`/decision field under its closed schema, while PlayerStep V3 carries the optional complete request in `next_decision`. Where paired states have equivalent legal-decision semantics, compare the separately projected V3 domain/candidate bytes; do not include candidate equality in the observation-payload noninterference claim.
 
 **Implementation work:**
 
@@ -251,13 +251,15 @@ Replay V7's `content_contract` JSON child must use the exact Spec-defined closed
 - retain exactly one V3 `object_moved` wire tag with the specified V3 payload (superseding the V2 shape); include face/tapped on entry and never emit a fake transform on Ojer-like entry;
 - use OpaqueObjectId for all object references;
 - implement strict named observation payload schema and canonical array orders;
+- keep `magic-basic-land-observation.v1` limited to public state facts; do not duplicate decision domain, CandidateId, CandidateIntent, or candidate arrays there;
+- compose only an already supplied and validated `PlayerDecisionRequestV3` as `PlayerStepV3.next_decision`; legal candidate generation/completeness remains a RulesKernel/content producer obligation in Phase 10;
 - preserve ObservationEnvelopeV1 and InformationStateDigestV2 identities.
 
-**Focused tests:** observation, information, conformance isolation, schema/Python parity; `just check-fast`.
+**Focused tests:** observation, information, conformance isolation, schema/Python parity, and a closed-payload negative proving candidate/decision fields are rejected; `just check-fast`.
 
 **Commit boundary:** event/PlayerStep DTOs; then payload projection/privacy/schema parity.
 
-**Stop:** a trusted ID appears in any public output; information digest needs reinterpretation; event duplicate loses/duplicates a semantic occurrence; paired-state public bytes differ without authorized cause.
+**Stop:** a trusted ID appears in any public output; information digest needs reinterpretation; event duplicate loses/duplicates a semantic occurrence; paired-state public bytes differ without authorized cause; observation and `next_decision` duplicate or disagree on candidate authority; implementation attempts to generate or infer legal candidates in the observation layer.
 
 ## 10. Phase 7 — Replay V7 detached support
 
