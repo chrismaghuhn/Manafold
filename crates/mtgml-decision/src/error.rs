@@ -46,6 +46,20 @@ pub enum DecisionValidationError {
     ValueOutOfRange,
     #[error("candidate count exceeds the CandidateIdV1 capacity")]
     CandidateCapacityExceeded,
+    #[error("decision purpose does not match the answer domain")]
+    PurposeDomainMismatch,
+    #[error("decision purpose does not match one or more candidate intents")]
+    PurposeIntentMismatch,
+    #[error("decision visibility is incompatible with the purpose")]
+    DecisionVisibilityMismatch,
+    #[error("trigger event and safe subject tags differ")]
+    TriggerSubjectMismatch,
+    #[error("a visible source ability requires its visible source object")]
+    SourceAbilityWithoutObject,
+    #[error("one opaque ability identity maps to conflicting source objects")]
+    ConflictingAbilitySource,
+    #[error("response view sequence does not match the request")]
+    VisibleSequenceMismatch,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
