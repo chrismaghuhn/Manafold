@@ -398,7 +398,7 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
     let request = install_kernel
         .install_successor_request(&mut state, actor, &EpisodeStatus::Running)
         .unwrap();
-    // Give the opponent a second hidden card so paired worlds can vary that
+    // Give the opponent two hidden cards so paired worlds can vary their
     // player's private library fact without changing the current actor's
     // legal land-play surface.
     let hidden_object = mtgml_model::GameObjectId(3);
@@ -463,7 +463,77 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
                 physical_card: Some(mtgml_model::PhysicalCardId(3)),
                 card_definition: Some(mtgml_model::CardDefinitionId(1)),
                 known_location: Some(mtgml_state::KnownLocationFactV2 {
-                    location: hidden_location,
+                    location: hidden_location.clone(),
+                    provenance: mtgml_state::KnowledgeAcquisitionReason::InitialConfiguration,
+                }),
+                acquisition: mtgml_state::KnowledgeAcquisitionReason::InitialConfiguration,
+                historical_locations: Vec::new(),
+            },
+        );
+    let second_hidden_object = mtgml_model::GameObjectId(4);
+    let second_hidden_location = mtgml_state::ZoneLocation {
+        position: mtgml_state::ZonePosition::Top { offset: 1 },
+        ..hidden_location.clone()
+    };
+    state.predecessor_v5.zones.objects.insert(
+        second_hidden_object,
+        mtgml_state::GameObject {
+            id: second_hidden_object,
+            physical_card: Some(mtgml_model::PhysicalCardId(4)),
+            card_definition: mtgml_model::CardDefinitionId(2),
+            owner: PlayerId(1),
+            controller: PlayerId(1),
+            tapped: false,
+            face_down: true,
+        },
+    );
+    state
+        .predecessor_v5
+        .zones
+        .locations
+        .insert(second_hidden_object, second_hidden_location.clone());
+    state
+        .predecessor_v5
+        .zones
+        .ordered_zones
+        .entry(second_hidden_location.key())
+        .or_default()
+        .push(second_hidden_object);
+    state.predecessor_v5.allocators.next_object_id = mtgml_model::GameObjectId(5);
+    state
+        .card_rules_state
+        .faces
+        .faces
+        .insert(second_hidden_object, 0);
+    let owner_identity = state
+        .predecessor_v5
+        .perspective_identities
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap();
+    let second_owner_opaque = owner_identity.next_opaque_object_id;
+    owner_identity.next_opaque_object_id.0 += 1;
+    owner_identity
+        .object_to_opaque
+        .insert(second_hidden_object, second_owner_opaque);
+    owner_identity
+        .opaque_to_object
+        .insert(second_owner_opaque, second_hidden_object);
+    state
+        .predecessor_v5
+        .knowledge
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap()
+        .active
+        .insert(
+            second_owner_opaque,
+            mtgml_state::KnowledgeRecordV2 {
+                opaque_object: second_owner_opaque,
+                physical_card: Some(mtgml_model::PhysicalCardId(4)),
+                card_definition: Some(mtgml_model::CardDefinitionId(2)),
+                known_location: Some(mtgml_state::KnownLocationFactV2 {
+                    location: second_hidden_location,
                     provenance: mtgml_state::KnowledgeAcquisitionReason::InitialConfiguration,
                 }),
                 acquisition: mtgml_state::KnowledgeAcquisitionReason::InitialConfiguration,
@@ -492,9 +562,9 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
         execution_identity: admission.execution_identity().clone(),
     };
 
-    // Paired successor worlds differ only in an opponent-hidden library card
-    // definition. Player 2's public decision and observation products must
-    // remain equal; authoritative checkpoint identity is expected to differ.
+    // Paired successor worlds differ only in opponent-hidden library
+    // definitions/order. Player 2's public decision and observation products
+    // must remain equal; authoritative checkpoint identity may differ.
     let mut hidden_world_state = state.clone();
     let hidden_object = hidden_world_state
         .predecessor_v5
@@ -534,6 +604,48 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
         )
         .unwrap()
         .card_definition = Some(hidden_object_state.card_definition);
+    let hidden_zone_key = hidden_world_state.predecessor_v5.zones.locations[&hidden_object].key();
+    let reordered_hidden_cards = {
+        let order = hidden_world_state
+            .predecessor_v5
+            .zones
+            .ordered_zones
+            .get_mut(&hidden_zone_key)
+            .unwrap();
+        order.reverse();
+        order.clone()
+    };
+    for (offset, object) in reordered_hidden_cards.into_iter().enumerate() {
+        let position = mtgml_state::ZonePosition::Top {
+            offset: u32::try_from(offset).unwrap(),
+        };
+        hidden_world_state
+            .predecessor_v5
+            .zones
+            .locations
+            .get_mut(&object)
+            .unwrap()
+            .position = position;
+        let opaque = hidden_world_state
+            .predecessor_v5
+            .perspective_identities
+            .players[&PlayerId(1)]
+            .object_to_opaque[&object];
+        hidden_world_state
+            .predecessor_v5
+            .knowledge
+            .players
+            .get_mut(&PlayerId(1))
+            .unwrap()
+            .active
+            .get_mut(&opaque)
+            .unwrap()
+            .known_location
+            .as_mut()
+            .unwrap()
+            .location
+            .position = position;
+    }
     hidden_world_state.validate().unwrap();
     mtgml_rules::validate_basic_land_pending_request(
         &admission,
@@ -1278,6 +1390,58 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
     // the recorded after-digest belongs to the original world.
     detects_initial_state_change("zones", hidden_world_state.clone(), None);
 
+    let mut changed_zone_order = before_checkpoint.state.clone();
+    let hidden_library_key = changed_zone_order
+        .predecessor_v5
+        .zones
+        .ordered_zones
+        .keys()
+        .find(|key| key.zone == mtgml_model::ZoneKind::Library && key.player == Some(PlayerId(1)))
+        .unwrap()
+        .clone();
+    let reordered = {
+        let order = changed_zone_order
+            .predecessor_v5
+            .zones
+            .ordered_zones
+            .get_mut(&hidden_library_key)
+            .unwrap();
+        order.reverse();
+        order.clone()
+    };
+    for (offset, object) in reordered.into_iter().enumerate() {
+        let position = mtgml_state::ZonePosition::Top {
+            offset: u32::try_from(offset).unwrap(),
+        };
+        changed_zone_order
+            .predecessor_v5
+            .zones
+            .locations
+            .get_mut(&object)
+            .unwrap()
+            .position = position;
+        let opaque = changed_zone_order
+            .predecessor_v5
+            .perspective_identities
+            .players[&PlayerId(1)]
+            .object_to_opaque[&object];
+        changed_zone_order
+            .predecessor_v5
+            .knowledge
+            .players
+            .get_mut(&PlayerId(1))
+            .unwrap()
+            .active
+            .get_mut(&opaque)
+            .unwrap()
+            .known_location
+            .as_mut()
+            .unwrap()
+            .location
+            .position = position;
+    }
+    detects_initial_state_change("zone_ordering", changed_zone_order, None);
+
     let mut changed_execution = before_checkpoint.state.clone();
     let pending = changed_execution
         .execution_v3
@@ -1381,6 +1545,7 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
         "revision",
         "core",
         "zones",
+        "zone_ordering",
         "allocators",
         "execution_v3",
         "random",
