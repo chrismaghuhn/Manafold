@@ -441,7 +441,7 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("Census-driven scope", roadmap)
         self.assertRegex(roadmap, r"outside\s+this authoritative\s+engine repository")
 
-    def test_g0a_is_accepted_for_g0b_without_authorizing_implementation(self) -> None:
+    def test_g0b_acceptance_authorizes_detached_g0_implementation(self) -> None:
         spec = (
             ROOT / "docs" / "superpowers" / "specs" / "2026-09-27-m4-shared-g0-contract-growth.md"
         ).read_text(encoding="utf-8")
@@ -452,12 +452,13 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             ROOT / "docs" / "adr" / "0056-g0-successor-version-identities-and-compatibility.md"
         ).read_text(encoding="utf-8")
 
-        self.assertIn("ACCEPTED FOR G0B — NO IMPLEMENTATION AUTHORITY", spec)
+        self.assertIn("**Status:** ACCEPTED — G0B identity decision merged", spec)
+        self.assertIn("f5c1ed2aa0719edaebd95f80f7c1c5c38b3dea3d", spec)
         self.assertIn("G0A_ACCEPTANCE = PASS", spec)
-        self.assertIn("ACCEPTED FOR G0B — NO IMPLEMENTATION AUTHORITY UNTIL G0B ACCEPTANCE", plan)
-        self.assertIn("**Status:** proposed", adr)
-        self.assertIn("G0_IMPLEMENTATION_AUTHORIZED = NO", adr)
-        self.assertIn("**Implementation authorized:** NO", plan)
+        self.assertIn("**Status:** ACCEPTED — G0B merged and verified", plan)
+        self.assertIn("**Implementation authorized:** YES", plan)
+        self.assertIn("**Status:** accepted by PR #251", adr)
+        self.assertIn("G0_IMPLEMENTATION_AUTHORIZED = YES", adr)
 
     def test_current_status_does_not_duplicate_a_second_status_file(self) -> None:
         readme = (ROOT / "README.md").read_text(encoding="utf-8")

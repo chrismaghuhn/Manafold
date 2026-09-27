@@ -1,7 +1,7 @@
 # M4 Shared G0 — Contract-Growth Boundary
 
 **Task:** `M4_SHARED_G0_CONTRACT_GROWTH_SPEC_AND_IMPLEMENTATION_PLAN`
-**Status:** ACCEPTED FOR G0B — NO IMPLEMENTATION AUTHORITY
+**Status:** ACCEPTED — G0B identity decision merged; detached G0 implementation authorized from `f5c1ed2aa0719edaebd95f80f7c1c5c38b3dea3d`; successor current-writer authority remains gated on G0j
 **G0a acceptance record:** Independent exact-head G0 Spec/Plan review PASS at `308e465669f66ad63b01d5fb381214c08ce413bc`; PR #250 required CI PASS; merged at `8642db7a389d5363d52224bd040082811f626084` with tree identical to the reviewed head. This accepts the G0a design boundary for G0b only. It does not accept G0b or authorize G0 implementation.
 **Verified `origin/master`:** `85f967f641528e43772c63be14679af398dcac86`
 **Date:** 2026-09-27
@@ -536,7 +536,7 @@ CONTRACT_GROWTH_BOUNDARY = ACCEPTED
 EXACT_IMPLEMENTATION_BASELINE = FROZEN
 ```
 
-G0a acceptance authorizes preparation and review of G0b only. G0b remains unaccepted until its proposed ADR receives independent Exact-Head review, required CI, merge, and post-merge verification. No G0c producer work may begin before those steps. Only after the G0b identity decision is accepted, compatibility matrices are frozen, and an exact implementation baseline is frozen can `G0_IMPLEMENTATION_AUTHORIZED = YES`.
+G0a acceptance authorized preparation and review of G0b only. Those G0b conditions are now satisfied: ADR 0056 passed independent exact-head review, required PR #251 CI, merge, and post-merge tree verification. The accepted identity decision and matrices authorize G0c onward from the exact implementation baseline above. G0c–G0i remain detached from current runtime producers; only G0j may activate the successor writer.
 
 G0 exit requires exact typed/canonical state records; one state authority; sound/complete Decision requests; total rejection nonmutation; state/event/delta/projection equality; Rust/Python/schema parity; noninterference; direct/restore/fork/replay parity; exact historic compatibility; and exact-head CI and independent review. It unblocks Shared S1–S7 contract use only. It does not implement game semantics or complete M4/R1/W1.
 

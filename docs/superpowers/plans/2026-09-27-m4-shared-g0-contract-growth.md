@@ -1,14 +1,14 @@
 # M4 Shared G0 — Contract-Growth Implementation Plan
 
 **Task:** `M4_SHARED_G0_CONTRACT_GROWTH_SPEC_AND_IMPLEMENTATION_PLAN`
-**Status:** ACCEPTED FOR G0B — NO IMPLEMENTATION AUTHORITY UNTIL G0B ACCEPTANCE
+**Status:** ACCEPTED — G0B merged and verified; detached implementation authorized from `f5c1ed2aa0719edaebd95f80f7c1c5c38b3dea3d`; current-writer activation remains gated on G0j
 **Derived from:** [`2026-09-27-m4-shared-g0-contract-growth.md`](../specs/2026-09-27-m4-shared-g0-contract-growth.md)
 **Exact design baseline:** `85f967f641528e43772c63be14679af398dcac86`
-**Implementation authorized:** NO
+**Implementation authorized:** YES — detached G0c–G0i work only; G0j is the single activation cut
 
 ## 1. Baseline and branch/worktree model
 
-The G0a design baseline is post-PR #249 `origin/master` at the SHA above. PR #250 subsequently merged the reviewed G0a Spec/Plan head tree-identically as `8642db7a389d5363d52224bd040082811f626084`. G0a is accepted for G0b only. The Shared semantic boundary is accepted for planning. M4.2 remains complete only for the bounded Mountain/Plains slice; the three M4.2 roots remain `specified`; no M4.3/M4.4 production work is in this plan.
+The G0a design baseline is post-PR #249 `origin/master` at the SHA above. PR #250 subsequently merged the reviewed G0a Spec/Plan head tree-identically as `8642db7a389d5363d52224bd040082811f626084`. G0a was accepted for G0b only. ADR 0056 then passed independent exact-head review at `72287961907164db6dc7a53b532c8d5076d3516a`, required PR #251 CI, merge at `f5c1ed2aa0719edaebd95f80f7c1c5c38b3dea3d`, and post-merge tree-identity verification. G0b is accepted and this exact SHA is the frozen implementation base. The Shared semantic boundary is accepted for planning. M4.2 remains complete only for the bounded Mountain/Plains slice; the three M4.2 roots remain `specified`; no M4.3/M4.4 production work is in this plan.
 
 After G0 Spec/Plan review and the required version-identity ADR, fetch and freeze a fresh exact master SHA. Create one dedicated G0 integration branch/worktree from that base. All contract-owner PRs described below target that same non-current integration branch in dependency order. Keep master on its existing one-writer runtime until the single final G0 activation PR. Do not create parallel `EngineState`, digest, checkpoint, replay, decision, or event writers. Do not work from the R1-exclusive proposal branch.
 
