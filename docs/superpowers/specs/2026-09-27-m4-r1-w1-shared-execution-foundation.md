@@ -277,7 +277,7 @@ This table closes the coordination labels as provenance. “Foundation” means 
 | C48 | `SHARED_FOUNDATION` / existing snapshot reuse | Shared stack/trigger resolution needs bounded LKI; reuse event/ObjectSnapshot owners and capture only required facts. |
 | C50 | `W1_EXCLUSIVE` consumer + existing TurnHistoryState | Permanent-card-to-graveyard history is W1-specific predicate, not a new shared ledger. |
 | C53–C57 | `ALREADY_OWNED` + shared bounded combat extension | Reuse covered attacker/blocker/combat damage owners; extend only for exact selected combat rules/keywords. |
-| C58 | Proposed `decision/combat-damage-assignment` | `SHARED_FOUNDATION` candidate, `NEEDS_FURTHER_CHARACTERIZATION` | Complete player-controlled combat-damage-assignment domain and trusted bindings are a decision owner distinct from damage/life application. Characterize exact R1/W1 witnesses, completeness, ordering, and contract impact before batch acceptance. |
+| C58 | `SHARED_FOUNDATION` candidate, `NEEDS_FURTHER_CHARACTERIZATION` | Proposed owner: `decision/combat-damage-assignment`. The complete player-controlled combat-damage-assignment domain and trusted bindings are distinct from damage/life application. Characterize exact R1/W1 witnesses, completeness, ordering, and contract impact before batch acceptance. |
 | C59 | `SHARED_FOUNDATION` | Replacement application is the common event pipeline; not an extensible DSL. |
 | C60 | `R1_EXCLUSIVE` | Ojer damage-floor predicate/profile only. |
 | C61 | `RECLASSIFIED_TO_SHARED_REQUIRED` application; W1-only predicate | Dryad applies to R1 instant/sorcery destination events too; its replacement condition remains W1-specific. |
