@@ -15,6 +15,7 @@ WIRE_MAPPING = {
     "player-decision-request.v2": "player-decision-request.v2.schema.json",
     "player-decision-request.v3": "player-decision-request.v3.schema.json",
     "decision-response.v2": "decision-response.v2.schema.json",
+    "decision-response.v3": "decision-response.v3.schema.json",
     "episode-status.v1": "episode-status.v1.schema.json",
     "observed-event-envelope.v1": "observed-event-envelope.v1.schema.json",
     "observation-envelope.v1": "observation-envelope.v1.schema.json",
@@ -101,6 +102,10 @@ SCHEMA_NEGATIVE_CASES = [
         "schemas/negative/player-decision-request-v3-trusted-game-object-id.json",
     ),
     (
+        "decision-response.v3.schema.json",
+        "schemas/negative/decision-response-v3-global-state-revision.json",
+    ),
+    (
         "observed-event-envelope.v3.schema.json",
         "schemas/negative/observed-event-v3-object-moved-missing-entry-fields.json",
     ),
@@ -150,6 +155,7 @@ SCHEMA_NEGATIVE_CASES = [
     ),
 ]
 SCHEMA_POSITIVE_CASES = [
+    ("decision-response.v3.schema.json", "schemas/examples/decision-response-v3.json"),
     (
         "player-decision-request.v3.schema.json",
         "schemas/examples/player-decision-request-v3-play-land.json",

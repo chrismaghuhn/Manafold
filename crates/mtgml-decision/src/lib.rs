@@ -26,8 +26,8 @@ pub use v2::{
 };
 pub use v3::{
     validate_candidate_binding_v3, AuthoritativeCandidateV3, AuthoritativeDecisionRequestV3,
-    CandidateIntentV3, EngineCandidateBindingV3, PlayerDecisionRequestV3, VisibleCandidateV3,
-    PLAYER_DECISION_REQUEST_V3_SCHEMA,
+    CandidateIntentV3, DecisionResponseV3, EngineCandidateBindingV3, PlayerDecisionRequestV3,
+    VisibleCandidateV3, DECISION_RESPONSE_V3_SCHEMA, PLAYER_DECISION_REQUEST_V3_SCHEMA,
 };
 
 #[cfg(test)]

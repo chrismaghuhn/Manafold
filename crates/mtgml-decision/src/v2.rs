@@ -201,7 +201,14 @@ impl DecisionResponseV2 {
         if self.schema_version != DECISION_RESPONSE_V2_SCHEMA {
             return Err(DecisionValidationError::SchemaVersion);
         }
-        match &self.answer {
+        self.answer.validate_shape()
+    }
+}
+
+impl DecisionAnswerV2 {
+    /// Checks answer-local canonicality shared by versioned response envelopes.
+    pub(crate) fn validate_shape(&self) -> Result<(), DecisionValidationError> {
+        match self {
             // Standalone response-local semantics: uniqueness precedes the
             // canonical set representation (request-relative membership is
             // checked against a visible request by `validate_for`).
@@ -233,7 +240,9 @@ impl DecisionResponseV2 {
         }
         Ok(())
     }
+}
 
+impl DecisionResponseV2 {
     /// Request-relative submission checks in normative order. Deliberately
     /// does NOT run the standalone monolithic [`Self::validate`] first:
     /// endpoint availability, visible-request identity, and revision must be

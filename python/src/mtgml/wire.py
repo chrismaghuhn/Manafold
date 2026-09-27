@@ -17,6 +17,7 @@ from .canonical import canonical_json_bytes
 from .decision import (
     DecisionResponse,
     DecisionResponseV2,
+    DecisionResponseV3,
     PlayerDecisionRequest,
     PlayerDecisionRequestV2,
 )
@@ -58,6 +59,7 @@ _DECODERS: dict[str, Callable[[object], object]] = {
     "player-decision-request.v2": PlayerDecisionRequestV2.from_wire,
     "player-decision-request.v3": PlayerDecisionRequestV3.from_wire,
     "decision-response.v2": DecisionResponseV2.from_wire,
+    "decision-response.v3": DecisionResponseV3.from_wire,
     "episode-status.v1": EpisodeStatus.from_wire,
     "observed-event-envelope.v1": ObservedEventEnvelope.from_wire,
     "observation-envelope.v1": ObservationEnvelope.from_wire,

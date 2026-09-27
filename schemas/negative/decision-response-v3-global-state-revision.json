@@ -1,0 +1,10 @@
+{
+  "answer": {
+    "candidate_id": 2,
+    "kind": "select_one"
+  },
+  "player_decision_id": "4",
+  "schema_version": "decision-response.v3",
+  "state_revision": "19",
+  "view_sequence": "3"
+}

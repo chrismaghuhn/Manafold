@@ -9,6 +9,7 @@ PLAYER_DECISION_REQUEST_SCHEMA = "player-decision-request.v1"
 DECISION_RESPONSE_SCHEMA = "decision-response.v1"
 PLAYER_DECISION_REQUEST_V2_SCHEMA = "player-decision-request.v2"
 DECISION_RESPONSE_V2_SCHEMA = "decision-response.v2"
+DECISION_RESPONSE_V3_SCHEMA = "decision-response.v3"
 _CANDIDATE_ID_COUNT_CAPACITY = 2**32
 
 _ALLOWED_VISIBILITY = {"public", "acting_player_only", "mixed"}
@@ -513,4 +514,46 @@ class DecisionResponseV2:
             "player_decision_id": uint_wire(self.player_decision_id),
             "schema_version": self.schema_version,
             "state_revision": uint_wire(self.state_revision),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class DecisionResponseV3:
+    """Perspective-safe response bound to a visible request and view cursor."""
+
+    schema_version: str
+    player_decision_id: int
+    view_sequence: int
+    answer: DecisionAnswerV2
+
+    @classmethod
+    def from_wire(cls, value: object) -> DecisionResponseV3:
+        obj = require_exact_keys(
+            value, {"schema_version", "player_decision_id", "view_sequence", "answer"}
+        )
+        if obj["schema_version"] != DECISION_RESPONSE_V3_SCHEMA:
+            raise WireError("decode.invalid_json", "unsupported response V3 schema")
+        result = cls(
+            DECISION_RESPONSE_V3_SCHEMA,
+            parse_uint(obj["player_decision_id"]),
+            parse_uint(obj["view_sequence"]),
+            DecisionAnswerV2.from_wire(obj["answer"]),
+        )
+        result.validate()
+        return result
+
+    def validate(self) -> None:
+        if self.schema_version != DECISION_RESPONSE_V3_SCHEMA:
+            raise WireError("semantic.decision_response", "unsupported response V3 schema")
+        if not 0 <= self.player_decision_id < 2**64 or not 0 <= self.view_sequence < 2**64:
+            raise WireError("semantic.decision_response", "response identity is outside u64")
+        self.answer.validate()
+
+    def to_wire(self) -> dict[str, object]:
+        self.validate()
+        return {
+            "answer": self.answer.to_wire(),
+            "player_decision_id": uint_wire(self.player_decision_id),
+            "schema_version": self.schema_version,
+            "view_sequence": uint_wire(self.view_sequence),
         }

@@ -18,6 +18,7 @@
     "authoritative-replay.v7.schema.json",
     "decision-response.v1.schema.json",
     "decision-response.v2.schema.json",
+    "decision-response.v3.schema.json",
     "episode-status.v1.schema.json",
     "information-state-envelope.v1.schema.json",
     "information-state-envelope.v2.schema.json",
