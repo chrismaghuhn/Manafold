@@ -151,6 +151,8 @@ TriggeredAbilityStackItem {
 }
 ```
 
+`CostFactsV1.paid_additional_cost_ids` is a set-valued paid-status fact represented as a sorted, duplicate-free vector of profile-local `u32` IDs. It does not encode player selection order. `selected_route` remains a single typed route value or `null`.
+
 When a pending trigger is placed on the stack, its `AbilitySourceContext`, controller, captured event facts, and chosen targets transfer into the triggered stack item before the pending record is removed. `AbilitySourceContext` carries the exact `ability_key` and `semantic_profile_id`; `originating_trigger` remains as trusted provenance only. Duplicate controller/source fields are removed; controller belongs to `StackRecord`, and source identity belongs to the typed payload. Spell card objects in Stack Zone and `stack_records` must validate bidirectionally. A triggered/activated ability can have no stack-zone card object. Payload origin/profile/source identities join only under the immutable execution content contract.
 
 Target references are a closed trusted union (current object incarnation, player, and stack item where a triggered/counter rule needs it). Ability/card semantics resolve through the immutable content and semantic contract bound by `ExecutionIdentityV1`; no card-name switch or process-global catalog lookup. A stack payload is not Oracle text, arbitrary JSON, an opcode, a callback, a closure, or an untyped `EffectRecord` label. A profile that needs a new captured value must add a typed reviewed variant before its card can be admitted.
@@ -240,6 +242,24 @@ The trigger descriptor is a closed `SafeTriggerDescriptorV1` value. It contains 
 | 10 | `life_changed` | player opaque identity; public before/after life totals; closed cause tag. |
 
 These ranks are the exact `TriggerEventKindV1` wire/order discriminants for `SafeTriggerDescriptorV1`; declaration order, Rust enum layout, and lexical string order are not substitutes. They are used before the event-specific safe subject tuple in `CandidateOrderingV3`.
+
+The event-specific subject tuple and its field order are fixed as follows; each tuple compares lexicographically using the value ordering stated here:
+
+| Event tag | Subject comparison tuple |
+|---|---|
+| `spell_cast` | actor; nullable spell-source object; creature-spell boolean (`false < true`); `CostFactsV1`. |
+| `ability_activated` | actor; activated-source object; activated-source ability; target descriptors in captured target-slot vector order; `CostFactsV1`. |
+| `target_became` | actor; target descriptor. |
+| `object_entered` | nullable object identity. |
+| `object_left_or_died` | nullable last-known object identity; destination-zone rank. |
+| `beginning_of_combat` | active player; turn number. |
+| `attack_declared` | controller; attacker/defending-player pair vector, already sorted by attacker opaque identity. |
+| `card_drawn` | player. |
+| `counter_changed` | nullable object identity; counter-kind rank; before count; after count. |
+| `damage_applied` | nullable source object; recipient descriptor; amount; damage-kind rank. |
+| `life_changed` | player; before total; after total; cause rank. |
+
+Nullable values sort before present values. Numeric values use unsigned numeric order for IDs/counts/turns and signed numeric order for life totals. Vectors compare element-by-element, then by length. `CostFactsV1` compares selected route (`null < normal < alternative(route_id)`), then the ascending `paid_additional_cost_ids` vector. Enum ranks are fixed: zones `library=0, hand=1, battlefield=2, graveyard=3, exile=4, stack=5, command=6, ante=7, outside=8`; counter kinds `plus_one_plus_one=0, minus_one_minus_one=1, lore=2`; damage kinds `combat=0, noncombat=1`; life-change causes `damage=0, non_damage=1`. After the event tag and subject tuple, compare nullable source-object opaque identity and then nullable source-ability opaque identity. These are semantic comparator rules, not serialization field-order requirements.
 
 The `public target descriptor` fields in the `ability_activated` and `target_became` subjects use this closed `SafeTargetDescriptorV1` union:
 
