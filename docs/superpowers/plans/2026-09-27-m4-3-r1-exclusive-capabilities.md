@@ -14,21 +14,36 @@ This plan is executable only after the Spec is accepted, the exact R1 content id
 The expected dependency shape is:
 
 ```text
-Shared state/turn/cast/target/trigger/payment/combat/zone foundations
-                          ↓
+M4.2 accepted state substrate
+          ↓
+External Shared-owned prerequisites (not R1 batches):
+  SHARED-CAST-PAYMENT + typed cast/stack payload
+  SHARED-TRIGGER-STACK + target/event foundations
+  SHARED-TEMPORARY-EFFECT + characteristic derivation
+  Shared combat, replacement, entry and zone foundations as needed
+          ↓
 R1-E1 event-derived turn history producers and consumers
-               ↙                         ↘
+          ↓
 R1-E2 ability-use / Valiant       R1-E3 Ojer damage replacement
-               ↘                         ↙
-   R1-E4 typed effects + R1-E5 trample / face / return
-                          ↓
-       R1-E6 kick / mana restriction / permissions
-                          ↓
-              R1-E7 delayed Warp composition
-                          ↓
-       R1-E8 remaining R1 CardDefinitions and closure
-                          ↓
-       R1 conformance + cross-deck evidence + closure
+          ↓                                  ↓
+          └──────────────┬───────────────────┘
+                         ↓
+             R1-E4 Haste / Prowess profiles
+
+R1-E5 trample / face / return advances from its named Shared prerequisites.
+SHARED-CAST-PAYMENT
+          ↓
+R1-E6a Kicker / restricted-mana profiles
+          ↓
+R1-E6b R1 exile-play permission
+          ↓
+R1-E7 delayed Warp composition
+
+All accepted capability roots + all external Shared gates
+          ↓
+R1-E8 CardDefinitions and recursive closure
+          ↓
+R1 conformance + cross-deck evidence + closure
 ```
 
 The graph is a dependency proposal, not an authorization to combine the distinct mechanism families into one implementation. A batch can split into separate PRs where contract review or ownership requires it. Shared work stays in the coordinated Shared stream and must not be copied into these batches.
@@ -40,7 +55,7 @@ Before R1-E1 is implementation-authorized:
 1. Accept the R1 Spec and record exact source/Oracle/printing identities and hashes for all 60 slots in a repository-owned deck manifest without modifying #222's list.
 2. Finish Shared ownership and Specs for object/characteristics, zone incarnation/entry, permanent lifetime, spell casting and stack payload, payment/cost, target legality, trigger detection/placement/ordering, damage/life, effects/duration, turn/priority, combat/first strike, and replacement application as demanded by the complete Shared closure.
 3. Resolve which current PlayerDecision/DecisionV3 closed variants can represent every cast/activation/target/optional cost/payment/combat assignment. Any new public domain or serialized continuation requires an explicit contract-growth Spec first.
-4. Review new state owners for temporary effects, permission, delayed Warp scheduling, and stack/cast resolution payload. M4.2 explicitly deferred those families. Run the complete identity/wire compatibility audit before selecting any new contract identity or version.
+4. Review new state owners for temporary effects, permission, delayed Warp scheduling, and stack/cast resolution payload. M4.2 explicitly deferred those families. Shared state/contract growth belongs to the Shared stream; R1 batches may depend on an accepted Shared contract but must not create or implement it under R1 ownership. Run the complete identity/wire compatibility audit before selecting any new contract identity or version.
 5. Give each semantic capability a canonical registry entry through the accepted registry workflow. Registry lifecycle starts at `specified`; no implementation status is inferred from this plan.
 
 Shared dependencies do not block design work in isolation, but they block integrating dependent R1 candidates and any support claim. Reclassify a family to Shared immediately if W1 closure demonstrates it requires the same semantic predicate.
@@ -65,7 +80,7 @@ Shared dependencies do not block design work in isolation, but they block integr
 **Dependencies:** E1 turn reset; Shared ability authority/activation and target announcement/change/copy events; Shared trigger/decision/stack owner.
 **State:** reuse M4.2 `once_ability_used` and `target_occurrences`; no additional state.
 **Decisions:** activate/decline via ordinary priority; Valiant trigger's may-play choice explicitly represented by R1-E6 permission/cast path.
-**RED sequence:** used ability excluded and forged activation rejected; successful commit records one use; rejected activation records none; target paired by target incarnation and targeting controller; opponent first then owner; owner repeated target; target change/copy; control changes; target incarnation departure and turn reset.
+**RED sequence:** used ability excluded and forged activation rejected; successful commit records one use; rejected activation records none; target paired by target incarnation and targeting controller; opponent first then owner; owner repeated target; target change/copy; control changes; target incarnation departure and turn reset. For Valiant, library identity stays hidden before resolution, then its face-up exiled card becomes public to both players.
 **Main conformance:** exact occurrence/trigger count and first-time target event; no targeter/source identity used as a surrogate; checkpoint/fork/replay preserve markers.
 **Unblocks:** Valiant trigger resolution and Hired Claw activation closure.
 
@@ -80,13 +95,25 @@ Shared dependencies do not block design work in isolation, but they block integr
 **Main conformance:** qualifying damage replaced once; nonqualifying damage unchanged; post-replacement life and damage history exact.
 **Unblocks:** Ojer face ability threshold correctness and shared R1 damage spell interactions.
 
-### Batch R1-E4 — Typed temporary effects, Haste and Prowess
+### External prerequisite gate — SHARED-TEMPORARY-EFFECT (not an R1 batch)
 
-**Shared prerequisite:** accept the generic temporary-effect owner first; W1 needs temporary effects too.
+**Owner:** Shared capability/contract work, outside M4.3 R1-exclusive PR ownership.
+**Scope:** specify and implement the reusable typed temporary-effect/duration and characteristic-layer substrate needed by both R1 and W1, with state, delta, event, observation, digest, checkpoint and replay implications. Do not add R1-specific Prowess/Haste profile logic in this gate.
+**Gate:** accepted Shared Spec, accepted contract-growth decision where required, implementation and conformance accepted under Shared coordination. This is an external prerequisite; this R1 Plan does not authorize its PR.
+
+### External prerequisite gate — SHARED-TRIGGER-STACK (not an R1 batch)
+
+**Owner:** Shared capability/contract work, outside M4.3 R1-exclusive PR ownership.
+**Scope:** reusable trigger detection/placement/ordering and typed trigger/stack payload required by both decks, including candidate and continuation contracts.
+**Gate:** accepted Shared Spec, any required persisted/wire growth reviewed, implementation and conformance accepted under Shared coordination. This gate is required before R1 trigger-producing profiles integrate.
+
+### Batch R1-E4 — R1 Haste and Prowess profiles
+
+**External prerequisites:** `SHARED-TEMPORARY-EFFECT` and `SHARED-TRIGGER-STACK` are accepted and closed. W1 also depends on the generic temporary-effect/trigger owners.
 **R1-specific capabilities:** `mechanic/haste`; `mechanic/prowess`; Rockface Village's +1/+0 and granted-haste profile.
 **Direct witnesses:** Fanatical Firebrand, Emberheart Challenger, Hearthborn Battler, Nova Hellkite, Rockface Village.
 **Dependencies:** Shared effects/duration/characteristic layers, spell-cast trigger and turn/cleanup.
-**State:** contract growth expected for a typed effect record and expiry/timestamp if no accepted current representation exists. It must bind through state, delta, events, digest, checkpoint and replay.
+**State:** no R1-owned generic effect state. Bind the R1 profile to the accepted Shared typed effect record and identity closure. Any generic state or contract growth remains Shared-owned.
 **Decisions:** Rockface target choice explicit; Prowess is forced once per qualifying cast; no player selection of effect duration.
 **RED sequence:** Haste affects attack and tap ability only; cannot waive other restrictions; printed vs granted haste; Prowess each noncreature cast including before resolution; not spell copies; no counters; correct end-of-turn expiry; layered P/T and target departure.
 **Main conformance:** legal attack/activation candidate set changes and returns at expiry; exact public effect observations and replay parity.
@@ -114,16 +141,22 @@ Shared dependencies do not block design work in isolation, but they block integr
 **Main conformance:** Ojer round trip with exact new-incarnation face/tap event and tapped-face mana activation.
 **Unblocks:** full Ojer face profile and nonbasic back-face mana ability extension. The mana ability subfamily needs a separate Shared ownership check; do not claim it under basic-land-mana merely because Temple is a land face.
 
-### Batch R1-E6a — Optional additional cost and Rockface restricted mana
+### External prerequisite gate — SHARED-CAST-PAYMENT (not an R1 batch)
 
-**Capability:** `rules/additional-cost-choice`; R1 restriction profile for Shared `rules/mana-payment`.
+**Owner:** Shared capability/contract work, outside M4.3 R1-exclusive PR ownership.
+**Scope:** generic casting, cost composition, player choice, mana payment/allocation and typed cast/stack payload sufficient for both decks. Kicker and Rockface restriction profiles are not part of this gate.
+**Gate:** accepted Shared Spec and any required contract-growth decision, implementation and conformance accepted under Shared coordination. This R1 Plan does not authorize Shared payment or stack-payload PRs.
+
+### Batch R1-E6a — Kicker and Rockface restricted-mana profiles
+
+**Capability:** `mechanic/kicker`; R1 restriction profile for Shared `rules/mana-payment`.
 **Direct witnesses:** Burst Lightning; Rockface Village.
-**Dependencies:** Shared cast/payment, typed stack payload, mana pool and spell characteristic query.
-**State:** paid-kicker branch must persist in closed cast/stack payload; Rockface restriction uses existing ManaState buckets. Kicker payload growth is expected if current state cannot represent it.
+**Dependencies:** accepted `SHARED-CAST-PAYMENT`, including typed shared cast/stack payload, mana pool, spell characteristic query, and a Shared-owned extension point for mana restrictions.
+**State:** the paid-Kicker status is an R1-specific typed value carried by the accepted Shared cast/stack payload; any payload shape growth is Shared-owned and must be an accepted prerequisite. Rockface's restriction tag is an R1-specific profile value over existing ManaState buckets; generic restriction validation/payment execution is Shared-owned and must be accepted before this profile integration.
 **Decisions:** explicitly choose kicker/decline and every complete legal mana allocation.
 **RED sequence:** unpaid 2 damage, paid 4 damage, no unaffordable kick candidate, every restricted/unrestricted allocation, illegal noncreature/ability spend, stale/fabricated paid status, rejection nonmutation.
 **Main conformance:** Burst Lightning target plus cost route survives stack resolution/checkpoint/replay; restricted Rockface red spent only on creature spell.
-**Unblocks:** Burst Lightning and Rockface mana/land definition clauses.
+**Unblocks:** Burst Lightning's R1 Kicker profile. Rockface's restriction profile integrates only after the Shared payment owner admits and covers restricted mana enforcement.
 
 ### Batch R1-E6b — Exile play permission
 
@@ -132,8 +165,8 @@ Shared dependencies do not block design work in isolation, but they block integr
 **Dependencies:** Shared exile/zone incarnation, casting/payment, permission validation, player knowledge/projection, E2 Valiant trigger.
 **State:** new typed permission family likely requires contract growth and exact expiry semantics.
 **Decisions:** play/decline explicitly; ordinary timing, costs, entitlement and target decisions remain available.
-**RED sequence:** only exact card/person/action authorized; expiration at EOT vs later turn; card leaves exile; owner/opponent views; unknown identity noninterference; permission present in checkpoint/fork/replay; fabricated/stale use rejected.
-**Main conformance:** Emberheart exiles top card; controller plays or declines; no identity leakage.
+**RED sequence:** only exact card/player/action authorized; Emberheart permission ends at turn end; Warp permission begins only after the Warp-cast turn ends and has no turn-based expiry while the exact exile relation remains; card leaves exile; both players see face-up exile identity but only the authorized player sees the playable candidate; hidden library identity is noninterfering before public exile; permission present in checkpoint/fork/replay; fabricated/stale use rejected.
+**Main conformance:** Emberheart exiles the top card face up; both perspectives observe the same public card identity after resolution, while only the authorized player's complete decision domain offers to play it. Before resolution, paired hidden library identities remain noninterfering.
 **Unblocks:** Emberheart permission closure and Warp's permission half.
 
 ### Batch R1-E7 — Delayed effect and Warp composition
@@ -143,8 +176,8 @@ Shared dependencies do not block design work in isolation, but they block integr
 **Dependencies:** E6b permission; E6a cast/payment; Shared turn/end-step scheduler, exile incarnation, trigger/effect and replay.
 **State:** typed due-turn/step payload and exact card reference, contract growth required if absent from the accepted execution closure. Source departure must not erase it.
 **Decisions:** Warp vs ordinary cast route, complete payment route, later permission play/decline.
-**RED sequence:** Warp unavailable/unaffordable; source leaves; next end step only; multiple-turn delay; no same-turn recast; later-turn permission expiry; exact incarnation/face/zone; restore/fork/replay across pre-due and post-due boundaries.
-**Main conformance:** cast via Warp, resolve, source departure, end-step exile, later-turn cast, permission expiry; each boundary has exact event/state identity.
+**RED sequence:** Warp unavailable/unaffordable; source permanent leaves before the due trigger; no fallback to a later incarnation; next end step only; permission unavailable until the Warp-cast turn ends; permission remains available across later turns only while the exact exile incarnation remains exiled; exact incarnation/face/zone; restore/fork/replay across pre-due and post-due boundaries.
+**Main conformance:** cast via Warp, resolve, original permanent leaves before due and produces no exile/permission; in the positive case, next-end-step exile and later permission bind to exact incarnations, remain valid while exiled, and cease when that card leaves exile. Each boundary has exact event/state identity.
 **Unblocks:** Nova Hellkite's full Warp definition.
 
 ### Batch R1-E8 — CardDefinition admission and R1 recursive closure
@@ -194,20 +227,23 @@ Do not author CardDefinitions merely to drive a mechanic implementation. Use typ
 
 The following are semantic batches, not card PRs. Split any batch at an identity-cut boundary or distinct owner review. Shared changes must land under Shared coordination before dependent R1 merges.
 
-1. **R1-E1a** spell-cast history event production and count consumers.
-2. **R1-E1b** actual life-loss/red-noncombat-damage history producers and consumers.
-3. **R1-E2a** Hired Claw once-use activation predicate.
-4. **R1-E2b** Emberheart target occurrence/Valiant trigger predicate.
-5. **R1-E3** Ojer noncombat damage floor replacement.
-6. **R1-E4** shared typed temporary-effect state/contract must be owned by Shared; then a separate R1 Prowess/Haste profile integration.
-7. **R1-E5a** trample assignment decision and damage semantics.
-8. **R1-E5b** Ojer transform action and return-as-new-incarnation entry profile.
-9. **R1-E6a** Shared payment/cast payload growth and R1 kicker/restricted-mana profiles; coordinate payment work as Shared.
-10. **R1-E6b** typed exile play permission state and Emberheart profile.
-11. **R1-E7** delayed effect schedule and Warp profile.
-12. **R1-E8a** CardDefinitions for the ten nonbasic R1 permanent/spell identities except Rockface if its profile dependency is not ready.
-13. **R1-E8b** Rockface Village and final exact 60-slot recursive closure.
-14. **R1 conformance closure** exact card and R1-internal interaction matrix; lifecycle promotion only at evidence boundaries.
+1. **SHARED-CAST-PAYMENT** external Shared-owned casting/payment/cost and typed cast/stack payload contract/implementation/conformance gate; it is not an R1 PR.
+2. **SHARED-TRIGGER-STACK** external Shared-owned trigger/stack contract/implementation/conformance gate; it is not an R1 PR.
+3. **R1-E1a** spell-cast history event production and count consumers.
+4. **R1-E1b** actual life-loss/red-noncombat-damage history producers and consumers.
+5. **R1-E2a** Hired Claw once-use activation predicate.
+6. **R1-E2b** Emberheart target occurrence/Valiant trigger predicate.
+7. **R1-E3** Ojer noncombat damage floor replacement.
+8. **SHARED-TEMPORARY-EFFECT** external Shared-owned contract/implementation/conformance gate; it is not an R1 PR.
+9. **R1-E4** R1-only Haste/Prowess profile integration after the external gate passes.
+10. **R1-E5a** trample assignment decision and damage semantics after Shared combat prerequisites.
+11. **R1-E5b** Ojer transform action and return-as-new-incarnation entry profile after Shared activation, entry and trigger prerequisites.
+12. **R1-E6a** R1 Kicker and restricted-mana profiles after `SHARED-CAST-PAYMENT`; any generic restriction/payment code change remains in the Shared stream.
+13. **R1-E6b** R1 exile-play permission state and Emberheart profile.
+14. **R1-E7** R1 delayed Warp schedule/profile after E6b and Shared trigger/zone/turn prerequisites.
+15. **R1-E8a** CardDefinitions for the ten nonbasic R1 permanent/spell identities except Rockface if its profile dependency is not ready.
+16. **R1-E8b** Rockface Village and final exact 60-slot recursive closure after Shared restricted-mana enforcement is accepted.
+17. **R1 conformance closure** exact card and R1-internal interaction matrix; lifecycle promotion only at evidence boundaries.
 
 Do not combine E3 Ojer replacement with E5 trample just because they share Ojer. Do not combine E6 payment/permission or E7 scheduling. Each has a separate state/decision contract.
 
