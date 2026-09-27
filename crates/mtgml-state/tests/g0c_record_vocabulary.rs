@@ -3,12 +3,13 @@ use mtgml_model::{
     AbilityInstanceId, CardDefinitionId, GameObjectId, PlayerId, StackObjectId, TriggerInstanceId,
 };
 use mtgml_state::{
-    AbilitySourceContext, ActionCostFacts, CastContinuation, CastContinuationStage, CostFacts,
-    CostRoute, DamageKind, DamageRecipient, EffectExpiry, LifeChangeCause, ManaCost,
-    ManaPaymentStage, ManaPaymentStaging, ManaSourceActivation, ManaSourceActivationCost,
-    ModeBinding, NonManaActivationContinuation, NonManaActivationStage, ReservedNonManaCost,
-    SelectedCostOperand, SelectedTriggerTarget, SourceContext, StackItemPayload,
-    StackResolutionContinuation, StackResolutionStage, TargetBinding, TargetRef,
+    AbilitySourceContext, ActionCostFacts, AssemblyStageV2, CastContinuation,
+    CastContinuationStage, ContinuationPayloadV3, ContinuationRecordV3, CostFacts, CostRoute,
+    DamageKind, DamageRecipient, EffectExpiry, LifeChangeCause, ManaCost, ManaPaymentStage,
+    ManaPaymentStaging, ManaSourceActivation, ManaSourceActivationCost, ModeBinding,
+    NonManaActivationContinuation, NonManaActivationStage, ReservedNonManaCost,
+    SbaSelectedActionV1, SelectedCostOperand, SelectedTriggerTarget, SourceContext,
+    StackItemPayload, StackResolutionContinuation, StackResolutionStage, TargetBinding, TargetRef,
     TemporaryEffectRecord, TemporaryKeyword, TemporaryOperation, TriggerActorRequestRoot,
     TriggerEventSnapshot, TriggerPlacementContinuation,
 };
@@ -258,7 +259,6 @@ fn cost_facts_and_source_payment_staging_have_one_typed_owner() {
 #[test]
 fn paused_stack_payment_has_one_authoritative_stage_owner() {
     let waiting_for_ward_choice = StackResolutionContinuation {
-        id: mtgml_model::ContinuationId(1),
         resolving_stack_object: StackObjectId(3),
         stage: StackResolutionStage::AwaitingOptionalPayment,
         action_cost_facts: None,
@@ -270,7 +270,6 @@ fn paused_stack_payment_has_one_authoritative_stage_owner() {
     ));
 
     let paying_ward_cost = StackResolutionContinuation {
-        id: mtgml_model::ContinuationId(1),
         resolving_stack_object: StackObjectId(3),
         stage: StackResolutionStage::PayingMana,
         action_cost_facts: Some(ActionCostFacts {
@@ -357,7 +356,6 @@ fn cast_and_activation_continuations_use_closed_stage_tags() {
     assert!(activation_stages.contains(&NonManaActivationStage::PayingMana));
 
     let cast = CastContinuation {
-        id: mtgml_model::ContinuationId(1),
         actor: PlayerId(0),
         spell_object: GameObjectId(20),
         card_definition_id: CardDefinitionId(9),
@@ -384,7 +382,6 @@ fn cast_and_activation_continuations_use_closed_stage_tags() {
     assert!(matches!(cast.stage, CastContinuationStage::PayingMana));
 
     let activation = NonManaActivationContinuation {
-        id: mtgml_model::ContinuationId(2),
         actor: PlayerId(0),
         source_object: GameObjectId(21),
         source_ability_instance: AbilityInstanceId(4),
@@ -400,4 +397,74 @@ fn cast_and_activation_continuations_use_closed_stage_tags() {
         activation.stage,
         NonManaActivationStage::SelectingCostOperands
     ));
+}
+
+#[test]
+fn continuation_v3_wrapper_owns_only_identity_and_creation_revision() {
+    let payloads = [
+        ContinuationPayloadV3::SyntheticAssembly {
+            actor: PlayerId(0),
+            stage: AssemblyStageV2::ChooseCount,
+            selected_count: None,
+            selected_piece_keys: vec![],
+            ordered_piece_keys: vec![],
+        },
+        ContinuationPayloadV3::MagicSbaGraveyardOrderV1 {
+            round_start_revision: mtgml_model::StateRevision(2),
+            selected_sba_actions: vec![SbaSelectedActionV1::PlayerLoses {
+                player: PlayerId(1),
+            }],
+            apnap_owners: vec![PlayerId(0), PlayerId(1)],
+            next_owner_index: 0,
+            completed_owner_orders: vec![],
+        },
+        ContinuationPayloadV3::Cast(CastContinuation {
+            actor: PlayerId(0),
+            spell_object: GameObjectId(30),
+            card_definition_id: CardDefinitionId(4),
+            face_key: FaceKey(0),
+            semantic_profile_id: profile(),
+            stage: CastContinuationStage::SelectingTargets,
+            selected_route: None,
+            modes: vec![],
+            targets: vec![],
+            paid_cost_choices: vec![],
+            action_cost_facts: ActionCostFacts::default(),
+            mana_payment_staging: None,
+        }),
+        ContinuationPayloadV3::NonManaActivation(NonManaActivationContinuation {
+            actor: PlayerId(0),
+            source_object: GameObjectId(31),
+            source_ability_instance: AbilityInstanceId(2),
+            ability_key: AbilityKey(1),
+            semantic_profile_id: profile(),
+            stage: NonManaActivationStage::SelectingTargets,
+            modes: vec![],
+            targets: vec![],
+            action_cost_facts: ActionCostFacts::default(),
+            mana_payment_staging: None,
+        }),
+        ContinuationPayloadV3::TriggerPlacement(TriggerPlacementContinuation {
+            apnap_actors: vec![PlayerId(0)],
+            current_actor_index: 0,
+            pending_trigger_ids: vec![TriggerInstanceId(1)],
+            completed_orders: vec![],
+            selected_trigger_targets: vec![],
+            actor_request_roots: vec![],
+        }),
+        ContinuationPayloadV3::StackResolution(StackResolutionContinuation {
+            resolving_stack_object: StackObjectId(4),
+            stage: StackResolutionStage::AwaitingOptionalPayment,
+            action_cost_facts: None,
+            mana_payment_staging: None,
+        }),
+    ];
+
+    let continuation = ContinuationRecordV3 {
+        id: mtgml_model::ContinuationId(9),
+        created_at_revision: mtgml_model::StateRevision(2),
+        payload: payloads[2].clone(),
+    };
+    assert_eq!(payloads.len(), 6);
+    assert_eq!(continuation.id, mtgml_model::ContinuationId(9));
 }

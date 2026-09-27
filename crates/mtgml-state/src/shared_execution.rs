@@ -10,6 +10,7 @@ use mtgml_model::{
     PlayerId, StackObjectId, TriggerInstanceId,
 };
 
+use crate::{AssemblyStageV2, SbaGraveyardOwnerOrderV1, SbaSelectedActionV1};
 use crate::{CounterKindV1, ObjectSnapshot, ZoneLocation};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -125,7 +126,6 @@ pub enum CastContinuationStage {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CastContinuation {
-    pub id: ContinuationId,
     pub actor: PlayerId,
     pub spell_object: GameObjectId,
     pub card_definition_id: mtgml_model::CardDefinitionId,
@@ -150,7 +150,6 @@ pub enum NonManaActivationStage {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NonManaActivationContinuation {
-    pub id: ContinuationId,
     pub actor: PlayerId,
     pub source_object: GameObjectId,
     pub source_ability_instance: AbilityInstanceId,
@@ -171,11 +170,39 @@ pub enum StackResolutionStage {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StackResolutionContinuation {
-    pub id: ContinuationId,
     pub resolving_stack_object: StackObjectId,
     pub stage: StackResolutionStage,
     pub action_cost_facts: Option<ActionCostFacts>,
     pub mana_payment_staging: Option<ManaPaymentStaging>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ContinuationPayloadV3 {
+    SyntheticAssembly {
+        actor: PlayerId,
+        stage: AssemblyStageV2,
+        selected_count: Option<u32>,
+        selected_piece_keys: Vec<u32>,
+        ordered_piece_keys: Vec<u32>,
+    },
+    MagicSbaGraveyardOrderV1 {
+        round_start_revision: mtgml_model::StateRevision,
+        selected_sba_actions: Vec<SbaSelectedActionV1>,
+        apnap_owners: Vec<PlayerId>,
+        next_owner_index: u32,
+        completed_owner_orders: Vec<SbaGraveyardOwnerOrderV1>,
+    },
+    Cast(CastContinuation),
+    NonManaActivation(NonManaActivationContinuation),
+    TriggerPlacement(TriggerPlacementContinuation),
+    StackResolution(StackResolutionContinuation),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContinuationRecordV3 {
+    pub id: ContinuationId,
+    pub created_at_revision: mtgml_model::StateRevision,
+    pub payload: ContinuationPayloadV3,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
