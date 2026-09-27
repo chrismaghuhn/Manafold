@@ -229,8 +229,8 @@ fn wrong_content_and_semantic_identity_bindings_reject() {
     )
     .is_err());
 
-    let mut wrong_semantic = execution.clone();
-    wrong_semantic.semantic_contract_id = mtgml_model::SemanticContractIdV1::parse(
+    let mut wrong_execution = execution.clone();
+    wrong_execution.semantic_contract_id = mtgml_model::SemanticContractIdV1::parse(
         "0000000000000000000000000000000000000000000000000000000000000000",
     )
     .unwrap();
@@ -240,7 +240,7 @@ fn wrong_content_and_semantic_identity_bindings_reject() {
         &provenance,
         &rules,
         &semantic,
-        &wrong_semantic,
+        &wrong_execution,
     )
     .is_err());
 }

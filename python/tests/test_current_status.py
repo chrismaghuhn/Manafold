@@ -16,12 +16,14 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             r"\*\*Foundation closure/freeze:\*\* `COMPLETE`",
         )
         self.assertIn(
-            "**Current status:** M3 is complete and final acceptance passed; M4.2 Phase 10 "
-            "successor-runtime implementation is under review on the integration branch. "
-            "`master` remains on the predecessor V5/V6 runtime until the separate Phase 13 "
-            "activation boundary; M4.2 is not complete.",
+            "**Current status:** M3 is complete and final acceptance passed; the bounded "
+            "M4.2 Mountain/Plains implementation through Phase 12 is integrated. Phase 13 "
+            "is the master-activation boundary; M4.2 remains `IN_PROGRESS` until post-merge "
+            "exact-master verification and `FINAL_ACCEPTANCE_PASS`.",
             readme,
         )
+        self.assertNotIn("Phase 10 successor-runtime implementation is under review", readme)
+        self.assertNotIn("`master` remains on the predecessor V5/V6 runtime", readme)
         self.assertNotIn(
             "S1 implementation remains not authorized",
             readme,
@@ -128,7 +130,8 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             readme,
         )
         self.assertIn(
-            "**Current boundary:** `M3 = COMPLETE`; `M3_FINAL_ACCEPTANCE = PASS`; `M4 = UNBLOCKED`",
+            "**Current boundary:** `M3 = COMPLETE`; `M3_FINAL_ACCEPTANCE = PASS`; "
+            "`M4 = IN_PROGRESS`",
             readme,
         )
         self.assertIn(
@@ -138,11 +141,30 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         )
         self.assertIn("0` are certified", readme)
         self.assertIn("**Playable engine:** no", readme)
-        self.assertIn("**Real card support:** none", readme)
-        self.assertIn("**Current resumable execution contract on `master`:** V6.", readme)
+        self.assertIn(
+            "**Bounded executable real-card support:** Mountain + Plains under "
+            "`basic-land@1.0.0`; no broader card/deck support is claimed.",
+            readme,
+        )
+        self.assertIn("**Current resumable execution contract on `master`:** V7.", readme)
+        for current_contract in (
+            "`EngineStatePartsV2`",
+            "`FullStateDigestV6`",
+            "`StateDeltaV2`",
+            "`EnvironmentCheckpointV7`",
+            "Replay V7",
+            "Decision V3",
+            "ObservedEvent V3",
+            "PlayerStep V3",
+            "`basic-land@1.0.0`",
+        ):
+            with self.subTest(current_contract=current_contract):
+                self.assertIn(current_contract, readme)
+        self.assertRegex(readme, r"No predecessor gameplay\s+writer is current")
         self.assertRegex(
             readme,
-            r"The M4\s+successor integration branch has migrated its sole executable runtime",
+            r"V5/V6 predecessor artifacts, including[\s\S]+"
+            r"remain historical\s+read/verification only",
         )
         self.assertIn("historical read/verification only", readme)
         self.assertIn("`EnvironmentCheckpointV6`", readme)
@@ -187,8 +209,17 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
 
         self.assertIn("M3 = COMPLETE", current_status)
         self.assertIn("M3_FINAL_ACCEPTANCE = PASS", current_status)
-        self.assertIn("M4 = UNBLOCKED", current_status)
-        self.assertIn("M4_CONTENT_IMPLEMENTATION = NOT_STARTED", current_status)
+        self.assertIn("M4 = IN_PROGRESS", current_status)
+        self.assertIn("M4_CONTENT_IMPLEMENTATION = M4.2_BOUNDED_SLICE_IMPLEMENTED", current_status)
+        self.assertIn("M4_2_STATUS = IN_PROGRESS", current_status)
+        self.assertIn(
+            "M4_2_EXECUTABLE_SLICE = Mountain + Plains / basic-land@1.0.0",
+            current_status,
+        )
+        self.assertIn(
+            "M4_2_PHASE_13 = MASTER_ACTIVATION / POST_MERGE_VERIFICATION_PENDING", current_status
+        )
+        self.assertNotIn("M4_CONTENT_IMPLEMENTATION = NOT_STARTED", current_status)
         self.assertNotIn("M3_FINAL_ACCEPTANCE = PENDING", current_status)
         self.assertNotIn("M4_STARTED = NO", current_status)
 
