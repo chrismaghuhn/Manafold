@@ -24,6 +24,49 @@ verified CardDefinition + closed profile
 → atomic commit
 ```
 
+### Successor execution authority and migration boundary
+
+The successor runtime has one authoritative state and one executable path.
+`EngineStatePartsV2` is the complete runtime-state authority for the successor
+family, including its typed execution state and the six card-rules state
+families. Its predecessor-shaped fields may reuse V5 value types or encoding
+helpers where their semantics are unchanged, but `EngineStatePartsV2` is not a
+V5 `EngineState` plus an environment-owned semantic sidecar. In particular,
+the runtime state MUST contain exactly one pending authoritative decision:
+`AuthoritativeDecisionRequestV3`. The pending request, its trusted candidate
+bindings, continuations, and other supported execution records are part of
+successor state, checkpoint, fork, FullStateDigestV6, and Replay V7 identity.
+They MUST NOT live in hidden mutable backend/controller state, be duplicated
+as a V2 request, or be reconstructed from the board after restore.
+
+The typed successor execution state MUST encode to the already frozen
+`PersistedExecutionV3` shape exactly. This clarification allocates no new
+state family, contract ID, digest domain, wire identity, or canonical field.
+It makes the typed producer for the existing frozen execution encoding
+explicit; the Phase-2 FullStateDigestV6 bytes and known answers remain exact.
+Historical V2 pending requests remain available to their specified detached
+readers/verifiers and are not executable by the successor runtime.
+
+On the non-current integration branch, Phase 10 migrates the existing
+`RulesKernel`/`TransitionResult` and environment/controller/commit path in
+place to this one successor state and its coupled V6/V7/V3 products. There is
+no second executable V7 kernel/backend/controller alongside an executable V6
+gameplay path. Rules meaning remains owned by the single RulesKernel
+transition authority; its transition product carries successor state,
+`StateDeltaV2`, authoritative V2 event records, and the next authoritative
+V3 request. The environment validates the complete product and projections
+before one atomic commit.
+
+The integration branch may construct and execute this successor runtime
+after Phase 10 integration and the applicable Phase 11/12 acceptance gates.
+That branch-local authority does not change `master`. Until the sole Phase 13
+merge boundary, `master` retains the predecessor executable family. At the
+successor integration boundary, predecessor V5/V6 runtime families are
+historical read/verification surfaces only; they do not remain executable
+gameplay alternatives. Phase 13 performs no second runtime-type or runtime
+behavior migration: it merges the already reviewed and gated successor
+authority to `master` and verifies the resulting exact head.
+
 The exact typed, rules-owned internal request is a closed ephemeral `MagicActionRequestV1`:
 
 ```text
@@ -232,7 +275,7 @@ Historical V5/V6 goldens and fixtures remain byte-identical. Unknown successor I
 
 ## 5. EngineState V6 composition
 
-The runtime `EngineState` after atomic activation adds the following closed typed components. Each is semantic state; none may be cached in RulesKernel, environment backend, or projector. The immutable content catalog remains external. Its `ContentContractIdV1` is bound by `SemanticContractManifestV1`, then `SemanticContractIdV1` and `ExecutionIdentityV1`; it is not copied into EngineState, FullStateDigest input, or checkpoint state. Definition references in EngineState are interpreted only under that admitted execution identity and its verified content catalog.
+The successor runtime `EngineStatePartsV2` contains the complete closed typed state used by RulesKernel, environment commit, Checkpoint V7, and FullStateDigestV6. The runtime `EngineState` view on the successor branch is this complete state, not a V5 execution state accompanied by an independent sidecar authority. It includes the following six card-rules components and the single typed V3 execution state defined in §1. Each is semantic state; none may be cached in RulesKernel, environment backend, or projector. The immutable content catalog remains external. Its `ContentContractIdV1` is bound by `SemanticContractManifestV1`, then `SemanticContractIdV1` and `ExecutionIdentityV1`; it is not copied into EngineState, FullStateDigest input, or checkpoint state. Definition references in EngineState are interpreted only under that admitted execution identity and its verified content catalog.
 
 ```text
 ManaState
@@ -617,12 +660,16 @@ backend. Phase 7 establishes closed Replay V7 DTOs, canonical wire form,
 identity/content-child verification, recorder construction from supplied
 authoritative products, and structural replay-link validation. It must not
 claim authoritative V7 re-execution or direct/replay semantic parity while
-the current executable environment remains typed to the predecessor runtime.
-The successor-only authoritative replay execution seam becomes implementable
-with the integrated successor execution path in Phase 10. Phase 11 owns the
-full direct/restore/fork/replay parity and tamper-detection acceptance
-evidence. This changes when the invariant is proved, not whether it is
-required before successor acceptance/activation.
+the current executable environment on `master` remains typed to the
+predecessor runtime. Phase 10 migrates the integration branch's one executable
+RulesKernel/environment path in place to the successor state and adds its
+Replay V7 execution seam; it does not add a parallel executable backend.
+Historical Replay V6 remains a detached read/verification surface on that
+branch. Phase 11 owns the full direct/restore/fork/replay parity and
+tamper-detection acceptance evidence. Phase 13 merges the already integrated
+and accepted successor authority to `master`; it does not perform a second
+runtime migration. This changes when the invariant is proved, not whether it
+is required before successor acceptance/activation.
 
 ## 18. RED and conformance obligations
 
