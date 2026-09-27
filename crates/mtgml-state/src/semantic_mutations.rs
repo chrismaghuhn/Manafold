@@ -15,6 +15,26 @@ pub struct AttachmentChangeV1 {
     pub operation_ordinal: u32,
 }
 
+/// One typed before/after fact produced by +1/+1 and -1/-1 counter
+/// annihilation. `to == 0` is event evidence only; zero is never persisted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CounterAnnihilationChangeV1 {
+    pub object: GameObjectId,
+    pub kind: CounterKindV1,
+    pub from: u32,
+    pub to: u32,
+}
+
+/// An older Role attachment selected for the CR 303.7a uniqueness action.
+/// The rules owner uses `owner` to choose its graveyard destination.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RoleAttachmentRetirementV1 {
+    pub source: GameObjectId,
+    pub owner: PlayerId,
+    pub target: GameObjectId,
+    pub timestamp: AttachmentTimestampV1,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum StateFamilyMutationError {
     #[error("state family references an unknown player")]
@@ -351,6 +371,63 @@ impl TurnHistoryStateV1 {
 }
 
 impl CounterStateV1 {
+    /// Performs the CR 704.5q annihilation step as one atomic state-family
+    /// operation. The caller places the returned ordered facts in the same
+    /// transition product as the counter-causing operation, before opening
+    /// the next decision.
+    pub fn annihilate_opposites(
+        &mut self,
+        object: GameObjectId,
+        battlefield: &BTreeSet<GameObjectId>,
+    ) -> Result<Vec<CounterAnnihilationChangeV1>, StateFamilyMutationError> {
+        self.validate_battlefield(battlefield)?;
+        if !battlefield.contains(&object) {
+            return Err(StateFamilyMutationError::WrongZone);
+        }
+        let counts = self.counters.get(&object);
+        let plus = counts
+            .and_then(|counters| counters.get(&CounterKindV1::PlusOnePlusOne))
+            .copied()
+            .unwrap_or(0);
+        let minus = counts
+            .and_then(|counters| counters.get(&CounterKindV1::MinusOneMinusOne))
+            .copied()
+            .unwrap_or(0);
+        let annihilated = plus.min(minus);
+        if annihilated == 0 {
+            return Ok(Vec::new());
+        }
+
+        let mut candidate = self.clone();
+        candidate.remove(
+            object,
+            CounterKindV1::PlusOnePlusOne,
+            annihilated,
+            battlefield,
+        )?;
+        candidate.remove(
+            object,
+            CounterKindV1::MinusOneMinusOne,
+            annihilated,
+            battlefield,
+        )?;
+        *self = candidate;
+        Ok(vec![
+            CounterAnnihilationChangeV1 {
+                object,
+                kind: CounterKindV1::PlusOnePlusOne,
+                from: plus,
+                to: plus - annihilated,
+            },
+            CounterAnnihilationChangeV1 {
+                object,
+                kind: CounterKindV1::MinusOneMinusOne,
+                from: minus,
+                to: minus - annihilated,
+            },
+        ])
+    }
+
     pub fn validate_semantics(&self) -> Result<(), StateFamilyMutationError> {
         if self
             .counters
@@ -449,6 +526,64 @@ impl CounterStateV1 {
 }
 
 impl AttachmentStateV1 {
+    /// Applies Role uniqueness to the relation family atomically. The caller
+    /// must include each returned source's owner-graveyard zone transition in
+    /// the same rules product before exposing the next decision.
+    pub fn enforce_role_uniqueness(
+        &mut self,
+        role_owners_controllers: &BTreeMap<GameObjectId, (PlayerId, PlayerId)>,
+    ) -> Result<Vec<RoleAttachmentRetirementV1>, StateFamilyMutationError> {
+        let mut candidate = self.clone();
+        let retirements = candidate.role_uniqueness_retirements(role_owners_controllers)?;
+        for retirement in &retirements {
+            candidate.by_source.remove(&retirement.source);
+        }
+        *self = candidate;
+        Ok(retirements)
+    }
+
+    /// Identifies older Role attachments which must leave when one player
+    /// controls multiple Roles attached to the same permanent. `role_owners`
+    /// and `role_controllers` are derived from the verified live source
+    /// objects; controller is deliberately not stored on the relation edge.
+    /// Returned records are ordered by timestamp then source identity so a
+    /// rules transition can move each source to its owner's graveyard.
+    pub fn role_uniqueness_retirements(
+        &self,
+        role_owners_controllers: &BTreeMap<GameObjectId, (PlayerId, PlayerId)>,
+    ) -> Result<Vec<RoleAttachmentRetirementV1>, StateFamilyMutationError> {
+        self.validate_semantics()?;
+        let mut newest: BTreeMap<(PlayerId, GameObjectId), (AttachmentTimestampV1, GameObjectId)> =
+            BTreeMap::new();
+        for (source, (_, controller)) in role_owners_controllers {
+            let Some(edge) = self.by_source.get(source) else {
+                continue;
+            };
+            let key = (*controller, edge.target);
+            let current = (edge.timestamp, *source);
+            if newest.get(&key).is_none_or(|previous| previous < &current) {
+                newest.insert(key, current);
+            }
+        }
+
+        let mut retirements = Vec::new();
+        for (source, (owner, controller)) in role_owners_controllers {
+            let Some(edge) = self.by_source.get(source) else {
+                continue;
+            };
+            if newest[&(*controller, edge.target)].1 != *source {
+                retirements.push(RoleAttachmentRetirementV1 {
+                    source: *source,
+                    owner: *owner,
+                    target: edge.target,
+                    timestamp: edge.timestamp,
+                });
+            }
+        }
+        retirements.sort_by_key(|retirement| (retirement.timestamp, retirement.source));
+        Ok(retirements)
+    }
+
     pub fn validate_semantics(&self) -> Result<(), StateFamilyMutationError> {
         let mut timestamps = BTreeSet::new();
         if self
@@ -900,6 +1035,46 @@ mod tests {
     }
 
     #[test]
+    fn counter_annihilation_emits_ordered_typed_facts_and_persists_no_zero() {
+        let object = GameObjectId(7);
+        let battlefield = BTreeSet::from([object]);
+        let mut counters = CounterStateV1::default();
+        counters
+            .add(object, CounterKindV1::PlusOnePlusOne, 3, &battlefield)
+            .unwrap();
+        counters
+            .add(object, CounterKindV1::MinusOneMinusOne, 2, &battlefield)
+            .unwrap();
+
+        let facts = counters.annihilate_opposites(object, &battlefield).unwrap();
+        assert_eq!(
+            facts,
+            vec![
+                super::CounterAnnihilationChangeV1 {
+                    object,
+                    kind: CounterKindV1::PlusOnePlusOne,
+                    from: 3,
+                    to: 1,
+                },
+                super::CounterAnnihilationChangeV1 {
+                    object,
+                    kind: CounterKindV1::MinusOneMinusOne,
+                    from: 2,
+                    to: 0,
+                },
+            ]
+        );
+        assert_eq!(
+            counters.counters[&object],
+            BTreeMap::from([(CounterKindV1::PlusOnePlusOne, 1)])
+        );
+        assert!(counters
+            .annihilate_opposites(object, &battlefield)
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
     fn attachment_changes_require_live_battlefield_endpoints_and_unique_timestamp() {
         let source = GameObjectId(1);
         let target = GameObjectId(2);
@@ -997,6 +1172,81 @@ mod tests {
             attachments.by_source[&source].timestamp.revision,
             StateRevision(10)
         );
+    }
+
+    #[test]
+    fn role_uniqueness_uses_controller_target_and_newest_timestamp() {
+        let target = GameObjectId(10);
+        let old_role = GameObjectId(1);
+        let new_role = GameObjectId(2);
+        let other_controller_role = GameObjectId(3);
+        let mut attachments = AttachmentStateV1 {
+            by_source: BTreeMap::from([
+                (
+                    old_role,
+                    AttachmentV1 {
+                        target,
+                        timestamp: AttachmentTimestampV1 {
+                            revision: StateRevision(4),
+                            operation_ordinal: 0,
+                        },
+                    },
+                ),
+                (
+                    new_role,
+                    AttachmentV1 {
+                        target,
+                        timestamp: AttachmentTimestampV1 {
+                            revision: StateRevision(5),
+                            operation_ordinal: 0,
+                        },
+                    },
+                ),
+                (
+                    other_controller_role,
+                    AttachmentV1 {
+                        target,
+                        timestamp: AttachmentTimestampV1 {
+                            revision: StateRevision(3),
+                            operation_ordinal: 0,
+                        },
+                    },
+                ),
+            ]),
+        };
+        let roles = BTreeMap::from([
+            (old_role, (PlayerId(2), PlayerId(1))),
+            (new_role, (PlayerId(2), PlayerId(1))),
+            (other_controller_role, (PlayerId(1), PlayerId(2))),
+        ]);
+        let old_timestamp = attachments.by_source[&old_role].timestamp;
+        let mut simultaneous = attachments.clone();
+        simultaneous.by_source.get_mut(&new_role).unwrap().timestamp = old_timestamp;
+        let before_simultaneous = simultaneous.clone();
+        assert_eq!(
+            simultaneous.enforce_role_uniqueness(&roles),
+            Err(StateFamilyMutationError::DuplicateTimestamp),
+            "same-transition Role order is rejected when timestamps do not define one"
+        );
+        assert_eq!(simultaneous, before_simultaneous);
+
+        assert_eq!(
+            attachments.enforce_role_uniqueness(&roles).unwrap(),
+            vec![RoleAttachmentRetirementV1 {
+                source: old_role,
+                owner: PlayerId(2),
+                target,
+                timestamp: old_timestamp,
+            }]
+        );
+        assert_eq!(
+            attachments.by_source.len(),
+            2,
+            "the newer same-controller Role and different-controller Role survive"
+        );
+        assert!(!attachments.by_source.contains_key(&old_role));
+        assert!(attachments.by_source.contains_key(&new_role));
+        assert!(attachments.by_source.contains_key(&other_controller_role));
     }
 
     #[test]
