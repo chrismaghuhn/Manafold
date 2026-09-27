@@ -16,10 +16,10 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             r"\*\*Foundation closure/freeze:\*\* `COMPLETE`",
         )
         self.assertIn(
-            "**Current status:** M3 is complete and final acceptance passed; the bounded "
-            "M4.2 Mountain/Plains implementation through Phase 12 is integrated. Phase 13 "
-            "is the master-activation boundary; M4.2 remains `IN_PROGRESS` until post-merge "
-            "exact-master verification and `FINAL_ACCEPTANCE_PASS`.",
+            "**Current status:** M3 is complete and final acceptance passed; M4.2 is complete "
+            "for the bounded Mountain/Plains executable slice under `basic-land@1.0.0`, "
+            "after Phase 13 activation and post-merge exact-master verification. M4 remains "
+            "`IN_PROGRESS`; M4.3 and M4.4 production implementation have not started.",
             readme,
         )
         self.assertNotIn("Phase 10 successor-runtime implementation is under review", readme)
@@ -211,14 +211,15 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("M3_FINAL_ACCEPTANCE = PASS", current_status)
         self.assertIn("M4 = IN_PROGRESS", current_status)
         self.assertIn("M4_CONTENT_IMPLEMENTATION = M4.2_BOUNDED_SLICE_IMPLEMENTED", current_status)
-        self.assertIn("M4_2_STATUS = IN_PROGRESS", current_status)
+        self.assertIn("M4_2_STATUS = COMPLETE", current_status)
         self.assertIn(
             "M4_2_EXECUTABLE_SLICE = Mountain + Plains / basic-land@1.0.0",
             current_status,
         )
-        self.assertIn(
-            "M4_2_PHASE_13 = MASTER_ACTIVATION / POST_MERGE_VERIFICATION_PENDING", current_status
-        )
+        self.assertIn("M4_2_PHASES_1_13 = COMPLETE", current_status)
+        self.assertIn("M4_2_FINAL_ACCEPTANCE = PASS", current_status)
+        self.assertIn("M4_3_PRODUCTION_IMPLEMENTATION = NOT_STARTED", current_status)
+        self.assertIn("M4_4_PRODUCTION_IMPLEMENTATION = NOT_STARTED", current_status)
         self.assertNotIn("M4_CONTENT_IMPLEMENTATION = NOT_STARTED", current_status)
         self.assertNotIn("M3_FINAL_ACCEPTANCE = PENDING", current_status)
         self.assertNotIn("M4_STARTED = NO", current_status)

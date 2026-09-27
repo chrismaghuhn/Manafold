@@ -5,7 +5,7 @@
 - **Foundation closure/freeze:** `COMPLETE` (`FINAL_FOUNDATION_CLOSURE = PASS`, `PRE_M3_REMEDIATION_FREEZE = PASS`, `FOUNDATION_READY_FOR_M3 = YES`)
 - **Core modularization:** Issue #162 `COMPLETE`, merged by PR #179; the refactor was semantic-neutral and did not change public, wire, schema, digest, replay, or rules contracts
 - **M2.5 scope work:** `NOT_CLAIMED` / `NOT_FROZEN`; the abandoned census and research machinery remains historical Git evidence, not active engine scope
-- **Current status:** M3 is complete and final acceptance passed; the bounded M4.2 Mountain/Plains implementation through Phase 12 is integrated. Phase 13 is the master-activation boundary; M4.2 remains `IN_PROGRESS` until post-merge exact-master verification and `FINAL_ACCEPTANCE_PASS`.
+- **Current status:** M3 is complete and final acceptance passed; M4.2 is complete for the bounded Mountain/Plains executable slice under `basic-land@1.0.0`, after Phase 13 activation and post-merge exact-master verification. M4 remains `IN_PROGRESS`; M4.3 and M4.4 production implementation have not started.
 - **Pre-M3 governance cleanup:** `COMPLETE`; the accepted M3 Entry Decision and its historical authorization are preserved, with the hardened scope accepted by PR #184
 - **M3 authorization:** `AUTHORIZED` at `ea668c47ef1361b3d989fd32b8f3cfd4751b1e79`; the authorized task at that head was `M3.P0_STATE_IDENTITY_CUT`
 - **M3 milestone execution:** `STARTED` — P0 infrastructure is merged and frozen
@@ -50,8 +50,8 @@ executable admission is bounded to Mountain and Plains under
 Replay V6, remain historical read/verification only (reader/verifier only).
 No predecessor gameplay writer is current, and no historical identity is
 reinterpreted or automatically migrated; V4/V5 artifacts retain their
-historical meanings. M4.2 remains `IN_PROGRESS` until post-merge exact-master
-verification and final acceptance.
+historical meanings. M4.2 is `COMPLETE` only for the bounded Mountain/Plains
+slice; this does not claim broader card, deck, format, or playability support.
 
 Manafold prioritizes:
 
