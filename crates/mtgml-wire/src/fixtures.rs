@@ -6,8 +6,9 @@ use mtgml_decision::{
 use mtgml_model::EpisodeStatus;
 use mtgml_observation::{
     InformationStateEnvelope, MagicObservation, MagicObservationV2, MagicObservationV3,
-    MagicObservationV4, ObservationEnvelope, ObservedEventEnvelope, ObservedEventEnvelopeV2,
-    PlayerInformationStateV2, PlayerStep, PlayerStepV2, SyntheticObservation,
+    MagicObservationV4, ObservationEnvelope, ObservationEnvelopeV2, ObservedEventEnvelope,
+    ObservedEventEnvelopeV2, PlayerInformationStateV2, PlayerInformationStateV3, PlayerStep,
+    PlayerStepV2, SyntheticObservation,
 };
 use mtgml_replay::{
     AuthoritativeReplayV1, AuthoritativeReplayV2, AuthoritativeReplayV3, AuthoritativeReplayV4,
@@ -103,6 +104,7 @@ fn decode_named(contract: &str, bytes: &[u8]) -> Result<(), WireError> {
         }
         "decision-response.v2" => decode_canonical::<DecisionResponseV2>(bytes).map(drop),
         "observation-envelope.v1" => decode_canonical::<ObservationEnvelope>(bytes).map(drop),
+        "observation-envelope.v2" => decode_canonical::<ObservationEnvelopeV2>(bytes).map(drop),
         "information-state-envelope.v1" => {
             decode_canonical::<InformationStateEnvelope>(bytes).map(drop)
         }
@@ -110,6 +112,9 @@ fn decode_named(contract: &str, bytes: &[u8]) -> Result<(), WireError> {
         "player-step.v1" => decode_canonical::<PlayerStep>(bytes).map(drop),
         "information-state-envelope.v2" => {
             decode_canonical::<PlayerInformationStateV2>(bytes).map(drop)
+        }
+        "information-state-envelope.v3" => {
+            decode_canonical::<PlayerInformationStateV3>(bytes).map(drop)
         }
         "observed-event-envelope.v2" => {
             decode_canonical::<ObservedEventEnvelopeV2>(bytes).map(drop)

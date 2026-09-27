@@ -164,6 +164,8 @@ class SchemaParityTests(unittest.TestCase):
             "replay-manifest.v2": "replay-manifest.v2.schema.json",
             "authoritative-replay.v2": "authoritative-replay.v2.schema.json",
             "information-state-envelope.v2": "information-state-envelope.v2.schema.json",
+            "information-state-envelope.v3": "information-state-envelope.v3.schema.json",
+            "observation-envelope.v2": "observation-envelope.v2.schema.json",
             "observed-event-envelope.v2": "observed-event-envelope.v2.schema.json",
             "player-step.v2": "player-step.v2.schema.json",
             "replay-manifest.v3": "replay-manifest.v3.schema.json",

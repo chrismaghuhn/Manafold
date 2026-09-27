@@ -20,6 +20,7 @@ WIRE_MAPPING = {
     "episode-status.v1": "episode-status.v1.schema.json",
     "observed-event-envelope.v1": "observed-event-envelope.v1.schema.json",
     "observation-envelope.v1": "observation-envelope.v1.schema.json",
+    "observation-envelope.v2": "observation-envelope.v2.schema.json",
     "information-state-envelope.v1": "information-state-envelope.v1.schema.json",
     "player-step.v1": "player-step.v1.schema.json",
     "replay-manifest.v1": "replay-manifest.v1.schema.json",
@@ -27,6 +28,7 @@ WIRE_MAPPING = {
     "replay-manifest.v2": "replay-manifest.v2.schema.json",
     "authoritative-replay.v2": "authoritative-replay.v2.schema.json",
     "information-state-envelope.v2": "information-state-envelope.v2.schema.json",
+    "information-state-envelope.v3": "information-state-envelope.v3.schema.json",
     "observed-event-envelope.v2": "observed-event-envelope.v2.schema.json",
     "observed-event-envelope.v3": "observed-event-envelope.v3.schema.json",
     "player-step.v2": "player-step.v2.schema.json",
@@ -78,6 +80,14 @@ ARTIFACT_CASES = [
     ("golden-path-index.v1.schema.json", "examples/golden-path/index.json"),
 ]
 SCHEMA_NEGATIVE_CASES = [
+    (
+        "observation-envelope.v2.schema.json",
+        "schemas/negative/observation-envelope-v2-global-state-revision.json",
+    ),
+    (
+        "information-state-envelope.v3.schema.json",
+        "schemas/negative/information-state-envelope-v3-global-state-revision.json",
+    ),
     (
         "magic-basic-land-observation.v1.schema.json",
         "schemas/negative/magic-basic-land-observation-v1-candidates.json",
@@ -196,6 +206,11 @@ SCHEMA_NEGATIVE_CASES = [
     ),
 ]
 SCHEMA_POSITIVE_CASES = [
+    ("observation-envelope.v2.schema.json", "schemas/examples/observation-envelope-v2.json"),
+    (
+        "information-state-envelope.v3.schema.json",
+        "schemas/examples/information-state-envelope-v3.json",
+    ),
     ("decision-response.v3.schema.json", "schemas/examples/decision-response-v3.json"),
     (
         "player-decision-request.v4.schema.json",

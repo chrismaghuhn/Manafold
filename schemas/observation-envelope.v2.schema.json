@@ -1,0 +1,39 @@
+{
+  "$id": "observation-envelope.v2.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "payload_base64": {
+      "type": "string"
+    },
+    "payload_codec": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "perspective": {
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "observation-envelope.v2"
+    },
+    "view_sequence": {
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "perspective",
+    "view_sequence",
+    "payload_codec",
+    "payload_base64",
+    "digest"
+  ],
+  "title": "ObservationEnvelope V2",
+  "type": "object"
+}

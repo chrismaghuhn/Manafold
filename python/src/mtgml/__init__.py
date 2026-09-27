@@ -61,14 +61,17 @@ from .observation import (
     CounterObservationV1,
     FaceObservationV1,
     InformationStateDigestInputV2,
+    InformationStateDigestInputV3,
     InformationStateEnvelope,
     MagicBasicLandObservationV1,
     ManaPoolObservationV1,
     ObservationEnvelope,
+    ObservationEnvelopeV2,
     ObservedEventEnvelopeV2,
     ObservedEventEnvelopeV3,
     ObservedEventV3,
     PlayerInformationStateV2,
+    PlayerInformationStateV3,
     PlayerStep,
     PlayerStepV2,
     PlayerStepV3,
@@ -118,7 +121,12 @@ from .replay import (
     SemanticContractMaterialV5,
     SemanticContractMaterialV7,
 )
-from .wire import compute_information_state_digest_v2, decode_canonical, encode_canonical
+from .wire import (
+    compute_information_state_digest_v2,
+    compute_information_state_digest_v3,
+    decode_canonical,
+    encode_canonical,
+)
 
 __all__ = [
     "MAGIC_BASIC_LAND_OBSERVATION_SCHEMA_V1",
@@ -157,6 +165,7 @@ __all__ = [
     "FaceObservationV1",
     "HistoricalPlayerClientV2",
     "InformationStateDigestInputV2",
+    "InformationStateDigestInputV3",
     "InformationStateEnvelope",
     "InitialEnvironmentIdentityV3",
     "InitialEnvironmentIdentityV4",
@@ -181,6 +190,7 @@ __all__ = [
     "MagicPlayerLifeV4",
     "ManaPoolObservationV1",
     "ObservationEnvelope",
+    "ObservationEnvelopeV2",
     "ObservedEvent",
     "ObservedEventEnvelope",
     "ObservedEventEnvelopeV2",
@@ -192,6 +202,7 @@ __all__ = [
     "PlayerDecisionRequestV3",
     "PlayerDecisionRequestV4",
     "PlayerInformationStateV2",
+    "PlayerInformationStateV3",
     "PlayerOutcome",
     "PlayerResult",
     "PlayerStep",
@@ -228,6 +239,7 @@ __all__ = [
     "calculate_checkpoint_digest_v6",
     "calculate_checkpoint_digest_v7",
     "compute_information_state_digest_v2",
+    "compute_information_state_digest_v3",
     "decode_canonical",
     "encode_canonical",
 ]

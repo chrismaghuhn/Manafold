@@ -28,12 +28,18 @@ from .errors import WireError
 from .events import ObservedEventEnvelope
 from .observation import (
     InformationStateDigestInputV2,
+    InformationStateDigestInputV3,
     InformationStateEnvelope,
     ObservationEnvelope,
+    ObservationEnvelopeV2,
     ObservedEventEnvelopeV2,
     PlayerInformationStateV2,
+    PlayerInformationStateV3,
     PlayerStep,
     PlayerStepV2,
+)
+from .observation import (
+    compute_information_state_digest_v3 as _compute_information_state_digest_v3,
 )
 from .replay import (
     AuthoritativeReplayV1,
@@ -65,9 +71,11 @@ _DECODERS: dict[str, Callable[[object], object]] = {
     "episode-status.v1": EpisodeStatus.from_wire,
     "observed-event-envelope.v1": ObservedEventEnvelope.from_wire,
     "observation-envelope.v1": ObservationEnvelope.from_wire,
+    "observation-envelope.v2": ObservationEnvelopeV2.from_wire,
     "information-state-envelope.v1": InformationStateEnvelope.from_wire,
     "player-step.v1": PlayerStep.from_wire,
     "information-state-envelope.v2": PlayerInformationStateV2.from_wire,
+    "information-state-envelope.v3": PlayerInformationStateV3.from_wire,
     "information-state-digest-input.v2": InformationStateDigestInputV2.from_wire,
     "observed-event-envelope.v2": ObservedEventEnvelopeV2.from_wire,
     "observed-event-envelope.v3": ObservedEventEnvelopeV3.from_wire,
@@ -138,3 +146,9 @@ def compute_information_state_digest_v2(
     payload = encode_canonical(input_value)
     digest = hashlib.sha256(b"mtgml.information-state-digest.v2\0" + payload).hexdigest()
     return payload, digest
+
+
+def compute_information_state_digest_v3(
+    input_value: InformationStateDigestInputV3,
+) -> tuple[bytes, str]:
+    return _compute_information_state_digest_v3(input_value)

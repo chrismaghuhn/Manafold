@@ -97,16 +97,28 @@ from .decision import PlayerDecisionRequest, PlayerDecisionRequestV2
 from .episode import EpisodeStatus
 from .errors import WireError
 from .events import ObservedEventEnvelope
+from .observation_v3 import (
+    INFORMATION_STATE_DIGEST_INPUT_SCHEMA_V3,
+    INFORMATION_STATE_SCHEMA_V3,
+    OBSERVATION_SCHEMA_V2,
+    InformationStateDigestInputV3,
+    ObservationEnvelopeV2,
+    PlayerInformationStateV3,
+    compute_information_state_digest_v3,
+)
 
 __all__ = [
+    "INFORMATION_STATE_DIGEST_INPUT_SCHEMA_V3",
     "INFORMATION_STATE_SCHEMA",
     "INFORMATION_STATE_SCHEMA_V2",
+    "INFORMATION_STATE_SCHEMA_V3",
     "MAGIC_BASIC_LAND_OBSERVATION_SCHEMA_V1",
     "MAGIC_OBSERVATION_SCHEMA_V1",
     "MAGIC_OBSERVATION_SCHEMA_V2",
     "MAGIC_OBSERVATION_SCHEMA_V3",
     "MAGIC_OBSERVATION_SCHEMA_V4",
     "OBSERVATION_SCHEMA",
+    "OBSERVATION_SCHEMA_V2",
     "OBSERVED_EVENT_KINDS",
     "OBSERVED_EVENT_SCHEMA_V2",
     "PLAYER_STEP_SCHEMA",
@@ -125,6 +137,7 @@ __all__ = [
     "EpisodeStatus",
     "FaceObservationV1",
     "InformationStateDigestInputV2",
+    "InformationStateDigestInputV3",
     "InformationStateEnvelope",
     "MagicBasicLandObservationV1",
     "MagicBlockedStatusV4",
@@ -144,6 +157,7 @@ __all__ = [
     "MagicPlayerLifeV4",
     "ManaPoolObservationV1",
     "ObservationEnvelope",
+    "ObservationEnvelopeV2",
     "ObservedEventEnvelope",
     "ObservedEventEnvelopeV2",
     "ObservedEventEnvelopeV3",
@@ -152,6 +166,7 @@ __all__ = [
     "PlayerDecisionRequest",
     "PlayerDecisionRequestV2",
     "PlayerInformationStateV2",
+    "PlayerInformationStateV3",
     "PlayerKnowledgeInvalidationV1",
     "PlayerKnowledgeProvenanceV1",
     "PlayerKnownLocationFactV1",
@@ -166,6 +181,7 @@ __all__ = [
     "SyntheticTurnPosition",
     "WireError",
     "base64",
+    "compute_information_state_digest_v3",
     "dataclass",
     "hashlib",
     "observation_digest_from_payload",

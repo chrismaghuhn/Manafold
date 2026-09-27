@@ -3,6 +3,7 @@
 //! Ownership façade: each DTO family lives in its own responsibility module;
 //! every public path remains at this crate root exactly as before the split.
 
+mod detached_v2;
 mod error;
 mod information;
 mod knowledge;
@@ -14,6 +15,10 @@ mod player_step;
 mod player_step_v3;
 mod synthetic_observation;
 
+pub use detached_v2::{
+    InformationStateDigestInputV3, ObservationEnvelopeV2, PlayerInformationStateV3,
+    INFORMATION_STATE_DIGEST_INPUT_SCHEMA_V3, INFORMATION_STATE_SCHEMA_V3, OBSERVATION_SCHEMA_V2,
+};
 pub use error::ObservationValidationError;
 pub use information::{
     InformationStateDigestInputV2, InformationStateEnvelope, PlayerInformationStateV2,

@@ -215,6 +215,14 @@
     {
       "contract": "magic-combat-observation.v4",
       "path": "magic-combat-observation.v4.json"
+    },
+    {
+      "contract": "observation-envelope.v2",
+      "path": "observation-envelope.v2.json"
+    },
+    {
+      "contract": "information-state-envelope.v3",
+      "path": "information-state-envelope.v3.json"
     }
   ]
 }

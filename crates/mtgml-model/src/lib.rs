@@ -237,6 +237,10 @@ domain_digest!(
     InformationStateDigestV2,
     "mtgml.information-state-digest.v2"
 );
+domain_digest!(
+    InformationStateDigestV3,
+    "mtgml.information-state-digest.v3"
+);
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
@@ -637,6 +641,10 @@ mod tests {
         assert_eq!(
             CheckpointDigestV2::from_canonical_bytes(bytes).as_str(),
             "373265db972e21d967a41932938aeedbdb5f5782b41951904f6b2ecae28a1f08"
+        );
+        assert_eq!(
+            InformationStateDigestV3::from_canonical_bytes(bytes).as_str(),
+            "334e1a727bd9db7f920f6cf9c4e1a31e0c389fddc1b15e113d10bccd7bc626db"
         );
     }
 
