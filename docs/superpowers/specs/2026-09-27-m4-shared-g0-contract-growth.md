@@ -1,7 +1,7 @@
 # M4 Shared G0 — Contract-Growth Boundary
 
 **Task:** `M4_SHARED_G0_CONTRACT_GROWTH_SPEC_AND_IMPLEMENTATION_PLAN`
-**Status:** ACCEPTED — G0B identity decision merged; detached G0 implementation authorized from `f5c1ed2aa0719edaebd95f80f7c1c5c38b3dea3d`; successor current-writer authority remains gated on G0j
+**Status:** G0B ACCEPTED; bounded payload-shape amendment PROPOSED for independent review; detached implementation baseline remains `f5c1ed2aa0719edaebd95f80f7c1c5c38b3dea3d`; current-writer authority remains gated on G0j
 **G0a acceptance record:** Independent exact-head G0 Spec/Plan review PASS at `308e465669f66ad63b01d5fb381214c08ce413bc`; PR #250 required CI PASS; merged at `8642db7a389d5363d52224bd040082811f626084` with tree identical to the reviewed head. This accepts the G0a design boundary for G0b only. It does not accept G0b or authorize G0 implementation.
 **Verified `origin/master`:** `85f967f641528e43772c63be14679af398dcac86`
 **Date:** 2026-09-27
@@ -134,7 +134,7 @@ SpellStackItem {
   cast_modes: ordered typed mode selections,
   targets: ordered typed target bindings,
   cost_facts: typed selected route + paid additional-cost keys,
-  resolution_context: closed profile-owned typed values
+  // no separate resolution_context: see the closed capture rule below
 }
 
 ActivatedAbilityStackItem {
@@ -142,18 +142,16 @@ ActivatedAbilityStackItem {
   source_ability: AbilityInstanceId,   // trusted historical origin only
   ability_key: AbilityKey,
   semantic_profile_id: CardSemanticProfileId,
-  source_context: optional bounded LKI/profile facts,
+  source_context: optional SourceContext,
   targets: ordered typed target bindings,
-  cost_facts: typed selected route + paid additional-cost keys,
-  resolution_context: closed profile-owned typed values
+  cost_facts: typed selected route + paid additional-cost keys
 }
 
 TriggeredAbilityStackItem {
   originating_trigger: TriggerInstanceId,
-  controller: PlayerId,
-  captured_trigger_context: closed typed trigger facts,
+  captured_trigger_context: TriggerEventSnapshot,
   targets: ordered typed target bindings,
-  resolution_context: closed profile-owned typed values
+  // no separate resolution_context: profile identity + captured choices are authoritative
 }
 ```
 
@@ -314,7 +312,8 @@ execution_successor = [
 
 trigger_record = [trigger_id, controller, source_context_or_null,
   semantic_profile_id, ability_key_u32, trigger_context,
-  intervening_if_receipt_or_null, target_timing_tag]
+  target_timing_tag]
+target_timing_tag = "no_targets" | "captured_from_event" | "choose_on_placement"
 
 trigger_placement_continuation = ["trigger_placement", apnap_actors[],
   current_actor_index_u32, pending_trigger_ids[], completed_orders[],
@@ -355,7 +354,35 @@ expiry = ["until_end_of_turn", turn_number_u64]
 timestamp = [creation_state_revision_u64, operation_ordinal_u32]
 ```
 
-`source_context` is a separately closed tagged record: it contains the old incarnation/ObjectSnapshot reference and immutable definition/face/ability profile reference plus only typed values an admitted profile must retain as LKI (for example controller-at-event and admitted color/type/power/toughness/counter facts). It is not a second live-object map and cannot be resolved through PhysicalCardId. No whole-world snapshot or generic derived-view cache is persisted. If the existing snapshot plus explicitly typed facts do not cover an accepted profile's departure semantics, amend G0 before admitting that profile. `trigger_context` is a closed union of selected event facts (cast, activation, became-target, enter/leave/die, attack, draw, post-replacement damage/life, and any further event with an accepted locked witness); it carries facts, not just RuleEventId. Unknown event/profile/effect tags reject.
+The G0 source capture is exactly `SourceContext { snapshot: ObjectSnapshot, face_key: FaceKey, semantic_profile_id: CardSemanticProfileId, ability_key: Option<AbilityKey> }`. `ObjectSnapshot` binds the old incarnation and printed definition/owner/controller/location facts; the other fields bind the immutable face/profile/ability semantics. It contains no derived-characteristic cache, physical-card lookup, arbitrary fact map, or second live-object record. This is sufficient for the locked source-departure cases: an activated ability continues from its captured immutable origin while any effect that refers to the original object checks that exact incarnation. If a selected profile requires an additional last-known derived fact, stop and amend G0 before admitting it.
+
+`TriggerEventSnapshot` is the following closed event-fact union. It is captured when the trigger is created, never reconstructed later from `RuleEventId` or live source state:
+
+```text
+TriggerEventSnapshot =
+  SpellCast { actor, stack_item, spell: ObjectSnapshot, face_key, semantic_profile_id,
+              is_creature_spell, cost_facts }
+| AbilityActivated { actor, stack_item, source: SourceContext, targets, cost_facts }
+| TargetBecame { actor, source_stack_item, target: TargetRef }
+| ObjectEntered { object: ObjectSnapshot }
+| ObjectLeftOrDied { last_known: ObjectSnapshot, destination: ZoneLocation }
+| AttackDeclared { controller, attackers: [AttackerFact { object, defending_player }] }
+| CardDrawn { player, count }
+| DamageApplied { source: Option<SourceContext>, recipient: DamageRecipient,
+                  amount, damage_kind: DamageKind }
+| LifeChanged { player, before, after, cause: LifeChangeCause }
+
+TargetRef = Object(GameObjectId) | Player(PlayerId) | StackItem(StackObjectId)
+DamageRecipient = Object(GameObjectId) | Player(PlayerId)
+DamageKind = Combat | Noncombat
+LifeChangeCause = Damage | NonDamage
+```
+
+All numeric values use bounded integer types: counts and damage amounts are `u32`, life totals are `i64`, and player/object/stack identities use their existing typed IDs. All vectors preserve semantic event order. `SpellCast.is_creature_spell` is the rules-derived value at the cast event, not a later live query. `AttackDeclared.attackers` records the declared attacker and defending player pairs; creature-type qualification is evaluated at the event and is not re-evaluated from later board state. `DamageApplied` carries the post-replacement amount and recipient. `LifeChanged` carries actual before/after totals so life loss is distinct from damage. `CardDrawn` never captures a hidden drawn-card identity. This union is closed for the accepted Shared foundation; adding another event family or fact requires a reviewed G0 amendment.
+
+`TriggerRecord` has no intervening-if receipt field: the locked R1 × W1 trigger witnesses contain no intervening-if clause. `target_timing_tag` has exactly three values: `no_targets` when the trigger has no targets, `captured_from_event` when the trigger itself is caused by an object becoming a target (the Ward path retains that exact target), and `choose_on_placement` when the rules require target selection as the trigger is put on the stack. Reflexive-trigger follow-up mechanics remain outside G0; if any accepted profile requires an intervening-if receipt or a fourth target-timing value, stop and amend G0 before admitting it.
+
+There is no independent `resolution_context` field in G0 stack or trigger payloads. For the locked R1 × W1 closure, resolution is determined by the immutable semantic profile/ability identity bound in the payload, the selected mode/target slots, typed cost route/paid facts, selected cost operands, and (for triggered abilities) the captured `TriggerEventSnapshot`. No separate arbitrary profile-owned value bag is necessary. Any future clause that needs a new captured resolution value must add a named typed field/variant through a G0 amendment before that profile is admitted. Unknown event/profile/effect tags reject.
 
 The shared `ManaPaymentStaging` record is embedded in the one owning `CastContinuation`, `NonManaActivationContinuation`, or `StackResolutionContinuation`, never duplicated as a sidecar. The parent record owns typed `action_cost_facts = [mana_cost_or_null, reserved_nonmana_costs[], selected_cost_operands[]]`; the mana cost is `[colored_wubrg_counts_u32[5], colorless_count_u32, generic_count_u32]`. Cast cost facts carry the exact determined total; activation cost facts carry the ability's exact `{R}` / `{3}{W}` and its own reserved costs such as `tap_source`. The shared staging record stores each accepted source activation in selection order. There is no partial mana spend or partial-allocation cursor: the accepted source sequence and its derived provisional pool are the complete payment progress until the player chooses one complete final allocation. The provisional mana pool is derived, not stored as a second mutable value: validation starts from current ManaState and excludes from mana-source eligibility only objects made unavailable by the parent's `reserved_nonmana_costs` (currently `tap_source` or `sacrifice_source`) and sources already selected in this staging sequence. It then applies each typed source-activation cost receipt and adds each exact 12-bucket output in vector order, rejecting duplicate, exhausted, reserved, or profile-mismatched sources. `selected_cost_operands` are validated and persisted but do not by themselves reserve their objects; only a typed operation that explicitly makes an object unavailable may do so. The fixed G0 payment domain is evaluated against that derived pool. `FinalizeManaProduction` is offered in the `ManaProductionChoice` domain only when a complete legal allocation exists; if no further source activation is legal and payment is possible, advancement to payment is forced without a synthetic choice. The selected final allocation is bound by the pending authoritative request and need not be duplicated in the continuation; the shared stage records only `SelectingSources` or `AwaitingFinalAllocation`. Final acceptance commits in the same transition, so no persisted commit-ready stage exists. At final acceptance the engine revalidates the whole sequence against unchanged authoritative sources, then applies source costs, mana production, payment and the parent cast, non-mana activation, or paused-resolution commit atomically. For the currently locked R1 × W1 mana-source witnesses, the admitted mana-source activation-cost receipt is only `tap_source`; outputs are typed 12-bucket vectors, including restricted buckets such as creature-spell-only mana. Cast, non-mana activation, and paused-resolution `action_cost_facts` represent the determined mana cost, reserved non-mana costs, and selected operands. For the cited activated-ability witnesses, these facts include `{R}` / `{3}{W}` and `tap_source`; the shared candidate validator therefore cannot offer the ability source as a mana source. A paused Ward resolution carries its `{2}` cost facts in the same common shape. A future source-ability profile whose activation cost or output cannot fit these closed records blocks admission and requires a G0 amendment; no generic cost script is implied. `StackResolutionContinuation` leaves the resolving item in its existing ZoneState stack record/order owner and stores only its trusted identity and closed pause stage; it has no copied stack payload, profile interpreter, or arbitrary resolution state. The Ward witnesses are Skyward Spider native Ward {2} and Ward {2} granted by Sheltered by Ghosts; the W1 profile remains exclusive. The typed trigger/stack payload captures the affected StackObjectId and controller-at-trigger facts needed for resolution, even if the affected item later leaves the stack. The W1 profile supplies the authorized payer from those captured facts and whether its pay/decline choice still applies. `OptionalCostPayment` uses the existing `ChooseBoolean` intent and Boolean/ChooseOne response protocol, bound to its typed profile-local cost id: decline completes the profile resolution, while pay attaches shared `ManaPaymentStaging` using the `{2}` action cost and resumes the same resolving item after explicit source/allocation choices. No priority or unrelated action can interleave; the triggering stack item and its captured target StackObjectId remain authoritative until the final atomic resolution commit. The successor request binds the authorized payer through the captured stack-payload/controller relation and never exposes either trusted StackObjectId.
 
