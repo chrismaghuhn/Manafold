@@ -559,6 +559,35 @@ The new named observation payload adds an ordered public stack view and the boun
 
 The successor ObservedEvent envelope removes global `state_revision`; its existing per-perspective visible sequence is the only public chronology. It needs a closed public event union for `StackItemAdded`, `StackItemRemoved` (resolved/countered), `ManaPoolChanged` with a `Spent` cause, and `TemporaryEffectCreated/Expired`, plus existing V3 event meanings under a new successor identity. Stack item events use current stack position and safe source/target views; temporary-effect events use typed public operations. Cast, activation, target, trigger-placement and counter meanings are explicit event subcases or exact typed fields in those two stack-item events, never inferred from arbitrary prose. Public card zone transitions continue through ObjectMoved. Audience policy is rules-owned and the environment projects only after authoritative validation.
 
+The new public stack and temporary-effect views use these exact closed payloads in both `MagicSharedExecutionObservationV1` and ObservedEvent V4:
+
+```text
+PublicStackItemV1 =
+  Spell { controller: PlayerId, card_object: OpaqueObjectId,
+          modes: Vec<PublicModeV1>, targets: Vec<SafeTargetDescriptorV1>,
+          cost_facts: CostFactsV1 }
+| ActivatedAbility { controller: PlayerId,
+                     source_object: Option<OpaqueObjectId>,
+                     source_ability: Option<OpaqueAbilityId>,
+                     targets: Vec<SafeTargetDescriptorV1>, cost_facts: CostFactsV1 }
+| TriggeredAbility { controller: PlayerId,
+                     source_object: Option<OpaqueObjectId>,
+                     source_ability: Option<OpaqueAbilityId>,
+                     targets: Vec<SafeTargetDescriptorV1> }
+
+PublicModeV1 = { mode_slot: u32, selected_mode: u32 }
+PublicTemporaryEffectV1 = {
+  affected_objects: Vec<OpaqueObjectId>,
+  operation: PowerToughnessDelta { power: i32, toughness: i32 }
+           | GrantKeyword { keyword: haste | double_strike },
+  expiry: UntilEndOfTurn { turn_number: u64 }
+}
+```
+
+Stack arrays are top-to-bottom; `stack_position_from_top` in an event names the item's position immediately before the indicated addition/removal. The `StackItemAdded` and `StackItemRemoved` event records carry `{ stack_position_from_top: u32, item: PublicStackItemV1 }`; removal adds `cause: resolved | countered`. `ManaPoolChanged` retains its existing `pool_after` value and has the closed cause set `produced | emptied | spent`. `TemporaryEffectCreated` and `TemporaryEffectExpired` each carry one `PublicTemporaryEffectV1`. V3 event shapes otherwise retain their exact member meanings with the V4 envelope/variant identity.
+
+For every perspective projection, the spell's `card_object` is that perspective's visible OpaqueObjectId; no definition/face key is embedded in the stack record, and authorized card identity comes through retained knowledge. Ability source opaque IDs are nullable only when not authorized; a present `source_ability` requires a present visible `source_object`. Mode vectors are ascending by unique `mode_slot`; target vectors preserve their captured target-slot order and use SafeTargetDescriptorV1. `affected_objects` is ascending and duplicate-free. The temporary-effect view list is sorted lexicographically by affected-object vector, operation rank (`power_toughness_delta=0`, `grant_keyword=1`), typed operation payload, and expiry turn; equivalent public records may repeat and their multiplicity is preserved. No stack/trigger/effect instance ID, source profile/AbilityKey/CardDefinitionId, trusted target ID, timestamp, allocator order, or continuation field is projected. A field that is not authorized to the perspective makes that projection omit the containing public fact only where the rules permit omission; otherwise projection fails closed. It never replaces hidden identity with a trusted ID.
+
 The successor PlayerStep keeps the existing submission/status/information/event/next-decision composition principles with successor child types but contains no global StateRevision. It never contains trusted candidate bindings, a continuation, stack object identity, or a second rules command. Its information/event chronology uses the perspective-local view sequence. PlayerInformationStateV2 and PlayerStepV3 remain exact historical readers.
 
 The public view cursor shapes are:
