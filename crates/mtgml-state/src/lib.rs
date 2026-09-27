@@ -82,13 +82,15 @@ pub use semantic_mutations::{
     StateFamilyMutationError,
 };
 pub use shared_execution::{
-    AbilitySourceContext, ActionCostFacts, AttackerFact, CostFacts, CostRoute, DamageKind,
-    DamageRecipient, EffectExpiry, EffectTimestamp, LifeChangeCause, ManaCost, ManaPaymentStage,
-    ManaPaymentStaging, ManaSourceActivation, ManaSourceActivationCost, ModeBinding,
-    PendingTriggerRecord, ReservedNonManaCost, SelectedCostOperand, SourceContext,
-    StackItemPayload, StackResolutionContinuation, StackResolutionStage, TargetBinding, TargetRef,
-    TemporaryEffectRecord, TemporaryKeyword, TemporaryOperation, TriggerEventSnapshot,
-    TriggerTargetTiming,
+    AbilitySourceContext, ActionCostFacts, AttackerFact, CastContinuation, CastContinuationStage,
+    CompletedTriggerOrder, CostFacts, CostRoute, DamageKind, DamageRecipient, EffectExpiry,
+    EffectTimestamp, LifeChangeCause, ManaCost, ManaPaymentStage, ManaPaymentStaging,
+    ManaSourceActivation, ManaSourceActivationCost, ModeBinding, NonManaActivationContinuation,
+    NonManaActivationStage, PendingTriggerRecord, ReservedNonManaCost, SelectedCostOperand,
+    SelectedTriggerTarget, SourceContext, StackItemPayload, StackResolutionContinuation,
+    StackResolutionStage, TargetBinding, TargetRef, TemporaryEffectRecord, TemporaryKeyword,
+    TemporaryOperation, TriggerActorRequestRoot, TriggerEventSnapshot,
+    TriggerPlacementContinuation, TriggerTargetTiming,
 };
 pub use validation::{validate_engine_state, EngineStateViolation};
 pub use zones::{

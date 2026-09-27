@@ -114,6 +114,56 @@ pub struct ManaPaymentStaging {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CastContinuationStage {
+    SelectingCostRoute,
+    SelectingModes,
+    SelectingTargets,
+    SelectingAdditionalCosts,
+    SelectingCostOperands,
+    PayingMana,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CastContinuation {
+    pub id: ContinuationId,
+    pub actor: PlayerId,
+    pub spell_object: GameObjectId,
+    pub card_definition_id: mtgml_model::CardDefinitionId,
+    pub face_key: FaceKey,
+    pub semantic_profile_id: CardSemanticProfileId,
+    pub stage: CastContinuationStage,
+    pub selected_route: Option<CostRoute>,
+    pub modes: Vec<ModeBinding>,
+    pub targets: Vec<TargetBinding>,
+    pub paid_cost_choices: Vec<u32>,
+    pub action_cost_facts: ActionCostFacts,
+    pub mana_payment_staging: Option<ManaPaymentStaging>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NonManaActivationStage {
+    SelectingModes,
+    SelectingTargets,
+    SelectingCostOperands,
+    PayingMana,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NonManaActivationContinuation {
+    pub id: ContinuationId,
+    pub actor: PlayerId,
+    pub source_object: GameObjectId,
+    pub source_ability_instance: AbilityInstanceId,
+    pub ability_key: AbilityKey,
+    pub semantic_profile_id: CardSemanticProfileId,
+    pub stage: NonManaActivationStage,
+    pub modes: Vec<ModeBinding>,
+    pub targets: Vec<TargetBinding>,
+    pub action_cost_facts: ActionCostFacts,
+    pub mana_payment_staging: Option<ManaPaymentStaging>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StackResolutionStage {
     AwaitingOptionalPayment,
     PayingMana,

@@ -3,12 +3,14 @@ use mtgml_model::{
     AbilityInstanceId, CardDefinitionId, GameObjectId, PlayerId, StackObjectId, TriggerInstanceId,
 };
 use mtgml_state::{
-    AbilitySourceContext, ActionCostFacts, CostFacts, CostRoute, DamageKind, DamageRecipient,
-    EffectExpiry, LifeChangeCause, ManaCost, ManaPaymentStage, ManaPaymentStaging,
-    ManaSourceActivation, ManaSourceActivationCost, ModeBinding, ReservedNonManaCost,
-    SelectedCostOperand, SourceContext, StackItemPayload, StackResolutionContinuation,
-    StackResolutionStage, TargetBinding, TargetRef, TemporaryEffectRecord, TemporaryKeyword,
-    TemporaryOperation, TriggerEventSnapshot,
+    AbilitySourceContext, ActionCostFacts, CastContinuation, CastContinuationStage, CostFacts,
+    CostRoute, DamageKind, DamageRecipient, EffectExpiry, LifeChangeCause, ManaCost,
+    ManaPaymentStage, ManaPaymentStaging, ManaSourceActivation, ManaSourceActivationCost,
+    ModeBinding, NonManaActivationContinuation, NonManaActivationStage, ReservedNonManaCost,
+    SelectedCostOperand, SelectedTriggerTarget, SourceContext, StackItemPayload,
+    StackResolutionContinuation, StackResolutionStage, TargetBinding, TargetRef,
+    TemporaryEffectRecord, TemporaryKeyword, TemporaryOperation, TriggerActorRequestRoot,
+    TriggerEventSnapshot, TriggerPlacementContinuation,
 };
 
 fn snapshot(zone: mtgml_model::ZoneKind) -> mtgml_state::ObjectSnapshot {
@@ -291,5 +293,76 @@ fn paused_stack_payment_has_one_authoritative_stage_owner() {
     assert!(matches!(
         paying_ward_cost.mana_payment_staging.unwrap().stage,
         ManaPaymentStage::SelectingSources
+    ));
+}
+
+#[test]
+fn trigger_placement_value_keeps_apnap_and_selected_order_vectors() {
+    let continuation = TriggerPlacementContinuation {
+        apnap_actors: vec![PlayerId(0), PlayerId(1)],
+        current_actor_index: 0,
+        pending_trigger_ids: vec![TriggerInstanceId(7), TriggerInstanceId(8)],
+        completed_orders: vec![mtgml_state::CompletedTriggerOrder {
+            actor: PlayerId(0),
+            ordered_trigger_ids: vec![TriggerInstanceId(8), TriggerInstanceId(7)],
+        }],
+        selected_trigger_targets: vec![SelectedTriggerTarget {
+            trigger_id: TriggerInstanceId(8),
+            target: TargetBinding {
+                target_slot: 0,
+                target: TargetRef::Object(GameObjectId(10)),
+            },
+        }],
+        actor_request_roots: vec![TriggerActorRequestRoot {
+            actor: PlayerId(0),
+            first_decision_id: mtgml_model::PlayerDecisionIdV1(3),
+        }],
+    };
+
+    assert_eq!(continuation.apnap_actors, vec![PlayerId(0), PlayerId(1)]);
+    assert_eq!(
+        continuation.completed_orders[0].ordered_trigger_ids,
+        vec![TriggerInstanceId(8), TriggerInstanceId(7)]
+    );
+}
+
+#[test]
+fn cast_and_activation_continuations_use_closed_stage_tags() {
+    let cast = CastContinuation {
+        id: mtgml_model::ContinuationId(1),
+        actor: PlayerId(0),
+        spell_object: GameObjectId(20),
+        card_definition_id: CardDefinitionId(9),
+        face_key: FaceKey(0),
+        semantic_profile_id: profile(),
+        stage: CastContinuationStage::PayingMana,
+        selected_route: Some(CostRoute::Normal),
+        modes: vec![],
+        targets: vec![],
+        paid_cost_choices: vec![],
+        action_cost_facts: ActionCostFacts::default(),
+        mana_payment_staging: Some(ManaPaymentStaging {
+            stage: ManaPaymentStage::AwaitingFinalAllocation,
+            mana_source_activations: vec![],
+        }),
+    };
+    assert!(matches!(cast.stage, CastContinuationStage::PayingMana));
+
+    let activation = NonManaActivationContinuation {
+        id: mtgml_model::ContinuationId(2),
+        actor: PlayerId(0),
+        source_object: GameObjectId(21),
+        source_ability_instance: AbilityInstanceId(4),
+        ability_key: AbilityKey(2),
+        semantic_profile_id: profile(),
+        stage: NonManaActivationStage::SelectingCostOperands,
+        modes: vec![],
+        targets: vec![],
+        action_cost_facts: ActionCostFacts::default(),
+        mana_payment_staging: None,
+    };
+    assert!(matches!(
+        activation.stage,
+        NonManaActivationStage::SelectingCostOperands
     ));
 }
