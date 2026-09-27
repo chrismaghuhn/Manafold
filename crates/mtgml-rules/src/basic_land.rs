@@ -1054,6 +1054,11 @@ pub fn derive_basic_land_candidates(
     state
         .validate()
         .map_err(|_| BasicLandCandidateError::InvalidState)?;
+    state
+        .card_rules_state
+        .counters
+        .validate_decision_boundary()
+        .map_err(|_| BasicLandCandidateError::InvalidState)?;
     if admission.execution_identity().program_kind != ExecutionProgramV1::MagicRules
         || admission.content_contract_id() != admission.verified_catalog().content_contract_id()
     {

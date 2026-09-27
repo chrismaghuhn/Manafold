@@ -1,9 +1,9 @@
 # M4 Unified State Cut Semantic Specification
 
 **Task:** `M4_UNIFIED_STATE_CUT_SEMANTIC_SPEC`
-**Status:** candidate for independent review; successor identities below are proposed contract allocations and are not current runtime authority before acceptance and implementation
-**Production implementation authorized:** NO
-**M4.2 status:** PAUSED
+**Status:** ACCEPTED — normative M4.2 successor semantic contract
+**Production implementation authorized:** YES — implementation is authorized only through the accepted Implementation Plan on the dedicated M4 integration branch; master activation remains Phase 13 only
+**M4.2 status:** IN_PROGRESS — Phases through Phase 10 are integrated on the successor integration branch; Phase 11 is authorized
 **Date:** 2026-09-26
 
 ## 1. Purpose and boundary
@@ -76,11 +76,11 @@ ActivateManaAbility { actor: PlayerId, ability: AbilityInstanceId }
 
 `MagicRulesKernel::apply` validates the pending V3 authoritative request and V2 response, resolves the selected trusted binding, constructs exactly one of these two variants, and produces the complete transition product. No caller may construct or submit this request directly. Card content never writes EngineState, constructs StateDelta, chooses a land, chooses a mana source, or bypasses RulesKernel. Basic-land mana abilities resolve immediately under CR 605.3b and create no stack object.
 
-This specification authorizes neither version implementation nor card implementation. Independent Spec acceptance is followed by independent Plan acceptance; only then may the implementation issue proceed.
+This specification is accepted and authorizes implementation only through the independently accepted Implementation Plan and its staged boundaries. Successor implementation remains on the dedicated integration branch until the Phase 13 master-activation boundary.
 
 ## 2. Authority and baseline
 
-Repository baseline is `origin/master = 7a26e519a42743d2307f52d99539e1ae01ffe417`, fetched at task entry. The accepted architecture inputs are the independently reviewed contract-growth audit at `4d48223055e7b4274930089a56648aae285eb85c` and unified-cut feasibility audit at `19b4da74567336ecb531637dd965fd28fe657f26`. #222 fixes the locked R1/W1 content. #225 remains OPEN and PAUSED.
+Repository baseline is `origin/master = 7a26e519a42743d2307f52d99539e1ae01ffe417`, fetched at task entry. The accepted architecture inputs are the independently reviewed contract-growth audit at `4d48223055e7b4274930089a56648aae285eb85c` and unified-cut feasibility audit at `19b4da74567336ecb531637dd965fd28fe657f26`. #222 fixes the locked R1/W1 content. #225 remains OPEN and IN_PROGRESS.
 
 Normative repository sources include `docs/NORMATIVE_HIERARCHY.md`, `docs/DOMAIN_MODEL.md`, `docs/contracts/ENGINE_STATE_CLOSURE.md`, `docs/STATE_HASHING.md`, `docs/EXECUTION_MODEL.md`, `docs/DECISION_PROTOCOL.md`, `docs/INFORMATION_MODEL.md`, `docs/REPLAY_AND_DETERMINISM.md`, `docs/RULES_SEMANTICS.md`, `docs/CARD_IR.md`, `docs/contracts/CARD_DEFINITION_CONTRACT.md`, `docs/cards/CAPABILITY_MODEL.md`, `docs/contracts/WIRE_CONTRACT.md`, `docs/contracts/ML_CONTRACT.md`, `docs/contracts/ACCEPTANCE_GATES.md`, `docs/maintenance/SCHEMA_EVOLUTION.md`, and ADRs 0006–0009, 0011–0019, 0025–0029, 0038–0041, 0049–0051, 0054 and 0055.
 

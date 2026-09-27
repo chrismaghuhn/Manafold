@@ -582,18 +582,22 @@ mod tests {
                 &semantic,
             )
             .unwrap();
+        let content_faces = {
+            let state = checkpoint().state;
+            let live = state.predecessor_v5.zones.objects.keys().copied().collect();
+            FaceStateV1::for_objects(&live, 0)
+        };
 
         for content_state in [
             // Live GameObjects are content-backed even when a malformed
             // snapshot has erased every explicit FaceState row.
             checkpoint().state.card_rules_state.clone(),
             CardRulesAuthoritativeStateV1 {
-                faces: FaceStateV1 {
-                    faces: BTreeMap::from([(GameObjectId(1), 0)]),
-                },
+                faces: content_faces.clone(),
                 ..checkpoint().state.card_rules_state.clone()
             },
             CardRulesAuthoritativeStateV1 {
+                faces: content_faces,
                 abilities: mtgml_state::AbilityAuthorityStateV1 {
                     by_instance: BTreeMap::from([(
                         AbilityInstanceId(1),
@@ -639,11 +643,8 @@ mod tests {
             )
             .unwrap();
         let mut state = checkpoint().state;
-        state
-            .card_rules_state
-            .faces
-            .faces
-            .insert(GameObjectId(1), 0);
+        let live = state.predecessor_v5.zones.objects.keys().copied().collect();
+        state.card_rules_state.faces = FaceStateV1::for_objects(&live, 0);
         let content_checkpoint = EnvironmentCheckpointV7::new(
             state,
             EpisodeStatus::Running,

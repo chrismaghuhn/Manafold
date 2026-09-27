@@ -23,6 +23,8 @@ pub enum SuccessorProjectionError {
     MissingOpaqueIdentity,
     #[error("after-state visible sequence differs from projected events")]
     FinalCursorMismatch,
+    #[error("battlefield-entry event face/tapped facts disagree with authoritative state")]
+    BattlefieldEntryFactsMismatch,
 }
 
 pub struct SuccessorProjectionAuthority<'a> {
@@ -109,12 +111,32 @@ pub fn project_successor_events_v3(
                 new_object: resolve(true, *new_object, &after_identity)?,
                 from: *from,
                 to: *to,
-                entering_face: (*to == mtgml_model::ZoneKind::Battlefield).then_some(
-                    match entering_face {
-                        mtgml_rules::BasicLandFaceV1::Front => ObservedFaceV1::Front,
-                        mtgml_rules::BasicLandFaceV1::Back => ObservedFaceV1::Back,
-                    },
-                ),
+                entering_face: if *to == mtgml_model::ZoneKind::Battlefield {
+                    let object_state = after
+                        .predecessor_v5
+                        .zones
+                        .objects
+                        .get(new_object)
+                        .ok_or(SuccessorProjectionError::BattlefieldEntryFactsMismatch)?;
+                    let face = after
+                        .card_rules_state
+                        .faces
+                        .faces
+                        .get(new_object)
+                        .copied()
+                        .ok_or(SuccessorProjectionError::BattlefieldEntryFactsMismatch)?;
+                    let (authoritative_face, observed_face) = match face {
+                        0 => (mtgml_rules::BasicLandFaceV1::Front, ObservedFaceV1::Front),
+                        1 => (mtgml_rules::BasicLandFaceV1::Back, ObservedFaceV1::Back),
+                        _ => return Err(SuccessorProjectionError::BattlefieldEntryFactsMismatch),
+                    };
+                    if object_state.tapped != *tapped || authoritative_face != *entering_face {
+                        return Err(SuccessorProjectionError::BattlefieldEntryFactsMismatch);
+                    }
+                    Some(observed_face)
+                } else {
+                    None
+                },
                 tapped: (*to == mtgml_model::ZoneKind::Battlefield).then_some(*tapped),
             },
             SuccessorObservationPolicyV1::ObjectTapped { object, tapped } => {
