@@ -3,8 +3,8 @@
 use mtgml_model::{FullStateDigestV6, StateRevision};
 
 use crate::{
-    calculate_full_state_digest_v6, CounterKindV1, EngineStatePartsV2, EngineStatePartsV2Error,
-    ManaColorV1, ManaPoolV1, ManaRestrictionV1, SemanticDeltaOperation,
+    CounterKindV1, EngineStatePartsV2, EngineStatePartsV2Error, ManaColorV1, ManaPoolV1,
+    ManaRestrictionV1, SemanticDeltaOperation,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -117,7 +117,8 @@ impl StateDeltaV2 {
 }
 
 fn digest(parts: &EngineStatePartsV2) -> Result<FullStateDigestV6, DeltaApplicationV2Error> {
-    calculate_full_state_digest_v6(&parts.materialize(), parts.card_rules_state.clone())
+    parts
+        .full_state_digest_v6()
         .map_err(|_| DeltaApplicationV2Error::DigestCalculation)
 }
 

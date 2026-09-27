@@ -53,6 +53,56 @@ pub fn canonical_state_bytes_v6(
         .map_err(|_| StateDigestError::StateInvariant)
 }
 
+/// Successor producer that binds typed V3 execution state directly. The
+/// predecessor carrier must not contain a V2 pending request, preventing two
+/// pending-decision authorities in one semantic snapshot.
+pub fn canonical_state_bytes_v6_with_execution_v3(
+    state: &EngineState,
+    execution: &crate::ExecutionStateV3,
+    card_rules_state: CardRulesAuthoritativeStateV1,
+) -> Result<Vec<u8>, StateDigestError> {
+    if state.execution.pending_decision.is_some() {
+        return Err(StateDigestError::StateInvariant);
+    }
+    let predecessor = crate::digest_v5::full_state_digest_input_v5(state)?.canonical_value()?;
+    let Value::Array(fields) = predecessor else {
+        return Err(StateDigestError::StateInvariant);
+    };
+    if fields.len() != 13 {
+        return Err(StateDigestError::StateInvariant);
+    }
+    let execution_v3 = PersistedExecutionV3::from_successor(execution)?;
+    let Value::Unsigned(revision) = &fields[2] else {
+        return Err(StateDigestError::StateInvariant);
+    };
+    let input = FullStateDigestInputV6 {
+        revision: *revision,
+        core_v1: fields[3].clone(),
+        zones_v1: fields[4].clone(),
+        allocators_v3: fields[5].clone(),
+        execution_v3,
+        random_v1: fields[7].clone(),
+        knowledge_v2: fields[8].clone(),
+        perspective_identities_v2: fields[9].clone(),
+        combat: fields[10].clone(),
+        foundation_sources: fields[11].clone(),
+        format_v1: fields[12].clone(),
+        card_rules_state,
+    };
+    input
+        .canonical_payload()
+        .map_err(|_| StateDigestError::StateInvariant)
+}
+
+pub fn calculate_full_state_digest_v6_with_execution_v3(
+    state: &EngineState,
+    execution: &crate::ExecutionStateV3,
+    card_rules_state: CardRulesAuthoritativeStateV1,
+) -> Result<FullStateDigestV6, StateDigestError> {
+    let payload = canonical_state_bytes_v6_with_execution_v3(state, execution, card_rules_state)?;
+    calculate_full_state_digest_v6_payload(&payload)
+}
+
 pub fn calculate_full_state_digest_v6(
     state: &EngineState,
     card_rules_state: CardRulesAuthoritativeStateV1,

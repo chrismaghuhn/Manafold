@@ -102,6 +102,26 @@ fn state_delta_v2_validates_complete_replacement_and_v6_identities() {
     ));
 }
 
+#[test]
+fn state_delta_v2_binds_the_complete_v3_pending_decision_authority() {
+    let before = v6_parts(&synthetic_state());
+    before.validate().unwrap();
+    assert!(before.execution_v3.pending_decision.is_some());
+
+    let mut after = before.clone();
+    after
+        .execution_v3
+        .pending_decision
+        .as_mut()
+        .unwrap()
+        .decision_id = DecisionId(99);
+    after.validate().unwrap();
+
+    let delta = StateDeltaV2::between(&before, &after, Vec::new()).unwrap();
+    assert_ne!(delta.before_digest, delta.after_digest);
+    assert_eq!(delta.apply(&before).unwrap(), after);
+}
+
 fn empty_shell() -> EngineState {
     let players = [PlayerId(1), PlayerId(2)];
     let mut state = EngineState {

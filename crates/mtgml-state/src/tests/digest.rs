@@ -518,6 +518,137 @@ fn execution_v3_persists_play_land_without_adding_current_decision_runtime() {
 }
 
 #[test]
+fn typed_successor_execution_state_encodes_the_frozen_v6_play_land_shape() {
+    use mtgml_decision::{
+        AuthoritativeCandidateV3, AuthoritativeDecisionRequestV3, CandidateIntentV3,
+        DecisionDomainV2, DecisionVisibility, EngineCandidateBindingV3,
+    };
+    use mtgml_model::{
+        CandidateIdV1, DecisionId, GameObjectId, OpaqueObjectId, PlayerDecisionIdV1, PlayerId,
+        StateRevision,
+    };
+
+    let (_, input) = phase2_v6_fixture();
+    let request = AuthoritativeDecisionRequestV3 {
+        decision_id: DecisionId(5),
+        player_decision_id: PlayerDecisionIdV1(6),
+        state_revision: StateRevision(7),
+        actor: PlayerId(1),
+        visibility: DecisionVisibility::Public,
+        decision: DecisionDomainV2::ChooseOne,
+        candidates: vec![AuthoritativeCandidateV3 {
+            candidate_id: CandidateIdV1(0),
+            visible_intent: CandidateIntentV3::PlayLand {
+                object: OpaqueObjectId(8),
+            },
+            trusted_binding: EngineCandidateBindingV3::PlayLand {
+                object: GameObjectId(9),
+            },
+        }],
+        continuation_id: None,
+    };
+    let successor = crate::ExecutionStateV3 {
+        pending_decision: Some(request),
+        ..Default::default()
+    };
+    let actual = crate::PersistedExecutionV3::from_successor(&successor)
+        .unwrap()
+        .canonical_value()
+        .clone();
+
+    let mut expected = input.execution_v3.canonical_value().clone();
+    let Value::Array(fields) = &mut expected else { unreachable!() };
+    fields[1] = Value::Array(vec![]);
+    let Value::Array(request) = &mut fields[0] else { unreachable!() };
+    request[0] = Value::Unsigned(5);
+    request[1] = Value::Unsigned(6);
+    request[2] = Value::Unsigned(7);
+    request[3] = Value::Unsigned(1);
+    request[4] = Value::Text("public".into());
+    request[5] = Value::Array(vec![Value::Text("choose_one".into()), Value::Null]);
+    request[6] = Value::Array(vec![Value::Array(vec![
+        Value::Unsigned(0),
+        Value::Array(vec![Value::Text("play_land".into()), Value::Unsigned(8)]),
+        Value::Array(vec![Value::Text("play_land".into()), Value::Unsigned(9)]),
+    ])]);
+    request[7] = Value::Null;
+    assert_eq!(actual, expected);
+}
+
+#[test]
+fn full_state_digest_v6_uses_typed_v3_execution_and_rejects_a_v2_duplicate() {
+    use mtgml_decision::{
+        AuthoritativeCandidateV3, AuthoritativeDecisionRequestV3, CandidateIntentV3,
+        DecisionDomainV2, DecisionVisibility, EngineCandidateBindingV3,
+    };
+    use mtgml_model::{
+        CandidateIdV1, DecisionId, GameObjectId, OpaqueObjectId, PlayerDecisionIdV1, PlayerId,
+        StateRevision,
+    };
+
+    let mut state = synthetic_state();
+    state.execution.pending_decision = None;
+    state.execution.continuations.clear();
+    let execution = crate::ExecutionStateV3 {
+        pending_decision: Some(AuthoritativeDecisionRequestV3 {
+            decision_id: DecisionId(1),
+            player_decision_id: PlayerDecisionIdV1(2),
+            state_revision: state.revision,
+            actor: PlayerId(1),
+            visibility: DecisionVisibility::Public,
+            decision: DecisionDomainV2::ChooseOne,
+            candidates: vec![AuthoritativeCandidateV3 {
+                candidate_id: CandidateIdV1(0),
+                visible_intent: CandidateIntentV3::PlayLand {
+                    object: OpaqueObjectId(4),
+                },
+                trusted_binding: EngineCandidateBindingV3::PlayLand {
+                    object: GameObjectId(5),
+                },
+            }],
+            continuation_id: None,
+        }),
+        ..Default::default()
+    };
+    let card_state = crate::CardRulesAuthoritativeStateV1::default();
+    let payload = crate::canonical_state_bytes_v6_with_execution_v3(
+        &state,
+        &execution,
+        card_state.clone(),
+    )
+    .unwrap();
+    let value = mtgml_persistence::cbor::decode_canonical(&payload).unwrap();
+    let Value::Array(fields) = value else { unreachable!() };
+    assert_eq!(fields[6], execution.canonical_value().unwrap());
+    let digest = crate::calculate_full_state_digest_v6_with_execution_v3(
+        &state,
+        &execution,
+        card_state,
+    )
+    .unwrap();
+    crate::verify_full_state_digest_v6(&payload, &digest).unwrap();
+
+    state.execution.pending_decision = Some(crate::PendingDecisionRecordV2 {
+        request: mtgml_decision::AuthoritativeDecisionRequestV2 {
+            decision_id: DecisionId(1),
+            player_decision_id: PlayerDecisionIdV1(2),
+            state_revision: StateRevision(state.revision.0),
+            actor: PlayerId(1),
+            visibility: DecisionVisibility::Public,
+            decision: DecisionDomainV2::ChooseOne,
+            candidates: vec![],
+            continuation_id: None,
+        },
+    });
+    assert!(crate::canonical_state_bytes_v6_with_execution_v3(
+        &state,
+        &execution,
+        crate::CardRulesAuthoritativeStateV1::default(),
+    )
+    .is_err());
+}
+
+#[test]
 fn execution_v3_rejects_unowned_predecessor_variants_and_impossible_domains() {
     let (_, input) = phase2_v6_fixture();
     let base = input.execution_v3.canonical_value().clone();

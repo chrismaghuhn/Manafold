@@ -8,6 +8,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use mtgml_model::{AbilityInstanceId, GameObjectId, PlayerId, StateRevision};
 use mtgml_persistence::cbor::Value;
 
+use crate::StateDigestError;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(u64)]
 pub enum ManaColorV1 {
@@ -568,6 +570,12 @@ impl PersistedExecutionV3 {
 
     pub fn canonical_value(&self) -> &Value {
         &self.0
+    }
+
+    /// Builds the persisted value from the typed successor execution owner.
+    pub fn from_successor(state: &crate::ExecutionStateV3) -> Result<Self, StateDigestError> {
+        let value = state.canonical_value()?;
+        Self::from_value(value).map_err(|_| StateDigestError::StateInvariant)
     }
 }
 

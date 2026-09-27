@@ -1,20 +1,23 @@
-//! Detached complete replacement state for FullStateDigestV6.
+//! Complete successor semantic state for FullStateDigestV6.
 //!
-//! The embedded V5 `EngineStateParts` is preserved as-is. This successor
-//! value adds the six V6 authoritative families without changing the current
-//! EngineState or its digest path.
+//! Predecessor-shaped values are reused only for unchanged state components.
+//! The single pending decision authority lives in `execution_v3`; the embedded
+//! V2 pending field is cleared during construction and rejected by validation.
 
 use std::collections::BTreeSet;
 
+use mtgml_decision::{AuthoritativeDecisionRequestV3, PerspectiveIdentityResolver};
+
 use crate::{
     validate_engine_state, AttachmentChangeV1, AttachmentStateV1, CardRulesAuthoritativeStateV1,
-    EngineState, EngineStateParts, StateFamilyMutationError,
+    EngineState, EngineStateParts, ExecutionStateV3, StateFamilyMutationError,
 };
 use mtgml_model::{AbilityInstanceId, GameObjectId, StateRevision, ZoneKind};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EngineStatePartsV2 {
     pub predecessor_v5: EngineStateParts,
+    pub execution_v3: ExecutionStateV3,
     pub card_rules_state: CardRulesAuthoritativeStateV1,
 }
 
@@ -23,14 +26,41 @@ impl EngineStatePartsV2 {
         state: &EngineState,
         card_rules_state: CardRulesAuthoritativeStateV1,
     ) -> Self {
+        let mut predecessor_v5 = state.parts();
+        let predecessor_execution = std::mem::take(&mut predecessor_v5.execution);
+        let pending_decision = predecessor_execution
+            .pending_decision
+            .map(|pending| AuthoritativeDecisionRequestV3::from(pending.request));
+        let execution_v3 = ExecutionStateV3 {
+            pending_decision,
+            continuations: predecessor_execution.continuations,
+            effects: predecessor_execution.effects,
+            waiting_triggers: predecessor_execution.waiting_triggers,
+            delayed_effects: predecessor_execution.delayed_effects,
+        };
         Self {
-            predecessor_v5: state.parts(),
+            predecessor_v5,
+            execution_v3,
             card_rules_state,
         }
     }
 
     pub fn materialize(&self) -> EngineState {
+        // This is a projection of unchanged predecessor fields for existing
+        // structural validators and read-only projectors. It is not the full
+        // successor state and intentionally does not synthesize V2 decision
+        // authority from `execution_v3`.
         self.predecessor_v5.clone().into()
+    }
+
+    pub fn full_state_digest_v6(
+        &self,
+    ) -> Result<mtgml_model::FullStateDigestV6, crate::StateDigestError> {
+        crate::calculate_full_state_digest_v6_with_execution_v3(
+            &self.materialize(),
+            &self.execution_v3,
+            self.card_rules_state.clone(),
+        )
     }
 
     /// Registers currently existing ability identities in canonical
@@ -99,8 +129,24 @@ impl EngineStatePartsV2 {
         self.card_rules_state
             .validate()
             .map_err(|_| EngineStatePartsV2Error::CardRulesState)?;
+        if self.predecessor_v5.execution.pending_decision.is_some()
+            || crate::PersistedExecutionV3::from_successor(&self.execution_v3).is_err()
+        {
+            return Err(EngineStatePartsV2Error::ExecutionState);
+        }
 
         let players: BTreeSet<_> = state.core.players.keys().copied().collect();
+        if let Some(request) = &self.execution_v3.pending_decision {
+            if request.validate().is_err()
+                || request.state_revision != state.revision
+                || !players.contains(&request.actor)
+                || request
+                    .validate_bindings(&PartsIdentityResolver(&state.perspective_identities))
+                    .is_err()
+            {
+                return Err(EngineStatePartsV2Error::ExecutionState);
+            }
+        }
         let mana_players: BTreeSet<_> = self.card_rules_state.mana.pools.keys().copied().collect();
         let history_players: BTreeSet<_> = self
             .card_rules_state
@@ -118,6 +164,36 @@ impl EngineStatePartsV2 {
 
         let live: BTreeSet<GameObjectId> = state.zones.objects.keys().copied().collect();
         let abilities = &self.card_rules_state.abilities.by_instance;
+        if self
+            .execution_v3
+            .pending_decision
+            .as_ref()
+            .is_some_and(|request| {
+                request
+                    .candidates
+                    .iter()
+                    .any(|candidate| match &candidate.trusted_binding {
+                        mtgml_decision::EngineCandidateBindingV3::PlayLand { object }
+                        | mtgml_decision::EngineCandidateBindingV3::CastSpell { object }
+                        | mtgml_decision::EngineCandidateBindingV3::SelectObject { object } => {
+                            !live.contains(object)
+                        }
+                        mtgml_decision::EngineCandidateBindingV3::ActivateAbility { ability } => {
+                            !abilities.contains_key(ability)
+                        }
+                        mtgml_decision::EngineCandidateBindingV3::SelectPlayer { player } => {
+                            !players.contains(player)
+                        }
+                        mtgml_decision::EngineCandidateBindingV3::PassPriority
+                        | mtgml_decision::EngineCandidateBindingV3::SelectMode { .. }
+                        | mtgml_decision::EngineCandidateBindingV3::ChooseBoolean { .. }
+                        | mtgml_decision::EngineCandidateBindingV3::DeclareNumber { .. }
+                        | mtgml_decision::EngineCandidateBindingV3::Confirm => false,
+                    })
+            })
+        {
+            return Err(EngineStatePartsV2Error::ExecutionState);
+        }
         self.card_rules_state
             .abilities
             .validate_allocator_semantics(state.allocators.next_ability_id)
@@ -183,12 +259,42 @@ impl EngineStatePartsV2 {
     }
 }
 
+struct PartsIdentityResolver<'a>(&'a crate::PerspectiveIdentityStateV2);
+
+impl PerspectiveIdentityResolver for PartsIdentityResolver<'_> {
+    fn resolve_object(
+        &self,
+        perspective: mtgml_model::PlayerId,
+        opaque: mtgml_model::OpaqueObjectId,
+    ) -> Option<GameObjectId> {
+        self.0
+            .players
+            .get(&perspective)
+            .and_then(|identity| identity.opaque_to_object.get(&opaque))
+            .copied()
+    }
+
+    fn resolve_ability(
+        &self,
+        perspective: mtgml_model::PlayerId,
+        opaque: mtgml_model::OpaqueAbilityId,
+    ) -> Option<AbilityInstanceId> {
+        self.0
+            .players
+            .get(&perspective)
+            .and_then(|identity| identity.opaque_to_ability.get(&opaque))
+            .copied()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum EngineStatePartsV2Error {
     #[error("predecessor EngineState is invalid")]
     PredecessorState,
     #[error("V6 card-rules state is invalid")]
     CardRulesState,
+    #[error("V6 execution state is invalid or duplicates a predecessor pending request")]
+    ExecutionState,
     #[error("V6 per-player state does not match the EngineState player universe")]
     PlayerUniverse,
     #[error("V6 turn history does not match the current turn number")]
@@ -448,5 +554,68 @@ mod tests {
             Err(EngineStatePartsV2Error::AttachmentTimestamp)
         );
         assert_eq!(state, before);
+    }
+
+    #[test]
+    fn successor_pending_request_is_revision_bound_and_has_no_v2_duplicate() {
+        let mut state = parts();
+        assert!(state.execution_v3.pending_decision.is_some());
+        assert!(state.predecessor_v5.execution.pending_decision.is_none());
+        state.validate().unwrap();
+
+        state
+            .execution_v3
+            .pending_decision
+            .as_mut()
+            .unwrap()
+            .state_revision =
+            mtgml_model::StateRevision(state.predecessor_v5.revision.0.saturating_add(1));
+        assert_eq!(
+            state.validate(),
+            Err(EngineStatePartsV2Error::ExecutionState)
+        );
+    }
+
+    #[test]
+    fn successor_pending_object_binding_must_resolve_to_a_live_identity() {
+        use mtgml_decision::{
+            AuthoritativeCandidateV3, AuthoritativeDecisionRequestV3, CandidateIntentV3,
+            DecisionDomainV2, EngineCandidateBindingV3,
+        };
+        use mtgml_model::{CandidateIdV1, DecisionId, PlayerDecisionIdV1};
+
+        let mut state = parts();
+        let actor = PlayerId(1);
+        let identities = &state.predecessor_v5.perspective_identities.players[&actor];
+        let (object, opaque) = identities
+            .object_to_opaque
+            .iter()
+            .next()
+            .map(|(object, opaque)| (*object, *opaque))
+            .expect("fixture has a perspective-authorized object");
+        state.execution_v3.pending_decision = Some(AuthoritativeDecisionRequestV3 {
+            decision_id: DecisionId(100),
+            player_decision_id: PlayerDecisionIdV1(100),
+            state_revision: state.predecessor_v5.revision,
+            actor,
+            visibility: mtgml_decision::DecisionVisibility::Public,
+            decision: DecisionDomainV2::ChooseOne,
+            candidates: vec![AuthoritativeCandidateV3 {
+                candidate_id: CandidateIdV1(0),
+                visible_intent: CandidateIntentV3::PlayLand { object: opaque },
+                trusted_binding: EngineCandidateBindingV3::PlayLand { object },
+            }],
+            continuation_id: None,
+        });
+        state.validate().unwrap();
+
+        let request = state.execution_v3.pending_decision.as_mut().unwrap();
+        request.candidates[0].trusted_binding = EngineCandidateBindingV3::PlayLand {
+            object: GameObjectId(u64::MAX),
+        };
+        assert_eq!(
+            state.validate(),
+            Err(EngineStatePartsV2Error::ExecutionState)
+        );
     }
 }
