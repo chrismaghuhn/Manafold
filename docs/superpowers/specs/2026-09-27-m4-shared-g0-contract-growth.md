@@ -218,6 +218,8 @@ The player request/response must not contain `StateRevision`. `view_sequence` is
 
 `DecisionPurpose` is a closed tagged union: `PriorityAction`, `CastCostRoute`, `ModeSelection { mode_slot }`, `TargetSelection { target_slot }`, `CostOperandSelection { cost_slot, operation, counter_kind, count }`, `ManaProductionChoice`, `ManaPayment`, `OptionalCostPayment { profile_local_cost_id }`, `AbilityAction`, `TriggerOrder`, or `TriggerTarget { target_slot }`. Purpose IDs are typed profile-local ordinals, not strings or `AbilityKey`. The successor candidate intent/binding pairs add:
 
+Purpose and answer-domain compatibility is closed: `PriorityAction`, `CastCostRoute`, `CostOperandSelection`, `ManaProductionChoice`, `ManaPayment`, `OptionalCostPayment`, and `AbilityAction` require `ChooseOne`; `ModeSelection`, `TargetSelection`, and `TriggerTarget` accept `ChooseOne` or `ChooseMany` only as required by their rule-defined slot/group; `TriggerOrder` requires `Order`. No G0 purpose accepts `ChooseNumber` while C58 is deferred. `TriggerOrder` requires `visibility = acting_player_only`, because its descriptor candidates and pending trigger set are authorized only to that ordering actor. For other purposes, `visibility` is derived from candidate authorization under the Information Model; purpose alone does not widen the audience.
+
 * `SelectCostRoute { route_id_u32 }` ↔ `SelectCostRoute { route_id_u32 }`;
 * `SelectObject { opaque_object_id }` under `CostOperandSelection` ↔ trusted `SelectedCostOperand { cost_slot, GameObjectId, typed_operation }`; for the bounded Blight witness, the operation is `PutCounters { kind: MinusOneMinusOne, count: 2 }`;
 * `SelectManaSource { source_opaque_id, ability_opaque_id, produced_buckets_u32[12] }` ↔ trusted source incarnation, AbilityInstanceId/profile, admitted activation-cost receipt, and exact output;
@@ -225,7 +227,7 @@ The player request/response must not contain `StateRevision`. `view_sequence` is
 * `SelectManaPayment { spent_buckets_u32[12] }` ↔ the same typed bucket vector, validated against the derived provisional pool/cost;
 * `SelectTrigger { safe_trigger_descriptor }` ↔ `SelectTrigger { trigger_instance_id }`;
 
-The trigger descriptor is a closed `SafeTriggerDescriptorV1` value. It contains nullable authorized opaque source-object and source-ability identities, a `TriggerEventKindV1`, and one `SafeTriggerSubjectV1` whose tag must match that event kind. It never contains `TriggerInstanceId`, `StackObjectId`, `GameObjectId`, allocator-derived occurrence, or hidden card identity. The subject union mirrors the accepted `TriggerEventSnapshot` event union and projects only facts visible to the ordering actor:
+The trigger descriptor is a closed `SafeTriggerDescriptorV1` value. It contains nullable authorized opaque source-object and source-ability identities, a `TriggerEventKindV1`, and one `SafeTriggerSubjectV1` whose tag must match that event kind. If `source_ability` is non-null, `source_object` must also be non-null and visible; both may be null when neither is authorized. This preserves the perspective identity map from each visible `OpaqueAbilityId` to its one source object. It never contains `TriggerInstanceId`, `StackObjectId`, `GameObjectId`, allocator-derived occurrence, or hidden card identity. The subject union mirrors the accepted `TriggerEventSnapshot` event union and projects only facts visible to the ordering actor:
 
 | Rank | Event tag | Safe subject fields |
 |---:|---|---|
