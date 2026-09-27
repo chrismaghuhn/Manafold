@@ -93,6 +93,157 @@ fn successor_event_projection_uses_only_policy_authorized_opaque_identity() {
 }
 
 #[test]
+fn successor_back_face_tapped_entry_is_authoritative_before_projection() {
+    use mtgml_rules::{AuthoritativeRuleEventKindV2, AuthoritativeRuleEventV2};
+    use mtgml_state::EngineStatePartsV2;
+    use mtgml_state::{
+        IdentityMutationV1, KnowledgeAcquisitionCause, KnowledgeAcquisitionReason,
+        KnowledgeHistoryChannel, KnowledgeMutationV1, KnownLocationFactV2,
+        PerspectiveLifecycleAuditV1, PerspectiveLifecycleMutationV1,
+    };
+
+    let before_parts = magic_basic_land_observation::basic_land_parts(seed());
+    let mut before_engine = before_parts.materialize();
+    let old_object = before_engine
+        .zones
+        .objects
+        .keys()
+        .copied()
+        .find(|object| {
+            before_engine.zones.locations[object].zone == mtgml_model::ZoneKind::Battlefield
+        })
+        .unwrap();
+    let perspective = PlayerId(1);
+    before_engine
+        .zones
+        .locations
+        .get_mut(&old_object)
+        .unwrap()
+        .zone = mtgml_model::ZoneKind::Graveyard;
+    before_engine
+        .zones
+        .locations
+        .get_mut(&old_object)
+        .unwrap()
+        .player = Some(perspective);
+    before_engine
+        .zones
+        .locations
+        .get_mut(&old_object)
+        .unwrap()
+        .visibility = mtgml_state::VisibilityPartition::Public;
+    let old_opaque =
+        before_engine.perspective_identities.players[&perspective].object_to_opaque[&old_object];
+    let sequence = before_engine.knowledge.players[&perspective].next_visible_sequence;
+    let new_object = before_engine.allocators.next_object_id;
+    let new_opaque = old_opaque;
+
+    let mut after_engine = before_engine.clone();
+    after_engine.revision = StateRevision(before_engine.revision.0 + 1);
+    after_engine.allocators.next_object_id = GameObjectId(new_object.0 + 1);
+    let mut returned = after_engine.zones.objects.remove(&old_object).unwrap();
+    after_engine.zones.locations.remove(&old_object);
+    returned.id = new_object;
+    returned.tapped = true;
+    after_engine.zones.objects.insert(new_object, returned);
+    after_engine.zones.locations.insert(
+        new_object,
+        mtgml_state::ZoneLocation {
+            zone: mtgml_model::ZoneKind::Battlefield,
+            player: None,
+            position: mtgml_state::ZonePosition::Unordered,
+            visibility: mtgml_state::VisibilityPartition::Public,
+            partition: None,
+        },
+    );
+    let entry_location = after_engine.zones.locations[&new_object].clone();
+    let lifecycle = PerspectiveLifecycleAuditV1 {
+        perspective,
+        sequence,
+        mutation: PerspectiveLifecycleMutationV1 {
+            identity: IdentityMutationV1::Remap {
+                opaque: old_opaque,
+                from_object: old_object,
+                to_object: new_object,
+            },
+            knowledge: Some(KnowledgeMutationV1::UpdateLocation {
+                opaque: old_opaque,
+                fact: KnownLocationFactV2 {
+                    location: entry_location.clone(),
+                    provenance: KnowledgeAcquisitionReason::Observed {
+                        channel: KnowledgeHistoryChannel::Public,
+                        sequence,
+                        cause: KnowledgeAcquisitionCause::PublicEvent,
+                    },
+                },
+            }),
+        },
+    };
+    mtgml_state::apply_perspective_lifecycle(&mut after_engine, &lifecycle).unwrap();
+
+    let mut after_card_rules = before_parts.card_rules_state.clone();
+    after_card_rules.faces.faces.remove(&old_object);
+    after_card_rules.faces.faces.insert(new_object, 1);
+    let after_parts = EngineStatePartsV2::from_state(&after_engine, after_card_rules);
+    assert_ne!(old_object, new_object);
+    assert_eq!(
+        after_parts.predecessor_v5.zones.objects[&new_object].physical_card,
+        before_parts.predecessor_v5.zones.objects[&old_object].physical_card,
+        "the new incarnation retains the physical card"
+    );
+    assert!(after_parts.predecessor_v5.zones.objects[&new_object].tapped);
+    assert_eq!(after_parts.card_rules_state.faces.faces[&new_object], 1);
+
+    let event = AuthoritativeRuleEventV2 {
+        event_id: mtgml_model::RuleEventId(1),
+        state_revision: after_engine.revision,
+        event: AuthoritativeRuleEventKindV2::PerspectiveOccurrence {
+            lifecycle: Box::new(lifecycle),
+            observation: mtgml_rules::SuccessorObservationPolicyV1::MovedInSight {
+                from: mtgml_model::ZoneKind::Graveyard,
+                to: mtgml_model::ZoneKind::Battlefield,
+                old_object,
+                new_object,
+                reveals_old: true,
+                entering_face: mtgml_rules::BasicLandFaceV1::Back,
+                tapped: true,
+            },
+        },
+    };
+    let projected = crate::successor_projection::project_successor_events_v3(
+        &EngineStatePartsV2::from_state(&before_engine, before_parts.card_rules_state.clone()),
+        &after_parts,
+        &[event.clone()],
+    )
+    .unwrap();
+    assert!(matches!(
+        &projected[&perspective][0].event,
+        mtgml_observation::ObservedEventKindV3::ObjectMoved {
+            old_object: Some(old),
+            new_object: Some(new),
+            entering_face: Some(mtgml_observation::ObservedFaceV1::Back),
+            tapped: Some(true),
+            ..
+        } if *old == new_opaque && *new == new_opaque
+    ));
+
+    let mut mismatched_face = after_parts.clone();
+    mismatched_face
+        .card_rules_state
+        .faces
+        .faces
+        .insert(new_object, 0);
+    assert_eq!(
+        crate::successor_projection::project_successor_events_v3(
+            &EngineStatePartsV2::from_state(&before_engine, before_parts.card_rules_state.clone()),
+            &mismatched_face,
+            &[event],
+        ),
+        Err(crate::successor_projection::SuccessorProjectionError::BattlefieldEntryFactsMismatch)
+    );
+}
+
+#[test]
 fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
     use mtgml_card_ir::{
         admit_executable_profile_v1, decode_content_manifest_v1, ExecutableProfileAdmissionV1,
@@ -411,6 +562,14 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
         checkpoint_digest: hidden_world_checkpoint.checkpoint_digest.clone(),
         execution_identity: hidden_world_checkpoint.execution_identity.clone(),
     };
+    let mut hidden_world_runtime = crate::SuccessorEnvironmentRuntime::new(
+        admission.clone(),
+        hidden_world_state.clone(),
+        EpisodeStatus::Running,
+        EnvironmentLimitCounters::default(),
+        hidden_world_manifest.clone(),
+    )
+    .unwrap();
     let hidden_world_request = hidden_world_state
         .execution_v3
         .pending_decision
@@ -503,10 +662,18 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
 
     let mut runtime = crate::SuccessorEnvironmentRuntime::new(
         admission.clone(),
+        state.clone(),
+        EpisodeStatus::Running,
+        EnvironmentLimitCounters::default(),
+        manifest.clone(),
+    )
+    .unwrap();
+    let mut direct_runtime = crate::SuccessorEnvironmentRuntime::new(
+        admission.clone(),
         state,
         EpisodeStatus::Running,
         EnvironmentLimitCounters::default(),
-        manifest,
+        manifest.clone(),
     )
     .unwrap();
     let runtime_before_bad_restore = runtime.checkpoint().unwrap();
@@ -521,12 +688,16 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
         replay_bytes_before_bad_restore,
         "rejected restore preserves canonical Replay V7 bytes"
     );
-    runtime.restore(before_checkpoint.clone()).unwrap();
     assert_eq!(runtime.checkpoint().unwrap(), before_checkpoint);
     assert_eq!(
         runtime.visible_decision(actor).unwrap().as_ref(),
         Some(&request.project_player_request().unwrap())
     );
+    // Start the restore runtime in the paired hidden world, then restore the
+    // baseline checkpoint. This exercises replacement of a genuinely distinct
+    // authoritative state rather than a no-op restore on matching state.
+    let mut restore_runtime = hidden_world_runtime.fork().unwrap();
+    restore_runtime.restore(before_checkpoint.clone()).unwrap();
 
     let valid_candidate = request.candidates[0].candidate_id;
     let mut mismatched_revision = DecisionResponseV2 {
@@ -624,7 +795,7 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
         );
     }
 
-    let fork = runtime.fork().unwrap();
+    let fork = direct_runtime.fork().unwrap();
     let candidate = request
         .candidates
         .iter()
@@ -643,8 +814,9 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
             candidate_id: candidate.candidate_id,
         },
     };
-    let controller =
-        crate::controller_successor::TrustedEnvironmentController::new(runtime.fork().unwrap());
+    let controller = crate::controller_successor::TrustedEnvironmentController::new(
+        direct_runtime.fork().unwrap(),
+    );
     let endpoint = controller.bind_player(actor).unwrap();
     use crate::endpoint_successor::PlayerEndpoint as _;
     assert_eq!(
@@ -654,19 +826,35 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
     let controller_step = endpoint.submit(response.clone()).unwrap();
     let controller_checkpoint = controller.checkpoint().unwrap();
 
-    let output = runtime.submit(actor, response.clone()).unwrap();
-    let fork_output = {
+    let output = direct_runtime.submit(actor, response.clone()).unwrap();
+    let (fork_output, fork_land_replay) = {
         let mut fork = fork;
-        fork.submit(actor, response.clone()).unwrap()
+        let output = fork.submit(actor, response.clone()).unwrap();
+        (output, fork.export_replay().unwrap())
     };
+    let restored_output = restore_runtime.submit(actor, response.clone()).unwrap();
     assert_eq!(
         output, fork_output,
         "direct and forked runtime products match"
     );
+    assert_eq!(
+        output, restored_output,
+        "direct and restored land-boundary products match"
+    );
+    assert_eq!(
+        direct_runtime.export_replay().unwrap(),
+        restore_runtime.export_replay().unwrap(),
+        "direct and restored land-boundary Replay V7 state matches"
+    );
+    assert_eq!(
+        direct_runtime.export_replay().unwrap(),
+        fork_land_replay,
+        "direct and forked land-boundary Replay V7 state matches"
+    );
     assert_eq!(controller_step, output.player_steps[&actor]);
     assert_eq!(controller_checkpoint, output.checkpoint);
     assert!(output.transition.accepted);
-    assert_eq!(output.checkpoint.state, *runtime.state());
+    assert_eq!(output.checkpoint.state, *direct_runtime.state());
     assert_eq!(output.player_steps.len(), 2);
     assert_eq!(
         output.player_steps[&actor]
@@ -687,10 +875,43 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
         .observed_events
         .iter()
         .any(|event| matches!(event.event, ObservedEventKindV3::ObjectMoved { .. })));
-    let replay = runtime.export_replay().unwrap();
+    let hidden_world_output = hidden_world_runtime
+        .submit(actor, response.clone())
+        .unwrap();
+    assert_ne!(
+        output.checkpoint.state_digest,
+        hidden_world_output.checkpoint.state_digest
+    );
+    assert_eq!(
+        output.transition.accepted,
+        hidden_world_output.transition.accepted
+    );
+    assert_eq!(
+        output.transition.events,
+        hidden_world_output.transition.events
+    );
+    assert_eq!(
+        output.transition.next_decision,
+        hidden_world_output.transition.next_decision
+    );
+    assert_eq!(
+        output.player_steps[&actor],
+        hidden_world_output.player_steps[&actor]
+    );
+    assert_eq!(
+        output.player_steps[&actor].observed_events,
+        hidden_world_output.player_steps[&actor].observed_events,
+        "opponent-hidden library facts do not alter actor-visible event sequence"
+    );
+    assert_eq!(
+        output.player_steps[&actor].next_decision,
+        hidden_world_output.player_steps[&actor].next_decision,
+        "opponent-hidden library facts do not alter the next public request"
+    );
+    let replay = direct_runtime.export_replay().unwrap();
     replay.validate().unwrap();
 
-    let replayed = runtime.execute_replay(replay.clone()).unwrap();
+    let replayed = direct_runtime.execute_replay(replay.clone()).unwrap();
     assert_eq!(replayed.final_checkpoint, output.checkpoint);
     assert_eq!(replayed.transitions.len(), 1);
     assert_eq!(replayed.transitions[0].transition, output.transition);
@@ -699,8 +920,26 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
     // Phase-11 boundary B: checkpoint immediately before the newly available
     // basic-land mana ability, then apply the same external response through
     // direct, restored, forked, and full Replay V7 execution.
-    let mana_before = runtime.checkpoint().unwrap();
-    let mana_authoritative = runtime
+    let mana_before = direct_runtime.checkpoint().unwrap();
+    let mut mana_manifest = direct_runtime.export_replay().unwrap().manifest;
+    mana_manifest.initial_identity = mtgml_replay::InitialEnvironmentIdentityV7 {
+        state_revision: mana_before.state.predecessor_v5.revision,
+        full_state_digest: mana_before.state_digest.clone(),
+        episode_status: mana_before.status.clone(),
+        environment_limit_counters: mana_before.limit_counters.clone(),
+        checkpoint_codec_identity: mana_before.codec.clone(),
+        checkpoint_digest: mana_before.checkpoint_digest.clone(),
+        execution_identity: mana_before.execution_identity.clone(),
+    };
+    let mut boundary_direct_runtime = crate::SuccessorEnvironmentRuntime::new(
+        admission.clone(),
+        mana_before.state.clone(),
+        mana_before.status.clone(),
+        mana_before.limit_counters.clone(),
+        mana_manifest,
+    )
+    .unwrap();
+    let mana_authoritative = direct_runtime
         .state()
         .execution_v3
         .pending_decision
@@ -717,7 +956,10 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
         })
         .expect("the untapped basic land exposes its intrinsic mana ability");
     let mana_actor = mana_authoritative.actor;
-    let mana_request = runtime.visible_decision(mana_actor).unwrap().unwrap();
+    let mana_request = direct_runtime
+        .visible_decision(mana_actor)
+        .unwrap()
+        .unwrap();
     assert_eq!(
         mana_request
             .candidates
@@ -739,14 +981,19 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
             candidate_id: mana_candidate.candidate_id,
         },
     };
-    let mut restored_runtime = runtime.fork().unwrap();
-    restored_runtime.restore(mana_before.clone()).unwrap();
-    let mut fork_runtime = runtime.fork().unwrap();
-    let restored_request = restored_runtime
+    let mut restored_direct_runtime = direct_runtime.fork().unwrap();
+    restored_direct_runtime
+        .restore(mana_before.clone())
+        .unwrap();
+    let mut fork_direct_runtime = boundary_direct_runtime.fork().unwrap();
+    let restored_request = restored_direct_runtime
         .visible_decision(mana_actor)
         .unwrap()
         .unwrap();
-    let fork_request = fork_runtime.visible_decision(mana_actor).unwrap().unwrap();
+    let fork_request = fork_direct_runtime
+        .visible_decision(mana_actor)
+        .unwrap()
+        .unwrap();
     assert_eq!(
         mana_request, restored_request,
         "restore preserves the exact player request and CandidateId ordering"
@@ -756,18 +1003,37 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
         "fork preserves the exact player request and CandidateId ordering"
     );
 
-    let direct_mana = runtime.submit(mana_actor, mana_response.clone()).unwrap();
-    let restored_mana = restored_runtime
+    let direct_mana = direct_runtime
         .submit(mana_actor, mana_response.clone())
         .unwrap();
-    let fork_mana = fork_runtime
+    let segment_direct_mana = boundary_direct_runtime
+        .submit(mana_actor, mana_response.clone())
+        .unwrap();
+    let restored_mana = restored_direct_runtime
+        .submit(mana_actor, mana_response.clone())
+        .unwrap();
+    let fork_mana = fork_direct_runtime
         .submit(mana_actor, mana_response.clone())
         .unwrap();
     assert_eq!(
-        direct_mana, restored_mana,
+        segment_direct_mana, restored_mana,
         "direct vs restore at mana boundary"
     );
-    assert_eq!(direct_mana, fork_mana, "direct vs fork at mana boundary");
+    assert_eq!(
+        segment_direct_mana, fork_mana,
+        "direct vs fork at mana boundary"
+    );
+    assert_eq!(direct_mana, segment_direct_mana);
+    assert_eq!(
+        boundary_direct_runtime.export_replay().unwrap(),
+        restored_direct_runtime.export_replay().unwrap(),
+        "direct and restored mana-boundary Replay V7 state matches"
+    );
+    assert_eq!(
+        boundary_direct_runtime.export_replay().unwrap(),
+        fork_direct_runtime.export_replay().unwrap(),
+        "direct and forked mana-boundary Replay V7 state matches"
+    );
     assert!(direct_mana.transition.accepted);
     assert!(direct_mana.transition.events.iter().any(|event| matches!(
         event.event,
@@ -775,10 +1041,13 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
     )));
 
     // Advancing one fork after creation must not alter its source or sibling.
-    let source_after_mana = runtime.checkpoint().unwrap();
-    let source_replay_after_mana = runtime.export_replay().unwrap();
-    let restored_after_mana = restored_runtime.checkpoint().unwrap();
-    let fork_pass_request = fork_runtime.visible_decision(mana_actor).unwrap().unwrap();
+    let source_after_mana = boundary_direct_runtime.checkpoint().unwrap();
+    let source_replay_after_mana = boundary_direct_runtime.export_replay().unwrap();
+    let restored_after_mana = restored_direct_runtime.checkpoint().unwrap();
+    let fork_pass_request = fork_direct_runtime
+        .visible_decision(mana_actor)
+        .unwrap()
+        .unwrap();
     let pass_candidate = fork_pass_request
         .candidates
         .iter()
@@ -789,7 +1058,7 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
             )
         })
         .expect("the current priority holder may pass");
-    fork_runtime
+    fork_direct_runtime
         .submit(
             mana_actor,
             DecisionResponseV2 {
@@ -802,30 +1071,46 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
             },
         )
         .unwrap();
-    assert_eq!(runtime.checkpoint().unwrap(), source_after_mana);
-    assert_eq!(runtime.export_replay().unwrap(), source_replay_after_mana);
-    assert_eq!(restored_runtime.checkpoint().unwrap(), restored_after_mana);
+    assert_eq!(
+        boundary_direct_runtime.checkpoint().unwrap(),
+        source_after_mana
+    );
+    assert_eq!(
+        boundary_direct_runtime.export_replay().unwrap(),
+        source_replay_after_mana
+    );
+    assert_eq!(
+        restored_direct_runtime.checkpoint().unwrap(),
+        restored_after_mana
+    );
 
-    let restored_replay = restored_runtime.export_replay().unwrap();
-    let restored_reexecution = restored_runtime.execute_replay(restored_replay).unwrap();
+    let restored_replay = restored_direct_runtime.export_replay().unwrap();
+    let restored_reexecution = restored_direct_runtime
+        .execute_replay(restored_replay)
+        .unwrap();
     assert_eq!(restored_reexecution.transitions.len(), 1);
     assert_eq!(restored_reexecution.transitions[0], direct_mana);
 
     // The original replay starts before PlayLand and therefore covers both
     // admitted boundaries with one external response per transition.
-    let full_replay = runtime.export_replay().unwrap();
-    let full_reexecution = runtime.execute_replay(full_replay.clone()).unwrap();
+    let full_replay = direct_runtime.export_replay().unwrap();
+    let full_reexecution = direct_runtime.execute_replay(full_replay.clone()).unwrap();
     assert_eq!(full_reexecution.transitions.len(), 2);
     assert_eq!(full_reexecution.transitions[0], output);
     assert_eq!(full_reexecution.transitions[1], direct_mana);
     assert_eq!(full_reexecution.final_checkpoint, direct_mana.checkpoint);
-    assert_eq!(runtime.export_replay().unwrap(), full_replay);
+    assert_eq!(direct_runtime.export_replay().unwrap(), full_replay);
 
     // Self-consistent initial-checkpoint mutations must not be mistaken for
     // valid executions merely because every enclosing checkpoint/replay
     // identity was recomputed around the mutation.
-    let detects_initial_state_change =
-        |changed_state: EngineStatePartsV2, changed_seed: Option<String>| {
+    let mut replay_state_families_proven = Vec::new();
+    let mut detects_initial_state_change =
+        |family: &'static str, changed_state: EngineStatePartsV2, changed_seed: Option<String>| {
+            replay_state_families_proven.push(family);
+            // Each family mutant is STRUCTURALLY_SELF_CONSISTENT_BUT_SEMANTICALLY_DIVERGENT:
+            // state, V7 checkpoint, and outer Replay V7 validate before the
+            // authoritative executor is asked to replay the unchanged facts.
             changed_state.validate().unwrap();
             let changed_checkpoint = EnvironmentCheckpointV7::new(
                 changed_state.clone(),
@@ -846,16 +1131,48 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
             };
             changed_replay.steps[0].checkpoint_digest_before =
                 changed_checkpoint.checkpoint_digest.clone();
+            if family == "revision" {
+                let codec = changed_replay
+                    .manifest
+                    .initial_identity
+                    .checkpoint_codec_identity
+                    .clone();
+                let execution_identity = changed_replay.manifest.execution_identity.clone();
+                let mut before_digest = changed_checkpoint.checkpoint_digest.clone();
+                let mut revision = changed_checkpoint.state.predecessor_v5.revision;
+                for step in &mut changed_replay.steps {
+                    step.state_revision_before = revision;
+                    step.response.state_revision = revision;
+                    step.checkpoint_digest_before = before_digest;
+                    revision = mtgml_model::StateRevision(revision.0 + 1);
+                    step.state_revision_after = revision;
+                    before_digest =
+                        mtgml_persistence::checkpoint_digest::calculate_checkpoint_digest_v7(
+                            &step.full_state_digest_after.as_digest_reference(),
+                            &step.episode_status_after,
+                            &step.environment_limit_counters_after,
+                            &codec,
+                            &execution_identity,
+                        )
+                        .unwrap();
+                    step.checkpoint_digest_after = before_digest.clone();
+                }
+                changed_replay.final_identity.state_revision = revision;
+                changed_replay.final_identity.checkpoint_digest = before_digest;
+            }
             if let Some(seed) = changed_seed {
                 changed_replay.manifest.randomness.root_seed_hex = seed;
             }
             changed_replay.validate().unwrap();
-            assert!(crate::replay_v7_execution::execute_authoritative_replay_v7(
+            let reexecution = crate::replay_v7_execution::execute_authoritative_replay_v7(
                 admission.clone(),
                 changed_checkpoint,
                 changed_replay,
-            )
-            .is_err());
+            );
+            assert!(
+                reexecution.is_err(),
+                "Replay V7 re-execution accepted a semantically divergent {family} mutation"
+            );
         };
 
     let mut changed_core = before_checkpoint.state.clone();
@@ -866,7 +1183,7 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
         .get_mut(&actor)
         .unwrap()
         .life += 1;
-    detects_initial_state_change(changed_core, None);
+    detects_initial_state_change("core", changed_core, None);
 
     let mut changed_mana = before_checkpoint.state.clone();
     changed_mana
@@ -876,7 +1193,7 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
         .get_mut(&actor)
         .unwrap()
         .unrestricted[3] += 1;
-    detects_initial_state_change(changed_mana, None);
+    detects_initial_state_change("mana", changed_mana, None);
 
     let mut changed_history = before_checkpoint.state.clone();
     changed_history
@@ -886,7 +1203,7 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
         .get_mut(&actor)
         .unwrap()
         .spells_cast_total += 1;
-    detects_initial_state_change(changed_history, None);
+    detects_initial_state_change("turn_history", changed_history, None);
 
     let mut changed_counters = before_checkpoint.state.clone();
     let battlefield_object = changed_counters
@@ -905,11 +1222,11 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
         .entry(battlefield_object)
         .or_default()
         .insert(mtgml_state::CounterKindV1::PlusOnePlusOne, 1);
-    detects_initial_state_change(changed_counters, None);
+    detects_initial_state_change("counters", changed_counters, None);
 
     let mut changed_allocator = before_checkpoint.state.clone();
     changed_allocator.predecessor_v5.allocators.next_object_id.0 += 10;
-    detects_initial_state_change(changed_allocator, None);
+    detects_initial_state_change("allocators", changed_allocator, None);
 
     let mut changed_knowledge = before_checkpoint.state.clone();
     changed_knowledge
@@ -920,7 +1237,7 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
         .unwrap()
         .next_visible_sequence
         .0 += 1;
-    detects_initial_state_change(changed_knowledge, None);
+    detects_initial_state_change("knowledge", changed_knowledge, None);
 
     let mut changed_perspective_allocator = before_checkpoint.state.clone();
     changed_perspective_allocator
@@ -931,19 +1248,167 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
         .unwrap()
         .next_opaque_object_id
         .0 += 10;
-    detects_initial_state_change(changed_perspective_allocator, None);
+    detects_initial_state_change(
+        "perspective_identities",
+        changed_perspective_allocator,
+        None,
+    );
 
     let mut changed_rng = before_checkpoint.state.clone();
     let changed_root_seed = mtgml_random::RootSeed256::from_lower_hex(&"22".repeat(32)).unwrap();
     changed_rng.predecessor_v5.random.root_seed = changed_root_seed;
-    detects_initial_state_change(changed_rng, Some(changed_root_seed.to_lower_hex()));
+    detects_initial_state_change(
+        "random",
+        changed_rng,
+        Some(changed_root_seed.to_lower_hex()),
+    );
+
+    let mut changed_revision = before_checkpoint.state.clone();
+    changed_revision.predecessor_v5.revision.0 += 1;
+    changed_revision
+        .execution_v3
+        .pending_decision
+        .as_mut()
+        .unwrap()
+        .state_revision = changed_revision.predecessor_v5.revision;
+    detects_initial_state_change("revision", changed_revision, None);
+
+    // The paired hidden-world fixture is itself a structurally valid zone and
+    // object-state mutation. Re-execution starts from it and must detect that
+    // the recorded after-digest belongs to the original world.
+    detects_initial_state_change("zones", hidden_world_state.clone(), None);
+
+    let mut changed_execution = before_checkpoint.state.clone();
+    let pending = changed_execution
+        .execution_v3
+        .pending_decision
+        .as_mut()
+        .unwrap();
+    pending.decision_id.0 += 1;
+    changed_execution
+        .predecessor_v5
+        .allocators
+        .next_decision_id
+        .0 += 1;
+    detects_initial_state_change("execution_v3", changed_execution, None);
+
+    let mut changed_combat = before_checkpoint.state.clone();
+    changed_combat.predecessor_v5.combat = Some(mtgml_state::CombatState {
+        defending_player: if actor == PlayerId(1) {
+            PlayerId(2)
+        } else {
+            PlayerId(1)
+        },
+        attackers: Vec::new(),
+        damage_step_completed: false,
+        blocked_attackers: Default::default(),
+        blockers: Default::default(),
+    });
+    detects_initial_state_change("combat", changed_combat, None);
+
+    let mut changed_foundation = before_checkpoint.state.clone();
+    changed_foundation.predecessor_v5.foundation_sources.insert(
+        battlefield_object,
+        mtgml_state::FoundationCreatureSource {
+            source_kind: mtgml_state::FoundationSourceKind::Creature,
+            base_characteristics: mtgml_state::BaseCharacteristics::Simple {
+                power: 1,
+                toughness: 1,
+            },
+            marked_damage: 0,
+            control_history: mtgml_state::ControlHistory::BeforeTurnStart { turn_number: 1 },
+        },
+    );
+    detects_initial_state_change("foundation_sources", changed_foundation, None);
+
+    let mut changed_format = before_checkpoint.state.clone();
+    changed_format.predecessor_v5.format = mtgml_state::FormatState::Commander {
+        state: mtgml_state::CommanderState::default(),
+    };
+    detects_initial_state_change("format", changed_format, None);
+
+    let mut changed_attachment = before_checkpoint.state.clone();
+    changed_attachment
+        .card_rules_state
+        .attachments
+        .by_source
+        .insert(
+            battlefield_object,
+            mtgml_state::AttachmentV1 {
+                target: battlefield_object,
+                timestamp: mtgml_state::AttachmentTimestampV1 {
+                    revision: before_checkpoint.state.predecessor_v5.revision,
+                    operation_ordinal: 0,
+                },
+            },
+        );
+    detects_initial_state_change("attachments", changed_attachment, None);
+
+    let mut changed_face = before_checkpoint.state.clone();
+    changed_face
+        .card_rules_state
+        .faces
+        .faces
+        .insert(battlefield_object, 1);
+    detects_initial_state_change("faces", changed_face, None);
+
+    let mut changed_ability = before_checkpoint.state.clone();
+    let ability_source = *changed_ability
+        .predecessor_v5
+        .zones
+        .objects
+        .keys()
+        .next()
+        .expect("admitted game has a live object");
+    let ability_id = changed_ability.predecessor_v5.allocators.next_ability_id;
+    changed_ability
+        .card_rules_state
+        .abilities
+        .by_instance
+        .insert(
+            ability_id,
+            mtgml_state::AbilityAuthorityV1 {
+                source: ability_source,
+                ability_key: 0,
+            },
+        );
+    changed_ability.predecessor_v5.allocators.next_ability_id.0 += 1;
+    detects_initial_state_change("ability_authority", changed_ability, None);
+
+    let covered_families: std::collections::BTreeSet<_> =
+        replay_state_families_proven.into_iter().collect();
+    let required_families: std::collections::BTreeSet<_> = [
+        "revision",
+        "core",
+        "zones",
+        "allocators",
+        "execution_v3",
+        "random",
+        "knowledge",
+        "perspective_identities",
+        "combat",
+        "foundation_sources",
+        "format",
+        "mana",
+        "turn_history",
+        "counters",
+        "attachments",
+        "faces",
+        "ability_authority",
+    ]
+    .into_iter()
+    .collect();
+    assert_eq!(
+        covered_families, required_families,
+        "every FullStateDigestV6 authoritative family needs a replay re-execution mutant"
+    );
 
     let semantically_tampered_replay_is_rejected =
         |tampered: mtgml_replay::AuthoritativeReplayV7| {
             tampered
                 .validate()
                 .expect("control mutation remains structurally valid");
-            assert!(runtime.execute_replay(tampered).is_err());
+            assert!(direct_runtime.execute_replay(tampered).is_err());
         };
     let mut wrong_actor = full_replay.clone();
     wrong_actor.steps[0].actor = if actor == PlayerId(1) {
@@ -962,7 +1427,7 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
     wrong_revision.steps[0].response.state_revision =
         mtgml_model::StateRevision(wrong_revision.steps[0].response.state_revision.0 + 1);
     assert!(wrong_revision.validate().is_err());
-    assert!(runtime.execute_replay(wrong_revision).is_err());
+    assert!(direct_runtime.execute_replay(wrong_revision).is_err());
 
     let mut fabricated_candidate = full_replay.clone();
     fabricated_candidate.steps[0].response.answer = DecisionAnswerV2::SelectOne {
@@ -1032,15 +1497,15 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
             },
         }
     };
-    let active_request = runtime.visible_decision(actor).unwrap().unwrap();
-    let first_pass = runtime
+    let active_request = direct_runtime.visible_decision(actor).unwrap().unwrap();
+    let first_pass = direct_runtime
         .submit(actor, make_pass_response(&active_request))
         .unwrap();
     assert!(first_pass.transition.accepted);
     let nonactive = first_pass.transition.next_decision.as_ref().unwrap().actor;
     assert_ne!(nonactive, actor);
-    let nonactive_request = runtime.visible_decision(nonactive).unwrap().unwrap();
-    let second_pass = runtime
+    let nonactive_request = direct_runtime.visible_decision(nonactive).unwrap().unwrap();
+    let second_pass = direct_runtime
         .submit(nonactive, make_pass_response(&nonactive_request))
         .unwrap();
     assert!(second_pass.transition.accepted);
@@ -1070,8 +1535,10 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
         Some(actor),
         "accepted progress may not expose Running without a decision"
     );
-    let priority_replay = runtime.export_replay().unwrap();
-    let priority_reexecution = runtime.execute_replay(priority_replay.clone()).unwrap();
+    let priority_replay = direct_runtime.export_replay().unwrap();
+    let priority_reexecution = direct_runtime
+        .execute_replay(priority_replay.clone())
+        .unwrap();
     assert_eq!(priority_reexecution.transitions.len(), 4);
     assert_eq!(priority_reexecution.transitions[0], output);
     assert_eq!(priority_reexecution.transitions[1], direct_mana);
@@ -1081,7 +1548,7 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
         priority_reexecution.final_checkpoint,
         second_pass.checkpoint
     );
-    assert_eq!(runtime.export_replay().unwrap(), priority_replay);
+    assert_eq!(direct_runtime.export_replay().unwrap(), priority_replay);
 
     let mut missing_pool_clear = second_pass.transition.clone();
     let clear_operation = missing_pool_clear
@@ -1112,8 +1579,8 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
     // Beginning of Combat flows to the attacker declaration boundary. This
     // admitted profile has no attacker-declaration producer, so it must fail
     // closed rather than fabricate another ordinary priority request.
-    let beginning_combat_request = runtime.visible_decision(actor).unwrap().unwrap();
-    let beginning_combat_first_pass = runtime
+    let beginning_combat_request = direct_runtime.visible_decision(actor).unwrap().unwrap();
+    let beginning_combat_first_pass = direct_runtime
         .submit(actor, make_pass_response(&beginning_combat_request))
         .unwrap();
     assert!(beginning_combat_first_pass.transition.accepted);
@@ -1123,21 +1590,27 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
         .as_ref()
         .unwrap()
         .actor;
-    let before_unsupported_boundary = runtime.checkpoint().unwrap();
-    let replay_before_unsupported_boundary = runtime.export_replay().unwrap();
+    let before_unsupported_boundary = direct_runtime.checkpoint().unwrap();
+    let replay_before_unsupported_boundary = direct_runtime.export_replay().unwrap();
     let replay_bytes_before_unsupported_boundary =
         serde_json::to_vec(&replay_before_unsupported_boundary).unwrap();
-    let next_request = runtime.visible_decision(next_actor).unwrap().unwrap();
-    assert!(runtime
+    let next_request = direct_runtime
+        .visible_decision(next_actor)
+        .unwrap()
+        .unwrap();
+    assert!(direct_runtime
         .submit(next_actor, make_pass_response(&next_request))
         .is_err());
-    assert_eq!(runtime.checkpoint().unwrap(), before_unsupported_boundary);
     assert_eq!(
-        runtime.export_replay().unwrap(),
+        direct_runtime.checkpoint().unwrap(),
+        before_unsupported_boundary
+    );
+    assert_eq!(
+        direct_runtime.export_replay().unwrap(),
         replay_before_unsupported_boundary
     );
     assert_eq!(
-        serde_json::to_vec(&runtime.export_replay().unwrap()).unwrap(),
+        serde_json::to_vec(&direct_runtime.export_replay().unwrap()).unwrap(),
         replay_bytes_before_unsupported_boundary
     );
 }
