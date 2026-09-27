@@ -1,7 +1,7 @@
 # M4 Shared G0 — Contract-Growth Boundary
 
 **Task:** `M4_SHARED_G0_CONTRACT_GROWTH_SPEC_AND_IMPLEMENTATION_PLAN`
-**Status:** G0B and payload/stage amendments ACCEPTED; continuation-wrapper stage-owner amendment PROPOSED for independent review; detached implementation baseline remains `f5c1ed2aa0719edaebd95f80f7c1c5c38b3dea3d`; current-writer authority remains gated on G0j
+**Status:** G0B and payload/stage amendments ACCEPTED; continuation identity/actor owner and V3 variant-inventory amendment PROPOSED for independent review; detached implementation baseline remains `f5c1ed2aa0719edaebd95f80f7c1c5c38b3dea3d`; current-writer authority remains gated on G0j
 **G0a acceptance record:** Independent exact-head G0 Spec/Plan review PASS at `308e465669f66ad63b01d5fb381214c08ce413bc`; PR #250 required CI PASS; merged at `8642db7a389d5363d52224bd040082811f626084` with tree identical to the reviewed head. This accepts the G0a design boundary for G0b only. It does not accept G0b or authorize G0 implementation.
 **Verified `origin/master`:** `85f967f641528e43772c63be14679af398dcac86`
 **Date:** 2026-09-27
@@ -302,8 +302,18 @@ execution_successor = [
   <execution_component_identity>, pending_request_or_null,
   continuations[], temporary_effects[], waiting_triggers[], delayed_effects[]
 ]
-continuation_record = [continuation_id, actor_player_id, created_at_revision_u64,
-  continuation_payload]
+continuation_record = [continuation_id, created_at_revision_u64, continuation_payload_v3]
+continuation_payload_v3 =
+  ["synthetic_assembly", actor_player_id, stage, selected_count_or_null,
+   selected_piece_keys_u32[], ordered_piece_keys_u32[]]
+| ["magic_sba_graveyard_order_v1", round_start_revision_u64,
+   selected_sba_actions[], apnap_owners[], next_owner_index_u32, completed_owner_orders[]]
+| cast_continuation
+| nonmana_activation_continuation
+| trigger_placement_continuation
+| stack_resolution_continuation
+
+`ContinuationRecordV3` is the sole owner of `continuation_id` and creation revision. It has no wrapper `actor` or `stage_index`: an action actor is stored in its cast/activation payload; trigger placement derives the current actor from `apnap_actors[current_actor_index]`; a paused resolution's choice actor is the actor of the pending authoritative request; existing SBA order derives the current owner from its APNAP cursor. No child payload repeats the wrapper continuation ID. The V3 closed payload inventory retains current `SyntheticM2Assembly` behavior under the neutral tag `synthetic_assembly` and current `MagicSbaGraveyardOrderV1` behavior, alongside Cast, NonManaActivation, TriggerPlacement, and StackResolution. Predecessor V2 bytes/tags retain their historical meaning and are not relabeled or automatically migrated.
 
 trigger_record = [trigger_id, controller, ability_source_context,
   trigger_context,
@@ -314,14 +324,14 @@ trigger_placement_continuation = ["trigger_placement", apnap_actors[],
   current_actor_index_u32, pending_trigger_ids[], completed_orders[],
   selected_trigger_targets[], actor_request_roots[[player_id, first_player_decision_id][]]]
 
-cast_continuation = ["cast", continuation_id, actor_player_id,
+cast_continuation = ["cast", actor_player_id,
   spell_object_id, card_definition_id, face_key_u32, semantic_profile_id,
   stage_tag, selected_route_or_null, modes[], targets[], paid_cost_choices[],
   action_cost_facts, mana_payment_staging_or_null]
 cast_stage_tag = "selecting_cost_route" | "selecting_modes" | "selecting_targets"
               | "selecting_additional_costs" | "selecting_cost_operands" | "paying_mana"
-nonmana_activation_continuation = ["nonmana_activation", continuation_id,
-  actor_player_id, source_object_id, source_ability_instance_id, ability_key_u32,
+nonmana_activation_continuation = ["nonmana_activation", actor_player_id,
+  source_object_id, source_ability_instance_id, ability_key_u32,
   semantic_profile_id, stage_tag, modes[], targets[], action_cost_facts,
   mana_payment_staging_or_null]
 nonmana_activation_stage_tag = "selecting_modes" | "selecting_targets"
@@ -332,8 +342,8 @@ reserved_nonmana_cost = ["tap_source"] | ["sacrifice_source"]  // only locked wi
 selected_cost_operand = ["put_counters", game_object_id, "minus_one_minus_one", count_u32]
 mana_payment_staging = ["mana_payment_staging", payment_stage_tag,  // SelectingSources | AwaitingFinalAllocation
   mana_source_activations[]]  // embeds no duplicate cost or derived pool
-stack_resolution_continuation = ["stack_resolution", continuation_id,
-  resolving_stack_object_id, resolution_stage_tag, action_cost_facts_or_null,
+stack_resolution_continuation = ["stack_resolution", resolving_stack_object_id,
+  resolution_stage_tag, action_cost_facts_or_null,
   mana_payment_staging_or_null]
 resolution_stage_tag = "awaiting_optional_payment" | "paying_mana"
 mana_source_activation = [source_object_id, source_ability_instance_id,

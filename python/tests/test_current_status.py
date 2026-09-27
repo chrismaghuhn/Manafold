@@ -452,11 +452,13 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             ROOT / "docs" / "adr" / "0056-g0-successor-version-identities-and-compatibility.md"
         ).read_text(encoding="utf-8")
 
-        self.assertIn("continuation-wrapper stage-owner amendment PROPOSED", spec)
+        self.assertIn(
+            "continuation identity/actor owner and V3 variant-inventory amendment PROPOSED", spec
+        )
         self.assertIn("f5c1ed2aa0719edaebd95f80f7c1c5c38b3dea3d", spec)
         self.assertIn("G0A_ACCEPTANCE = PASS", spec)
         self.assertIn(
-            "continuation-wrapper stage-owner amendment requires independent review", plan
+            "continuation identity/actor-owner amendment requires independent review", plan
         )
         self.assertIn("**Implementation authorized:** YES", plan)
         self.assertIn("**Status:** accepted by PR #251", adr)
