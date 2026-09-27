@@ -34,6 +34,7 @@
     "player-decision-request.v1.schema.json",
     "player-decision-request.v2.schema.json",
     "player-decision-request.v3.schema.json",
+    "player-decision-request.v4.schema.json",
     "player-step.v1.schema.json",
     "player-step.v2.schema.json",
     "player-step.v3.schema.json",

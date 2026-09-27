@@ -1,0 +1,54 @@
+{
+  "actor": "0",
+  "candidates": [
+    {
+      "candidate_id": 0,
+      "intent": {
+        "kind": "select_trigger",
+        "trigger": {
+          "event_kind": "spell_cast",
+          "source_ability": "4",
+          "source_object": "2",
+          "subject": {
+            "actor": "0",
+            "cost_facts": {
+              "paid_additional_cost_ids": [],
+              "selected_route": {"kind": "normal"}
+            },
+            "creature_spell": true,
+            "kind": "spell_cast",
+            "spell_source_object": null
+          }
+        }
+      }
+    },
+    {
+      "candidate_id": 1,
+      "intent": {
+        "kind": "select_trigger",
+        "trigger": {
+          "event_kind": "spell_cast",
+          "source_ability": "5",
+          "source_object": "3",
+          "subject": {
+            "actor": "0",
+            "cost_facts": {
+              "paid_additional_cost_ids": [],
+              "selected_route": {"kind": "normal"}
+            },
+            "creature_spell": true,
+            "kind": "spell_cast",
+            "spell_source_object": null
+          }
+        }
+      }
+    }
+  ],
+  "decision_domain_v2": {"kind": "order", "maximum": 2, "minimum": 2},
+  "parent_player_decision_id": null,
+  "player_decision_id": "10",
+  "purpose": {"kind": "trigger_order"},
+  "schema_version": "player-decision-request.v4",
+  "view_sequence": "8",
+  "visibility": "acting_player_only"
+}

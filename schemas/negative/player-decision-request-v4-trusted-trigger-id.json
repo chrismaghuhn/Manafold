@@ -1,0 +1,35 @@
+{
+  "actor": "0",
+  "candidates": [
+    {
+      "candidate_id": 0,
+      "intent": {
+        "kind": "select_trigger",
+        "trigger": {
+          "event_kind": "spell_cast",
+          "source_ability": "4",
+          "source_object": "2",
+          "subject": {
+            "actor": "0",
+            "cost_facts": {
+              "paid_additional_cost_ids": [],
+              "selected_route": {"kind": "normal"}
+            },
+            "creature_spell": true,
+            "kind": "spell_cast",
+            "spell_source_object": null,
+            "trigger_instance_id": "77"
+          },
+          "trigger_instance_id": "77"
+        }
+      }
+    }
+  ],
+  "decision_domain_v2": {"kind": "choose_one"},
+  "parent_player_decision_id": null,
+  "player_decision_id": "10",
+  "purpose": {"kind": "trigger_order"},
+  "schema_version": "player-decision-request.v4",
+  "view_sequence": "8",
+  "visibility": "acting_player_only"
+}

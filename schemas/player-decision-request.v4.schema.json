@@ -1,0 +1,1331 @@
+{
+  "$defs": {
+    "buckets12": {
+      "items": {
+        "maximum": 4294967295,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "maxItems": 12,
+      "minItems": 12,
+      "type": "array"
+    },
+    "cost_facts": {
+      "additionalProperties": false,
+      "properties": {
+        "paid_additional_cost_ids": {
+          "items": {
+            "$ref": "#/$defs/u32_number"
+          },
+          "type": "array"
+        },
+        "selected_route": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "normal"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "alternative"
+                },
+                "route_id": {
+                  "$ref": "#/$defs/u32_number"
+                }
+              },
+              "required": [
+                "kind",
+                "route_id"
+              ],
+              "type": "object"
+            }
+          ]
+        }
+      },
+      "required": [
+        "selected_route",
+        "paid_additional_cost_ids"
+      ],
+      "type": "object"
+    },
+    "i64": {
+      "maximum": 9223372036854775807,
+      "minimum": -9223372036854775808,
+      "type": "integer"
+    },
+    "safe_target_descriptor": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "object"
+            },
+            "object": {
+              "$ref": "#/$defs/u64"
+            }
+          },
+          "required": [
+            "kind",
+            "object"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "player"
+            },
+            "player": {
+              "$ref": "#/$defs/u64"
+            }
+          },
+          "required": [
+            "kind",
+            "player"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "stack_item"
+            },
+            "stack_position_from_top": {
+              "$ref": "#/$defs/u32_number"
+            }
+          },
+          "required": [
+            "kind",
+            "stack_position_from_top"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "safe_trigger_ability_activated": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/safe_trigger_base"
+        },
+        {
+          "properties": {
+            "event_kind": {
+              "const": "ability_activated"
+            },
+            "subject": {
+              "additionalProperties": false,
+              "properties": {
+                "activated_source_ability": {
+                  "$ref": "#/$defs/u64"
+                },
+                "activated_source_object": {
+                  "$ref": "#/$defs/u64"
+                },
+                "actor": {
+                  "$ref": "#/$defs/u64"
+                },
+                "cost_facts": {
+                  "$ref": "#/$defs/cost_facts"
+                },
+                "kind": {
+                  "const": "ability_activated"
+                },
+                "targets": {
+                  "items": {
+                    "$ref": "#/$defs/safe_target_descriptor"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "kind",
+                "actor",
+                "activated_source_object",
+                "activated_source_ability",
+                "cost_facts",
+                "targets"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "event_kind",
+            "subject"
+          ],
+          "type": "object"
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "safe_trigger_attack_declared": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/safe_trigger_base"
+        },
+        {
+          "properties": {
+            "event_kind": {
+              "const": "attack_declared"
+            },
+            "subject": {
+              "additionalProperties": false,
+              "properties": {
+                "attackers": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "attacker": {
+                        "$ref": "#/$defs/u64"
+                      },
+                      "defending_player": {
+                        "$ref": "#/$defs/u64"
+                      }
+                    },
+                    "required": [
+                      "attacker",
+                      "defending_player"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "controller": {
+                  "$ref": "#/$defs/u64"
+                },
+                "kind": {
+                  "const": "attack_declared"
+                }
+              },
+              "required": [
+                "kind",
+                "controller",
+                "attackers"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "event_kind",
+            "subject"
+          ],
+          "type": "object"
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "safe_trigger_base": {
+      "properties": {
+        "source_ability": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/u64"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_object": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/u64"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "source_object",
+        "source_ability"
+      ],
+      "type": "object"
+    },
+    "safe_trigger_beginning_of_combat": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/safe_trigger_base"
+        },
+        {
+          "properties": {
+            "event_kind": {
+              "const": "beginning_of_combat"
+            },
+            "subject": {
+              "additionalProperties": false,
+              "properties": {
+                "active_player": {
+                  "$ref": "#/$defs/u64"
+                },
+                "kind": {
+                  "const": "beginning_of_combat"
+                },
+                "turn_number": {
+                  "$ref": "#/$defs/u64"
+                }
+              },
+              "required": [
+                "kind",
+                "active_player",
+                "turn_number"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "event_kind",
+            "subject"
+          ],
+          "type": "object"
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "safe_trigger_card_drawn": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/safe_trigger_base"
+        },
+        {
+          "properties": {
+            "event_kind": {
+              "const": "card_drawn"
+            },
+            "subject": {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "card_drawn"
+                },
+                "player": {
+                  "$ref": "#/$defs/u64"
+                }
+              },
+              "required": [
+                "kind",
+                "player"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "event_kind",
+            "subject"
+          ],
+          "type": "object"
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "safe_trigger_counter_changed": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/safe_trigger_base"
+        },
+        {
+          "properties": {
+            "event_kind": {
+              "const": "counter_changed"
+            },
+            "subject": {
+              "additionalProperties": false,
+              "properties": {
+                "after": {
+                  "$ref": "#/$defs/u32_number"
+                },
+                "before": {
+                  "$ref": "#/$defs/u32_number"
+                },
+                "counter_kind": {
+                  "enum": [
+                    "plus_one_plus_one",
+                    "minus_one_minus_one",
+                    "lore"
+                  ]
+                },
+                "kind": {
+                  "const": "counter_changed"
+                },
+                "object": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/u64"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind",
+                "object",
+                "counter_kind",
+                "before",
+                "after"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "event_kind",
+            "subject"
+          ],
+          "type": "object"
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "safe_trigger_damage_applied": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/safe_trigger_base"
+        },
+        {
+          "properties": {
+            "event_kind": {
+              "const": "damage_applied"
+            },
+            "subject": {
+              "additionalProperties": false,
+              "properties": {
+                "amount": {
+                  "$ref": "#/$defs/u32_number"
+                },
+                "damage_kind": {
+                  "enum": [
+                    "combat",
+                    "noncombat"
+                  ]
+                },
+                "kind": {
+                  "const": "damage_applied"
+                },
+                "recipient": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "const": "object"
+                        },
+                        "object": {
+                          "$ref": "#/$defs/u64"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "object"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "const": "player"
+                        },
+                        "player": {
+                          "$ref": "#/$defs/u64"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "player"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "source_object": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/u64"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind",
+                "source_object",
+                "recipient",
+                "amount",
+                "damage_kind"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "event_kind",
+            "subject"
+          ],
+          "type": "object"
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "safe_trigger_descriptor": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/safe_trigger_spell_cast"
+        },
+        {
+          "$ref": "#/$defs/safe_trigger_ability_activated"
+        },
+        {
+          "$ref": "#/$defs/safe_trigger_target_became"
+        },
+        {
+          "$ref": "#/$defs/safe_trigger_object_entered"
+        },
+        {
+          "$ref": "#/$defs/safe_trigger_object_left_or_died"
+        },
+        {
+          "$ref": "#/$defs/safe_trigger_beginning_of_combat"
+        },
+        {
+          "$ref": "#/$defs/safe_trigger_attack_declared"
+        },
+        {
+          "$ref": "#/$defs/safe_trigger_card_drawn"
+        },
+        {
+          "$ref": "#/$defs/safe_trigger_counter_changed"
+        },
+        {
+          "$ref": "#/$defs/safe_trigger_damage_applied"
+        },
+        {
+          "$ref": "#/$defs/safe_trigger_life_changed"
+        }
+      ]
+    },
+    "safe_trigger_life_changed": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/safe_trigger_base"
+        },
+        {
+          "properties": {
+            "event_kind": {
+              "const": "life_changed"
+            },
+            "subject": {
+              "additionalProperties": false,
+              "properties": {
+                "after": {
+                  "$ref": "#/$defs/i64"
+                },
+                "before": {
+                  "$ref": "#/$defs/i64"
+                },
+                "cause": {
+                  "enum": [
+                    "damage",
+                    "non_damage"
+                  ]
+                },
+                "kind": {
+                  "const": "life_changed"
+                },
+                "player": {
+                  "$ref": "#/$defs/u64"
+                }
+              },
+              "required": [
+                "kind",
+                "player",
+                "before",
+                "after",
+                "cause"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "event_kind",
+            "subject"
+          ],
+          "type": "object"
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "safe_trigger_object_entered": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/safe_trigger_base"
+        },
+        {
+          "properties": {
+            "event_kind": {
+              "const": "object_entered"
+            },
+            "subject": {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "object_entered"
+                },
+                "object": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/u64"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind",
+                "object"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "event_kind",
+            "subject"
+          ],
+          "type": "object"
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "safe_trigger_object_left_or_died": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/safe_trigger_base"
+        },
+        {
+          "properties": {
+            "event_kind": {
+              "const": "object_left_or_died"
+            },
+            "subject": {
+              "additionalProperties": false,
+              "properties": {
+                "destination": {
+                  "enum": [
+                    "library",
+                    "hand",
+                    "battlefield",
+                    "graveyard",
+                    "exile",
+                    "stack",
+                    "command",
+                    "ante",
+                    "outside"
+                  ]
+                },
+                "kind": {
+                  "const": "object_left_or_died"
+                },
+                "last_known_object": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/u64"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind",
+                "last_known_object",
+                "destination"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "event_kind",
+            "subject"
+          ],
+          "type": "object"
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "safe_trigger_spell_cast": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/safe_trigger_base"
+        },
+        {
+          "properties": {
+            "event_kind": {
+              "const": "spell_cast"
+            },
+            "subject": {
+              "additionalProperties": false,
+              "properties": {
+                "actor": {
+                  "$ref": "#/$defs/u64"
+                },
+                "cost_facts": {
+                  "$ref": "#/$defs/cost_facts"
+                },
+                "creature_spell": {
+                  "type": "boolean"
+                },
+                "kind": {
+                  "const": "spell_cast"
+                },
+                "spell_source_object": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/u64"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind",
+                "actor",
+                "spell_source_object",
+                "creature_spell",
+                "cost_facts"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "event_kind",
+            "subject"
+          ],
+          "type": "object"
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "safe_trigger_target_became": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/safe_trigger_base"
+        },
+        {
+          "properties": {
+            "event_kind": {
+              "const": "target_became"
+            },
+            "subject": {
+              "additionalProperties": false,
+              "properties": {
+                "actor": {
+                  "$ref": "#/$defs/u64"
+                },
+                "kind": {
+                  "const": "target_became"
+                },
+                "target": {
+                  "$ref": "#/$defs/safe_target_descriptor"
+                }
+              },
+              "required": [
+                "kind",
+                "actor",
+                "target"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "event_kind",
+            "subject"
+          ],
+          "type": "object"
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "u32_number": {
+      "maximum": 4294967295,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "u64": {
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "type": "string"
+    }
+  },
+  "$id": "player-decision-request.v4.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "actor": {
+      "$ref": "#/$defs/u64"
+    },
+    "candidates": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "candidate_id": {
+            "$ref": "#/$defs/u32_number"
+          },
+          "intent": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "pass_priority"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "play_land"
+                  },
+                  "object": {
+                    "$ref": "#/$defs/u64"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "object"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "cast_spell"
+                  },
+                  "object": {
+                    "$ref": "#/$defs/u64"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "object"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "ability": {
+                    "$ref": "#/$defs/u64"
+                  },
+                  "kind": {
+                    "const": "activate_ability"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "ability"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "select_object"
+                  },
+                  "object": {
+                    "$ref": "#/$defs/u64"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "object"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "select_player"
+                  },
+                  "player": {
+                    "$ref": "#/$defs/u64"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "player"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "select_mode"
+                  },
+                  "mode_index": {
+                    "$ref": "#/$defs/u32_number"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "mode_index"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "choose_boolean"
+                  },
+                  "value": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "declare_number"
+                  },
+                  "value": {
+                    "$ref": "#/$defs/i64"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "confirm"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "select_cost_route"
+                  },
+                  "route_id": {
+                    "$ref": "#/$defs/u32_number"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "route_id"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "ability": {
+                    "$ref": "#/$defs/u64"
+                  },
+                  "kind": {
+                    "const": "select_mana_source"
+                  },
+                  "produced_buckets": {
+                    "$ref": "#/$defs/buckets12"
+                  },
+                  "source": {
+                    "$ref": "#/$defs/u64"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "source",
+                  "ability",
+                  "produced_buckets"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "finalize_mana_production"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "select_mana_payment"
+                  },
+                  "spent_buckets": {
+                    "$ref": "#/$defs/buckets12"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "spent_buckets"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "select_trigger"
+                  },
+                  "trigger": {
+                    "$ref": "#/$defs/safe_trigger_descriptor"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "trigger"
+                ],
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "required": [
+          "candidate_id",
+          "intent"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "decision_domain_v2": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "choose_one"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "choose_many"
+            },
+            "maximum": {
+              "$ref": "#/$defs/u32_number"
+            },
+            "minimum": {
+              "$ref": "#/$defs/u32_number"
+            }
+          },
+          "required": [
+            "kind",
+            "minimum",
+            "maximum"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "choose_number"
+            },
+            "maximum": {
+              "$ref": "#/$defs/i64"
+            },
+            "minimum": {
+              "$ref": "#/$defs/i64"
+            }
+          },
+          "required": [
+            "kind",
+            "minimum",
+            "maximum"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "order"
+            },
+            "maximum": {
+              "$ref": "#/$defs/u32_number"
+            },
+            "minimum": {
+              "$ref": "#/$defs/u32_number"
+            }
+          },
+          "required": [
+            "kind",
+            "minimum",
+            "maximum"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "parent_player_decision_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/u64"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "player_decision_id": {
+      "$ref": "#/$defs/u64"
+    },
+    "purpose": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "priority_action"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "cast_cost_route"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "mode_selection"
+            },
+            "mode_slot": {
+              "$ref": "#/$defs/u32_number"
+            }
+          },
+          "required": [
+            "kind",
+            "mode_slot"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "target_selection"
+            },
+            "target_slot": {
+              "$ref": "#/$defs/u32_number"
+            }
+          },
+          "required": [
+            "kind",
+            "target_slot"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "cost_slot": {
+              "$ref": "#/$defs/u32_number"
+            },
+            "count": {
+              "$ref": "#/$defs/u32_number"
+            },
+            "counter_kind": {
+              "enum": [
+                "plus_one_plus_one",
+                "minus_one_minus_one",
+                "lore"
+              ]
+            },
+            "kind": {
+              "const": "cost_operand_selection"
+            },
+            "operation": {
+              "const": "put_counters"
+            }
+          },
+          "required": [
+            "kind",
+            "cost_slot",
+            "operation",
+            "counter_kind",
+            "count"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "mana_production_choice"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "mana_payment"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "optional_cost_payment"
+            },
+            "profile_local_cost_id": {
+              "$ref": "#/$defs/u32_number"
+            }
+          },
+          "required": [
+            "kind",
+            "profile_local_cost_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "ability_action"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "trigger_order"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "trigger_target"
+            },
+            "target_slot": {
+              "$ref": "#/$defs/u32_number"
+            }
+          },
+          "required": [
+            "kind",
+            "target_slot"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "schema_version": {
+      "const": "player-decision-request.v4"
+    },
+    "view_sequence": {
+      "$ref": "#/$defs/u64"
+    },
+    "visibility": {
+      "enum": [
+        "public",
+        "acting_player_only",
+        "mixed"
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "player_decision_id",
+    "view_sequence",
+    "actor",
+    "visibility",
+    "decision_domain_v2",
+    "purpose",
+    "parent_player_decision_id",
+    "candidates"
+  ],
+  "title": "PlayerDecisionRequest V4",
+  "type": "object"
+}

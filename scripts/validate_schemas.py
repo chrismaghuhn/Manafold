@@ -14,6 +14,7 @@ WIRE_MAPPING = {
     "decision-response.v1": "decision-response.v1.schema.json",
     "player-decision-request.v2": "player-decision-request.v2.schema.json",
     "player-decision-request.v3": "player-decision-request.v3.schema.json",
+    "player-decision-request.v4": "player-decision-request.v4.schema.json",
     "decision-response.v2": "decision-response.v2.schema.json",
     "decision-response.v3": "decision-response.v3.schema.json",
     "episode-status.v1": "episode-status.v1.schema.json",
@@ -106,6 +107,14 @@ SCHEMA_NEGATIVE_CASES = [
         "schemas/negative/decision-response-v3-global-state-revision.json",
     ),
     (
+        "player-decision-request.v4.schema.json",
+        "schemas/negative/player-decision-request-v4-global-state-revision.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/negative/player-decision-request-v4-trusted-trigger-id.json",
+    ),
+    (
         "observed-event-envelope.v3.schema.json",
         "schemas/negative/observed-event-v3-object-moved-missing-entry-fields.json",
     ),
@@ -156,6 +165,10 @@ SCHEMA_NEGATIVE_CASES = [
 ]
 SCHEMA_POSITIVE_CASES = [
     ("decision-response.v3.schema.json", "schemas/examples/decision-response-v3.json"),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/examples/player-decision-request-v4-trigger-order.json",
+    ),
     (
         "player-decision-request.v3.schema.json",
         "schemas/examples/player-decision-request-v3-play-land.json",
