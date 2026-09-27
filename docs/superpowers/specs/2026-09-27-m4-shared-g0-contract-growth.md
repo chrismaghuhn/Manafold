@@ -1,0 +1,508 @@
+# M4 Shared G0 — Contract-Growth Boundary
+
+**Task:** `M4_SHARED_G0_CONTRACT_GROWTH_SPEC_AND_IMPLEMENTATION_PLAN`
+**Status:** PROPOSED / NOT ACCEPTED / NO IMPLEMENTATION AUTHORITY
+**Verified `origin/master`:** `85f967f641528e43772c63be14679af398dcac86`
+**Date:** 2026-09-27
+
+## 1. Authority and baseline
+
+The fetched `origin/master` exactly matches the task baseline and is the merge commit of PR #249. The accepted Shared Foundation inputs are its final-tree Spec and Plan, with the final R1 input cited there at `e2d0aeb63b679ab1bb500a05a7f56c0244e9626c`. Their committed front matter still said `PROPOSED / NOT ACCEPTED`; this task explicitly establishes them as the accepted design authority. The matching front-matter synchronization is included in this design diff; the semantic content is unchanged. The Shared design separates targeted cast setup from casting/stack commit and separates persistent temporary effects from source-derived Aura/Role contributions. This G0 Spec carries those accepted boundaries forward; it does not reopen them.
+
+At the G0 task baseline the Shared documents' front matter still said `PROPOSED / NOT ACCEPTED`, contradicting this task's explicit authority that the Shared Foundation is accepted. This design change synchronizes only those two status lines and records the acceptance provenance in the Shared Spec. No Shared semantic text is changed by that metadata repair. PR #249's body remains the historical description as written when that PR was opened.
+
+Current status is M4.2 `COMPLETE` only for Mountain + Plains / `basic-land@1.0.0`; M4 remains `IN_PROGRESS`; M4.3/M4.4 production implementation remains `NOT_STARTED`. The 14-row capability registry still consists of eleven `covered` Foundation entries and three M4.2 entries at lifecycle `specified`. G0 does not promote those rows, create new capability rows, or establish card support.
+
+#222 remains the locked matchup scope authority. #237 is coordination/provenance only and its recorded baseline/count is stale; its Cxx labels are not canonical IDs. #225 is closed with bounded M4.2 acceptance evidence. PR #249 merged the Shared Spec and Plan but did not change runtime contracts. Existing PR/issue evidence is inspected as historical evidence, not reused as proof for future implementation gates.
+
+## 2. Purpose and boundary
+
+G0 designs the cross-layer authoritative contract needed before Shared S1–S7 runtime implementation. It owns the identity cut for:
+
+```text
+stack spell/ability payloads
+pending trigger authority
+captured choices and paid-cost facts
+temporary-effect records and expiry
+staged-action continuations
+state/delta/authoritative-event consistency
+Decision request and trusted bindings
+public observation/event/PlayerStep projection
+digest/checkpoint/replay/wire compatibility
+```
+
+G0 does not implement these semantics or any card/capability. It does not admit R1 or W1 content, define an Oracle interpreter, or add a parallel state/RulesKernel authority. Existing `ZoneState` remains the sole stack-record/order owner; existing `ExecutionState` remains the sole pending-decision/continuation/trigger/effect owner. The design does not create `StackState`, `ReplacementState`, or an environment-side action cache.
+
+## 3. Verified current contract inventory
+
+Verified from current master source, schemas, and normative identity documents:
+
+| Current family | Current meaning and present limitation |
+|---|---|
+| `EngineStatePartsV2` | Successor aggregate over predecessor state, `ExecutionStateV3`, and the six closed M4 card-rules families. It is the complete current FullStateDigestV6 runtime authority. |
+| `ZoneState` / `StackRecord` | Stack map plus ordered `stack_order`; record is `id`, `controller`, optional source object, optional source ability. `zones_v1` canonically encodes exactly these four stack-record values and a separate order vector. Current gameplay rejects/avoids nonempty generic stack use. |
+| `ExecutionStateV3` / `PersistedExecutionV3` | Pending V3 decision, continuation records, effects, waiting triggers, delayed effects. Its fixed five-element persisted shape currently rejects nonempty effect/trigger/delayed-effect arrays. |
+| `ContinuationRecordV2` / `ContinuationPayloadV2` | Closed typed payload with only synthetic assembly and the bounded M3 SBA graveyard-order continuation. At most one active linear continuation is accepted. No casting/activation/trigger-placement continuation exists. |
+| `TriggerRecord` | Only `TriggerInstanceId` and controller. It cannot preserve event/source facts or resolution meaning. |
+| `EffectRecord` | Only `EffectInstanceId` and free-form label. Current V6 state validation/digest fails closed on any nonempty execution-effect collection. It is not a semantic effect record. |
+| `StateDeltaV2` | In-memory full replacement of `EngineStatePartsV2` plus ordered `SemanticDeltaOperationV2`; no independent persisted public wire schema. It carries before/after FullStateDigestV6. |
+| `AuthoritativeRuleEventV2` | Internal RulesKernel event family; no standalone durable event log or public wire schema. Current selected M4 events cover the basic-land slice, not casts, stack, triggers, or effects. |
+| `FullStateDigestV6` | Fixed `full-state-digest-input.v6` / `mtgml.full-state-digest.v6`, restricted canonical CBOR under the accepted envelope. It binds `zones_v1`, `PersistedExecutionV3`, and the M4 card-rules record. |
+| `EnvironmentCheckpointV7` / `CheckpointDigestV7` | In-memory checkpoint over `EngineStatePartsV2`, FullStateDigestV6, environment status/counters, `ExecutionIdentityV1`, and codec `in-memory-reference / 7`. No durable checkpoint JSON/file codec exists. |
+| Replay V7 | Typed replay family binds FullStateDigestV6, CheckpointDigestV7, Decision request V3, DecisionResponseV2, ObservedEvent V3, PlayerStep V3, and the named Magic observation payload. Each step re-executes one explicit response and separately binds trusted before/after global revisions. |
+| Decision request V3 | Closed `CandidateIntentV3` / `EngineCandidateBindingV3`, `CandidateOrderingV2`, DecisionDomainV2 (`ChooseOne`, `ChooseMany`, `ChooseNumber`, `Order`), and global `state_revision`. V3 includes PlayLand, CastSpell, ActivateAbility, SelectObject/Player, SelectMode, ChooseBoolean, DeclareNumber, Confirm. Candidate keys are public-only and duplicates reject. |
+| `DecisionResponseV2` | Closed answer union bound to request-local candidate IDs and global `state_revision`. The revision echo cannot be reinterpreted as a perspective cursor; a successor response is required to prevent leaking hidden staged-transition counts. |
+| ObservedEvent V3 / PlayerStep V3 | Closed public event union with global `state_revision` and no stack-item/effect lifecycle variant. PlayerStep V3 embeds PlayerInformationStateV2, ObservedEvent V3 and request V3. |
+| `ObservationEnvelopeV1` / `PlayerInformationStateV2` / `InformationStateDigestV2` | Envelope and InfoStateV2 expose global `state_revision`; V2 digest input binds it. These cannot carry multi-step private action projections without leaking hidden step count. The basic-land payload also lacks stack/effect projection. |
+| `IdentityAllocatorState` | Already has next stack/effect/trigger/decision/continuation/rule-event IDs. No second allocator is proposed. Existing counters are trusted state and already digest-bound. |
+
+The current source and exact closed meanings above are the baseline. A convenient Rust field addition is not evidence of semantic or persisted compatibility.
+
+## 4. Persistence classification
+
+| Semantic value | Classification | Why / lifecycle | Contract consequences |
+|---|---|---|---|
+| Spell stack record and captured spell identity/profile/face | `PERSISTENT_AUTHORITATIVE` | Must survive priority passes, restore/fork/replay, and source/card-zone changes until resolution or counter. The stack card's immutable definition is resolved only under the bound content contract. | New typed stack payload in the sole `ZoneState` stack owner; digest, checkpoint and replay identity grow. |
+| Activated-ability stack record and source context | `PERSISTENT_AUTHORITATIVE` | A non-mana ability remains on the stack if its source leaves. Preserve ability/profile identity and only the typed source/LKI facts required by its resolution. Never resolve through a stale live AbilityAuthorityState lookup. | Same stack payload family; `AbilityInstanceId` remains trusted and is not projected. |
+| Targets and modes after an action is committed | `PERSISTENT_AUTHORITATIVE` | Resolution, legality, target history, and response outcomes depend on the exact selected slots and values. | Captured in stack payload in semantic slot/order; trusted GameObjectId/StackObjectId/PlayerId only. |
+| Cost route and rule-relevant paid status | `PERSISTENT_AUTHORITATIVE` | Kicker or an admitted alternative/additional-cost branch can affect resolution after the original choice and source event. | Captured as closed profile-local typed facts in stack payload; no free-form cost receipt or inferred status from total mana. |
+| Complete mana payment allocation after cost commit | `TRANSACTION_LOCAL` | The allocation is an explicit decision and commits atomically with payment. No selected R1/W1 resolution clause needs the exact assignment of indistinguishable mana units after spending. | Preserve it as a trusted pending candidate until response; record required pool/event consequences. Do not persist a redundant payment ledger. If a later accepted clause reads exact spend provenance, amend G0 first. |
+| Partial cast/activation/trigger-placement selections between agent steps | `PERSISTENT_AUTHORITATIVE` | An accepted staged choice must resume with the exact same pending action; rejected next answers preserve that prior stage unchanged. | Typed continuation payload, pending request, digest/checkpoint/fork/replay. No closure, label, or controller-local state. |
+| Pending trigger record and trigger-time event/source facts | `PERSISTENT_AUTHORITATIVE` | Trigger waits for APNAP/order/target choices and may resolve after the source departs. Its event facts may not be reconstructed from current board state or an event log. | Typed `TriggerRecord` payload in `ExecutionState`; explicit pending-order continuation; digest/checkpoint/replay. `TriggerInstanceId` remains trusted. |
+| Trigger ordering after a player chooses | `PERSISTENT_AUTHORITATIVE` | The chosen semantic order determines stack order. It cannot be recovered from TriggerInstanceId, BTreeMap order, or allocation sequence. | Store the selected per-player order in typed continuation/placement data and final `stack_order`; preserve APNAP group ordering. |
+| Temporary P/T/keyword/type/protection operation and expiry | `PERSISTENT_AUTHORITATIVE` | A changing temporary effect must affect future legality/characteristics until its exact expiry, across intervening decisions. | Typed effect record in existing effects owner; initially end-of-turn expiry keyed to the existing turn number. Existing EffectInstanceId reused. Only operations named in accepted Shared scope; no label, callback, or arbitrary map. |
+| Aura/Role static characteristic contribution | `DERIVED_AUTHORITATIVE` | It follows live source profile + current AttachmentState and ceases when that relation/source ceases. It is not an until-EOT effect. | Derived through the single Characteristic Derivation path; no temporary-effect record or second state family. |
+| Current characteristic query / replacement eligibility set | `DERIVED_AUTHORITATIVE` | Recomputed from content identity and current state at the semantic query/event boundary. | No persisted query cache or ReplacementState. |
+| Eligible candidate/domain relation | `DERIVED_AUTHORITATIVE` | Rules generate all-and-only legal options from current state and typed continuation. | Exact authoritative pending Decision (with candidate bindings) persists while waiting; no separately cached environment candidate set. |
+| Pending authoritative Decision and trusted bindings | `PERSISTENT_AUTHORITATIVE` | It is current M2/M4 decision authority and survives checkpoint/fork/replay until accepted/rejected under current protocol. | Successor request type and candidate ordering; trusted IDs remain inside authoritative state. |
+| Global `StateRevision` | `PERSISTENT_AUTHORITATIVE`, trusted-only in player projection | It remains the rules transaction revision and digest/checkpoint/replay value, but exposing it lets another perspective count private staged-action decisions. | Keep it in EngineState, authoritative request, Delta, checkpoint, and replay; remove it from successor Observation/PlayerInformation/PlayerDecision/Response/ObservedEvent/PlayerStep fields. |
+| Per-perspective public-view cursor (`next_visible_sequence`) | `PERSISTENT_AUTHORITATIVE`, existing state reused | It already advances only for occurrences visible to that perspective and is checkpointed. It can version that perspective's products without disclosing hidden global revisions. | Reuse as the cursor in successor ObservationEnvelope, PlayerInformationState, request, response, and event products. No new counter/allocator. Public projection changes require an authorized visible occurrence/cursor advance. |
+| Accepted/rejected response bytes and replay control input | `HISTORICAL_EVIDENCE_ONLY` after the transition | The response is replay input; observations/events are outputs and never reconstruct control. | Successor Replay records the exact successor player response plus trusted global before/after revisions and new typed state/checkpoint identities. DecisionResponseV2 remains historical only. |
+| Authoritative event cursor, replacement iteration, local cost calculation | `TRANSACTION_LOCAL` | These are workspace calculations for one atomic transition unless a typed player decision pauses the process. | Discard after commit; if a real replacement choice pauses, specify a closed continuation amendment before implementation. |
+| Authoritative events / StateDelta operation trace | `TRANSACTION_LOCAL` | They are validated transition products, not state logs or alternate authority. | Reconstruct complete after-state from replacement; verify events/operations against state cursor; replay reexecutes responses. |
+| PlayerObservation, PlayerInformationState, ObservedEvent, PlayerStep | `PLAYER_PRODUCT_ONLY` | Safe perspective products; they do not own rules state or replay control. | New stack/effect projection uses opaque identities and paired-world noninterference. Successor products use the existing per-perspective visible sequence, never global StateRevision. |
+| Historical V6 digest, V7 checkpoint/replay, V3 request/event/step values | `HISTORICAL_EVIDENCE_ONLY` under a future successor runtime | Their existing closed meanings cannot gain new stack/effect meaning. | Preserve exact readers/verifiers where present; no automatic migration or current writer after the successor identity cut. |
+
+### 4.1 Typed semantic record boundary
+
+The successor state shape reuses two existing owners and introduces no semantic sidecar:
+
+```text
+ZoneState.stack_records / stack_order
+  → typed StackRecord payload for spell, activated-ability, triggered-ability items
+
+ExecutionState.waiting_triggers
+  → typed pending TriggerRecord + captured event/source context
+
+ExecutionState.effects
+  → typed TemporaryEffectRecord only
+
+ExecutionState.continuations + pending authoritative request
+  → typed staged cast/activation/trigger-placement state
+```
+
+No separate `StackState`, `PendingActionCache`, `ReplacementState`, `AuraEffectState`, or `OpaqueStackId` family is proposed. `StackObjectId`, `TriggerInstanceId`, `EffectInstanceId`, `ContinuationId`, `RuleEventId`, and `GameObjectId` reuse current trusted allocator families. Their numeric values never define semantic order. The stack's explicit order vector and explicit trigger-order result are the order authorities.
+
+The proposed stack record has a closed origin tag (`Spell`, `ActivatedAbility`, `TriggeredAbility`) and a closed payload containing only:
+
+* controller and exact stack identity;
+* spell card-object/definition/face/profile identity, or ability source incarnation/AbilityKey/profile identity;
+* modes and target bindings in semantic slot order;
+* typed cost-route and paid-additional/alternative-cost facts that can affect resolution;
+* the bounded typed resolution context required after source departure;
+* captured source/event facts only where the pinned rules/profile require them.
+
+The typed payload is divided by origin so a spell does not carry ability-only fields and vice versa. In successor-schema pseudocode (all names provisional and unversioned):
+
+```text
+StackRecordSuccessor {
+  stack_object_id: StackObjectId,
+  controller: PlayerId,
+  item: SpellStackItem | ActivatedAbilityStackItem | TriggeredAbilityStackItem
+}
+
+SpellStackItem {
+  stack_card_object: GameObjectId,
+  card_definition_id: CardDefinitionId,
+  face_key: FaceKey,
+  semantic_profile_id: CardSemanticProfileId,
+  cast_modes: ordered typed mode selections,
+  targets: ordered typed target bindings,
+  cost_facts: typed selected route + paid additional-cost keys,
+  resolution_context: closed profile-owned typed values
+}
+
+ActivatedAbilityStackItem {
+  source_object: GameObjectId,
+  source_ability: AbilityInstanceId,   // trusted historical origin only
+  ability_key: AbilityKey,
+  semantic_profile_id: CardSemanticProfileId,
+  source_context: optional bounded LKI/profile facts,
+  targets: ordered typed target bindings,
+  cost_facts: typed selected route + paid additional-cost keys,
+  resolution_context: closed profile-owned typed values
+}
+
+TriggeredAbilityStackItem {
+  originating_trigger: TriggerInstanceId,
+  controller: PlayerId,
+  captured_trigger_context: closed typed trigger facts,
+  targets: ordered typed target bindings,
+  resolution_context: closed profile-owned typed values
+}
+```
+
+The actual canonical fields are fixed only by the accepted identity decision. Duplicate controller/source fields are removed during that design review; the pseudocode shows ownership, not a second copy of `source_object` in `StackRecord`. Spell card objects in Stack Zone and `stack_records` must validate bidirectionally. A triggered/activated ability can have no stack-zone card object. Payload origin/profile/source identities join only under the immutable execution content contract.
+
+Target references are a closed trusted union (current object incarnation, player, and stack item where a triggered/counter rule needs it). Ability/card semantics resolve through the immutable content and semantic contract bound by `ExecutionIdentityV1`; no card-name switch or process-global catalog lookup. A stack payload is not Oracle text, arbitrary JSON, an opcode, a callback, a closure, or an untyped `EffectRecord` label. A profile that needs a new captured value must add a typed reviewed variant before its card can be admitted.
+
+The pending trigger record contains controller; immutable source/profile/ability identity; trigger-time event class and only the typed facts needed by its predicate/resolution; target timing; and any required intervening-if receipt. It cannot depend on a live source after departure. Triggers already detected survive source departure. The record is removed when the typed payload is transferred to the stack. APNAP placement order and each player's chosen order are explicit vectors, never BTreeMap/TriggerInstanceId order. Reflexive/delayed trigger frameworks are not added here; their exact profiles remain later Shared or deck-exclusive work.
+
+The trigger event context is a typed snapshot, never just `RuleEventId` or a lookup into an unpersisted event log. The G0 closed event facts cover only event families needed by the locked clauses, such as `SpellCast`, `AbilityActivated`, `TargetBecame`, `ObjectEntered`, `ObjectLeftOrDied`, `AttackDeclared`, `CardDrawn`, and post-replacement `DamageOrLifeChanged`. Each variant carries only the rule facts needed for its admitted predicates/effects (actor/controller, trusted source/subject references, relevant profile key, amount/type/zone snapshot). A new event fact or predicate shape outside those families requires G0 amendment; no arbitrary map or callback payload is admitted.
+
+The initial typed temporary-operation vocabulary is bounded to additive P/T, selected keyword grants, type additions, and only conditional/protection operations with an accepted locked witness. Duration initially represents `UntilEndOfTurn { turn_number }`; duration semantics outside that witness remain unsupported. The effect record stores a trusted `EffectInstanceId`, target incarnation(s), closed operation, expiry, and a rule timestamp only where the admitted operation's order can affect a query. Source dependence is not added absent a selected profile witness. Static Aura/Role contributions stay live-source/AttachmentState-derived and never produce a temporary record. `delayed_effects` remain outside Shared G0 unless a separate Shared witness is accepted.
+
+The record's expiry is checked against the current authoritative turn/turn-position at cleanup. Effects that are independent of their creating source have no source-liveness gate. If a selected profile proves a source-dependent temporary duration, it gets a distinct typed source reference and explicit invalidation rule before admission; the evaluator may not infer dependence from a source ID's presence.
+
+`ObjectSnapshot` alone is not treated as complete Last Known Information: current snapshots omit `FaceKey` and derived characteristics. Stack/trigger payloads capture a closed source-context variant with the exact immutable profile identity and only the last-known typed facts the profile uses. They do not persist a generic snapshot of the world or infer old incarnations through `PhysicalCardId`.
+
+## 5. Atomicity and staged actions
+
+Casting, activation, and trigger placement can span multiple meaningful agent steps, but each submitted response remains one atomic RulesKernel/environment transaction.
+
+* One trusted `ContinuationId` is the parent logical-action identity internally. It uses the existing continuation allocator and is embedded in the authoritative request; it is never exposed to players.
+* Each perspective-visible stage gets its existing perspective-local `PlayerDecisionIdV1`. The successor request adds a typed public decision purpose/slot and may point to the first request ID of this action for the same actor. This reuses the already visible perspective-local decision identity; it adds no global or new action allocator and is not a stable dataset/action key.
+* A stage continuation records actor, typed action family, source/action identity, stage, and already accepted partial modes/targets/cost-route/trigger-order values. It has one unambiguous closed interpretation and follows the RulesKernel-owned stage order; clients cannot choose stages.
+* Provisional targets/modes/routes do not create public rule events, turn-history facts, stack items, or pay costs. Once all required choices and a complete payment plan are valid, final cast/activation costs, object/stack changes, target-announcement events, history updates, trigger detection, deltas, and projections commit atomically.
+* Mana-source selections during payment are explicit candidate steps. Their selected abilities and typed outputs remain provisional in the cast continuation; taps, mana events, payment, stack creation, history, triggers, and public projections commit together when casting completes. No public partial-source state is written and no pre-action board snapshot is retained for undo. A later rejected response preserves the prior continuation and leaves current game resources unchanged.
+* Trigger APNAP/order/target choices are explicit. Partial choices survive in the typed continuation while waiting; no trigger is silently ordered. Final stack placement preserves the exact selected APNAP/order sequence.
+* Stale, fabricated, malformed, illegal, or incomplete responses mutate none of the current after-state bytes, allocators, RNG, candidate bindings, continuation stage, information, events, PlayerStep status, or replay history. Atomic cost operations never leave a partial sacrifice/tap/counter/mana payment after a rejected response.
+
+The current player products expose global StateRevision in ObservationEnvelopeV1, PlayerInformationStateV2, PlayerDecisionRequestV3, DecisionResponseV2, and ObservedEventEnvelopeV3. Because each accepted staged choice advances the trusted rules revision, keeping those fields in successor player products would let another perspective distinguish worlds that differ only in how many hidden cast/activation stages occurred. G0 therefore removes the global revision from all player-visible successor values. The trusted pending request still retains its state revision and is bound by its perspective-local PlayerDecisionId; a stale answer is rejected by exact pending-request identity, decision ID, and view sequence. The successor player view uses the existing perspective-local `next_visible_sequence` as its view cursor: authorized visible occurrences advance it, hidden occurrences consume nothing, and every public observation change must have an authorized visible event/occurrence. The authoritative Replay and checkpoint continue to use global StateRevision.
+
+## 6. Decision and candidate contract
+
+No new `DecisionAnswer` or numeric/order `DecisionDomain` family is required. The current `ChooseOne`, `ChooseMany`, `ChooseNumber`, and `Order` semantics remain useful. The closed player request must grow because V3 has no semantic context for staged cost/payment/trigger choices and no visible binding type for several required domains.
+
+The successor request contract therefore requires:
+
+1. a closed `DecisionPurpose` identifying the immediate stage (priority action, cost route, target slot, payment plan, trigger order, replacement choice if later justified, or combat assignment), including only public/profile-local slot facts;
+2. an optional same-actor `parent_player_decision_id` linking a stage to its first request; the authoritative `ContinuationId` remains trusted-only;
+3. closed successor `CandidateIntent` and trusted-binding variants for cast-cost route, complete mana-payment allocation, pending trigger-order item, and complete combat-damage assignment; existing CastSpell, ActivateAbility, SelectObject/Player, SelectMode, and ChooseBoolean are retained where their meaning is exact;
+4. one new canonical candidate comparator covering each new visible typed payload. It uses only request-authorized visible material, never a trusted ID, source iteration, allocator history, or hidden tiebreaker.
+
+The proposed request record is the current closed fields plus these two required-in-successor fields (no identity assigned):
+
+```text
+SuccessorPlayerDecisionRequest {
+  schema_version,
+  player_decision_id, view_sequence, actor, visibility,
+  decision_domain_v2,
+  purpose: DecisionPurpose,
+  parent_player_decision_id: PlayerDecisionIdV1 | null,
+  candidates: SuccessorVisibleCandidate[]
+}
+
+SuccessorDecisionResponse {
+  schema_version,
+  player_decision_id,
+  view_sequence,
+  answer: DecisionAnswerV2
+}
+```
+
+The player request/response must not contain `StateRevision`. `view_sequence` is the actor's existing perspective-local `next_visible_sequence` at the request boundary; the response echoes it with PlayerDecisionIdV1. The trusted pending request still stores global StateRevision and candidate bindings. Server validation matches the actor-bound endpoint, exact pending PlayerDecisionId/view-sequence pair, answer domain, dense candidate IDs, and exact trusted bindings before mutation. A new response wire identity is required because DecisionResponseV2's required global `state_revision` field cannot be reinterpreted as a perspective cursor.
+
+`DecisionPurpose` is a closed tagged union: `PriorityAction`, `CastCostRoute`, `OptionalCostPayment { profile_local_cost_id }`, `ModeSelection { mode_slot }`, `TargetSelection { target_slot }`, `ManaPayment`, `AbilityAction`, `TriggerOrder`, `TriggerTarget { target_slot }`, or `CombatDamageAssignment { combat_damage_step }`. Purpose IDs are typed profile-local ordinals, not strings or `AbilityKey`. The successor candidate intent/binding pairs add:
+
+* `SelectCostRoute { route_id_u32 }` ↔ `SelectCostRoute { route_id_u32 }`;
+* `SelectManaPayment { spent_buckets_u32[12] }` ↔ the same typed bucket vector, validated against the current pool/cost;
+* `SelectTrigger { safe_trigger_descriptor }` ↔ `SelectTrigger { trigger_instance_id }`;
+* `AssignCombatDamage { complete_ordered_assignment[] }` ↔ the same assignments with trusted GameObjectId/PlayerId recipients.
+
+The trigger descriptor contains only authorized source object/ability opaque IDs, a closed trigger-event tag and visible event subject facts. It carries no TriggerInstanceId or allocator-derived occurrence. If two non-equivalent trigger instances remain indistinguishable to their ordering actor, the candidate domain rejects/blocks pending a typed safe distinguisher; it may not silently select one. Combat assignment records the full semantic recipient/amount order for each assigned source, with object recipients opaque in the visible intent and trusted object incarnations in the binding. New tags are appended under a newly reviewed candidate-order identity; V3 rank/payload keys and duplicate rejection remain exact.
+
+The payment candidate is a complete allocation over the six existing mana colors and two existing restriction buckets (fixed W/U/B/R/G/C order for each). It has no physical mana-unit IDs. All and only legal allocations are enumerated; a complete allocation is selected in one ChooseOne step. The cost-route choice is separately explicit when the profile offers real alternatives. The final stack payload preserves the selected route and paid-cost facts; the exact post-commit mana vector and payment event preserve relevant resource consequences.
+
+`SelectCostRoute` carries a public, typed route descriptor derived from the authorized card/profile view (route class, typed printed mana symbols and profile-local option ordinal); its trusted binding is the exact closed route key under the admitted definition. It carries no Oracle prose, card name, CapabilityKey, or CardDefinitionId. The option ordinal is unique within that immutable profile and is not allocated at runtime. The same profile-local-ID rule applies to paid additional-cost facts.
+
+Target selection reuses opaque `SelectObject`/public `SelectPlayer` values with a typed target-slot purpose; trusted target bindings remain current `GameObjectId`/`PlayerId` incarnations. Modes reuse the current numeric mode intent with profile-defined slot meaning. Trigger ordering binds request-local visible trigger descriptors to trusted TriggerInstanceIds, never exposing those IDs. If two non-equivalent trigger choices cannot be distinguished by authorized typed facts, candidate generation fails closed and G0 must be amended; it cannot use trigger allocation order. Combat assignment is represented as a complete typed assignment candidate over public opaque recipients and amounts; C58's legal relation/canonical completeness still requires its accepted conformance characterization. No replacement-choice binding is admitted for G0 because the currently locked Ojer and Dryad replacement profiles do not present a non-equivalent player choice for one event; if characterization finds one, stop and amend G0 before implementation.
+
+The request context is player-visible only to its authorized actor. The parent request ID reuses that actor's existing perspective-local allocator and is confined to one logical staged action. It is not copied to another actor's request, PlayerInformationState, or dataset key. One policy-relevant choice remains one PlayerStep/agent response; a mandatory forced rule consequence is not a fabricated Decision.
+
+For one actor's staged cast/activation, the first request uses `parent_player_decision_id = null`; subsequent requests in that logical action carry the first request's PlayerDecisionIdV1. APNAP trigger placement may ask a different actor: the trusted ContinuationId remains the one rules action, but each actor's own visible chain gets its own first request/root. The continuation stores those roots only to correlate that actor's later stages. No other perspective receives them. Parent IDs are per-episode interaction metadata, not semantic action keys or training labels.
+
+| Player choice | Existing domain/intent usable? | New binding or context | One agent step / boundary |
+|---|---|---|---|
+| Select spell / activate ability | Yes: CastSpell / ActivateAbility + ChooseOne | Parent action purpose on successor request; trusted object/ability binding remains internal | One response starts the staged action. |
+| Select modes | Yes: SelectMode + ChooseOne/ChooseMany | Typed profile-defined mode slot in request context where multiple mode groups exist | One response per meaningful mode choice. |
+| Select target(s) | Yes: SelectObject/SelectPlayer + ChooseOne/ChooseMany | Target group/slot purpose; bind exact object incarnation/player | One response for each rule-defined target group, not hidden auto-targeting. |
+| Select alternative/additional cost route | Not fully: Boolean lacks route semantics | New closed cost-route candidate/binding; `ChooseBoolean` is allowed only for an explicitly typed pay/decline purpose | One response per meaningful route choice. |
+| Choose mana payment | No current typed allocation candidate | New candidate carrying all 12 color/restriction-bucket counts; trusted binding validates the complete allocation | One ChooseOne response selects one all-and-only legal complete allocation; no AutoPay. |
+| Order pending triggers | `Order` answer exists but V3 intents cannot identify trigger choices | New safe trigger descriptor intent bound to TriggerInstanceId; no trusted ID in request | One Order response for each player's simultaneous group; APNAP player sequence remains rules-owned. |
+| Replacement choice | No choice required by the presently characterized Ojer/Dryad events; identical duplicate Dryad replacements have equivalent outcomes | No G0 binding admitted. If a non-equivalent choice is found, amend G0 before implementation. | No agent step unless characterization proves a distinct legal outcome. |
+| Assign combat damage | No complete assignment payload in V3 | New typed complete assignment candidate/binding over ordered source/recipient/amount tuples; public IDs opaque | One response selects one complete legal simultaneous assignment domain. C58 still needs the accepted independent legal-relation characterization. |
+| Accept a permission | Not a player choice for the automatic permissions identified by R1 analysis | None | No synthetic accept/decline step; later play/cast is an ordinary action. |
+| Choose which stack item a rule targets | No player choice for current Ward profile; its trigger captures the original targeted StackObjectId | Trusted StackObjectId stays in trigger/stack payload | No new player binding for the current lock. A future counter spell with a player-selected stack target requires a G0 amendment. |
+
+No new top-level answer or DecisionDomain variant is proposed. Required growth is the closed request purpose/context, candidate-intent/binding vocabulary, and comparator. If implementation shows a candidate value or target group cannot be described completely and safely by these shapes, stop and amend G0 rather than encoding it as a mode, boolean, string, or hidden ordinal.
+
+The successor comparator preserves all existing V3 visible-intent ranks and appends the new ranks, so predecessor candidate meaning is never reordered: `0 pass_priority`, `1 play_land`, `2 cast_spell`, `3 activate_ability`, `4 select_object`, `5 select_player`, `6 select_mode`, `7 choose_boolean`, `8 declare_number`, `9 confirm`, `10 select_cost_route`, `11 select_mana_payment`, `12 select_trigger`, `13 assign_combat_damage`. Within the new ranks it compares numeric route ordinal; the fixed 12-count payment vector lexicographically; the typed public trigger descriptor tuple (opaque source values numerically, then closed trigger-kind rank and authorized public subject); and the complete assignment vector lexicographically by source opaque ID, recipient variant (player before object), recipient opaque/player ID, and amount. No comparison uses trusted bindings, TriggerInstanceId, StackObjectId, profile lookup order, or collection order. Duplicate public ordering keys reject before candidate IDs are assigned densely.
+
+## 7. State, delta, event, and digest growth
+
+### 7.1 State ownership and canonical forms
+
+The new current state is one successor aggregate. It keeps the current component ownership but replaces the closed `zones_v1`/`PersistedExecutionV3` meaning with new closed nested components:
+
+* Zone stack records are a map encoded by numeric StackObjectId ascending; the explicit `stack_order` vector is bottom-to-top, with the final entry the top item. The vector—not ID or map order—defines resolution order. Spell records cross-check their current spell-object incarnation and Stack zone; ability/trigger records remain valid after their source leaves if their captured payload permits it.
+* Pending triggers are stored by trusted TriggerInstanceId in canonical ID order, with an explicit typed pending batch/placement continuation. The ID map is lookup/canonical-storage order only. APNAP grouping and selected trigger order have their own semantic vectors.
+* Temporary effects are stored by trusted EffectInstanceId in canonical order. Their rule timestamp is a typed `(creation StateRevision, operation ordinal)` only when the operation needs relative ordering; allocation order never substitutes for it. Expiry is typed and validated against CoreRulesState/turn boundaries.
+* Continuations are typed and closed. The only G0 action families are staged cast, staged non-mana activation, and trigger ordering/target placement. No generic interpreter stage, string key, or arbitrary nested payload is allowed.
+* Existing next_stack_object_id, next_trigger_id, next_effect_id, next_continuation_id, next_decision_id, and next_rule_event_id are reused. Overflow rejects the transition without advancing any allocator. No new global allocator, opaque stack allocator, or hidden controller counter is introduced.
+
+The current M4 `EngineStatePartsV2` is not extended in place with live stack/effect/trigger payload semantics: it is the accepted complete V6 state aggregate and must remain a coherent detached historical verifier value. A successor aggregate is required. It remains the one complete current runtime authority after its single activation boundary, not a sidecar to `EngineState`.
+
+### 7.1.1 Proposed fixed-shape records
+
+The following field order and tagged-union boundary are the proposed canonical record model. The quoted schema/domain identifiers are deliberately unassigned until the version ADR; they are not implementation names. Every array below has fixed arity per variant, every absent optional is explicit CBOR `null`, and each enumerated tag is closed.
+
+```text
+zones_successor = [
+  <zone_component_identity>,
+  objects_v1[], locations_v1[], ordered_zones_v1[],
+  stack_records_successor[], stack_order_bottom_to_top[]
+]
+
+stack_record = [stack_object_id_u64, controller_player_id_u64, stack_item]
+
+stack_item =
+  ["spell", stack_card_object_id, card_definition_id, face_key_u32,
+   semantic_profile_id, modes[], targets[], cost_facts, resolution_context]
+| ["activated_ability", source_object_id, source_ability_instance_id,
+   ability_key_u32, semantic_profile_id, source_context_or_null,
+   modes[], targets[], cost_facts, resolution_context]
+| ["triggered_ability", originating_trigger_id, source_context_or_null,
+   ability_key_u32, semantic_profile_id, trigger_context,
+   modes[], targets[], resolution_context]
+
+mode_binding = [mode_slot_u32, selected_mode_u32]
+target_binding = [target_slot_u32, target_ref]
+target_ref = ["object", game_object_id]
+          | ["player", player_id]
+          | ["stack_item", stack_object_id]
+
+cost_facts = [selected_route_or_null, paid_additional_cost_ids_u32[]]
+route = ["normal"] | ["alternative", profile_local_route_id_u32]
+
+execution_successor = [
+  <execution_component_identity>, pending_request_or_null,
+  continuations[], temporary_effects[], waiting_triggers[], delayed_effects[]
+]
+
+trigger_record = [trigger_id, controller, source_context_or_null,
+  semantic_profile_id, ability_key_u32, trigger_context,
+  intervening_if_receipt_or_null, target_timing_tag]
+
+trigger_placement_continuation = ["trigger_placement", apnap_actors[],
+  current_actor_index_u32, pending_trigger_ids[], completed_orders[],
+  selected_trigger_targets[], actor_request_roots[[player_id, first_player_decision_id][]]]
+
+temporary_effect_record = [effect_id, affected_game_object_ids[], operation,
+  expiry, timestamp_or_null]
+operation = ["power_toughness_delta", power_i32, toughness_i32]
+         | ["grant_keyword", closed_keyword_tag]
+         | ["add_type", closed_type_class, closed_type_tag]
+         | ["grant_protection", closed_protection_tag]
+expiry = ["until_end_of_turn", turn_number_u64]
+timestamp = [creation_state_revision_u64, operation_ordinal_u32]
+```
+
+`source_context` is a separately closed tagged record: it contains the old incarnation/ObjectSnapshot reference and immutable definition/face/ability profile reference plus only typed values an admitted profile must retain as LKI (for example controller-at-event and admitted color/type/power/toughness/counter facts). It is not a second live-object map and cannot be resolved through PhysicalCardId. No whole-world snapshot or generic derived-view cache is persisted. If the existing snapshot plus explicitly typed facts do not cover an accepted profile's departure semantics, amend G0 before admitting that profile. `trigger_context` is a closed union of selected event facts (cast, activation, became-target, enter/leave/die, attack, draw, post-replacement damage/life, and any further event with an accepted locked witness); it carries facts, not just RuleEventId. Unknown event/profile/effect tags reject.
+
+The representation records route choice and paid-cost keys because those may branch resolution; it does not persist a completed payment allocation. A cost profile must define its local route/cost keys and exact permitted fields in its own reviewed body. This is typed profile data, not a shared cost language. A profile requiring X or another captured value must add a named typed field through G0 review before admission; G0 does not insert an open-ended `captured_values` map.
+
+The execution record retains the existing delayed-effects slot only as an empty closed array for this Shared cut; no Warp/delayed-permission payload is admitted. The stack record map is sorted by numeric StackObjectId; the explicit bottom-to-top order vector is preserved exactly. Trigger/effect maps sort by numeric identity only for canonical encoding; APNAP placement, chosen trigger orders, effect timestamps, mode/target slots, and assignment sequences are semantic vectors/fields and never sort by identity allocator value. `affected_game_object_ids[]` is a set and is unique/numerically sorted. Candidate assignments preserve their rule-defined recipient order.
+
+### 7.2 StateDelta and authoritative events
+
+The in-memory `StateDeltaV2` is not a persisted public wire artifact, but its replacement type and closed semantic operation/event vocabulary are part of the current Rust transition contract. The successor delta type is reviewed with the successor state aggregate; no separate JSON schema is implied.
+
+Minimum semantic operations/events are grouped by actual mutation, not one event per field:
+
+* stack item create/remove with origin and typed payload identity; stack-order replacement/position proof;
+* mana pool spend/production/emptying and full atomic cost commit, with typed payment bucket changes;
+* counter/tap/sacrifice/zone transitions and existing entry/LKI facts;
+* target declarations tied to exact stack/action source and target incarnation;
+* cast and non-mana activation commit; rule-relevant mode/cost outcome receipt;
+* trigger detection/creation, pending trigger removal, explicit APNAP/order result, trigger-to-stack placement;
+* temporary effect create/expire and typed effect operation;
+* one authoritative result event for damage/life/counter/zone consequences after replacement application.
+
+No generic `ReplacementState` or replacement-iteration event is persisted. Existing source-derived replacement eligibility and application remain transaction-local. A replacement-modified outcome is captured in the final semantic event and exact Delta. If one event must pause for a genuinely non-equivalent replacement choice, a typed continuation and Decision must be added before implementation.
+
+Every new authoritative event defines cursor precondition, cursor update, corresponding Delta operation, and exact after-state projection. Event vectors are ordered by rules semantics, not BTree/hash iteration. Player observed events are projections, not event authority. A transition with missing events, event-only mutation, delta/state mismatch, or projection mismatch rejects before commit.
+
+### 7.3 FullStateDigest canonical successor
+
+`FullStateDigestV6` cannot absorb these values. It fixes `full-state-digest-input.v6`, `mtgml.full-state-digest.v6`, the 14-element top-level input, `zones_v1` stack records with four fields, and `PersistedExecutionV3` with empty effects/triggers/delayed arrays. The typed validator currently rejects nonempty arrays. Admitting typed nonempty records or changing `zones_v1` would alter the closed semantic input; current V6 golden bytes and verifier remain exact.
+
+The successor digest uses the accepted independent envelope and codec unchanged (`mtgml.digest-envelope.v1`, unkeyed SHA-256, `mtgml.canonical-cbor.v1`) with a newly assigned domain and input-schema identity. The proposed top-level value remains a fixed 14-element array, preserving V6 component order but replacing the identity header and closed `zones`/`execution` children:
+
+```text
+[
+  <successor_input_schema_id>, <successor_digest_domain>, revision_u64,
+  core_v1, zones_successor, allocators_v3, execution_successor,
+  random_v1, knowledge_v2, perspective_identities_v2, combat,
+  foundation_sources, format_v1, card_rules_authoritative_state_v1
+]
+```
+
+This is a proposed preimage layout, not an allocated V7 identity. The nested Zone and Execution encodings are new closed schemas with fixed array lengths, explicit tags, numeric IDs sorted ascending, semantically ordered vectors preserved, and nullable fields encoded as CBOR `null`.
+
+Canonical primitive rules remain the accepted restricted CBOR rules: definite-length arrays/strings/bytes, shortest integer representation, signed/unsigned ranges fixed by each typed field, no maps/floats/tags/bignums/indefinite values, strict UTF-8, bounded payload/depth/item counts, and byte-identical canonical re-encoding. There is no host endianness: CBOR's network-order integer/length representation is used. Enum discriminants are exact closed tags in fixed schema order; Rust enum declaration order and Serde output are never hashed. Digest values nested in other preimages remain 32-byte byte strings. Per-item counts and encoded records remain subject to existing 64 MiB/resource bounds unless an accepted contract explicitly lowers them.
+
+The successor semantic input must include stack payload, trigger payload, temporary records, pending continuation partial choices, relevant identity allocators, stack/trigger/effect ordering, and all existing M4 state. Every field mutation must change the successor digest; trusted identity renaming must not alter safe player bytes. No current digest domain/schema name is assigned in this proposal.
+
+## 8. Checkpoint, fork, and replay
+
+The current `EnvironmentCheckpointV7` embeds `EngineStatePartsV2` and FullStateDigestV6. It cannot checkpoint the successor aggregate. A new complete checkpoint contract and checkpoint-digest identity are required. The new checkpoint binds the successor state digest, status, complete environment-limit counters, codec identity, and full unchanged `ExecutionIdentityV1` before restore admission. Restore validates the complete nested state, contract/catalog binding and both digests before mutating a backend. The existing in-memory codec family may be reused only with a new codec semantic version after compatibility review.
+
+Replay V7 step/initial/final fields directly type FullStateDigestV6 and CheckpointDigestV7; its schema inventory closes over Decision V3, DecisionResponseV2, ObservedEvent V3, and PlayerStep V3. It cannot reinterpret new state or new wire semantics in place. A successor replay family binds successor digest/checkpoint/request/response/event/step identities and continues to carry one explicit response per agent step. It retains global before/after StateRevision values internally; these are never player products. Observations and events remain outputs; no replay command is reconstructed from PlayerStep/ObservedEvent bytes. Old Replay V7 remains detached readable/verifiable under its exact meaning and archived runtime, not current execution authority after activation.
+
+The direct/restore/fork/replay equivalence tuple includes complete state and digest, status/counters, event and StateDelta sequence, next authoritative/player request and bindings, public events, observation/information bytes, and final replay identity. Every staged-choice boundary (before cast, between target/mode/route/payment steps, pending trigger order/targets, after stack commit, before expiry) needs restore/fork/replay vectors.
+
+## 9. Decision, information, wire, and Python compatibility
+
+No new `DecisionDomain` or `DecisionAnswer` algebra is required: existing ChooseOne/Many/Number/Order remains the answer envelope. The closed V3 candidate intent/binding vocabulary and CandidateOrderingV2 cannot represent typed payment plans, route selection, trigger-order items, or the bounded complete combat-assignment value. A successor request identity is required, with:
+
+* a closed `DecisionPurpose`/target-slot context so Boolean/Number/selection steps have unambiguous meaning;
+* same-actor parent linkage via existing perspective-local PlayerDecisionIdV1, while trusted ContinuationId stays hidden;
+* typed visible cost-route, mana-payment-allocation, trigger-choice, and combat-assignment intents plus exact trusted bindings;
+* a new canonical ordering contract using only authorized public values; duplicate/unresolvable public keys fail closed;
+* exact all-and-only legal domains, stale/fabricated/out-of-domain rejection, and one agent response for each meaningful choice.
+
+Existing CastSpell/ActivateAbility, SelectObject/SelectPlayer, SelectMode, and ChooseBoolean are reused only where their current meanings are exact. The closed answer union stays unchanged, but DecisionResponseV2 cannot remain the successor wire value because it echoes global StateRevision; the successor response binds PlayerDecisionIdV1 plus the perspective-local view sequence. It remains one explicit response per replay step. Permission is not a separate Decision unless its actual rules text supplies one; automatic permission creation is a rules transition. No CardDefinitionId, raw FaceKey/AbilityKey, trusted object/stack/trigger/effect ID, physical-card ID, continuation, global StateRevision, or allocation history crosses the player boundary.
+
+The public event union needs a successor for safe stack-item add/remove/cast/activation/target/effect lifecycle observations and any relevant mana-spent outcome that cannot be represented by current V3 variants. The event projection may use current opaque object/ability identity and public stack position; it never serializes StackObjectId, TriggerInstanceId, EffectInstanceId, GameObjectId, AbilityInstanceId, or trusted candidate bindings. PlayerStep requires a successor because it composes the new request and public-event families.
+
+The basic-land observation codec is closed and has no stack/effect records. Introduce a separately named closed Magic shared-execution payload codec. ObservationEnvelopeV1 cannot remain the successor because its `state_revision` is global; a successor envelope uses `view_sequence` and omits global revision. PlayerInformationStateV2/InformationStateDigestV2 also cannot be extended in place because their V2 digest input includes global `state_revision`. A successor PlayerInformationState/InformationStateDigest uses the existing per-perspective `next_visible_sequence` as its public view cursor and removes global revision. No new public-revision allocator is needed. Retained-knowledge and opaque identity semantics otherwise remain unchanged. Any new retained opaque stack/trigger identity would require separate State/Digest growth and is not proposed.
+
+Rust owns all semantic validation and candidate generation. Python receives strict request/event/PlayerStep DTO codecs only. The public request, event, PlayerStep, observation payload, replay, and catalog vocabulary require coordinated Rust/Python/schema positive/negative fixture parity. Do not hand-edit generated contract vocabulary. Add paired worlds for hidden library/card identity, hidden continuations/trigger facts, global allocator/RNG changes, and trusted ID renaming.
+
+### 9.1 Information-safety matrix
+
+| Authoritative datum | Player-visible? | Projection | Noninterference obligation |
+|---|---|---|---|
+| StackObjectId, TriggerInstanceId, EffectInstanceId, RuleEventId | Never directly | Stack order position only where public; opaque object/ability references for known sources | Renaming these trusted IDs while preserving relations leaves all player bytes, domains, ordering, and events equal. |
+| Spell card on stack / public spell face | Yes under normal public stack rules | Perspective-local OpaqueObjectId and an authorized known-definition/face fact; no CardDefinitionId or FaceKey | Hidden worlds equal until a rules-authorized reveal/cast; public spell identity differs only when the rules reveal it. |
+| Ability/trigger source | Only to perspectives authorized to know it | OpaqueObjectId/OpaqueAbilityId or typed public source descriptor; no GameObjectId/AbilityInstanceId/AbilityKey | A departed/hidden source cannot be reconstructed from a trusted identifier; private pending trigger facts go only to its authorized decision actor. |
+| Stack order and public target list | Public when the spell/ability/trigger is on stack | Ordered payload list with opaque object/player references; no stack object ID | Equal public stacks produce equal order and target projection regardless of internal allocation history. |
+| Pending trigger payload/order choice | Only the ordering/targeting actor before placement, then public as rules require on stack | Actor-only request with typed trigger descriptors; after placement project a public stack item | Paired worlds differ only for the authorized actor where hidden trigger facts are authorized; no opponent candidate/event leak. |
+| Temporary effect | Public only to the extent its effect is public | Typed bounded operation and duration over OpaqueObjectId; no EffectInstanceId/profile executor metadata | Same authorized public effects yield equal observations/events even if effect IDs differ. |
+| Mana payment allocation | Acting player while choosing; only public consequences after commit | Actor-only typed candidate of color/restriction-bucket counts; later pool/stack/cost facts per rules | Opponents receive no provisional allocation; after commit, only public pool and cast/payment results are projected. |
+| Partial cast/activation/trigger choices | Current actor only | Successor request purpose, safe candidates, same-actor parent PlayerDecisionId; trusted ContinuationId remains hidden | Other endpoints' request/event/information bytes are equal until a public event commits the action. |
+| Source LKI / trigger-event snapshot | Not as raw state | Only rule-public facts from the captured profile are projected; full snapshot stays trusted | Changing unobservable captured details cannot change unauthorized output; any permitted public difference has a pinned rules cause. |
+| Face-up exile and public zone transitions | Public | Opaque identity plus authorized public known-definition/location facts | A card is not kept hidden solely because it originated in a hidden zone; hidden library identity remains private before reveal. |
+| Seed, RNG cursor, allocator history, checkpoint, continuation body, capability/profile internals | Never | No projection | Paired states differing only in these trusted internals produce identical authorized outputs where public semantic facts agree. |
+
+The successor PlayerInformationState remains separate from both FullGameState and PlayerObservation. Its current observation child records the exact new codec, bytes, and perspective-local view sequence; retained knowledge still uses the existing perspective-local provenance and identity lifecycle. The view cursor equals the perspective's next-visible-sequence value and advances only with authorized visible occurrences. Projection remains read-only and allocates no semantic/player IDs.
+
+### 9.2 Public observation and event boundary
+
+The new named observation payload adds an ordered public stack view and the bounded public temporary-effect view needed to make the current legal action understandable. The stack view is top-to-bottom and each item exposes only kind, public controller, public spell/source references using OpaqueObjectId, public ability reference using OpaqueAbilityId when authorized, and rule-public modes/targets/cost outcomes. It has no StackObjectId. The temporary-effect view exposes only rule-public typed operation, affected OpaqueObjectId(s), and duration; it has no EffectInstanceId, capability key, card profile internals, or trusted source reference. Public objects already represented by retained knowledge continue through the successor PlayerInformationState contract, which preserves existing retained-knowledge semantics while removing global StateRevision.
+
+The successor ObservedEvent envelope removes global `state_revision`; its existing per-perspective visible sequence is the only public chronology. It needs a closed public event union for `StackItemAdded`, `StackItemRemoved` (resolved/countered), `ManaPoolChanged` with a `Spent` cause, and `TemporaryEffectCreated/Expired`, plus existing V3 event meanings under a new successor identity. Stack item events use current stack position and safe source/target views; temporary-effect events use typed public operations. Cast, activation, target, trigger-placement and counter meanings are explicit event subcases or exact typed fields in those two stack-item events, never inferred from arbitrary prose. Public card zone transitions continue through ObjectMoved. Audience policy is rules-owned and the environment projects only after authoritative validation.
+
+The successor PlayerStep keeps the existing submission/status/information/event/next-decision composition principles with successor child types but contains no global StateRevision. It never contains trusted candidate bindings, a continuation, stack object identity, or a second rules command. Its information/event chronology uses the perspective-local view sequence. PlayerInformationStateV2 and PlayerStepV3 remain exact historical readers.
+
+The public view cursor shapes are:
+
+```text
+ObservationEnvelopeSuccessor {
+  schema_version, perspective, view_sequence: VisibleSequence,
+  payload_codec, payload_base64, ObservationDigest
+}
+PlayerInformationStateSuccessor {
+  schema_version, perspective, current_observation,
+  next_visible_sequence, retained_knowledge, InformationStateDigestSuccessor
+}
+ObservedEventEnvelopeSuccessor {
+  schema_version, sequence: VisibleSequence, event
+}
+PlayerStepSuccessor {
+  schema_version, information_state, observed_events,
+  next_decision, status, submission
+}
+```
+
+`current_observation.view_sequence` equals `information_state.next_visible_sequence`; the InfoState digest binds both the view sequence and observation envelope. The event vector contains strictly increasing event sequences below the after-state next-visible cursor. The next request carries the same actor view sequence, but no global state revision. The authoritative pending request and replay/checkpoint carry StateRevision privately. A public state/projection change without an authorized visible event/cursor advance is an invariant failure; hidden stages consume no sequence for an unauthorized perspective. This uses the already checkpointed perspective-local cursor, not a global revision rewritten or a new per-player counter.
+
+## 10. Contract compatibility and exact version disposition
+
+The compatibility result is `VERSION_IDENTITY_GROWTH_REQUIRED` for the state/digest/checkpoint/replay and closed player request/event products. No successor numeric identity or versioned name is allocated here; accepted API/compatibility governance requires a separate review of exact identity names and predecessor support classifications before any producer is implemented.
+
+| Current identity | Can represent G0 semantics without changing closed meaning? | G0 disposition | Historical disposition required before implementation |
+|---|---|---|---|
+| `EngineStatePartsV2` / `ExecutionStateV3` | No: stack payload fields are absent; V3 effect/trigger arrays are explicitly empty-only; continuation variants are closed. | New complete typed state/Execution aggregate identity required; exact name unassigned. Keep one successor writer. | Preserve exact V2/V3 detached meaning; no legacy executable engine. |
+| `ZoneState` / `zones_v1` / `StackRecord` | No: V1 stack row has only id/controller/source refs. | New nested canonical zone/stack payload identity required. | V1 bytes/validators unchanged. |
+| `PersistedExecutionV3` | No: fixed five-element layout explicitly rejects nonempty effect/trigger/delayed rows. | New typed execution encoding required; exact identity unassigned. No nonempty Serde extension. | V3 verifier remains exact/empty-only. |
+| `ContinuationPayloadV2` | No: only two closed tags. | Successor typed cast/activation/trigger-placement variants required; exact name unassigned. | Preserve existing V2 tags and digest bytes. |
+| `StateDeltaV2` / `SemanticDeltaOperationV2` | The full-replacement principle still applies, but typed replacement and audit vocabulary change. No independent persisted public schema exists. | Successor Rust DTO/operation vocabulary required as a coordinated internal API cut; no standalone wire identity. Exact names unassigned. | No stored V2 artifact reader needed; retain source compatibility only where it does not create a second authority. |
+| `AuthoritativeRuleEventV2` | No current cast/stack/trigger/effect event families; internal Rust-only event records. | Successor internal event type/validator required; no independent durable event schema. | No authoritative event-log migration; replay re-executes responses. |
+| `FullStateDigestV6` | No: fixed V6 headers/nested V1/V3 data and known-answer input. | New domain + input-schema identity required; assign neither numeric/name here. | V6 exact detached verifier/read-only evidence; no auto migration. |
+| `EnvironmentCheckpointV7` / `CheckpointDigestV7` | No: checkpoint embeds parts V2/V6 state digest. | New checkpoint type, digest domain/input, codec semantic identity required; names unassigned. | V7 in-memory value cannot restore under new runtime; exact digest verifier remains detached. No durable state codec is claimed. |
+| Replay V7 | No: initial/step/final refs and schema inventory close over V6/V7/V3 identities and DecisionResponseV2. | Successor replay family/schema inventory required; names unassigned. It binds successor request/response, event, PlayerStep, observation payload, digest, and checkpoint identities. | V7 exact detached reader/verifier only; no current replay writer/executor under successor semantics. |
+| Decision request V3 / CandidateOrderingV2 | No: request context/candidate union/order vocabulary is closed and player request carries global StateRevision. | Successor request/candidate/binding/ordering family required; remove public StateRevision and add safe view context. | V3 exact reader only; paired with its exact historical response/runtime. |
+| DecisionDomainV2 / DecisionAnswerV2 | Yes for one/select-many/numeric/order answer meaning. | Reuse unchanged; no new top-level domain or answer variant. | Existing tags/answer bytes retain exact meaning. |
+| DecisionResponseV2 | No: required global state_revision echoes the hidden staged-step count. | Successor response keeps PlayerDecisionIdV1/view_sequence/answer and omits global StateRevision; exact identity unassigned. | V2 exact reader/verifier only; no current successor endpoint/replay writer. |
+| ObservedEvent V3 | No: closed union has global state revision and lacks public stack/effect lifecycle values. | Successor event envelope/schema removes global StateRevision and adds bounded public events; name unassigned. | V3 exact reader only. |
+| PlayerStep V3 | No: embeds InfoState V2, request V3, event V3 and global revision constraints. | Successor PlayerStep/schema composes view-cursor InfoState and successor request/response/event children; name unassigned. | V3 exact reader only. |
+| ObservationEnvelopeV1 / PlayerInformationStateV2 / InformationStateDigestV2 | No: envelope and InfoState digest expose/bind global StateRevision. | Successor envelope/info/digest removes global revision and binds existing perspective-local view sequence; new named observation payload codec also required. Names unassigned; no new cursor allocator. | V1/V2 exact readers/verifiers only; old basic-land payload remains exact. |
+| SemanticContractManifestV1 / RulesContractManifestV1 / `ExecutionIdentityV1` / MagicRules | Yes as identity structure: new accepted manifests produce new `SemanticContractIdV1` values. Dispatch family is still MagicRules. | Reuse identity shapes; bind new capability/profile semantic values and new rules scope through the existing manifest path. | Existing IDs retain exact content meaning. Do not add a new program-kind variant. |
+| Capability Registry V1 / CardDefinition V1 / content identity | Not a G0 implementation surface. | Unchanged by G0; later capability/card specs own additions. | Existing 14 registry rows and card/content bytes unchanged. |
+| RNG V1 / `IdentityAllocatorState` | Yes; current typed RNG and stack/effect/trigger/continuation/event allocator slots suffice. | Reuse; no new allocator. | Existing canonical fields unchanged. |
+
+### 10.1 Explicit historical reader matrix
+
+After the successor cut becomes current, preserve exact old meanings as follows:
+
+| Family | Successor-runtime disposition |
+|---|---|
+| FullStateDigestV6 | `READABLE_VERIFIABLE_ONLY`, exact V6 verifier and fixtures; no V6 writer. |
+| CheckpointDigestV7 | `READABLE_VERIFIABLE_ONLY`, exact detached V7 verifier; V7 checkpoint state is not restore-executable under successor state. |
+| EnvironmentCheckpointV7 | `UNSUPPORTED` for current successor restore because it embeds EngineStatePartsV2; archived exact build is required if retained in memory. |
+| Replay V7 | `READABLE_VERIFIABLE_ONLY`, exact structural/identity verifier; semantic execution requires archived matching runtime. |
+| Request V3 / ObservedEvent V3 / PlayerStep V3 | `READABLE_VERIFIABLE_ONLY`; never relabelled or emitted by successor writer. |
+| DecisionResponseV2 | `READABLE_VERIFIABLE_ONLY` under the successor because it echoes global StateRevision; exact V2 bytes/meaning preserved. |
+| ObservationEnvelopeV1 / PlayerInformationStateV2 / InformationStateDigestV2 | `READABLE_VERIFIABLE_ONLY`; exact V1/V2 bytes and global-revision meaning preserved, no current writer. |
+| V2 delta/event Rust values | No persisted wire/history identity exists. Old Rust API may be retired; no duplicate legacy runtime is introduced. |
+
+No automatic migration is defined. A migration, if later justified, reads/verifies the source under its exact original contract, writes a new target artifact with source provenance, and never overwrites or relabels the source.
+
+## 11. Entry, exit, and stop conditions
+
+Future G0 implementation entry requires:
+
+```text
+MASTER_BASELINE = exact post-PR-249 master, re-fetched and frozen
+SHARED_SPEC_REVIEW = PASS
+SHARED_PLAN_REVIEW = PASS
+VERSION_IDENTITY_DECISION = ACCEPTED by the required ADR/compatibility review
+CONTRACT_GROWTH_BOUNDARY = ACCEPTED
+EXACT_IMPLEMENTATION_BASELINE = FROZEN
+```
+
+This G0 design task satisfies none of the G0 implementation/identity acceptance gates. Its own Spec is proposed and must receive independent review. Only after G0 Spec acceptance may its companion Plan be accepted as the implementation procedure. Only after both plus the exact identity decision can `G0_IMPLEMENTATION_AUTHORIZED = YES`.
+
+G0 exit requires exact typed/canonical state records; one state authority; sound/complete Decision requests; total rejection nonmutation; state/event/delta/projection equality; Rust/Python/schema parity; noninterference; direct/restore/fork/replay parity; exact historic compatibility; and exact-head CI and independent review. It unblocks Shared S1–S7 contract use only. It does not implement game semantics or complete M4/R1/W1.
+
+Stop and amend this design if any source finds a second owner, a new allocator, a needed hidden callback, a new source-departure fact not representable in the typed payload, an unhandled decision descriptor collision, a history/digest mismatch, a public stack/effect projection that leaks trusted identity, a non-replayable staged action, or a historical value whose meaning would change. If a later card/profile requires a new payload tag, decision binding, observation field, or persistence value, update G0 and re-review it before implementing that profile.
+
+## 12. Relationship to Shared S1–S7 and M4
+
+G0 owns only the successor contract boundary. It adds no capability key/version or registry evidence. S1 derives current characteristics and live source contributions. S2/S2b reuse mana state and attachment state. S3 constructs complete safe targets. S4 writes cast/activation choices and typed stack records. S5 writes trigger records/order. S6a writes the narrow temporary records. S6b applies replacement/damage/counter/zone operations in the atomic rules transaction. S7 proves the complete interaction closure. Each later batch consumes these same G0 owners; none repeats a persistence migration.
+
+R1-only Haste/Prowess/Warp/Ojer/Kicker/history/Trample profiles and W1-only Ward/Dryad/Aura/Role/Saga/Blight profiles remain exclusive. No W1/R1 CardDefinitions, deck manifests, full-game setup/mulligan, M4.3/M4.4 implementation, or certification is authorized by G0.
+
+The implementation Plan is strictly subordinate to this Spec. Discovery that changes any accepted data shape, identity disposition, decision meaning, lifetime, projection, or historical support matrix means STOP → amend this Spec → independent review → regenerate the Plan.

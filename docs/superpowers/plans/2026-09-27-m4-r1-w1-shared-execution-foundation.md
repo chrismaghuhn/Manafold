@@ -1,7 +1,7 @@
 # M4 R1 × W1 Shared Execution Foundation — Implementation Plan
 
 **Task:** `M4_R1_W1_SHARED_EXECUTION_FOUNDATION_SPEC_AND_IMPLEMENTATION_PLAN`
-**Status:** PROPOSED / NOT ACCEPTED; executable only after Spec acceptance and entry gate
+**Status:** ACCEPTED — plan for the accepted Shared Spec; NO IMPLEMENTATION AUTHORITY before G0 acceptance and entry gates
 **Spec:** [`2026-09-27-m4-r1-w1-shared-execution-foundation.md`](../specs/2026-09-27-m4-r1-w1-shared-execution-foundation.md)
 **Exact proposed baseline:** `6c6ee4c9b237696c50e944cae998f85c2d358e1c`
 **Implementation authorized:** NO
