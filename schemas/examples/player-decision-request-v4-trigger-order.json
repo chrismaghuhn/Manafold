@@ -30,8 +30,8 @@
         "kind": "select_trigger",
         "trigger": {
           "event_kind": "ability_activated",
-          "source_ability": "3",
-          "source_object": "12",
+          "source_ability": "20",
+          "source_object": "20",
           "subject": {
             "activated_source_ability": "2",
             "activated_source_object": "11",
