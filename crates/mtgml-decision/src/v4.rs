@@ -16,6 +16,14 @@ use std::cmp::Ordering;
 
 pub const PLAYER_DECISION_REQUEST_V4_SCHEMA: &str = "player-decision-request.v4";
 
+fn deserialize_required_option<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer)
+}
+
 mod canonical_u64_string {
     use serde::{Deserialize, Deserializer, Serializer};
 
@@ -205,7 +213,7 @@ pub enum CounterKindV1 {
     Lore,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum SafeTargetDescriptorV1 {
     Object { object: OpaqueObjectId },
@@ -279,6 +287,7 @@ pub enum CostRouteV1 {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CostFactsV1 {
+    #[serde(deserialize_with = "deserialize_required_option")]
     pub selected_route: Option<CostRouteV1>,
     pub paid_additional_cost_ids: Vec<u32>,
 }
@@ -332,6 +341,7 @@ pub enum SafeDamageRecipientV1 {
 pub enum SafeTriggerSubjectV1 {
     SpellCast {
         actor: PlayerId,
+        #[serde(deserialize_with = "deserialize_required_option")]
         spell_source_object: Option<OpaqueObjectId>,
         creature_spell: bool,
         cost_facts: CostFactsV1,
@@ -348,9 +358,11 @@ pub enum SafeTriggerSubjectV1 {
         target: SafeTargetDescriptorV1,
     },
     ObjectEntered {
+        #[serde(deserialize_with = "deserialize_required_option")]
         object: Option<OpaqueObjectId>,
     },
     ObjectLeftOrDied {
+        #[serde(deserialize_with = "deserialize_required_option")]
         last_known_object: Option<OpaqueObjectId>,
         destination: SafeZoneKindV1,
     },
@@ -367,12 +379,14 @@ pub enum SafeTriggerSubjectV1 {
         player: PlayerId,
     },
     CounterChanged {
+        #[serde(deserialize_with = "deserialize_required_option")]
         object: Option<OpaqueObjectId>,
         counter_kind: CounterKindV1,
         before: u32,
         after: u32,
     },
     DamageApplied {
+        #[serde(deserialize_with = "deserialize_required_option")]
         source_object: Option<OpaqueObjectId>,
         recipient: SafeDamageRecipientV1,
         amount: u32,
@@ -688,7 +702,9 @@ impl TriggerEventKindV1 {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SafeTriggerDescriptorV1 {
+    #[serde(deserialize_with = "deserialize_required_option")]
     pub source_object: Option<OpaqueObjectId>,
+    #[serde(deserialize_with = "deserialize_required_option")]
     pub source_ability: Option<OpaqueAbilityId>,
     pub event_kind: TriggerEventKindV1,
     pub subject: SafeTriggerSubjectV1,
@@ -856,6 +872,7 @@ pub struct PlayerDecisionRequestV4 {
     pub visibility: DecisionVisibility,
     pub decision_domain_v2: DecisionDomainV2,
     pub purpose: DecisionPurposeV4,
+    #[serde(deserialize_with = "deserialize_required_option")]
     pub parent_player_decision_id: Option<PlayerDecisionIdV1>,
     pub candidates: Vec<VisibleCandidateV4>,
 }
@@ -1070,6 +1087,33 @@ mod tests {
             request.validate(),
             Err(DecisionValidationError::SourceAbilityWithoutObject)
         );
+    }
+
+    #[test]
+    fn required_nullable_fields_reject_omission_but_accept_explicit_null() {
+        let mut value: Value = serde_json::from_str(TRIGGERS).unwrap();
+        value["candidates"][0]["intent"]["trigger"]
+            .as_object_mut()
+            .unwrap()
+            .remove("source_object");
+        assert!(serde_json::from_value::<PlayerDecisionRequestV4>(value).is_err());
+
+        let mut value: Value = serde_json::from_str(TRIGGERS).unwrap();
+        value
+            .as_object_mut()
+            .unwrap()
+            .remove("parent_player_decision_id");
+        assert!(serde_json::from_value::<PlayerDecisionRequestV4>(value).is_err());
+
+        let mut value: Value = serde_json::from_str(TRIGGERS).unwrap();
+        value["candidates"][0]["intent"]["trigger"]["subject"]["cost_facts"]
+            .as_object_mut()
+            .unwrap()
+            .remove("selected_route");
+        assert!(serde_json::from_value::<PlayerDecisionRequestV4>(value).is_err());
+
+        let request = parse_fixture(TRIGGERS);
+        request.validate().unwrap();
     }
 
     #[test]
