@@ -928,14 +928,6 @@ pub fn execute_basic_land_response(
                 from: from_tapped,
                 to: true,
             });
-            operations.push(SemanticDeltaOperationV2::ManaAdded {
-                player: actor,
-                color,
-                restriction: mtgml_state::ManaRestrictionV1::Unrestricted,
-                amount: 1,
-                source: authority.source,
-                ability_key: authority.ability_key,
-            });
             push_successor_event(
                 &mut next,
                 &mut events,
@@ -964,6 +956,14 @@ pub fn execute_basic_land_response(
                     },
                 )?;
             }
+            operations.push(SemanticDeltaOperationV2::ManaAdded {
+                player: actor,
+                color,
+                restriction: mtgml_state::ManaRestrictionV1::Unrestricted,
+                amount: 1,
+                source: authority.source,
+                ability_key: authority.ability_key,
+            });
             push_successor_event(
                 &mut next,
                 &mut events,
@@ -1815,6 +1815,22 @@ mod tests {
         };
         crate::validate_successor_transition_contract(&admission, &before, &successor_product)
             .unwrap();
+        let mut reordered_events = successor_product.clone();
+        let first_payload = reordered_events.events[0].event.clone();
+        reordered_events.events[0].event = reordered_events.events[1].event.clone();
+        reordered_events.events[1].event = first_payload;
+        assert_eq!(
+            reordered_events.events[0].event_id, successor_product.events[0].event_id,
+            "ordering RED keeps sequential event identities in place"
+        );
+        assert_eq!(
+            reordered_events.events[1].event_id, successor_product.events[1].event_id,
+            "ordering RED swaps payloads only"
+        );
+        assert!(matches!(
+            crate::validate_successor_transition_contract(&admission, &before, &reordered_events),
+            Err(crate::TransitionViolation::EventDeltaMismatch)
+        ));
         let mut incomplete_candidates = successor_product.clone();
         let mut incomplete_state = incomplete_candidates.next_state.clone();
         incomplete_state

@@ -680,7 +680,12 @@ pub fn validate_successor_transition_contract(
     if reconstructed != product.next_state {
         return Err(TransitionViolation::UnexplainedMutation);
     }
-    if !same_event_multiset(&expected_event_kinds, &product.events) {
+    if expected_event_kinds.len() != product.events.len()
+        || expected_event_kinds
+            .iter()
+            .zip(&product.events)
+            .any(|(expected, actual)| expected != &actual.event)
+    {
         return Err(TransitionViolation::EventDeltaMismatch);
     }
     Ok(())
@@ -720,27 +725,6 @@ fn prune_departed_state(reconstructed: &mut EngineStatePartsV2) {
         .turn_history
         .once_ability_used
         .retain(|(source, _)| live.contains(source));
-}
-
-fn same_event_multiset(
-    expected: &[AuthoritativeRuleEventKindV2],
-    actual: &[crate::AuthoritativeRuleEventV2],
-) -> bool {
-    if expected.len() != actual.len() {
-        return false;
-    }
-    let mut used = vec![false; actual.len()];
-    for event in expected {
-        let Some(index) = actual
-            .iter()
-            .enumerate()
-            .position(|(index, candidate)| !used[index] && candidate.event == *event)
-        else {
-            return false;
-        };
-        used[index] = true;
-    }
-    true
 }
 
 fn apply_zone_transition(
