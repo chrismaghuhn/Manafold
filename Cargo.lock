@@ -269,8 +269,10 @@ dependencies = [
 name = "mtgml-rules"
 version = "0.2.2"
 dependencies = [
+ "mtgml-card-ir",
  "mtgml-decision",
  "mtgml-model",
+ "mtgml-persistence",
  "mtgml-random",
  "mtgml-state",
  "serde",

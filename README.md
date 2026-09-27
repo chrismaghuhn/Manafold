@@ -5,7 +5,7 @@
 - **Foundation closure/freeze:** `COMPLETE` (`FINAL_FOUNDATION_CLOSURE = PASS`, `PRE_M3_REMEDIATION_FREEZE = PASS`, `FOUNDATION_READY_FOR_M3 = YES`)
 - **Core modularization:** Issue #162 `COMPLETE`, merged by PR #179; the refactor was semantic-neutral and did not change public, wire, schema, digest, replay, or rules contracts
 - **M2.5 scope work:** `NOT_CLAIMED` / `NOT_FROZEN`; the abandoned census and research machinery remains historical Git evidence, not active engine scope
-- **Current status:** M3 is complete and final acceptance passed; M4 is unblocked and content implementation has not started
+- **Current status:** M3 is complete and final acceptance passed; M4.2 Phase 10 successor-runtime implementation is under review on the integration branch. `master` remains on the predecessor V5/V6 runtime until the separate Phase 13 activation boundary; M4.2 is not complete.
 - **Pre-M3 governance cleanup:** `COMPLETE`; the accepted M3 Entry Decision and its historical authorization are preserved, with the hardened scope accepted by PR #184
 - **M3 authorization:** `AUTHORIZED` at `ea668c47ef1361b3d989fd32b8f3cfd4751b1e79`; the authorized task at that head was `M3.P0_STATE_IDENTITY_CUT`
 - **M3 milestone execution:** `STARTED` — P0 infrastructure is merged and frozen
@@ -40,10 +40,13 @@
 - **Real Magic semantics:** accepted evidence covers the eleven bounded Foundation V2 capabilities. This does not claim arbitrary Magic support, cards, decks, formats, or playability.
 - **Real card support:** none
 
-**Current resumable execution contract:** V6. V6 binds the V5 full-state
-identity and `ExecutionIdentityV1` through `EnvironmentCheckpointV6`,
-`CheckpointDigestV6`, and Replay V6. V4/V5 artifacts retain their historical
-meanings and are not reinterpreted or automatically migrated.
+**Current resumable execution contract on `master`:** V6. V6 binds the V5
+full-state identity and `ExecutionIdentityV1` through
+`EnvironmentCheckpointV6`, `CheckpointDigestV6`, and Replay V6. The M4
+successor integration branch has migrated its sole executable runtime to
+V6 state identity, Checkpoint V7, and Replay V7; V5/V6 predecessor artifacts
+there retain historical read/verification only. V4/V5 artifacts retain their
+historical meanings and are not reinterpreted or automatically migrated.
 
 Manafold prioritizes:
 

@@ -79,6 +79,7 @@ pub struct ContentValidationReportV1 {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecutableProfileAdmissionV1 {
     content_contract_id: ContentContractIdV1,
+    verified_catalog: VerifiedContentCatalogV1,
     direct_requirement_roots: Vec<CapabilityRequirementV1>,
     resolved_capabilities: Vec<CapabilityRequirementV1>,
     rules_contract_manifest: RulesContractManifestV1,
@@ -90,6 +91,14 @@ pub struct ExecutableProfileAdmissionV1 {
 impl ExecutableProfileAdmissionV1 {
     pub fn content_contract_id(&self) -> &ContentContractIdV1 {
         &self.content_contract_id
+    }
+
+    /// Immutable definitions whose identity, provenance, profile, and
+    /// requirement closure were verified by this admission. Runtime
+    /// construction consumes this catalog together with the identity chain;
+    /// callers cannot substitute a second catalog after admission.
+    pub fn verified_catalog(&self) -> &VerifiedContentCatalogV1 {
+        &self.verified_catalog
     }
 
     pub fn direct_requirement_roots(&self) -> &[CapabilityRequirementV1] {
@@ -328,6 +337,7 @@ pub fn admit_executable_profile_v1(
 
     Ok(ExecutableProfileAdmissionV1 {
         content_contract_id: catalog.content_contract_id().clone(),
+        verified_catalog: catalog,
         direct_requirement_roots: report.direct_requirement_roots,
         resolved_capabilities: report.resolved_capabilities,
         rules_contract_manifest: rules_manifest.clone(),

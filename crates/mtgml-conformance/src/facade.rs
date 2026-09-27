@@ -27,7 +27,7 @@
 //!                            stable step label
 //! ConformanceRejectionStepRef explicit Layer-B player-boundary rejection
 //!                            (the rejection happens BEFORE kernel execution;
-//!                            no fabricated TransitionResult) carrying the
+//!                            no fabricated PredecessorTransitionResult) carrying the
 //!                            submitting actor, the explicit response, and
 //!                            the PlayerBoundaryRejectionExpectation
 //! PlayerBoundaryRejectionExpectation narrowest composition for a rejected
@@ -55,7 +55,7 @@
 //! ```text
 //! fork = controller.fork()                       same exact checkpoint
 //! trusted = fork.execute_trusted_response(actor, step.response)
-//!                                                trusted TransitionResult on a
+//!                                                trusted PredecessorTransitionResult on a
 //!                                                deterministic fork
 //! player_step = endpoints[actor].submit(step.response)
 //!                                                real PlayerEndpointHandle
@@ -116,7 +116,7 @@ use mtgml_decision::{AuthoritativeDecisionRequestV2, DecisionResponseV2, PlayerD
 use mtgml_environment::{PlayerEndpoint, PlayerEndpointHandle, TrustedEnvironmentController};
 use mtgml_model::{EpisodeStatus, FullStateDigestV5, PlayerId};
 use mtgml_observation::PlayerStepV2;
-use mtgml_rules::{AuthoritativeRuleEvent, TransitionResult};
+use mtgml_rules::{AuthoritativeRuleEvent, PredecessorTransitionResult};
 use mtgml_state::StateDelta;
 
 use crate::{assert_exact_transition, ConformanceFailure, ConformanceStep};
@@ -170,7 +170,7 @@ pub struct ConformanceStepRef {
 }
 
 /// An explicit Layer-B player-boundary rejection. The rejection happens
-/// BEFORE kernel execution; no fabricated TransitionResult is involved.
+/// BEFORE kernel execution; no fabricated PredecessorTransitionResult is involved.
 #[derive(Debug, Clone)]
 pub struct ConformanceRejectionStepRef {
     pub label: &'static str,
@@ -327,7 +327,7 @@ fn run_transition(
                 .into(),
         ));
     }
-    let trusted: TransitionResult = fork
+    let trusted: PredecessorTransitionResult = fork
         .execute_trusted_response(actor, tr.step.response.clone())
         .map_err(infrastructure)?;
 
@@ -466,8 +466,9 @@ fn run_forced_progress(
         ));
     }
 
-    let trusted: TransitionResult = fork.execute_forced_progress().map_err(infrastructure)?;
-    let main: TransitionResult = controller
+    let trusted: PredecessorTransitionResult =
+        fork.execute_forced_progress().map_err(infrastructure)?;
+    let main: PredecessorTransitionResult = controller
         .execute_forced_progress()
         .map_err(infrastructure)?;
     if main != trusted {

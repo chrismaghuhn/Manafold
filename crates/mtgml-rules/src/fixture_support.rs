@@ -19,7 +19,7 @@ use crate::events::{
     AuthoritativeRuleEvent, AuthoritativeRuleEventKind, PerspectiveObservationPolicyV1,
 };
 use crate::product::build_accepted_product;
-use crate::transition::TransitionResult;
+use crate::transition::PredecessorTransitionResult;
 
 /// One planned perspective-visible occurrence: the state-owned lifecycle
 /// audit plus its rules-owned observation policy.
@@ -255,7 +255,7 @@ impl FixtureTransition {
     }
 
     /// Validates and returns the complete accepted product.
-    pub fn finish(self) -> Result<TransitionResult, KernelExecutionError> {
+    pub fn finish(self) -> Result<PredecessorTransitionResult, KernelExecutionError> {
         let Self {
             before,
             workspace,

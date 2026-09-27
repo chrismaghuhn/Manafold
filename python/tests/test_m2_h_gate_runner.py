@@ -543,6 +543,46 @@ class PlayerClient(Protocol):
     def submit(self, response: DecisionResponseV2) -> PlayerStepV2: ...
 """
 
+ENDPOINT_RS_SUCCESSOR_FACADE = """\
+pub use crate::endpoint_successor::*;
+"""
+
+ENDPOINT_SUCCESSOR_RS_PINNED = """\
+pub trait PlayerEndpoint {
+    fn perspective(&self) -> PlayerId;
+    fn observation(&self) -> Result<ObservationEnvelope, PlayerEndpointError>;
+    fn information_state(&self) -> Result<PlayerInformationStateV2, PlayerEndpointError>;
+    fn visible_decision(&self) -> Result<Option<PlayerDecisionRequestV3>, PlayerEndpointError>;
+    fn submit(&self, response: DecisionResponseV2) -> Result<PlayerStepV3, PlayerEndpointError>;
+}
+"""
+
+ENDPOINT_PREDECESSOR_RS_PINNED = """\
+pub trait PlayerEndpoint {
+    fn perspective(&self) -> PlayerId;
+    fn observation(&self) -> Result<ObservationEnvelope, PlayerEndpointError>;
+    fn information_state(&self) -> Result<PlayerInformationStateV2, PlayerEndpointError>;
+    fn visible_decision(&self) -> Result<Option<PlayerDecisionRequestV2>, PlayerEndpointError>;
+    fn submit(&self, response: DecisionResponseV2) -> Result<PlayerStepV2, PlayerEndpointError>;
+}
+"""
+
+PLAYER_CLIENT_PY_SUCCESSOR = """\
+from typing import Protocol
+
+class PlayerClient(Protocol):
+    def observation(self) -> ObservationEnvelope: ...
+    def information_state(self) -> PlayerInformationStateV2: ...
+    def visible_decision(self) -> PlayerDecisionRequestV3 | None: ...
+    def submit(self, response: DecisionResponseV2) -> PlayerStepV3: ...
+
+class HistoricalPlayerClientV2(Protocol):
+    def observation(self) -> ObservationEnvelope: ...
+    def information_state(self) -> PlayerInformationStateV2: ...
+    def visible_decision(self) -> PlayerDecisionRequestV2 | None: ...
+    def submit(self, response: DecisionResponseV2) -> PlayerStepV2: ...
+"""
+
 ADAPTER_CLIENT_PY_PINNED = """\
 class AdapterPlayerClient:
     def __init__(self) -> None:
@@ -584,6 +624,12 @@ def _synthetic_surface(
             yield
 
 
+def _write_fixture(directory: Path, name: str, content: str) -> Path:
+    path = directory / name
+    path.write_text(content, encoding="utf-8")
+    return path
+
+
 class PlayerSurfaceExtractorTests(unittest.TestCase):
     """Extractors reproduce the pinned closure and fail closed on drift."""
 
@@ -604,7 +650,7 @@ class PlayerSurfaceExtractorTests(unittest.TestCase):
                     },
                     "returns": runner._norm_type(str(signature["returns"])),
                 }
-                for name, signature in runner.RUST_PLAYER_ENDPOINT_METHODS.items()
+                for name, signature in runner.RUST_PLAYER_ENDPOINT_METHODS_V2.items()
             }
             self.assertEqual(runner.extract_rust_trait_methods("t"), normalized_rust)
             self.assertEqual(
@@ -612,7 +658,7 @@ class PlayerSurfaceExtractorTests(unittest.TestCase):
                 frozenset(map(runner._norm_type, runner.RUST_PLAYER_BOUNDARY_VARIANTS)),
             )
             self.assertEqual(
-                runner.extract_python_protocol_methods("t"), runner.PYTHON_PROTOCOL_METHODS
+                runner.extract_python_protocol_methods("t"), runner.PYTHON_PROTOCOL_METHODS_V2
             )
             self.assertEqual(
                 runner.extract_adapter_public_methods("t"), runner.ADAPTER_PUBLIC_METHODS
@@ -655,6 +701,73 @@ class PlayerSurfaceExtractorTests(unittest.TestCase):
         ):
             runner.verify_player_surface_closure()
         self.assertIn("PlayerClient protocol drift", str(raised.exception))
+
+    def test_successor_runtime_closure_pins_current_and_historical_surfaces(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            facade = base / "endpoint.rs"
+            successor = base / "endpoint_successor.rs"
+            predecessor = base / "endpoint_predecessor.rs"
+            facade.write_text(ENDPOINT_RS_SUCCESSOR_FACADE, encoding="utf-8")
+            successor.write_text(ENDPOINT_SUCCESSOR_RS_PINNED, encoding="utf-8")
+            predecessor.write_text(ENDPOINT_PREDECESSOR_RS_PINNED, encoding="utf-8")
+            with (
+                mock.patch.object(runner, "ENDPOINT_RS", facade),
+                mock.patch.object(runner, "ENDPOINT_SUCCESSOR_RS", successor),
+                mock.patch.object(runner, "ENDPOINT_PREDECESSOR_RS", predecessor),
+                mock.patch.object(
+                    runner, "BOUNDARY_RS", _write_fixture(base, "boundary.rs", BOUNDARY_RS_PINNED)
+                ),
+                mock.patch.object(
+                    runner,
+                    "PLAYER_CLIENT_PY",
+                    _write_fixture(base, "player_client.py", PLAYER_CLIENT_PY_SUCCESSOR),
+                ),
+                mock.patch.object(
+                    runner,
+                    "ADAPTER_CLIENT_PY",
+                    _write_fixture(base, "adapter_client.py", ADAPTER_CLIENT_PY_PINNED),
+                ),
+            ):
+                detail = runner.verify_player_surface_closure()
+        self.assertTrue(detail.startswith("closure holds:"), detail)
+
+    def test_successor_closure_rejects_missing_historical_rust_surface(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            facade = base / "endpoint.rs"
+            successor = base / "endpoint_successor.rs"
+            predecessor = base / "endpoint_predecessor.rs"
+            facade.write_text(ENDPOINT_RS_SUCCESSOR_FACADE, encoding="utf-8")
+            successor.write_text(ENDPOINT_SUCCESSOR_RS_PINNED, encoding="utf-8")
+            predecessor.write_text(
+                ENDPOINT_PREDECESSOR_RS_PINNED.replace(
+                    "    fn visible_decision(&self) -> "
+                    "Result<Option<PlayerDecisionRequestV2>, PlayerEndpointError>;\n",
+                    "",
+                ),
+                encoding="utf-8",
+            )
+            with (
+                mock.patch.object(runner, "ENDPOINT_RS", facade),
+                mock.patch.object(runner, "ENDPOINT_SUCCESSOR_RS", successor),
+                mock.patch.object(runner, "ENDPOINT_PREDECESSOR_RS", predecessor),
+                mock.patch.object(
+                    runner, "BOUNDARY_RS", _write_fixture(base, "boundary.rs", BOUNDARY_RS_PINNED)
+                ),
+                mock.patch.object(
+                    runner,
+                    "PLAYER_CLIENT_PY",
+                    _write_fixture(base, "player_client.py", PLAYER_CLIENT_PY_SUCCESSOR),
+                ),
+                mock.patch.object(
+                    runner,
+                    "ADAPTER_CLIENT_PY",
+                    _write_fixture(base, "adapter_client.py", ADAPTER_CLIENT_PY_PINNED),
+                ),
+                self.assertRaises(runner.GateConfigurationError),
+            ):
+                runner.verify_player_surface_closure()
 
 
 # ---------------------------------------------------------------------------

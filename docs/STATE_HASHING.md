@@ -1,6 +1,6 @@
 # State and Artifact Hashing
 
-**Status:** V1–V4 historical identity contracts; current V5 state / V6 checkpoint identity; detached M4 FullStateDigestV6 successor
+**Status:** V1–V4 historical contracts; predecessor V5/V6 remains current on `master` until Phase 13; the Phase-10 integration branch uses successor FullStateDigestV6 / Checkpoint V7 / Replay V7
 **Stability:** normative identity separation and ADR-0038 persistence-codec specification
 
 ## Digest domains
@@ -15,41 +15,44 @@ Current/historical families include:
 | `FullStateDigestV2` | M1 full state under typed `mtgml.rng.v1` semantics |
 | `FullStateDigestV3` | M2 full authoritative state with typed continuation/information/perspective-local visible identity semantics |
 | `FullStateDigestV4` | historical M3 state meaning; detached exact verifier only after S3.P0 |
-| `FullStateDigestV5` | current complete EngineState identity, including the typed Magic SBA-order continuation |
-| `FullStateDigestV6` | detached M4 successor identity; not current, not an EngineState alias, and not used by current checkpoint/replay paths |
+| `FullStateDigestV5` | predecessor complete EngineState identity; current on `master` until Phase 13, historical verification on the successor integration branch |
+| `FullStateDigestV6` | complete successor EngineStatePartsV2 identity; current writer on the Phase-10 integration branch |
 | `InformationStateDigest` | historical M1 information-state digest (`mtgml.information-state-digest.v1`) |
 | `InformationStateDigestV2` | M2 perspective-safe current observation + retained knowledge (`mtgml.information-state-digest.v2`) |
 | `ObservationDigest` | exact current observation bytes |
 | `CandidateSetDigest` | ordered visible candidates/constraints only |
 | `CheckpointDigestV2/V3` | complete trusted checkpoint identity for the corresponding state version |
 | `CheckpointDigestV5` | historical execution-identity checkpoint digest; detached exact verifier only after S3.P0 |
-| `CheckpointDigestV6` | current checkpoint identity binding `FullStateDigestV5` and `ExecutionIdentityV1` |
+| `CheckpointDigestV6` | predecessor checkpoint identity binding `FullStateDigestV5` and `ExecutionIdentityV1`; current on `master` until Phase 13 |
+| `CheckpointDigestV7` | successor checkpoint identity binding `FullStateDigestV6` and `ExecutionIdentityV1`; current on the Phase-10 integration branch |
 
 Digest identity provides content identity/divergence detection, not authenticity.
 
-## Detached FullStateDigestV6 successor
+## FullStateDigestV6 successor
 
-The M4 Phase-3 implementation defines an explicit detached `FullStateDigestV6`
-identity. It is not returned by `EngineState::digest()` and does not alter the
-current V5 producer or V6 checkpoint identity. Its envelope uses domain
+The Phase-10 integration runtime uses the explicit `FullStateDigestV6`
+identity for complete `EngineStatePartsV2`. The predecessor `EngineState::digest()`
+and V5 bytes remain unchanged for historical verification and on `master`
+until Phase 13. Its envelope uses domain
 `mtgml.full-state-digest.v6`, input schema `full-state-digest-input.v6`,
 `mtgml.canonical-cbor.v1`, and SHA-256. The canonical preimage is the fixed
 14-element array in the accepted M4 semantic specification: the unchanged V5
 positional components under the V6 header, followed by the closed
 `card-rules-authoritative-state.v1` record.
 
-That detached record contains typed Mana, TurnHistory, Counter, Attachment,
+That record contains typed Mana, TurnHistory, Counter, Attachment,
 Face, and AbilityAuthority state. Validation rejects noncanonical ordering,
 duplicates, invalid fixed tags, malformed record lengths, integer range/domain
 errors, and any `land_plays_used` value outside `{0,1}`. Its bytes use the
-shared canonical-CBOR and digest-envelope implementations. The detached
-verifier checks canonical decode/re-encode equality and the V6 digest identity;
-it does not make the result executable or replace later environment/catalog
-admission.
+shared canonical-CBOR and digest-envelope implementations. The verifier checks
+canonical decode/re-encode equality and the V6 digest identity. The environment
+binds it to Checkpoint V7 and verified executable content admission before
+runtime construction.
 
-V5 remains the current EngineState identity. Historical V5 artifacts and
-vectors retain their exact bytes and meaning; no migration or reinterpretation
-is introduced by the detached V6 implementation.
+On `master`, V5 remains the runtime identity until Phase 13. On the successor
+integration branch, V5 is historical verification only. Historical V5
+artifacts and vectors retain their exact bytes and meaning; no migration or
+reinterpretation is introduced by the V6 implementation.
 
 ## Immutable content identity V1
 
@@ -1106,7 +1109,7 @@ preimage and known-answer fixture. `CheckpointDigestV5` retains its exact V5
 preimage over a V4 full-state reference and codec `/5`; it is never re-bound
 to V5 state or codec `/6`.
 
-## Accepted M4 successor identity contract (not current runtime)
+## M4 successor identity contract
 
 The accepted M4 Semantic Spec allocates `FullStateDigestV6` with input schema
 `full-state-digest-input.v6` and domain `mtgml.full-state-digest.v6`. It
@@ -1115,9 +1118,10 @@ preserves the V5 top-level semantic order and adds one fixed
 TurnHistory, Counter, Attachment, Face, and AbilityAuthority records. Their
 exact typed fields, ordering, ranges, and canonical CBOR arrays are specified
 in the [accepted M4 state-cut Semantic Spec](superpowers/specs/2026-09-26-m4-unified-state-cut-semantic-spec.md).
-The detached V6 DTO, canonical encoder, digest producer, and verifier are
-implemented. `EngineState::digest()` and the current runtime writer remain V5;
-the detached V6 APIs do not change current aliases or runtime authority.
+The V6 DTO, canonical encoder, digest producer, and verifier are implemented.
+On the Phase-10 integration branch they form the single current runtime writer;
+`EngineState::digest()` remains the exact predecessor writer for historical
+verification and the pre-Phase-13 `master` runtime.
 
 The same accepted design allocates `EnvironmentCheckpointV7` and
 `CheckpointDigestV7`, with `environment-checkpoint-digest-input.v7`,
@@ -1126,15 +1130,15 @@ The same accepted design allocates `EnvironmentCheckpointV7` and
 the FullStateDigestV6 reference, status, environment counters, codec identity,
 and complete ExecutionIdentityV1. The exact payload and historical V6
 disposition are in the accepted Semantic Spec. These successor identities do
-not change current V5/V6 bytes or make an incomplete successor executable.
+not change historical V5/V6 bytes.
 
 The detached `StateDeltaV2` and `EnvironmentCheckpointV7` value types are
 implemented over `EngineStatePartsV2`. V7 checkpoint validation recomputes the
 complete V6 state identity and V7 checkpoint identity before returning a
 detached snapshot. Contract-binding admission can additionally verify the
 semantic manifest, rules manifest, and optional verified content catalog.
-This is not a current backend restore path: no V6/V7 runtime aliases,
-checkpoint controller, or replay path are activated.
+The integration branch's sole backend restore path is V7; `master` retains
+the predecessor checkpoint path until Phase 13.
 
 # Conversion and reader rules
 

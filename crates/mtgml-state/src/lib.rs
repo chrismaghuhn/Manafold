@@ -44,8 +44,9 @@ pub use digest_v4::{
 };
 pub use digest_v5::{FULL_STATE_DIGEST_DOMAIN_V5, FULL_STATE_DIGEST_INPUT_SCHEMA_V5};
 pub use digest_v6::{
-    calculate_full_state_digest_v6, canonical_state_bytes_v6, verify_full_state_digest_v6,
-    FULL_STATE_DIGEST_DOMAIN_V6, FULL_STATE_DIGEST_INPUT_SCHEMA_V6,
+    calculate_full_state_digest_v6, calculate_full_state_digest_v6_with_execution_v3,
+    canonical_state_bytes_v6, canonical_state_bytes_v6_with_execution_v3,
+    verify_full_state_digest_v6, FULL_STATE_DIGEST_DOMAIN_V6, FULL_STATE_DIGEST_INPUT_SCHEMA_V6,
 };
 pub use engine::{EngineState, EngineStateParts, FULL_STATE_DIGEST_INPUT_SCHEMA};
 pub use engine_state_parts_v2::{EngineStatePartsV2, EngineStatePartsV2Error};
@@ -57,6 +58,7 @@ pub use engine_state_shape::{
     SYNTHETIC_COUNT_MAX, SYNTHETIC_COUNT_MIN,
 };
 pub use execution::{EffectRecord, ExecutionState, TriggerRecord};
+pub use execution::{ExecutionStateV3, SuccessorDecisionError};
 pub use format::{CommanderState, FormatState};
 pub use identity::{IdentityAllocationError, IdentityAllocatorState};
 pub use knowledge::{

@@ -206,7 +206,7 @@ fn shared_response_transaction_production_entry_point_exists() {
 
     type Hook = fn(
         &EnvironmentCheckpointV6,
-        &mtgml_rules::TransitionResult,
+        &mtgml_rules::PredecessorTransitionResult,
         &BTreeMap<PlayerId, Vec<ObservedEventEnvelopeV2>>,
     ) -> Result<(), ControllerError>;
     type SharedEntry = for<'a> fn(
@@ -216,7 +216,7 @@ fn shared_response_transaction_production_entry_point_exists() {
         Hook,
         Option<ResponseTransactionFailurePoint>,
         Option<TestApplyOverride>,
-    ) -> Result<mtgml_rules::TransitionResult, ControllerError>;
+    ) -> Result<mtgml_rules::PredecessorTransitionResult, ControllerError>;
     let _shared_entry_point: SharedEntry = execute_response_transaction::<Hook>;
 }
 

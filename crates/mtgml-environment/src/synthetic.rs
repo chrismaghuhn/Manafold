@@ -8,7 +8,7 @@ use mtgml_replay::{
     AuthoritativeReplayV6, DeckIdentityV1, KernelIdentityV1, ReplayRecorderV6,
     ReplaySchemaVersionsV6,
 };
-use mtgml_rules::{ProgramKernelV1, TransitionResult};
+use mtgml_rules::{PredecessorTransitionResult, ProgramKernelV1};
 use mtgml_state::{
     construct_synthetic_engine_state, EngineState, SyntheticResetInputs, SyntheticV4Setup,
 };
@@ -225,7 +225,7 @@ impl EnvironmentBackend for SyntheticRulesEnvironmentBackend {
         &mut self,
         actor: PlayerId,
         response: DecisionResponseV2,
-    ) -> Result<TransitionResult, ControllerError> {
+    ) -> Result<PredecessorTransitionResult, ControllerError> {
         self.execute_response(
             actor,
             response,
@@ -233,7 +233,7 @@ impl EnvironmentBackend for SyntheticRulesEnvironmentBackend {
         )
     }
 
-    fn execute_forced_progress(&mut self) -> Result<TransitionResult, ControllerError> {
+    fn execute_forced_progress(&mut self) -> Result<PredecessorTransitionResult, ControllerError> {
         self.execute_forced_progress()
     }
 

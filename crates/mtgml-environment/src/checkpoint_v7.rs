@@ -1,6 +1,8 @@
-//! Detached EnvironmentCheckpointV7 over the FullStateDigestV6 state DTO.
+//! EnvironmentCheckpointV7 over the authoritative FullStateDigestV6 state DTO.
 //!
-//! This type never enters the current environment/controller restore path.
+//! This is the executable checkpoint family for the successor integration
+//! runtime. Historical V6 checkpoint types remain available only through the
+//! explicitly selected conformance/migration testkit.
 
 use std::collections::BTreeSet;
 
@@ -10,7 +12,7 @@ use mtgml_model::{
     ExecutionIdentityV1, ExecutionProgramV1, FullStateDigestV6, PlayerId, RulesContractManifestV1,
     SemanticContractManifestV1,
 };
-use mtgml_state::{calculate_full_state_digest_v6, EngineStatePartsV2};
+use mtgml_state::EngineStatePartsV2;
 use thiserror::Error;
 
 pub const ENVIRONMENT_CHECKPOINT_SCHEMA_V7: &str = "environment-checkpoint.v7";
@@ -37,9 +39,9 @@ impl EnvironmentCheckpointV7 {
         execution_identity: ExecutionIdentityV1,
     ) -> Result<Self, CheckpointV7Error> {
         state.validate().map_err(|_| CheckpointV7Error::State)?;
-        let state_digest =
-            calculate_full_state_digest_v6(&state.materialize(), state.card_rules_state.clone())
-                .map_err(|_| CheckpointV7Error::StateDigest)?;
+        let state_digest = state
+            .full_state_digest_v6()
+            .map_err(|_| CheckpointV7Error::StateDigest)?;
         let codec = CheckpointCodecIdentity {
             codec_id: CHECKPOINT_CODEC_ID_V7.to_owned(),
             semantic_version: CHECKPOINT_CODEC_SEMANTIC_VERSION_V7.to_owned(),
@@ -83,11 +85,10 @@ impl EnvironmentCheckpointV7 {
         self.limit_counters
             .validate()
             .map_err(|_| CheckpointV7Error::LimitCounters)?;
-        let actual_state = calculate_full_state_digest_v6(
-            &self.state.materialize(),
-            self.state.card_rules_state.clone(),
-        )
-        .map_err(|_| CheckpointV7Error::StateDigest)?;
+        let actual_state = self
+            .state
+            .full_state_digest_v6()
+            .map_err(|_| CheckpointV7Error::StateDigest)?;
         if actual_state != self.state_digest {
             return Err(CheckpointV7Error::StateDigest);
         }
@@ -102,29 +103,24 @@ impl EnvironmentCheckpointV7 {
             return Err(CheckpointV7Error::CheckpointDigest);
         }
         if !matches!(self.status, EpisodeStatus::Running)
-            && self
-                .state
-                .materialize()
-                .execution
-                .pending_decision
-                .is_some()
+            && self.state.execution_v3.pending_decision.is_some()
         {
             return Err(CheckpointV7Error::CompletedWithDecision);
         }
         Ok(())
     }
 
-    /// Validates and returns the detached successor snapshot. This does not
-    /// admit or expose a current executable backend; catalog admission belongs
-    /// to the eventual atomic runtime activation boundary.
+    /// Validates and returns the structural successor snapshot without making
+    /// a content-admission claim. Executable Magic restore must use
+    /// `restore_with_verified_contracts` before constructing the runtime.
     pub fn restore_detached(&self) -> Result<EngineStatePartsV2, CheckpointV7Error> {
         self.validate()?;
         Ok(self.state.clone())
     }
 
-    /// Verifies the complete immutable contract identity chain needed before
-    /// a later runtime admission can consider this detached state executable.
-    /// This still does not construct or activate a backend.
+    /// Verifies the complete immutable contract identity chain required by
+    /// the executable successor runtime. The runtime calls this before
+    /// accepting a checkpoint for restore or fork.
     pub fn restore_with_verified_contracts(
         &self,
         semantic_manifest: &SemanticContractManifestV1,
@@ -318,6 +314,8 @@ pub enum CheckpointV7Error {
     Identity,
     #[error("checkpoint successor state is structurally invalid")]
     State,
+    #[error("checkpoint pending request is not the complete legal candidate set")]
+    CandidateSet,
     #[error("checkpoint successor state digest does not match")]
     StateDigest,
     #[error("checkpoint digest does not match status, limits, codec, and execution identity")]
@@ -429,16 +427,8 @@ mod tests {
         let forked_after = delta.apply(&forked).unwrap();
         assert_eq!(restored_after, forked_after);
         assert_eq!(
-            mtgml_state::calculate_full_state_digest_v6(
-                &restored_after.materialize(),
-                restored_after.card_rules_state.clone(),
-            )
-            .unwrap(),
-            mtgml_state::calculate_full_state_digest_v6(
-                &forked_after.materialize(),
-                forked_after.card_rules_state.clone(),
-            )
-            .unwrap()
+            restored_after.full_state_digest_v6().unwrap(),
+            forked_after.full_state_digest_v6().unwrap()
         );
     }
 
@@ -671,67 +661,47 @@ mod tests {
     }
 
     #[test]
-    fn restore_and_fork_execute_the_same_response_to_identical_transition_products() {
+    fn restore_and_fork_preserve_the_same_typed_v3_execution_authority() {
         use mtgml_decision::{DecisionAnswerV2, DecisionResponseV2, DECISION_RESPONSE_V2_SCHEMA};
-        use mtgml_model::{CandidateIdV1, PlayerDecisionIdV1, StateRevision};
+        use mtgml_model::CandidateIdV1;
 
         let checkpoint = checkpoint();
         let restored = checkpoint.restore_detached().unwrap();
         let forked_checkpoint = checkpoint.fork_detached().unwrap();
         let forked = forked_checkpoint.restore_detached().unwrap();
+        assert_eq!(restored, forked);
+        assert_eq!(restored.execution_v3, forked.execution_v3);
+        assert_eq!(restored.validate(), Ok(()));
+        assert_eq!(forked.validate(), Ok(()));
+        assert_eq!(
+            restored.full_state_digest_v6(),
+            forked.full_state_digest_v6()
+        );
+
+        let request = restored
+            .execution_v3
+            .pending_decision
+            .as_ref()
+            .expect("fixture has one authoritative V3 request");
         let response = DecisionResponseV2 {
             schema_version: DECISION_RESPONSE_V2_SCHEMA.to_owned(),
-            player_decision_id: PlayerDecisionIdV1(1),
-            state_revision: StateRevision(0),
+            player_decision_id: request.player_decision_id,
+            state_revision: request.state_revision,
             answer: DecisionAnswerV2::SelectOne {
                 candidate_id: CandidateIdV1(0),
             },
         };
-        let actor = PlayerId(1);
-        let mut restored_kernel =
-            mtgml_rules::ProgramKernelV1::for_program(ExecutionProgramV1::SyntheticRulesCompat)
-                .unwrap();
-        let mut forked_kernel =
-            mtgml_rules::ProgramKernelV1::for_program(ExecutionProgramV1::SyntheticRulesCompat)
-                .unwrap();
-        let restored_transition = restored_kernel
-            .apply(&restored.materialize(), actor, &response)
-            .unwrap();
-        let forked_transition = forked_kernel
-            .apply(&forked.materialize(), actor, &response)
-            .unwrap();
-
-        assert_eq!(restored_transition, forked_transition);
-        assert!(restored_transition.accepted);
         assert_eq!(
-            restored_transition
-                .delta
-                .apply(&restored.materialize())
-                .unwrap(),
-            restored_transition.next_state
-        );
-        let restored_successor = EngineStatePartsV2 {
-            predecessor_v5: restored_transition.next_state.parts(),
-            card_rules_state: restored.card_rules_state.clone(),
-        };
-        let forked_successor = EngineStatePartsV2 {
-            predecessor_v5: forked_transition.next_state.parts(),
-            card_rules_state: forked.card_rules_state.clone(),
-        };
-        assert_eq!(restored_successor.validate(), Ok(()));
-        assert_eq!(forked_successor.validate(), Ok(()));
-        assert_eq!(
-            mtgml_state::calculate_full_state_digest_v6(
-                &restored_successor.materialize(),
-                restored_successor.card_rules_state.clone(),
+            restored.execution_v3.selected_bindings(
+                request.actor,
+                restored.predecessor_v5.revision,
+                &response,
+            ),
+            forked.execution_v3.selected_bindings(
+                request.actor,
+                forked.predecessor_v5.revision,
+                &response,
             )
-            .unwrap(),
-            mtgml_state::calculate_full_state_digest_v6(
-                &forked_successor.materialize(),
-                forked_successor.card_rules_state.clone(),
-            )
-            .unwrap()
         );
-        assert_eq!(restored_transition.next_state.revision, StateRevision(1));
     }
 }

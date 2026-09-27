@@ -56,7 +56,7 @@ fn apply_entry_point_dispatches_to_the_synthetic_kernel() {
     // kernel. A rev-0 state with no pending decision is a player-caused
     // rejection; the dispatch itself is the contract under test here.
     let _product = kernel
-        .apply(&state, mtgml_model::PlayerId(1), &select_one_response())
+        .apply_predecessor(&state, mtgml_model::PlayerId(1), &select_one_response())
         .expect("dispatched apply returns the kernel product");
 }
 

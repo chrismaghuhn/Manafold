@@ -7,7 +7,7 @@ rust-version.workspace = true
 [dependencies]
 base64.workspace = true
 mtgml-decision = { path = "../mtgml-decision" }
-mtgml-environment = { path = "../mtgml-environment" }
+mtgml-environment = { path = "../mtgml-environment", features = ["historical-conformance-runtime"] }
 mtgml-model = { path = "../mtgml-model" }
 mtgml-observation = { path = "../mtgml-observation" }
 mtgml-rules = { path = "../mtgml-rules", features = ["synthetic-conformance-fixtures", "magic-conformance-testkit"] }

@@ -412,7 +412,7 @@ fn run_combat_damage_case(
     crate::EnvironmentCheckpointV6,
     crate::EnvironmentCheckpointV6,
     crate::EnvironmentCheckpointV6,
-    mtgml_rules::TransitionResult,
+    mtgml_rules::PredecessorTransitionResult,
 ) {
     let controller = TrustedEnvironmentController::new(damage_backend(combat_damage_fixture(
         attackers,
@@ -1142,7 +1142,7 @@ fn blocker_semantics_require_the_exact_new_contract_and_old_profiles_stay_closed
             contract.clone(),
         )
         .unwrap();
-        assert!(kernel.apply(&pending.state, P2, &response).is_err());
+        assert!(kernel.apply_predecessor(&pending.state, P2, &response).is_err());
         assert!(mtgml_rules::validate_runtime_state_for_contract(
             mtgml_model::ExecutionProgramV1::MagicRules,
             contract,
@@ -2232,7 +2232,7 @@ fn ordinary_draw_uses_s2_and_opens_active_priority() {
     )
     .unwrap();
     assert!(matches!(
-        s3_b_kernel.apply(&frozen_s3_b_before, P2, &draw_priority_response),
+        s3_b_kernel.apply_predecessor(&frozen_s3_b_before, P2, &draw_priority_response),
         Err(mtgml_rules::KernelExecutionError::UnsupportedStagePath)
     ));
     assert_eq!(frozen_s3_b_before, after.state);
@@ -2243,7 +2243,7 @@ fn ordinary_draw_uses_s2_and_opens_active_priority() {
     )
     .unwrap();
     let s3_c_pass = s3_c_kernel
-        .apply(&after.state, P2, &draw_priority_response)
+        .apply_predecessor(&after.state, P2, &draw_priority_response)
         .unwrap();
     assert_eq!(
         s3_c_pass.next_state.core.priority,
@@ -2603,7 +2603,7 @@ fn frozen_noncombat_contracts_reject_combat_priority_states() {
             id,
         )
         .unwrap();
-        assert!(kernel.apply(&combat_state, P1, &response).is_err());
+        assert!(kernel.apply_predecessor(&combat_state, P1, &response).is_err());
     }
     assert_eq!(
         combat_state.core.position,
@@ -2961,7 +2961,7 @@ fn production_basic_priority_final_order_then_priority_is_one_r_plus_two_replay_
         crate::semantic_catalog_generated::magic_s3_b_basic_priority_0_1_0_semantic_contract_id(),
     )
     .unwrap();
-    let final_batch = kernel.apply(&initial.state, P1, &response).unwrap();
+    let final_batch = kernel.apply_predecessor(&initial.state, P1, &response).unwrap();
     assert_eq!(final_batch.next_state.revision.0, initial.state.revision.0 + 1);
     assert!(final_batch
         .events
@@ -2979,7 +2979,7 @@ fn production_basic_priority_final_order_then_priority_is_one_r_plus_two_replay_
         .iter()
         .map(|event| event.event.semantic_delta())
         .collect();
-    let merged = mtgml_rules::TransitionResult {
+    let merged = mtgml_rules::PredecessorTransitionResult {
         accepted: true,
         next_state: opened.next_state.clone(),
         delta: mtgml_state::StateDelta::between(&initial.state, &opened.next_state, merged_audit)
@@ -3595,7 +3595,7 @@ fn combat_damage_semantic_cursor_rejects_assignment_and_consequence_mutants() {
             mtgml_rules::AuthoritativeRuleEventKind::CombatDamageDealt { .. }
         ))
         .unwrap();
-    let mutations: [fn(&mut mtgml_rules::TransitionResult, usize); 7] = [
+    let mutations: [fn(&mut mtgml_rules::PredecessorTransitionResult, usize); 7] = [
         |result, index| {
             if let mtgml_rules::AuthoritativeRuleEventKind::CombatDamageDealt { assignments } =
                 &mut result.events[index].event
@@ -4723,18 +4723,18 @@ fn historical_s3c_draw_second_pass_program_kernel_behavior_is_preserved() {
         .advance_forced_progress(&stable_draw_state_at_upkeep())
         .unwrap();
     let p2_first = current_authoritative_select_one_response(upkeep.next_decision.as_ref().unwrap());
-    let p1_priority = kernel.apply(&upkeep.next_state, P2, &p2_first).unwrap();
+    let p1_priority = kernel.apply_predecessor(&upkeep.next_state, P2, &p2_first).unwrap();
     let p1_first = current_authoritative_select_one_response(p1_priority.next_decision.as_ref().unwrap());
-    let draw_boundary = kernel.apply(&p1_priority.next_state, P1, &p1_first).unwrap();
+    let draw_boundary = kernel.apply_predecessor(&p1_priority.next_state, P1, &p1_first).unwrap();
     let draw_open = kernel.advance_forced_progress(&draw_boundary.next_state).unwrap();
     let p2_draw_pass = current_authoritative_select_one_response(draw_open.next_decision.as_ref().unwrap());
-    let p1_draw_priority = kernel.apply(&draw_open.next_state, P2, &p2_draw_pass).unwrap();
+    let p1_draw_priority = kernel.apply_predecessor(&draw_open.next_state, P2, &p2_draw_pass).unwrap();
     let p1_draw_pass = current_authoritative_select_one_response(p1_draw_priority.next_decision.as_ref().unwrap());
     let before = &p1_draw_priority.next_state;
     let pending_before = before.execution.pending_decision.as_ref().unwrap();
     let old_priority = before.core.priority;
     let old_position = before.core.position;
-    let closed = kernel.apply(before, P1, &p1_draw_pass).unwrap();
+    let closed = kernel.apply_predecessor(before, P1, &p1_draw_pass).unwrap();
 
     assert!(closed.accepted);
     assert_eq!(closed.next_state.core.position, TurnPosition::PrecombatMain);
@@ -4762,13 +4762,13 @@ fn historical_combat_damage_second_postcombat_pass_program_kernel_behavior_is_pr
         .advance_forced_progress(&stable_state_at(TurnPosition::PostcombatMain))
         .unwrap();
     let p1_first = current_authoritative_select_one_response(opened.next_decision.as_ref().unwrap());
-    let p2_priority = kernel.apply(&opened.next_state, P1, &p1_first).unwrap();
+    let p2_priority = kernel.apply_predecessor(&opened.next_state, P1, &p1_first).unwrap();
     let p2_second = current_authoritative_select_one_response(p2_priority.next_decision.as_ref().unwrap());
     let before = &p2_priority.next_state;
     let pending_before = before.execution.pending_decision.as_ref().unwrap();
     let old_priority = before.core.priority;
     let old_position = before.core.position;
-    let closed = kernel.apply(before, P2, &p2_second).unwrap();
+    let closed = kernel.apply_predecessor(before, P2, &p2_second).unwrap();
 
     assert!(closed.accepted);
     assert_eq!(

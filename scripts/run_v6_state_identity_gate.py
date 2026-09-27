@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""S3.P0 current V5-state/V6-checkpoint-and-replay identity gate."""
+"""Preserve V5/V6 historical identities and enforce the M4 successor cut."""
 
 from __future__ import annotations
 
@@ -28,10 +28,17 @@ REQUIRED: tuple[tuple[str, str], ...] = (
         '"environment-checkpoint-digest-input.v6"',
     ),
     ("crates/mtgml-environment/src/checkpoint.rs", "pub struct EnvironmentCheckpointV6"),
+    ("crates/mtgml-environment/src/controller.rs", "pub use crate::controller_successor::*;"),
+    ("crates/mtgml-environment/src/endpoint.rs", "pub use crate::endpoint_successor::*;"),
     (
-        "crates/mtgml-environment/src/controller.rs",
-        "Result<EnvironmentCheckpointV6, ControllerError>",
+        "crates/mtgml-environment/src/controller_successor.rs",
+        "Result<EnvironmentCheckpointV7, ControllerError>",
     ),
+    ("crates/mtgml-environment/src/successor_runtime.rs", "pub struct SuccessorEnvironmentRuntime"),
+    ("crates/mtgml-environment/src/checkpoint_v7.rs", "pub struct EnvironmentCheckpointV7"),
+    ("crates/mtgml-environment/src/replay_v7_execution.rs", "execute_authoritative_replay_v7"),
+    ("crates/mtgml-rules/src/transition.rs", "state: &mtgml_state::EngineStatePartsV2"),
+    ("crates/mtgml-state/src/engine_state_parts_v2.rs", "pub struct EngineStatePartsV2"),
     ("crates/mtgml-environment/src/synthetic.rs", "ReplayRecorderV6"),
     ("crates/mtgml-environment/src/reference.rs", "ReplayRecorderV6"),
     ("crates/mtgml-replay/src/lib.rs", "AuthoritativeReplayV6"),
@@ -98,6 +105,37 @@ def main() -> None:
             if token in content:
                 failures.append(f"{relative}: current consumer still uses {token}")
 
+    environment_lib = (ROOT / "crates/mtgml-environment/src/lib.rs").read_text(encoding="utf-8")
+    successor_cut_requirements = (
+        '#[cfg(any(test, feature = "historical-conformance-runtime"))]\n'
+        '#[path = "controller_predecessor.rs"]\nmod controller;',
+        '#[cfg(not(any(test, feature = "historical-conformance-runtime")))]\nmod controller;',
+        '#[cfg(any(test, feature = "historical-conformance-runtime"))]\n'
+        '#[path = "endpoint_predecessor.rs"]\nmod endpoint;',
+        '#[cfg(not(any(test, feature = "historical-conformance-runtime")))]\nmod endpoint;',
+        '#[cfg(not(any(test, feature = "historical-conformance-runtime")))]\n'
+        "pub type CurrentPlayerStep = mtgml_observation::PlayerStepV3;",
+    )
+    for required in successor_cut_requirements:
+        if required not in environment_lib:
+            failures.append(
+                "environment default authority does not select the V7/V3 successor path"
+            )
+
+    for relative in (
+        "crates/mtgml-environment/src/controller.rs",
+        "crates/mtgml-environment/src/endpoint.rs",
+    ):
+        content = (ROOT / relative).read_text(encoding="utf-8")
+        for token in (
+            "EnvironmentCheckpointV6",
+            "AuthoritativeReplayV6",
+            "PlayerStepV2",
+            "PlayerDecisionRequestV2",
+        ):
+            if token in content:
+                failures.append(f"{relative}: predecessor runtime API remains current via {token}")
+
     # Old identities remain available only in their explicitly versioned
     # historical verifier/type families and their frozen fixtures.
     historical_requirements = (
@@ -123,8 +161,9 @@ def main() -> None:
         for failure in failures:
             print(f"  - {failure}")
         raise SystemExit(1)
-    print("PASS: current FullStateDigestV5 / Checkpoint V6 / Replay V6 identity chain")
-    print("PASS: current writers use V6; V4/V5 exact historical evidence remains present")
+    print("PASS: V5/V6 identity definitions, codecs and historical fixtures remain exact")
+    print("PASS: default environment/controller/endpoint select successor V7/V3 authority")
+    print("PASS: predecessor executable adapters are isolated behind test/conformance cfg")
 
 
 if __name__ == "__main__":

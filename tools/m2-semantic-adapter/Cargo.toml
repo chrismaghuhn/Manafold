@@ -9,7 +9,7 @@ publish = false
 base64.workspace = true
 getrandom.workspace = true
 mtgml-decision = { path = "../../crates/mtgml-decision" }
-mtgml-environment = { path = "../../crates/mtgml-environment" }
+mtgml-environment = { path = "../../crates/mtgml-environment", features = ["historical-conformance-runtime"] }
 mtgml-model = { path = "../../crates/mtgml-model" }
 mtgml-observation = { path = "../../crates/mtgml-observation" }
 mtgml-random = { path = "../../crates/mtgml-random" }

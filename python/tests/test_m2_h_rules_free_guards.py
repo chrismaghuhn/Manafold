@@ -339,12 +339,20 @@ class RulesFreeStaticGuardsTests(unittest.TestCase):
         protocol_classes = [
             node
             for node in protocol_tree.body
-            if isinstance(node, ast.ClassDef) and node.name == PROTOCOL_CLASS_NAME
+            if isinstance(node, ast.ClassDef)
+            and node.name in {PROTOCOL_CLASS_NAME, "HistoricalPlayerClientV2"}
         ]
-        self.assertEqual(len(protocol_classes), 1, "expected exactly one PlayerClient")
+        self.assertEqual(
+            {node.name for node in protocol_classes},
+            {PROTOCOL_CLASS_NAME, "HistoricalPlayerClientV2"},
+            "expected current V3 and explicit historical V2 protocols",
+        )
+        current_protocol = next(
+            node for node in protocol_classes if node.name == PROTOCOL_CLASS_NAME
+        )
         protocol_methods = {
             node.name
-            for node in protocol_classes[0].body
+            for node in current_protocol.body
             if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
             and not node.name.startswith("_")
         }
@@ -374,7 +382,7 @@ class RulesFreeStaticGuardsTests(unittest.TestCase):
         assert returns is not None
         self.assertEqual(
             ast.unparse(returns),
-            PROTOCOL_CLASS_NAME,
+            "HistoricalPlayerClientV2",
             "the protocol witness no longer proves AdapterPlayerClient satisfies PlayerClient",
         )
 

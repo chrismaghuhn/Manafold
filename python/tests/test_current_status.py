@@ -16,8 +16,10 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             r"\*\*Foundation closure/freeze:\*\* `COMPLETE`",
         )
         self.assertIn(
-            "**Current status:** M3 is complete and final acceptance passed; M4 is unblocked "
-            "and content implementation has not started",
+            "**Current status:** M3 is complete and final acceptance passed; M4.2 Phase 10 "
+            "successor-runtime implementation is under review on the integration branch. "
+            "`master` remains on the predecessor V5/V6 runtime until the separate Phase 13 "
+            "activation boundary; M4.2 is not complete.",
             readme,
         )
         self.assertNotIn(
@@ -137,10 +139,15 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("0` are certified", readme)
         self.assertIn("**Playable engine:** no", readme)
         self.assertIn("**Real card support:** none", readme)
-        self.assertIn("**Current resumable execution contract:** V6.", readme)
+        self.assertIn("**Current resumable execution contract on `master`:** V6.", readme)
+        self.assertRegex(
+            readme,
+            r"The M4\s+successor integration branch has migrated its sole executable runtime",
+        )
+        self.assertIn("historical read/verification only", readme)
         self.assertIn("`EnvironmentCheckpointV6`", readme)
         self.assertIn("`CheckpointDigestV6`", readme)
-        self.assertRegex(readme, r"V4/V5 artifacts retain their historical\s+meanings")
+        self.assertRegex(readme, r"V4/V5 artifacts retain their\s+historical meanings")
         self.assertNotIn("M3 Pre-T0 plan hardening under Issue #178", readme)
         self.assertNotIn("HARDENED_PLAN_MERGE_AND_EXACT_MASTER_REAUTHORIZATION", readme)
         self.assertNotIn(

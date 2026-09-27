@@ -23,6 +23,631 @@ use mtgml_replay::{
 
 mod magic_basic_land_observation;
 
+#[test]
+fn successor_event_projection_uses_only_policy_authorized_opaque_identity() {
+    use mtgml_rules::{
+        AuthoritativeRuleEventKindV2, AuthoritativeRuleEventV2, SuccessorObservationPolicyV1,
+    };
+    use mtgml_state::{
+        EngineStatePartsV2, PerspectiveLifecycleAuditV1, PerspectiveLifecycleMutationV1,
+    };
+
+    let before = magic_basic_land_observation::basic_land_parts(seed());
+    let before_engine = before.materialize();
+    let object = before_engine
+        .zones
+        .objects
+        .keys()
+        .copied()
+        .find(|object| {
+            before_engine.zones.locations[object].zone == mtgml_model::ZoneKind::Battlefield
+        })
+        .unwrap();
+    let mut after_engine = before_engine.clone();
+    let next_revision = StateRevision(before_engine.revision.0 + 1);
+    after_engine.revision = next_revision;
+    after_engine.zones.objects.get_mut(&object).unwrap().tapped = true;
+    let perspective = PlayerId(1);
+    let sequence = after_engine
+        .knowledge
+        .players
+        .get(&perspective)
+        .unwrap()
+        .next_visible_sequence;
+    let audit = PerspectiveLifecycleAuditV1 {
+        perspective,
+        sequence,
+        mutation: PerspectiveLifecycleMutationV1::default(),
+    };
+    mtgml_state::apply_perspective_lifecycle(&mut after_engine, &audit).unwrap();
+    let after = EngineStatePartsV2::from_state(&after_engine, before.card_rules_state.clone());
+    let opaque =
+        before_engine.perspective_identities.players[&perspective].object_to_opaque[&object];
+    let event = AuthoritativeRuleEventV2 {
+        event_id: mtgml_model::RuleEventId(1),
+        state_revision: next_revision,
+        event: AuthoritativeRuleEventKindV2::PerspectiveOccurrence {
+            lifecycle: Box::new(audit),
+            observation: SuccessorObservationPolicyV1::ObjectTapped {
+                object,
+                tapped: true,
+            },
+        },
+    };
+
+    let projected =
+        crate::successor_projection::project_successor_events_v3(&before, &after, &[event])
+            .unwrap();
+    assert!(matches!(
+        projected[&perspective][0].event,
+        mtgml_observation::ObservedEventKindV3::ObjectTapped { object, tapped: true }
+            if object == opaque
+    ));
+    assert!(projected[&PlayerId(2)].is_empty());
+    assert_eq!(
+        after.predecessor_v5.knowledge.players[&perspective]
+            .next_visible_sequence
+            .0,
+        sequence.0 + 1
+    );
+}
+
+#[test]
+fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
+    use mtgml_card_ir::{
+        admit_executable_profile_v1, decode_content_manifest_v1, ExecutableProfileAdmissionV1,
+    };
+    use mtgml_model::{ContentContractIdV1, EnvironmentLimitCounters};
+    use mtgml_observation::ObservedEventKindV3;
+    use mtgml_replay::ReplayManifestV7;
+    use mtgml_state::EngineStatePartsV2;
+
+    fn admitted_profile() -> (ExecutableProfileAdmissionV1, ReplayManifestV7) {
+        let content_bytes =
+            include_bytes!("../../../cards/definitions/basic-land-v1/content-contract.v1.cbor");
+        let provenance_bytes =
+            include_bytes!("../../../cards/definitions/basic-land-v1/provenance.v1.cbor");
+        let manifest: ReplayManifestV7 = serde_json::from_str(include_str!(
+            "../../../schemas/examples/replay-manifest-v7-phase9-admitted-basic-land.json"
+        ))
+        .unwrap();
+        let content = manifest
+            .semantic_contract
+            .content_contract
+            .as_ref()
+            .unwrap();
+        let content_id = ContentContractIdV1::parse(content.content_contract_id.as_str()).unwrap();
+        let admission = admit_executable_profile_v1(
+            content_bytes,
+            &content_id,
+            provenance_bytes,
+            &manifest.semantic_contract.rules_manifest,
+            &manifest.semantic_contract.manifest,
+            &manifest.execution_identity,
+        )
+        .unwrap();
+        let _ = decode_content_manifest_v1(content_bytes).unwrap();
+        (admission, manifest)
+    }
+
+    let (admission, mut manifest) = admitted_profile();
+    let mut state = magic_basic_land_observation::basic_land_parts(seed());
+    let catalog_manifest = decode_content_manifest_v1(include_bytes!(
+        "../../../cards/definitions/basic-land-v1/content-contract.v1.cbor"
+    ))
+    .unwrap();
+    let definitions = catalog_manifest
+        .definitions
+        .iter()
+        .map(|definition| definition.card_definition_id)
+        .collect::<Vec<_>>();
+    let mut engine = state.materialize();
+    for (index, object) in engine.zones.objects.values_mut().enumerate() {
+        object.card_definition = definitions[index % definitions.len()];
+    }
+    let actor = PlayerId(2);
+    let hand_object = engine
+        .zones
+        .locations
+        .iter()
+        .find_map(|(object, location)| {
+            (location.zone == mtgml_model::ZoneKind::Library && location.player == Some(actor))
+                .then_some(*object)
+        })
+        .unwrap();
+    let previous_location = engine.zones.locations[&hand_object].clone();
+    if matches!(
+        previous_location.position,
+        mtgml_state::ZonePosition::Top { .. }
+    ) {
+        let previous_key = previous_location.key();
+        let ordered = engine.zones.ordered_zones.get_mut(&previous_key).unwrap();
+        ordered.retain(|object| *object != hand_object);
+        if ordered.is_empty() {
+            engine.zones.ordered_zones.remove(&previous_key);
+        }
+    }
+    let hand_location = mtgml_state::ZoneLocation {
+        zone: mtgml_model::ZoneKind::Hand,
+        player: Some(actor),
+        position: mtgml_state::ZonePosition::Top { offset: 0 },
+        visibility: mtgml_state::VisibilityPartition::OwnerOnly,
+        partition: None,
+    };
+    let hand_key = hand_location.key();
+    engine
+        .zones
+        .ordered_zones
+        .entry(hand_key)
+        .or_default()
+        .push(hand_object);
+    engine
+        .zones
+        .locations
+        .insert(hand_object, hand_location.clone());
+    let opaque = {
+        let identity = engine
+            .perspective_identities
+            .players
+            .get_mut(&actor)
+            .unwrap();
+        let opaque = if let Some(existing) = identity.object_to_opaque.get(&hand_object) {
+            *existing
+        } else {
+            let opaque = identity.next_opaque_object_id;
+            identity.next_opaque_object_id.0 += 1;
+            identity.object_to_opaque.insert(hand_object, opaque);
+            identity.opaque_to_object.insert(opaque, hand_object);
+            opaque
+        };
+        opaque
+    };
+    engine
+        .knowledge
+        .players
+        .get_mut(&actor)
+        .unwrap()
+        .active
+        .insert(
+            opaque,
+            mtgml_state::KnowledgeRecordV2 {
+                opaque_object: opaque,
+                physical_card: engine.zones.objects[&hand_object].physical_card,
+                card_definition: Some(engine.zones.objects[&hand_object].card_definition),
+                known_location: Some(mtgml_state::KnownLocationFactV2 {
+                    location: hand_location,
+                    provenance: mtgml_state::KnowledgeAcquisitionReason::InitialConfiguration,
+                }),
+                acquisition: mtgml_state::KnowledgeAcquisitionReason::InitialConfiguration,
+                historical_locations: Vec::new(),
+            },
+        );
+    engine.core.position = mtgml_state::TurnPosition::PrecombatMain;
+    engine.core.active_player = actor;
+    engine.core.priority = mtgml_state::PriorityState::HeldBy {
+        player: actor,
+        consecutive_passes: 0,
+    };
+    state = EngineStatePartsV2::from_state(&engine, state.card_rules_state.clone());
+    state
+        .card_rules_state
+        .mana
+        .add(
+            actor,
+            mtgml_state::ManaColorV1::Red,
+            mtgml_state::ManaRestrictionV1::Unrestricted,
+            1,
+        )
+        .unwrap();
+    state.execution_v3.pending_decision = None;
+    state.validate().unwrap();
+
+    let install_kernel =
+        mtgml_rules::ProgramKernelV1::for_executable_profile(admission.clone()).unwrap();
+    let request = install_kernel
+        .install_successor_request(&mut state, actor, &EpisodeStatus::Running)
+        .unwrap();
+    let before_checkpoint = EnvironmentCheckpointV7::new(
+        state.clone(),
+        EpisodeStatus::Running,
+        EnvironmentLimitCounters::default(),
+        admission.execution_identity().clone(),
+    )
+    .unwrap();
+    let mut second_deck = manifest.decks.first().unwrap().clone();
+    second_deck.player = actor;
+    second_deck.deck_id = "deck:synthetic-p2".to_owned();
+    manifest.decks.push(second_deck);
+    manifest.decks.sort_by_key(|deck| deck.player);
+    manifest.initial_identity = mtgml_replay::InitialEnvironmentIdentityV7 {
+        state_revision: state.predecessor_v5.revision,
+        full_state_digest: before_checkpoint.state_digest.clone(),
+        episode_status: EpisodeStatus::Running,
+        environment_limit_counters: EnvironmentLimitCounters::default(),
+        checkpoint_codec_identity: before_checkpoint.codec.clone(),
+        checkpoint_digest: before_checkpoint.checkpoint_digest.clone(),
+        execution_identity: admission.execution_identity().clone(),
+    };
+
+    // A structurally valid, self-consistent checkpoint must still prove that
+    // its stored request contains the complete RulesKernel candidate surface.
+    let mut incomplete_state = before_checkpoint.state.clone();
+    let incomplete_request = incomplete_state
+        .execution_v3
+        .pending_decision
+        .as_mut()
+        .unwrap();
+    let removed_candidate = incomplete_request
+        .candidates
+        .iter()
+        .position(|candidate| {
+            matches!(
+                candidate.visible_intent,
+                mtgml_decision::CandidateIntentV3::PlayLand { .. }
+            )
+        })
+        .expect("fixture has a legal PlayLand candidate");
+    incomplete_request.candidates.remove(removed_candidate);
+    for (index, candidate) in incomplete_request.candidates.iter_mut().enumerate() {
+        candidate.candidate_id = CandidateIdV1(index as u32);
+    }
+    let incomplete_checkpoint = EnvironmentCheckpointV7::new(
+        incomplete_state.clone(),
+        EpisodeStatus::Running,
+        EnvironmentLimitCounters::default(),
+        admission.execution_identity().clone(),
+    )
+    .unwrap();
+    let incomplete_manifest = {
+        let mut manifest = manifest.clone();
+        manifest.initial_identity = mtgml_replay::InitialEnvironmentIdentityV7 {
+            state_revision: incomplete_checkpoint.state.predecessor_v5.revision,
+            full_state_digest: incomplete_checkpoint.state_digest.clone(),
+            episode_status: incomplete_checkpoint.status.clone(),
+            environment_limit_counters: incomplete_checkpoint.limit_counters.clone(),
+            checkpoint_codec_identity: incomplete_checkpoint.codec.clone(),
+            checkpoint_digest: incomplete_checkpoint.checkpoint_digest.clone(),
+            execution_identity: admission.execution_identity().clone(),
+        };
+        manifest
+    };
+    assert!(crate::SuccessorEnvironmentRuntime::new(
+        admission.clone(),
+        incomplete_state,
+        EpisodeStatus::Running,
+        EnvironmentLimitCounters::default(),
+        incomplete_manifest.clone(),
+    )
+    .is_err());
+    let empty_incomplete_replay = mtgml_replay::ReplayRecorderV7::new(incomplete_manifest)
+        .unwrap()
+        .export()
+        .unwrap();
+    assert!(crate::replay_v7_execution::execute_authoritative_replay_v7(
+        admission.clone(),
+        incomplete_checkpoint.clone(),
+        empty_incomplete_replay,
+    )
+    .is_err());
+
+    let mut runtime = crate::SuccessorEnvironmentRuntime::new(
+        admission.clone(),
+        state,
+        EpisodeStatus::Running,
+        EnvironmentLimitCounters::default(),
+        manifest,
+    )
+    .unwrap();
+    let runtime_before_bad_restore = runtime.checkpoint().unwrap();
+    let replay_before_bad_restore = runtime.export_replay().unwrap();
+    assert!(runtime.restore(incomplete_checkpoint).is_err());
+    assert_eq!(runtime.checkpoint().unwrap(), runtime_before_bad_restore);
+    assert_eq!(runtime.export_replay().unwrap(), replay_before_bad_restore);
+    runtime.restore(before_checkpoint.clone()).unwrap();
+    assert_eq!(runtime.checkpoint().unwrap(), before_checkpoint);
+    assert_eq!(
+        runtime.visible_decision(actor).unwrap().as_ref(),
+        Some(&request.project_player_request().unwrap())
+    );
+
+    let valid_candidate = request.candidates[0].candidate_id;
+    let mut mismatched_revision = DecisionResponseV2 {
+        schema_version: DECISION_RESPONSE_V2_SCHEMA.to_owned(),
+        player_decision_id: request.player_decision_id,
+        state_revision: request.state_revision,
+        answer: DecisionAnswerV2::SelectOne {
+            candidate_id: valid_candidate,
+        },
+    };
+    mismatched_revision.state_revision = mtgml_model::StateRevision(
+        request
+            .state_revision
+            .0
+            .checked_add(1)
+            .expect("test revision fits"),
+    );
+    let mut wrong_decision = DecisionResponseV2 {
+        schema_version: DECISION_RESPONSE_V2_SCHEMA.to_owned(),
+        player_decision_id: request.player_decision_id,
+        state_revision: request.state_revision,
+        answer: DecisionAnswerV2::SelectOne {
+            candidate_id: valid_candidate,
+        },
+    };
+    wrong_decision.player_decision_id = mtgml_model::PlayerDecisionIdV1(
+        request
+            .player_decision_id
+            .0
+            .checked_add(1)
+            .expect("test identity fits"),
+    );
+    let invalid_submissions = [
+        (
+            actor,
+            DecisionResponseV2 {
+                schema_version: DECISION_RESPONSE_V2_SCHEMA.to_owned(),
+                player_decision_id: request.player_decision_id,
+                state_revision: request.state_revision,
+                answer: DecisionAnswerV2::SelectOne {
+                    candidate_id: CandidateIdV1(u32::MAX),
+                },
+            },
+        ),
+        (actor, mismatched_revision),
+        (actor, wrong_decision),
+        (
+            request
+                .candidates
+                .iter()
+                .find_map(|_| {
+                    before_checkpoint
+                        .state
+                        .predecessor_v5
+                        .core
+                        .players
+                        .keys()
+                        .copied()
+                        .find(|player| *player != actor)
+                })
+                .expect("two-player fixture has another actor"),
+            DecisionResponseV2 {
+                schema_version: DECISION_RESPONSE_V2_SCHEMA.to_owned(),
+                player_decision_id: request.player_decision_id,
+                state_revision: request.state_revision,
+                answer: DecisionAnswerV2::SelectOne {
+                    candidate_id: valid_candidate,
+                },
+            },
+        ),
+    ];
+    for (submitted_actor, response) in invalid_submissions {
+        let mut rejected_runtime = runtime.fork().unwrap();
+        let before_rejection = rejected_runtime.checkpoint().unwrap();
+        let replay_before_rejection = rejected_runtime.export_replay().unwrap();
+        let replay_bytes_before_rejection =
+            mtgml_wire::encode_canonical(&replay_before_rejection).unwrap();
+        let result = rejected_runtime.submit(submitted_actor, response);
+        if let Ok(rejected) = result {
+            assert!(!rejected.transition.accepted);
+            assert_eq!(rejected.checkpoint, before_rejection);
+            assert!(rejected.transition.events.is_empty());
+            assert!(rejected
+                .player_steps
+                .values()
+                .all(|step| step.observed_events.is_empty()));
+        }
+        assert_eq!(rejected_runtime.checkpoint().unwrap(), before_rejection);
+        let replay_after_rejection = rejected_runtime.export_replay().unwrap();
+        assert_eq!(replay_after_rejection, replay_before_rejection);
+        assert_eq!(
+            mtgml_wire::encode_canonical(&replay_after_rejection).unwrap(),
+            replay_bytes_before_rejection,
+            "rejected responses must not mutate replay/history bytes"
+        );
+    }
+
+    let fork = runtime.fork().unwrap();
+    let candidate = request
+        .candidates
+        .iter()
+        .find(|candidate| {
+            matches!(
+                candidate.visible_intent,
+                mtgml_decision::CandidateIntentV3::PlayLand { .. }
+            )
+        })
+        .unwrap();
+    let response = DecisionResponseV2 {
+        schema_version: DECISION_RESPONSE_V2_SCHEMA.to_owned(),
+        player_decision_id: request.player_decision_id,
+        state_revision: request.state_revision,
+        answer: DecisionAnswerV2::SelectOne {
+            candidate_id: candidate.candidate_id,
+        },
+    };
+    let controller =
+        crate::controller_successor::TrustedEnvironmentController::new(runtime.fork().unwrap());
+    let endpoint = controller.bind_player(actor).unwrap();
+    use crate::endpoint_successor::PlayerEndpoint as _;
+    assert_eq!(
+        endpoint.visible_decision().unwrap(),
+        Some(request.project_player_request().unwrap())
+    );
+    let controller_step = endpoint.submit(response.clone()).unwrap();
+    let controller_checkpoint = controller.checkpoint().unwrap();
+
+    let output = runtime.submit(actor, response.clone()).unwrap();
+    let fork_output = {
+        let mut fork = fork;
+        fork.submit(actor, response.clone()).unwrap()
+    };
+    assert_eq!(
+        output, fork_output,
+        "direct and forked runtime products match"
+    );
+    assert_eq!(controller_step, output.player_steps[&actor]);
+    assert_eq!(controller_checkpoint, output.checkpoint);
+    assert!(output.transition.accepted);
+    assert_eq!(output.checkpoint.state, *runtime.state());
+    assert_eq!(output.player_steps.len(), 2);
+    assert_eq!(
+        output.player_steps[&actor]
+            .next_decision
+            .as_ref()
+            .unwrap()
+            .candidates
+            .len(),
+        output
+            .transition
+            .next_decision
+            .as_ref()
+            .unwrap()
+            .candidates
+            .len()
+    );
+    assert!(output.player_steps[&actor]
+        .observed_events
+        .iter()
+        .any(|event| matches!(event.event, ObservedEventKindV3::ObjectMoved { .. })));
+    let replay = runtime.export_replay().unwrap();
+    replay.validate().unwrap();
+
+    let replayed = runtime.execute_replay(replay.clone()).unwrap();
+    assert_eq!(replayed.final_checkpoint, output.checkpoint);
+    assert_eq!(replayed.transitions.len(), 1);
+    assert_eq!(replayed.transitions[0].transition, output.transition);
+    assert_eq!(replayed.transitions[0].player_steps, output.player_steps);
+
+    let mut tampered = replay;
+    tampered.steps[0].response.answer = DecisionAnswerV2::SelectOne {
+        candidate_id: CandidateIdV1(u32::MAX),
+    };
+    assert!(crate::replay_v7_execution::execute_authoritative_replay_v7(
+        admission.clone(),
+        before_checkpoint,
+        tampered,
+    )
+    .is_err());
+
+    // Two priority passes close the current window atomically: pools empty,
+    // turn position advances, and the next V3 decision is already installed.
+    let make_pass_response = |request: &mtgml_decision::PlayerDecisionRequestV3| {
+        let pass = request
+            .candidates
+            .iter()
+            .find(|candidate| {
+                matches!(
+                    candidate.intent,
+                    mtgml_decision::CandidateIntentV3::PassPriority
+                )
+            })
+            .expect("priority request exposes pass");
+        DecisionResponseV2 {
+            schema_version: DECISION_RESPONSE_V2_SCHEMA.to_owned(),
+            player_decision_id: request.player_decision_id,
+            state_revision: request.state_revision,
+            answer: DecisionAnswerV2::SelectOne {
+                candidate_id: pass.candidate_id,
+            },
+        }
+    };
+    let active_request = runtime.visible_decision(actor).unwrap().unwrap();
+    let first_pass = runtime
+        .submit(actor, make_pass_response(&active_request))
+        .unwrap();
+    assert!(first_pass.transition.accepted);
+    let nonactive = first_pass.transition.next_decision.as_ref().unwrap().actor;
+    assert_ne!(nonactive, actor);
+    let nonactive_request = runtime.visible_decision(nonactive).unwrap().unwrap();
+    let second_pass = runtime
+        .submit(nonactive, make_pass_response(&nonactive_request))
+        .unwrap();
+    assert!(second_pass.transition.accepted);
+    assert_eq!(
+        second_pass.checkpoint.state.predecessor_v5.core.position,
+        mtgml_state::TurnPosition::Combat {
+            step: mtgml_state::CombatStep::BeginningOfCombat,
+        }
+    );
+    assert_eq!(
+        second_pass.checkpoint.state.predecessor_v5.core.priority,
+        mtgml_state::PriorityState::HeldBy {
+            player: actor,
+            consecutive_passes: 0,
+        }
+    );
+    assert_eq!(
+        second_pass.checkpoint.state.card_rules_state.mana.pools[&actor],
+        mtgml_state::ManaPoolV1::default()
+    );
+    assert_eq!(
+        second_pass
+            .transition
+            .next_decision
+            .as_ref()
+            .map(|request| request.actor),
+        Some(actor),
+        "accepted progress may not expose Running without a decision"
+    );
+    let mut missing_pool_clear = second_pass.transition.clone();
+    let clear_operation = missing_pool_clear
+        .delta
+        .operations
+        .iter()
+        .position(|operation| {
+            matches!(
+                operation,
+                mtgml_state::SemanticDeltaOperationV2::ManaPoolEmptied { .. }
+            )
+        })
+        .unwrap();
+    missing_pool_clear.delta.operations.remove(clear_operation);
+    missing_pool_clear.delta = mtgml_state::StateDeltaV2::between(
+        &first_pass.checkpoint.state,
+        &missing_pool_clear.next_state,
+        missing_pool_clear.delta.operations.clone(),
+    )
+    .unwrap();
+    assert!(mtgml_rules::validate_successor_transition_contract(
+        &admission,
+        &first_pass.checkpoint.state,
+        &missing_pool_clear,
+    )
+    .is_err());
+
+    // Beginning of Combat flows to the attacker declaration boundary. This
+    // admitted profile has no attacker-declaration producer, so it must fail
+    // closed rather than fabricate another ordinary priority request.
+    let beginning_combat_request = runtime.visible_decision(actor).unwrap().unwrap();
+    let beginning_combat_first_pass = runtime
+        .submit(actor, make_pass_response(&beginning_combat_request))
+        .unwrap();
+    assert!(beginning_combat_first_pass.transition.accepted);
+    let next_actor = beginning_combat_first_pass
+        .transition
+        .next_decision
+        .as_ref()
+        .unwrap()
+        .actor;
+    let before_unsupported_boundary = runtime.checkpoint().unwrap();
+    let replay_before_unsupported_boundary = runtime.export_replay().unwrap();
+    let replay_bytes_before_unsupported_boundary =
+        serde_json::to_vec(&replay_before_unsupported_boundary).unwrap();
+    let next_request = runtime.visible_decision(next_actor).unwrap().unwrap();
+    assert!(runtime
+        .submit(next_actor, make_pass_response(&next_request))
+        .is_err());
+    assert_eq!(runtime.checkpoint().unwrap(), before_unsupported_boundary);
+    assert_eq!(
+        runtime.export_replay().unwrap(),
+        replay_before_unsupported_boundary
+    );
+    assert_eq!(
+        serde_json::to_vec(&runtime.export_replay().unwrap()).unwrap(),
+        replay_bytes_before_unsupported_boundary
+    );
+}
+
 fn config(players: [PlayerId; 2]) -> SyntheticRulesEnvironmentConfig {
     SyntheticRulesEnvironmentConfig {
         codec: CheckpointCodecIdentity {
@@ -367,7 +992,7 @@ fn public_fingerprint(controller: &TrustedEnvironmentController) -> Vec<u8> {
 
 use mtgml_model::{GameObjectId, VisibleSequence};
 
-use mtgml_rules::TransitionResult;
+use mtgml_rules::PredecessorTransitionResult;
 
 use mtgml_state::{construct_synthetic_engine_state, EngineState};
 
@@ -430,7 +1055,7 @@ fn hidden_hand(player: PlayerId) -> mtgml_state::ZoneLocation {
 
 /// Reveal GO3 to P1 (opaque 2) and then track it through an incarnation
 /// change into a hidden zone. Returns the product of the single transition.
-fn tracked_incarnation_product() -> Result<(EngineState, TransitionResult), ()> {
+fn tracked_incarnation_product() -> Result<(EngineState, PredecessorTransitionResult), ()> {
     use mtgml_rules::fixture_support::{FixtureTransition, PlannedOccurrence};
     let before = m2e_fixture();
     let mut transition = FixtureTransition::start(&before).map_err(|_| ())?;
@@ -500,7 +1125,7 @@ fn tracked_incarnation_product() -> Result<(EngineState, TransitionResult), ()> 
     Ok((before, result))
 }
 
-fn two_perspective_outcome_product() -> (EngineState, TransitionResult) {
+fn two_perspective_outcome_product() -> (EngineState, PredecessorTransitionResult) {
     use mtgml_rules::fixture_support::{FixtureTransition, PlannedOccurrence};
 
     let before = m2e_fixture();

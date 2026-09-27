@@ -115,6 +115,20 @@ fn mountain_plains_derive_the_closed_roots_and_recursive_registry_closure() {
 
     assert_eq!(admission.content_contract_id(), &id);
     assert_eq!(
+        admission.verified_catalog().content_contract_id(),
+        &id,
+        "runtime admission must retain the exact verified catalog it admitted"
+    );
+    for definition in &decoded.definitions {
+        assert_eq!(
+            admission
+                .verified_catalog()
+                .get(&id, definition.card_definition_id)
+                .unwrap(),
+            definition
+        );
+    }
+    assert_eq!(
         admission.direct_requirement_roots(),
         vec![
             requirement("rules/basic-land-mana"),

@@ -135,7 +135,7 @@ fn execution_authority(
     )
 }
 
-fn basic_land_parts(root_seed: mtgml_random::RootSeed256) -> EngineStatePartsV2 {
+pub(crate) fn basic_land_parts(root_seed: mtgml_random::RootSeed256) -> EngineStatePartsV2 {
     let mut state =
         mtgml_state::construct_synthetic_engine_state(mtgml_state::SyntheticResetInputs {
             players: [PlayerId(1), PlayerId(2)],
@@ -470,10 +470,10 @@ fn trusted_game_object_renaming_preserves_public_observation_and_information_byt
         }
     }
     renamed.predecessor_v5.allocators.next_object_id = mtgml_model::GameObjectId(new_id.0 + 1);
-    if let Some(pending) = renamed.predecessor_v5.execution.pending_decision.as_mut() {
-        for candidate in &mut pending.request.candidates {
+    if let Some(pending) = renamed.execution_v3.pending_decision.as_mut() {
+        for candidate in &mut pending.candidates {
             match &mut candidate.trusted_binding {
-                mtgml_decision::EngineCandidateBinding::SelectObject { object }
+                mtgml_decision::EngineCandidateBindingV3::SelectObject { object }
                     if *object == old_id =>
                 {
                     *object = new_id;

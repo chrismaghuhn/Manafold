@@ -4,12 +4,13 @@
 //! It does not generate legal candidates or execute the special action.
 
 use crate::authoritative::PerspectiveIdentityResolver;
-use crate::common::DecisionVisibility;
+use crate::common::{CandidateIntent, DecisionVisibility};
 use crate::error::{CandidateBindingError, DecisionValidationError};
 use crate::ordering::CandidateOrderingV2;
 use crate::v2::{
     DecisionAnswerV2, DecisionDomainV2, DecisionResponseV2, DECISION_RESPONSE_V2_SCHEMA,
 };
+use crate::{AuthoritativeDecisionRequestV2, EngineCandidateBinding};
 use mtgml_model::{
     AbilityInstanceId, CandidateIdV1, ContinuationId, DecisionId, GameObjectId, OpaqueAbilityId,
     OpaqueObjectId, PlayerDecisionIdV1, PlayerId, StateRevision,
@@ -156,6 +157,63 @@ pub struct AuthoritativeDecisionRequestV3 {
     pub decision: DecisionDomainV2,
     pub candidates: Vec<AuthoritativeCandidateV3>,
     pub continuation_id: Option<ContinuationId>,
+}
+
+impl From<CandidateIntent> for CandidateIntentV3 {
+    fn from(value: CandidateIntent) -> Self {
+        match value {
+            CandidateIntent::PassPriority => Self::PassPriority,
+            CandidateIntent::CastSpell { object } => Self::CastSpell { object },
+            CandidateIntent::ActivateAbility { ability } => Self::ActivateAbility { ability },
+            CandidateIntent::SelectObject { object } => Self::SelectObject { object },
+            CandidateIntent::SelectPlayer { player } => Self::SelectPlayer { player },
+            CandidateIntent::SelectMode { mode_index } => Self::SelectMode { mode_index },
+            CandidateIntent::ChooseBoolean { value } => Self::ChooseBoolean { value },
+            CandidateIntent::DeclareNumber { value } => Self::DeclareNumber { value },
+            CandidateIntent::Confirm => Self::Confirm,
+        }
+    }
+}
+
+impl From<EngineCandidateBinding> for EngineCandidateBindingV3 {
+    fn from(value: EngineCandidateBinding) -> Self {
+        match value {
+            EngineCandidateBinding::PassPriority => Self::PassPriority,
+            EngineCandidateBinding::CastSpell { object } => Self::CastSpell { object },
+            EngineCandidateBinding::ActivateAbility { ability } => {
+                Self::ActivateAbility { ability }
+            }
+            EngineCandidateBinding::SelectObject { object } => Self::SelectObject { object },
+            EngineCandidateBinding::SelectPlayer { player } => Self::SelectPlayer { player },
+            EngineCandidateBinding::SelectMode { mode_index } => Self::SelectMode { mode_index },
+            EngineCandidateBinding::ChooseBoolean { value } => Self::ChooseBoolean { value },
+            EngineCandidateBinding::DeclareNumber { value } => Self::DeclareNumber { value },
+            EngineCandidateBinding::Confirm => Self::Confirm,
+        }
+    }
+}
+
+impl From<AuthoritativeDecisionRequestV2> for AuthoritativeDecisionRequestV3 {
+    fn from(value: AuthoritativeDecisionRequestV2) -> Self {
+        Self {
+            decision_id: value.decision_id,
+            player_decision_id: value.player_decision_id,
+            state_revision: value.state_revision,
+            actor: value.actor,
+            visibility: value.visibility,
+            decision: value.decision,
+            candidates: value
+                .candidates
+                .into_iter()
+                .map(|candidate| AuthoritativeCandidateV3 {
+                    candidate_id: candidate.candidate_id,
+                    visible_intent: candidate.visible_intent.into(),
+                    trusted_binding: candidate.trusted_binding.into(),
+                })
+                .collect(),
+            continuation_id: value.continuation_id,
+        }
+    }
 }
 
 impl AuthoritativeDecisionRequestV3 {

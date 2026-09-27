@@ -6,7 +6,9 @@ rust-version.workspace = true
 
 [dependencies]
 mtgml-decision = { path = "../mtgml-decision" }
+mtgml-card-ir = { path = "../mtgml-card-ir" }
 mtgml-model = { path = "../mtgml-model" }
+mtgml-persistence = { path = "../mtgml-persistence" }
 mtgml-random = { path = "../mtgml-random" }
 mtgml-state = { path = "../mtgml-state" }
 serde.workspace = true
@@ -19,3 +21,5 @@ synthetic-conformance-fixtures = []
 # Narrow access bridge to the private selected-zone executor for S2
 # conformance. Never enabled by runtime crates or environment/replay callers.
 magic-conformance-testkit = []
+# Explicit V5/V6 runtime access for historical regression fixtures only.
+historical-runtime-testkit = []
