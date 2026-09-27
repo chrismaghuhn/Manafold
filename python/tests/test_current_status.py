@@ -452,11 +452,13 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             ROOT / "docs" / "adr" / "0056-g0-successor-version-identities-and-compatibility.md"
         ).read_text(encoding="utf-8")
 
-        self.assertIn("**Status:** G0B and bounded payload-shape amendment ACCEPTED", spec)
+        self.assertIn("**Status:** G0B and trigger/source payload amendment ACCEPTED", spec)
+        self.assertIn("temporary-operation amendment PROPOSED", spec)
         self.assertIn("bb516517e8709a38932a34eb7eea95cf8750621d", spec)
         self.assertIn("f5c1ed2aa0719edaebd95f80f7c1c5c38b3dea3d", spec)
         self.assertIn("G0A_ACCEPTANCE = PASS", spec)
-        self.assertIn("**Status:** G0B and bounded payload-shape amendment ACCEPTED", plan)
+        self.assertIn("**Status:** G0B and trigger/source payload amendment ACCEPTED", plan)
+        self.assertIn("temporary-operation amendment requires independent review", plan)
         self.assertIn("**Implementation authorized:** YES", plan)
         self.assertIn("**Status:** accepted by PR #251", adr)
         self.assertIn("G0_IMPLEMENTATION_AUTHORIZED = YES", adr)
