@@ -1,7 +1,7 @@
 # M4 Shared G0 — Contract-Growth Boundary
 
 **Task:** `M4_SHARED_G0_CONTRACT_GROWTH_SPEC_AND_IMPLEMENTATION_PLAN`
-**Status:** G0B and bounded payload amendments ACCEPTED; StackResolution stage Exact-Head PASS at `12d8b9844c785484834ef3dd2bfdc5a0030036fc`; Cast/Activation stage Exact-Head PASS at `0ff09bd88a949de55c63f7e07ff19a72ed3d81d8`; detached implementation baseline remains `f5c1ed2aa0719edaebd95f80f7c1c5c38b3dea3d`; current-writer authority remains gated on G0j
+**Status:** G0B and payload/stage amendments ACCEPTED; continuation-wrapper stage-owner amendment PROPOSED for independent review; detached implementation baseline remains `f5c1ed2aa0719edaebd95f80f7c1c5c38b3dea3d`; current-writer authority remains gated on G0j
 **G0a acceptance record:** Independent exact-head G0 Spec/Plan review PASS at `308e465669f66ad63b01d5fb381214c08ce413bc`; PR #250 required CI PASS; merged at `8642db7a389d5363d52224bd040082811f626084` with tree identical to the reviewed head. This accepts the G0a design boundary for G0b only. It does not accept G0b or authorize G0 implementation.
 **Verified `origin/master`:** `85f967f641528e43772c63be14679af398dcac86`
 **Date:** 2026-09-27
@@ -302,6 +302,8 @@ execution_successor = [
   <execution_component_identity>, pending_request_or_null,
   continuations[], temporary_effects[], waiting_triggers[], delayed_effects[]
 ]
+continuation_record = [continuation_id, actor_player_id, created_at_revision_u64,
+  continuation_payload]
 
 trigger_record = [trigger_id, controller, ability_source_context,
   trigger_context,
