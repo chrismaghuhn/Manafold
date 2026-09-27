@@ -1,7 +1,7 @@
 # M4 Shared G0 — Contract-Growth Implementation Plan
 
 **Task:** `M4_SHARED_G0_CONTRACT_GROWTH_SPEC_AND_IMPLEMENTATION_PLAN`
-**Status:** G0B ACCEPTED; G0c payload-shape amendment requires independent Spec/Plan review before implementation; detached implementation baseline remains `f5c1ed2aa0719edaebd95f80f7c1c5c38b3dea3d`; current-writer activation remains gated on G0j
+**Status:** G0B and bounded payload-shape amendment ACCEPTED at Exact-Head `bb516517e8709a38932a34eb7eea95cf8750621d`; detached implementation baseline remains `f5c1ed2aa0719edaebd95f80f7c1c5c38b3dea3d`; current-writer activation remains gated on G0j
 **Derived from:** [`2026-09-27-m4-shared-g0-contract-growth.md`](../specs/2026-09-27-m4-shared-g0-contract-growth.md)
 **Exact design baseline:** `85f967f641528e43772c63be14679af398dcac86`
 **Implementation authorized:** YES — detached G0c–G0i work only; G0j is the single activation cut
@@ -53,7 +53,7 @@ All batches run sequentially on one G0 integration lineage. Splitting PRs by sem
 
 ## 3. Contract-growth sequence and file ownership
 
-1. G0b is accepted by PR #251. The proposed G0 Spec amendment concretizes the bounded source/event record shapes from locked R1 × W1 witnesses. Independently review and accept the exact Spec/Plan amendment head before G0c; detached DTO work must match those exact shapes and closed event union and must not add a generic `resolution_context` map or field.
+1. G0b is accepted by PR #251. The bounded source/event record amendment passed independent Exact-Head review at `bb516517e8709a38932a34eb7eea95cf8750621d` with zero findings. G0c DTO work must match those accepted exact shapes and closed event union and must not add a generic `resolution_context` map or field.
 2. Add detached Rust DTOs, semantic validators, canonical encoding, and golden/negative fixtures; keep current runtime aliases unchanged.
 3. Add successor Decision request/context/binding and response schemas plus Rust/Python codecs from the same source vocabulary. The answer union remains unchanged, while the player response omits global StateRevision and binds PlayerDecisionIdV1/view-sequence.
 4. Add state/delta/authoritative-event producers and semantic cursor validation against the detached successor state.
