@@ -329,9 +329,13 @@ pub fn execute_basic_land_response(
                     player,
                     consecutive_passes: 1,
                 } if player == actor && actor != core.active_player => {
+                    let next_actor = core.active_player;
                     let old_position = core.position;
                     let new_position = crate::turn_structure::temporal_successor(old_position);
-                    let to_priority = mtgml_state::PriorityState::None;
+                    let to_priority = mtgml_state::PriorityState::HeldBy {
+                        player: next_actor,
+                        consecutive_passes: 0,
+                    };
                     core.priority = to_priority;
                     core.position = new_position;
                     operations.push(SemanticDeltaOperationV2::Existing {
@@ -411,11 +415,29 @@ pub fn execute_basic_land_response(
                             }
                         }
                     }
+                    let next_request =
+                        install_basic_land_request(admission, &mut next, next_actor, status)
+                            .map_err(|_| BasicLandTransitionError::InvalidResult)?;
+                    operations.push(SemanticDeltaOperationV2::Existing {
+                        operation: Box::new(mtgml_state::SemanticDeltaOperation::DecisionCreated {
+                            decision: next_request.decision_id,
+                        }),
+                    });
+                    push_successor_event(
+                        &mut next,
+                        &mut events,
+                        AuthoritativeRuleEventKindV2::DecisionCreated {
+                            decision: next_request.decision_id,
+                        },
+                    )?;
                 }
                 _ => return Err(BasicLandTransitionError::InvalidSelection),
             }
-            // The second consecutive pass ends the current step. Forced
-            // progress is an explicit subsequent kernel transition.
+            // A second consecutive pass closes this priority window and
+            // exposes the next rules-owned window in the same response
+            // transaction. The active player receives priority at the next
+            // temporal position; callers never observe Running without a
+            // pending decision.
             let next_request = next.execution_v3.pending_decision.clone();
             next.validate()
                 .map_err(|_| BasicLandTransitionError::InvalidResult)?;
@@ -1765,6 +1787,135 @@ mod tests {
             &EpisodeStatus::Running,
         )
         .unwrap();
+        let successor_product = crate::TransitionResult {
+            accepted: product.accepted,
+            next_state: product.next_state.clone(),
+            delta: product.delta.clone(),
+            events: product.events.clone(),
+            next_decision: product.next_decision.clone(),
+            status: product.status.clone(),
+        };
+        crate::validate_successor_transition_contract(&admission, &before, &successor_product)
+            .unwrap();
+        let mut incomplete_candidates = successor_product.clone();
+        let mut incomplete_state = incomplete_candidates.next_state.clone();
+        incomplete_state
+            .execution_v3
+            .pending_decision
+            .as_mut()
+            .unwrap()
+            .candidates
+            .pop();
+        incomplete_candidates.next_decision =
+            incomplete_state.execution_v3.pending_decision.clone();
+        incomplete_candidates.delta = mtgml_state::StateDeltaV2::between(
+            &before,
+            &incomplete_state,
+            incomplete_candidates.delta.operations.clone(),
+        )
+        .unwrap();
+        incomplete_candidates.next_state = incomplete_state;
+        assert!(crate::validate_successor_transition_contract(
+            &admission,
+            &before,
+            &incomplete_candidates,
+        )
+        .is_err());
+        for operation in [
+            SemanticDeltaOperationV2::ObjectEntered {
+                old_object: None,
+                new_object: mtgml_model::GameObjectId(0),
+                from_zone: ZoneKind::Hand,
+                to_zone: ZoneKind::Battlefield,
+                tapped: false,
+                face: 0,
+            },
+            SemanticDeltaOperationV2::LandPlayCountChanged {
+                player: PlayerId(1),
+                from: 0,
+                to: 1,
+            },
+            SemanticDeltaOperationV2::AbilityAuthorityAdded {
+                instance: mtgml_model::AbilityInstanceId(0),
+                source: mtgml_model::GameObjectId(0),
+                ability_key: 0,
+            },
+        ] {
+            let mut tampered = successor_product.clone();
+            let index = tampered
+                .delta
+                .operations
+                .iter()
+                .position(|candidate| {
+                    std::mem::discriminant(candidate) == std::mem::discriminant(&operation)
+                })
+                .unwrap();
+            tampered.delta.operations.remove(index);
+            assert!(
+                crate::validate_successor_transition_contract(&admission, &before, &tampered)
+                    .is_err()
+            );
+        }
+        let transitioned_object = *successor_product
+            .next_state
+            .predecessor_v5
+            .zones
+            .objects
+            .keys()
+            .next()
+            .unwrap();
+        for unsupported in [
+            SemanticDeltaOperationV2::CounterChanged {
+                object: transitioned_object,
+                kind: mtgml_state::CounterKindV1::PlusOnePlusOne,
+                from: 0,
+                to: 1,
+                cause: before.predecessor_v5.allocators.next_rule_event_id,
+            },
+            SemanticDeltaOperationV2::AttachmentChanged {
+                source: transitioned_object,
+                from_target: None,
+                to_target: Some(transitioned_object),
+                timestamp_revision: product.next_state.predecessor_v5.revision,
+                operation_ordinal: 0,
+            },
+            SemanticDeltaOperationV2::ObjectFaceChanged {
+                object: transitioned_object,
+                from_face: 0,
+                to_face: 1,
+            },
+        ] {
+            let mut tampered = successor_product.clone();
+            tampered.delta.operations.push(unsupported);
+            tampered.delta = mtgml_state::StateDeltaV2::between(
+                &before,
+                &tampered.next_state,
+                tampered.delta.operations.clone(),
+            )
+            .unwrap();
+            assert!(
+                crate::validate_successor_transition_contract(&admission, &before, &tampered)
+                    .is_err()
+            );
+        }
+        let mut missing_move_event = successor_product.clone();
+        let index = missing_move_event
+            .events
+            .iter()
+            .position(|event| {
+                matches!(
+                    event.event,
+                    AuthoritativeRuleEventKindV2::ObjectMoved { .. }
+                )
+            })
+            .unwrap();
+        missing_move_event.events.remove(index);
+        assert!(crate::validate_successor_transition_contract(
+            &admission,
+            &before,
+            &missing_move_event
+        )
+        .is_err());
         let new_object = product
             .next_state
             .predecessor_v5
@@ -1860,6 +2011,105 @@ mod tests {
             &EpisodeStatus::Running,
         )
         .unwrap();
+        let mut successor_product = crate::TransitionResult {
+            accepted: product.accepted,
+            next_state: product.next_state.clone(),
+            delta: product.delta.clone(),
+            events: product.events.clone(),
+            next_decision: product.next_decision.clone(),
+            status: product.status.clone(),
+        };
+        crate::validate_successor_transition_contract(&admission, &before, &successor_product)
+            .unwrap();
+        let mana_added = successor_product
+            .delta
+            .operations
+            .iter()
+            .position(|operation| matches!(operation, SemanticDeltaOperationV2::ManaAdded { .. }))
+            .unwrap();
+        successor_product.delta.operations.remove(mana_added);
+        assert!(crate::validate_successor_transition_contract(
+            &admission,
+            &before,
+            &successor_product
+        )
+        .is_err());
+        let mut missing_tap = crate::TransitionResult {
+            accepted: product.accepted,
+            next_state: product.next_state.clone(),
+            delta: product.delta.clone(),
+            events: product.events.clone(),
+            next_decision: product.next_decision.clone(),
+            status: product.status.clone(),
+        };
+        let tap_operation = missing_tap
+            .delta
+            .operations
+            .iter()
+            .position(|operation| {
+                matches!(operation, SemanticDeltaOperationV2::ObjectTapped { .. })
+            })
+            .unwrap();
+        missing_tap.delta.operations.remove(tap_operation);
+        assert!(
+            crate::validate_successor_transition_contract(&admission, &before, &missing_tap)
+                .is_err()
+        );
+
+        let mut wrong_mana_event = crate::TransitionResult {
+            accepted: product.accepted,
+            next_state: product.next_state.clone(),
+            delta: product.delta.clone(),
+            events: product.events.clone(),
+            next_decision: product.next_decision.clone(),
+            status: product.status.clone(),
+        };
+        let mana_event = wrong_mana_event
+            .events
+            .iter_mut()
+            .find(|event| {
+                matches!(
+                    event.event,
+                    AuthoritativeRuleEventKindV2::ManaPoolChanged { .. }
+                )
+            })
+            .unwrap();
+        if let AuthoritativeRuleEventKindV2::ManaPoolChanged { amount, .. } = &mut mana_event.event
+        {
+            *amount += 1;
+        }
+        assert!(crate::validate_successor_transition_contract(
+            &admission,
+            &before,
+            &wrong_mana_event
+        )
+        .is_err());
+
+        let mut successor_product = crate::TransitionResult {
+            accepted: product.accepted,
+            next_state: product.next_state.clone(),
+            delta: product.delta.clone(),
+            events: product.events.clone(),
+            next_decision: product.next_decision.clone(),
+            status: product.status.clone(),
+        };
+        let tapped_event = successor_product
+            .events
+            .iter()
+            .position(|event| {
+                matches!(
+                    event.event,
+                    AuthoritativeRuleEventKindV2::ObjectTapped { .. }
+                )
+            })
+            .unwrap();
+        successor_product.events.remove(tapped_event);
+        assert!(crate::validate_successor_transition_contract(
+            &admission,
+            &before,
+            &successor_product
+        )
+        .is_err());
         assert!(product.next_state.predecessor_v5.zones.objects[&source].tapped);
         assert_eq!(
             product.next_state.card_rules_state.mana.pools[&PlayerId(1)].unrestricted[3],
@@ -1975,9 +2225,12 @@ mod tests {
         );
         assert_eq!(
             second.next_state.predecessor_v5.core.priority,
-            mtgml_state::PriorityState::None
+            mtgml_state::PriorityState::HeldBy {
+                player: PlayerId(1),
+                consecutive_passes: 0,
+            }
         );
-        assert!(second.next_decision.is_none());
+        assert_eq!(second.next_decision.as_ref().unwrap().actor, PlayerId(1));
         assert_eq!(
             second.next_state.card_rules_state.mana.pools[&PlayerId(1)],
             mtgml_state::ManaPoolV1::default()

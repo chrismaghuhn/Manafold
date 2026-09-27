@@ -64,6 +64,11 @@ pub fn execute_successor_response_transaction(
         Err(error) => return Err(error.into()),
     };
 
+    let admission = kernel
+        .executable_profile_admission()
+        .ok_or(ControllerError::SemanticContractUnsupported)?;
+    mtgml_rules::validate_successor_transition_contract(admission, state, &transition)?;
+
     if transition.accepted {
         let replacement = transition
             .delta
@@ -113,9 +118,6 @@ pub fn execute_successor_response_transaction(
         candidate_counters,
         before.execution_identity.clone(),
     )?;
-    let admission = kernel
-        .executable_profile_admission()
-        .ok_or(ControllerError::SemanticContractUnsupported)?;
     let player_steps = crate::successor_projection::project_successor_player_steps(
         state,
         &transition,
@@ -137,26 +139,33 @@ pub fn execute_successor_response_transaction(
         &player_steps,
     )?;
 
-    let step_index =
-        u64::try_from(replay.step_count()).map_err(|_| ControllerError::CounterOverflow {
-            counter: "replay_step_index",
-        })?;
-    let step = ReplayStepV7 {
-        step_index,
-        actor,
-        checkpoint_digest_before: before.checkpoint_digest.clone(),
-        state_revision_before: before.state.predecessor_v5.revision,
-        response,
-        accepted: transition.accepted,
-        state_revision_after: candidate.state.predecessor_v5.revision,
-        full_state_digest_after: candidate.state_digest.clone(),
-        episode_status_after: candidate.status.clone(),
-        environment_limit_counters_after: candidate.limit_counters.clone(),
-        checkpoint_digest_after: candidate.checkpoint_digest.clone(),
+    // Rejected submissions are observable PlayerSteps but are not semantic
+    // history. They must not alter the authoritative Replay V7 sequence.
+    let candidate_replay = if transition.accepted {
+        let step_index =
+            u64::try_from(replay.step_count()).map_err(|_| ControllerError::CounterOverflow {
+                counter: "replay_step_index",
+            })?;
+        let step = ReplayStepV7 {
+            step_index,
+            actor,
+            checkpoint_digest_before: before.checkpoint_digest.clone(),
+            state_revision_before: before.state.predecessor_v5.revision,
+            response,
+            accepted: true,
+            state_revision_after: candidate.state.predecessor_v5.revision,
+            full_state_digest_after: candidate.state_digest.clone(),
+            episode_status_after: candidate.status.clone(),
+            environment_limit_counters_after: candidate.limit_counters.clone(),
+            checkpoint_digest_after: candidate.checkpoint_digest.clone(),
+        };
+        let mut candidate_replay = replay.clone();
+        candidate_replay.append(step)?;
+        candidate_replay.export()?;
+        candidate_replay
+    } else {
+        replay.clone()
     };
-    let mut candidate_replay = replay.clone();
-    candidate_replay.append(step)?;
-    candidate_replay.export()?;
 
     *state = candidate.state.clone();
     *status = candidate.status.clone();

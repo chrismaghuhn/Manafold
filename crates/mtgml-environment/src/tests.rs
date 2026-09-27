@@ -229,6 +229,16 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
         consecutive_passes: 0,
     };
     state = EngineStatePartsV2::from_state(&engine, state.card_rules_state.clone());
+    state
+        .card_rules_state
+        .mana
+        .add(
+            actor,
+            mtgml_state::ManaColorV1::Red,
+            mtgml_state::ManaRestrictionV1::Unrestricted,
+            1,
+        )
+        .unwrap();
     state.execution_v3.pending_decision = None;
     state.validate().unwrap();
 
@@ -273,10 +283,39 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
         Some(&request.project_player_request().unwrap())
     );
 
-    let mut rejected_runtime = runtime.fork().unwrap();
-    let before_rejection = rejected_runtime.checkpoint().unwrap();
-    let rejected = rejected_runtime
-        .submit(
+    let valid_candidate = request.candidates[0].candidate_id;
+    let mut mismatched_revision = DecisionResponseV2 {
+        schema_version: DECISION_RESPONSE_V2_SCHEMA.to_owned(),
+        player_decision_id: request.player_decision_id,
+        state_revision: request.state_revision,
+        answer: DecisionAnswerV2::SelectOne {
+            candidate_id: valid_candidate,
+        },
+    };
+    mismatched_revision.state_revision = mtgml_model::StateRevision(
+        request
+            .state_revision
+            .0
+            .checked_add(1)
+            .expect("test revision fits"),
+    );
+    let mut wrong_decision = DecisionResponseV2 {
+        schema_version: DECISION_RESPONSE_V2_SCHEMA.to_owned(),
+        player_decision_id: request.player_decision_id,
+        state_revision: request.state_revision,
+        answer: DecisionAnswerV2::SelectOne {
+            candidate_id: valid_candidate,
+        },
+    };
+    wrong_decision.player_decision_id = mtgml_model::PlayerDecisionIdV1(
+        request
+            .player_decision_id
+            .0
+            .checked_add(1)
+            .expect("test identity fits"),
+    );
+    let invalid_submissions = [
+        (
             actor,
             DecisionResponseV2 {
                 schema_version: DECISION_RESPONSE_V2_SCHEMA.to_owned(),
@@ -286,15 +325,59 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
                     candidate_id: CandidateIdV1(u32::MAX),
                 },
             },
-        )
-        .unwrap();
-    assert!(!rejected.transition.accepted);
-    assert_eq!(rejected.checkpoint, before_rejection);
-    assert!(rejected.transition.events.is_empty());
-    assert!(rejected
-        .player_steps
-        .values()
-        .all(|step| step.observed_events.is_empty()));
+        ),
+        (actor, mismatched_revision),
+        (actor, wrong_decision),
+        (
+            request
+                .candidates
+                .iter()
+                .find_map(|_| {
+                    before_checkpoint
+                        .state
+                        .predecessor_v5
+                        .core
+                        .players
+                        .keys()
+                        .copied()
+                        .find(|player| *player != actor)
+                })
+                .expect("two-player fixture has another actor"),
+            DecisionResponseV2 {
+                schema_version: DECISION_RESPONSE_V2_SCHEMA.to_owned(),
+                player_decision_id: request.player_decision_id,
+                state_revision: request.state_revision,
+                answer: DecisionAnswerV2::SelectOne {
+                    candidate_id: valid_candidate,
+                },
+            },
+        ),
+    ];
+    for (submitted_actor, response) in invalid_submissions {
+        let mut rejected_runtime = runtime.fork().unwrap();
+        let before_rejection = rejected_runtime.checkpoint().unwrap();
+        let replay_before_rejection = rejected_runtime.export_replay().unwrap();
+        let replay_bytes_before_rejection =
+            mtgml_wire::encode_canonical(&replay_before_rejection).unwrap();
+        let result = rejected_runtime.submit(submitted_actor, response);
+        if let Ok(rejected) = result {
+            assert!(!rejected.transition.accepted);
+            assert_eq!(rejected.checkpoint, before_rejection);
+            assert!(rejected.transition.events.is_empty());
+            assert!(rejected
+                .player_steps
+                .values()
+                .all(|step| step.observed_events.is_empty()));
+        }
+        assert_eq!(rejected_runtime.checkpoint().unwrap(), before_rejection);
+        let replay_after_rejection = rejected_runtime.export_replay().unwrap();
+        assert_eq!(replay_after_rejection, replay_before_rejection);
+        assert_eq!(
+            mtgml_wire::encode_canonical(&replay_after_rejection).unwrap(),
+            replay_bytes_before_rejection,
+            "rejected responses must not mutate replay/history bytes"
+        );
+    }
 
     let fork = runtime.fork().unwrap();
     let candidate = request
@@ -373,9 +456,95 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
         candidate_id: CandidateIdV1(u32::MAX),
     };
     assert!(crate::replay_v7_execution::execute_authoritative_replay_v7(
-        admission,
+        admission.clone(),
         before_checkpoint,
         tampered,
+    )
+    .is_err());
+
+    // Two priority passes close the current window atomically: pools empty,
+    // turn position advances, and the next V3 decision is already installed.
+    let make_pass_response = |request: &mtgml_decision::PlayerDecisionRequestV3| {
+        let pass = request
+            .candidates
+            .iter()
+            .find(|candidate| {
+                matches!(
+                    candidate.intent,
+                    mtgml_decision::CandidateIntentV3::PassPriority
+                )
+            })
+            .expect("priority request exposes pass");
+        DecisionResponseV2 {
+            schema_version: DECISION_RESPONSE_V2_SCHEMA.to_owned(),
+            player_decision_id: request.player_decision_id,
+            state_revision: request.state_revision,
+            answer: DecisionAnswerV2::SelectOne {
+                candidate_id: pass.candidate_id,
+            },
+        }
+    };
+    let active_request = runtime.visible_decision(actor).unwrap().unwrap();
+    let first_pass = runtime
+        .submit(actor, make_pass_response(&active_request))
+        .unwrap();
+    assert!(first_pass.transition.accepted);
+    let nonactive = first_pass.transition.next_decision.as_ref().unwrap().actor;
+    assert_ne!(nonactive, actor);
+    let nonactive_request = runtime.visible_decision(nonactive).unwrap().unwrap();
+    let second_pass = runtime
+        .submit(nonactive, make_pass_response(&nonactive_request))
+        .unwrap();
+    assert!(second_pass.transition.accepted);
+    assert_eq!(
+        second_pass.checkpoint.state.predecessor_v5.core.position,
+        mtgml_state::TurnPosition::Combat {
+            step: mtgml_state::CombatStep::BeginningOfCombat,
+        }
+    );
+    assert_eq!(
+        second_pass.checkpoint.state.predecessor_v5.core.priority,
+        mtgml_state::PriorityState::HeldBy {
+            player: actor,
+            consecutive_passes: 0,
+        }
+    );
+    assert_eq!(
+        second_pass.checkpoint.state.card_rules_state.mana.pools[&actor],
+        mtgml_state::ManaPoolV1::default()
+    );
+    assert_eq!(
+        second_pass
+            .transition
+            .next_decision
+            .as_ref()
+            .map(|request| request.actor),
+        Some(actor),
+        "accepted progress may not expose Running without a decision"
+    );
+    let mut missing_pool_clear = second_pass.transition.clone();
+    let clear_operation = missing_pool_clear
+        .delta
+        .operations
+        .iter()
+        .position(|operation| {
+            matches!(
+                operation,
+                mtgml_state::SemanticDeltaOperationV2::ManaPoolEmptied { .. }
+            )
+        })
+        .unwrap();
+    missing_pool_clear.delta.operations.remove(clear_operation);
+    missing_pool_clear.delta = mtgml_state::StateDeltaV2::between(
+        &first_pass.checkpoint.state,
+        &missing_pool_clear.next_state,
+        missing_pool_clear.delta.operations.clone(),
+    )
+    .unwrap();
+    assert!(mtgml_rules::validate_successor_transition_contract(
+        &admission,
+        &first_pass.checkpoint.state,
+        &missing_pool_clear,
     )
     .is_err());
 }

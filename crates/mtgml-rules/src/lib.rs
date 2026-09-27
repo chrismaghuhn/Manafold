@@ -16,6 +16,7 @@ mod semantic_cursor;
 mod semantic_execution_generated;
 mod snapshots;
 mod state_based_actions;
+mod successor_contract;
 mod synthetic;
 mod transition;
 mod turn_structure;
@@ -44,6 +45,7 @@ pub use program_kernel::{
 pub use semantic_execution_generated::execution_contract_supported;
 #[cfg(feature = "magic-conformance-testkit")]
 pub use state_based_actions::SbaContinuationValidationError;
+pub use successor_contract::validate_successor_transition_contract;
 pub use synthetic::validate_synthetic_runtime_state;
 pub use transition::{PredecessorTransitionResult, RulesKernel, TransitionResult};
 pub use turn_structure::{
