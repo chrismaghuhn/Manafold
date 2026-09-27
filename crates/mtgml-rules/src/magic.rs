@@ -15,6 +15,8 @@
 
 use std::collections::BTreeMap;
 
+use mtgml_card_ir::ExecutableProfileAdmissionV1;
+
 use mtgml_decision::{
     AuthoritativeCandidateV2, CandidateIntent, CandidateOrderingV1, DecisionAnswerV2,
     DecisionDomainV2, DecisionResponseV2, DecisionVisibility, EngineCandidateBinding,
@@ -72,6 +74,7 @@ pub(crate) struct MagicRulesKernel {
 /// production identity and exist only in test/conformance builds.
 enum MagicKernelProfile {
     Admitted(MagicExecutionProfile),
+    ExecutableBasicLand(ExecutableProfileAdmissionV1),
     #[cfg(test)]
     UnitTest(MagicExecutionProfile),
     #[cfg(any(test, feature = "magic-conformance-testkit"))]
@@ -84,6 +87,9 @@ impl MagicKernelProfile {
     fn allows_turn_structure(&self) -> bool {
         match self {
             Self::Admitted(profile) => profile.allows_turn_structure_0_1_0(),
+            Self::ExecutableBasicLand(admission) => {
+                admission_has(admission, "rules/turn-structure")
+            }
             #[cfg(test)]
             Self::UnitTest(profile) => profile.allows_turn_structure_0_1_0(),
             #[cfg(any(test, feature = "magic-conformance-testkit"))]
@@ -96,6 +102,9 @@ impl MagicKernelProfile {
     fn allows_state_based_actions(&self) -> bool {
         match self {
             Self::Admitted(profile) => profile.allows_state_based_actions_combat_0_1_0(),
+            Self::ExecutableBasicLand(admission) => {
+                admission_has(admission, "rules/state-based-actions-combat")
+            }
             #[cfg(test)]
             Self::UnitTest(_) => false,
             #[cfg(any(test, feature = "magic-conformance-testkit"))]
@@ -108,6 +117,9 @@ impl MagicKernelProfile {
     fn allows_basic_priority(&self) -> bool {
         match self {
             Self::Admitted(profile) => profile.allows_basic_priority_0_1_0(),
+            Self::ExecutableBasicLand(admission) => {
+                admission_has(admission, "rules/basic-priority")
+            }
             #[cfg(test)]
             Self::BasicPriorityConformanceCandidate => true,
             #[cfg(test)]
@@ -136,6 +148,32 @@ impl MagicKernelProfile {
     fn allows_cleanup_reset(&self) -> bool {
         matches!(self, Self::Admitted(profile) if profile.allows_cleanup_reset_0_1_0())
     }
+
+    fn allows_land_play(&self) -> bool {
+        matches!(self, Self::ExecutableBasicLand(admission) if admission_has(admission, "rules/land-play"))
+    }
+
+    fn allows_basic_land_mana(&self) -> bool {
+        matches!(self, Self::ExecutableBasicLand(admission) if admission_has(admission, "rules/basic-land-mana"))
+    }
+
+    fn allows_mana_pool(&self) -> bool {
+        matches!(self, Self::ExecutableBasicLand(admission) if admission_has(admission, "rules/mana-pool"))
+    }
+
+    fn executable_admission(&self) -> Option<&ExecutableProfileAdmissionV1> {
+        match self {
+            Self::ExecutableBasicLand(admission) => Some(admission),
+            _ => None,
+        }
+    }
+}
+
+fn admission_has(admission: &ExecutableProfileAdmissionV1, key: &str) -> bool {
+    admission
+        .resolved_capabilities()
+        .iter()
+        .any(|requirement| requirement.key == key)
 }
 
 impl MagicRulesKernel {
@@ -148,6 +186,85 @@ impl MagicRulesKernel {
         Self {
             profile: MagicKernelProfile::Admitted(profile),
         }
+    }
+
+    /// Construct from the complete Phase-9 admission token. The token owns
+    /// the exact verified catalog and the closed requirement closure; no
+    /// caller-supplied catalog or semantic-ID-only shortcut is accepted here.
+    pub(crate) fn from_executable_admission(admission: ExecutableProfileAdmissionV1) -> Self {
+        Self {
+            profile: MagicKernelProfile::ExecutableBasicLand(admission),
+        }
+    }
+
+    pub(crate) fn derive_basic_land_candidates(
+        &self,
+        state: &mtgml_state::EngineStatePartsV2,
+        actor: mtgml_model::PlayerId,
+        status: &mtgml_model::EpisodeStatus,
+    ) -> Result<
+        Vec<mtgml_decision::AuthoritativeCandidateV3>,
+        super::basic_land::BasicLandCandidateError,
+    > {
+        if !self.profile.allows_land_play()
+            || !self.profile.allows_basic_land_mana()
+            || !self.profile.allows_mana_pool()
+        {
+            return Err(super::basic_land::BasicLandCandidateError::WrongExecutionIdentity);
+        }
+        let admission = self
+            .profile
+            .executable_admission()
+            .ok_or(super::basic_land::BasicLandCandidateError::WrongExecutionIdentity)?;
+        super::basic_land::derive_basic_land_candidates(admission, state, actor, status)
+    }
+
+    pub(crate) fn install_basic_land_request(
+        &self,
+        state: &mut mtgml_state::EngineStatePartsV2,
+        actor: mtgml_model::PlayerId,
+        status: &mtgml_model::EpisodeStatus,
+    ) -> Result<
+        mtgml_decision::AuthoritativeDecisionRequestV3,
+        super::basic_land::BasicLandCandidateError,
+    > {
+        let admission = self
+            .profile
+            .executable_admission()
+            .ok_or(super::basic_land::BasicLandCandidateError::WrongExecutionIdentity)?;
+        super::basic_land::install_basic_land_request(admission, state, actor, status)
+    }
+
+    pub(crate) fn selected_basic_land_action(
+        &self,
+        state: &mtgml_state::EngineStatePartsV2,
+        actor: mtgml_model::PlayerId,
+        response: &mtgml_decision::DecisionResponseV2,
+        status: &mtgml_model::EpisodeStatus,
+    ) -> Result<super::basic_land::MagicActionRequestV1, super::basic_land::BasicLandCandidateError>
+    {
+        let admission = self
+            .profile
+            .executable_admission()
+            .ok_or(super::basic_land::BasicLandCandidateError::WrongExecutionIdentity)?;
+        super::basic_land::selected_magic_action_request(admission, state, actor, response, status)
+    }
+
+    pub(crate) fn execute_basic_land_response(
+        &self,
+        state: &mtgml_state::EngineStatePartsV2,
+        actor: mtgml_model::PlayerId,
+        response: &DecisionResponseV2,
+        status: &mtgml_model::EpisodeStatus,
+    ) -> Result<
+        super::basic_land::BasicLandTransitionProductV1,
+        super::basic_land::BasicLandTransitionError,
+    > {
+        let admission = self
+            .profile
+            .executable_admission()
+            .ok_or(super::basic_land::BasicLandTransitionError::InvalidSelection)?;
+        super::basic_land::execute_basic_land_response(admission, state, actor, response, status)
     }
 
     /// Construct the single prospective state-based-actions candidate profile for isolated

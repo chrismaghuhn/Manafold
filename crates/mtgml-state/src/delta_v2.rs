@@ -29,6 +29,17 @@ pub enum SemanticDeltaOperationV2 {
         player: mtgml_model::PlayerId,
         previous_pool: ManaPoolV1,
     },
+    ObjectTapped {
+        object: mtgml_model::GameObjectId,
+        from: bool,
+        to: bool,
+    },
+    AbilityIdentityChanged {
+        perspective: mtgml_model::PlayerId,
+        instance: mtgml_model::AbilityInstanceId,
+        from: Option<mtgml_model::OpaqueAbilityId>,
+        to: Option<mtgml_model::OpaqueAbilityId>,
+    },
     CounterChanged {
         object: mtgml_model::GameObjectId,
         kind: CounterKindV1,

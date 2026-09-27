@@ -22,6 +22,7 @@ use crate::semantic_execution_generated::magic_execution_profile;
 use crate::synthetic::{validate_synthetic_runtime_state, SyntheticLegacyRulesKernel};
 use crate::turn_structure::validate_turn_structure_support;
 use crate::{KernelExecutionError, RulesKernel, TransitionResult};
+use mtgml_card_ir::ExecutableProfileAdmissionV1;
 use mtgml_decision::DecisionResponseV2;
 use mtgml_model::PlayerId;
 use mtgml_model::{
@@ -51,6 +52,9 @@ pub enum ProgramKernelConstructionErrorV1 {
     /// The requested execution program has no production kernel contract in
     /// the current slice.
     UnsupportedProgram,
+    /// The immutable admission token does not describe the closed executable
+    /// basic-land profile required by this constructor.
+    InvalidExecutableAdmission,
 }
 
 impl std::fmt::Debug for ProgramKernelV1 {
@@ -113,6 +117,45 @@ impl ProgramKernelV1 {
         }
     }
 
+    /// Construct the bounded executable Magic kernel from the Phase-9
+    /// identity/provenance/requirement admission. Unlike the historical
+    /// semantic-ID constructor, this path retains the exact verified catalog
+    /// that was included in admission.
+    pub fn for_executable_profile(
+        admission: ExecutableProfileAdmissionV1,
+    ) -> Result<Self, ProgramKernelConstructionErrorV1> {
+        use mtgml_model::ExecutionProgramV1;
+
+        let identity = admission.execution_identity();
+        if identity.program_kind != ExecutionProgramV1::MagicRules
+            || identity.semantic_contract_id != *admission.semantic_contract_id()
+            || admission.content_contract_id() != admission.verified_catalog().content_contract_id()
+        {
+            return Err(ProgramKernelConstructionErrorV1::InvalidExecutableAdmission);
+        }
+        let roots = admission
+            .direct_requirement_roots()
+            .iter()
+            .map(|requirement| requirement.key.as_str())
+            .collect::<std::collections::BTreeSet<_>>();
+        if roots
+            != [
+                "rules/basic-land-mana",
+                "rules/land-play",
+                "rules/mana-pool",
+            ]
+            .into_iter()
+            .collect()
+        {
+            return Err(ProgramKernelConstructionErrorV1::InvalidExecutableAdmission);
+        }
+        Ok(Self {
+            inner: ProgramKernelInner::Magic(MagicRulesKernel::from_executable_admission(
+                admission,
+            )),
+        })
+    }
+
     /// Construct the real Magic kernel implementation under the fixed state-based-actions
     /// conformance-candidate profile. This non-default testkit entry is not a
     /// production admission path and carries no `SemanticContractId`; only
@@ -156,6 +199,85 @@ impl ProgramKernelV1 {
                 kernel.apply(state, trusted_actor, response)
             }
             ProgramKernelInner::Magic(kernel) => kernel.apply(state, trusted_actor, response),
+        }
+    }
+
+    /// Return the current bounded Magic candidate surface from complete
+    /// successor state. Only an immutable Phase-9 executable admission can
+    /// reach the Basic-Land producer; the synthetic and historical
+    /// semantic-ID kernels fail closed.
+    pub fn successor_candidates(
+        &self,
+        state: &mtgml_state::EngineStatePartsV2,
+        actor: PlayerId,
+        status: &EpisodeStatus,
+    ) -> Result<Vec<mtgml_decision::AuthoritativeCandidateV3>, crate::BasicLandCandidateError> {
+        match &self.inner {
+            ProgramKernelInner::Magic(kernel) => {
+                kernel.derive_basic_land_candidates(state, actor, status)
+            }
+            ProgramKernelInner::SyntheticLegacy(_) => {
+                Err(crate::BasicLandCandidateError::WrongExecutionIdentity)
+            }
+        }
+    }
+
+    /// Install a rules-derived successor request into a revisioned transition
+    /// workspace. The surrounding RulesKernel product owns revision advance,
+    /// event creation, and atomic commit.
+    pub fn install_successor_request(
+        &self,
+        state: &mut mtgml_state::EngineStatePartsV2,
+        actor: PlayerId,
+        status: &EpisodeStatus,
+    ) -> Result<mtgml_decision::AuthoritativeDecisionRequestV3, crate::BasicLandCandidateError>
+    {
+        match &self.inner {
+            ProgramKernelInner::Magic(kernel) => {
+                kernel.install_basic_land_request(state, actor, status)
+            }
+            ProgramKernelInner::SyntheticLegacy(_) => {
+                Err(crate::BasicLandCandidateError::WrongExecutionIdentity)
+            }
+        }
+    }
+
+    /// Resolve a response to the exact trusted PlayLand or mana-ability
+    /// binding stored in successor state. This is still read-only; execution
+    /// and product construction remain inside the kernel transition.
+    pub fn selected_successor_action(
+        &self,
+        state: &mtgml_state::EngineStatePartsV2,
+        actor: PlayerId,
+        response: &DecisionResponseV2,
+        status: &EpisodeStatus,
+    ) -> Result<crate::MagicActionRequestV1, crate::BasicLandCandidateError> {
+        match &self.inner {
+            ProgramKernelInner::Magic(kernel) => {
+                kernel.selected_basic_land_action(state, actor, response, status)
+            }
+            ProgramKernelInner::SyntheticLegacy(_) => {
+                Err(crate::BasicLandCandidateError::WrongExecutionIdentity)
+            }
+        }
+    }
+
+    /// Execute one exact response against the complete successor state using
+    /// the immutable Phase-9 admission held by this program kernel.
+    pub fn execute_successor_response(
+        &self,
+        state: &mtgml_state::EngineStatePartsV2,
+        actor: PlayerId,
+        response: &DecisionResponseV2,
+        status: &EpisodeStatus,
+    ) -> Result<crate::BasicLandTransitionProductV1, crate::BasicLandTransitionError> {
+        match &self.inner {
+            ProgramKernelInner::Magic(kernel) => {
+                kernel.execute_basic_land_response(state, actor, response, status)
+            }
+            ProgramKernelInner::SyntheticLegacy(_) => {
+                Err(crate::BasicLandTransitionError::InvalidSelection)
+            }
         }
     }
 

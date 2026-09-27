@@ -1,5 +1,6 @@
 //! Authoritative events and exact, compositional transition validation.
 
+mod basic_land;
 mod basic_priority;
 mod combat_damage;
 mod contract;
@@ -24,6 +25,11 @@ mod zone_incarnation;
 #[cfg(test)]
 mod tests;
 
+pub use basic_land::{
+    derive_basic_land_candidates, AuthoritativeRuleEventKindV2, AuthoritativeRuleEventV2,
+    BasicLandCandidateError, BasicLandFaceV1, BasicLandTransitionError,
+    BasicLandTransitionProductV1, MagicActionRequestV1, SelectedSuccessorDecisionV1,
+};
 pub use contract::validate_transition_contract;
 pub use errors::{KernelExecutionError, ZoneIncarnationError};
 pub use events::{

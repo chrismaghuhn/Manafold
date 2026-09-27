@@ -6,7 +6,9 @@ rust-version.workspace = true
 
 [dependencies]
 mtgml-decision = { path = "../mtgml-decision" }
+mtgml-card-ir = { path = "../mtgml-card-ir" }
 mtgml-model = { path = "../mtgml-model" }
+mtgml-persistence = { path = "../mtgml-persistence" }
 mtgml-random = { path = "../mtgml-random" }
 mtgml-state = { path = "../mtgml-state" }
 serde.workspace = true
