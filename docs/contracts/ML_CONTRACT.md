@@ -16,6 +16,6 @@ reward/action policies, and behavior metadata.
 The accepted M4 state-cut contract defines additive player wire successors:
 PlayerDecisionRequestV3, ObservedEventEnvelopeV3 and PlayerStepV3, with the
 named payload `magic-basic-land-observation.v1`. PlayerStepV3 continues to
-carry PlayerInformationStateV2 and DecisionResponseV2. These identities are
-not current writers until the complete successor runtime is atomically
-activated; predecessor schemas and fixtures retain their exact meanings.
+carry PlayerInformationStateV2 and DecisionResponseV2. PR #248 atomically activated these identities on `master` for the bounded
+M4.2 slice. Predecessor schemas and fixtures retain their exact meanings;
+this activation does not claim complete M4 gameplay or broader support.

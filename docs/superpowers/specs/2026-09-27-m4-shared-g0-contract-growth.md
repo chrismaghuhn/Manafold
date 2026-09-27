@@ -1,7 +1,8 @@
 # M4 Shared G0 — Contract-Growth Boundary
 
 **Task:** `M4_SHARED_G0_CONTRACT_GROWTH_SPEC_AND_IMPLEMENTATION_PLAN`
-**Status:** PROPOSED / NOT ACCEPTED / NO IMPLEMENTATION AUTHORITY
+**Status:** ACCEPTED FOR G0B — NO IMPLEMENTATION AUTHORITY
+**G0a acceptance record:** Independent exact-head G0 Spec/Plan review PASS at `308e465669f66ad63b01d5fb381214c08ce413bc`; PR #250 required CI PASS; merged at `8642db7a389d5363d52224bd040082811f626084` with tree identical to the reviewed head. This accepts the G0a design boundary for G0b only. It does not accept G0b or authorize G0 implementation.
 **Verified `origin/master`:** `85f967f641528e43772c63be14679af398dcac86`
 **Date:** 2026-09-27
 
@@ -482,7 +483,7 @@ PlayerStepSuccessor {
 
 ## 10. Contract compatibility and exact version disposition
 
-The compatibility result is `VERSION_IDENTITY_GROWTH_REQUIRED` for the state/digest/checkpoint/replay and closed player request/event products. No successor numeric identity or versioned name is allocated here; accepted API/compatibility governance requires a separate review of exact identity names and predecessor support classifications before any producer is implemented.
+The compatibility result is `VERSION_IDENTITY_GROWTH_REQUIRED` for the state/digest/checkpoint/replay and closed player request/event products. This section records the G0a semantic incompatibility analysis and why each predecessor identity cannot be extended. G0a deliberately left exact names unassigned. Proposed exact successor names and the full historical reader policy are now listed in [ADR 0056](../../adr/0056-g0-successor-version-identities-and-compatibility.md); they remain proposed until that ADR is accepted. If accepted, ADR 0056 is the canonical source for exact names/dispositions and supersedes only the `unassigned` naming statements in this G0a table. No producer is authorized by the proposed ADR.
 
 | Current identity | Can represent G0 semantics without changing closed meaning? | G0 disposition | Historical disposition required before implementation |
 |---|---|---|---|
@@ -527,7 +528,7 @@ No automatic migration is defined. A migration, if later justified, reads/verifi
 Future G0 implementation entry requires:
 
 ```text
-MASTER_BASELINE = exact post-PR-249 master, re-fetched and frozen
+G0A_ACCEPTANCE = PASS
 SHARED_SPEC_REVIEW = PASS
 SHARED_PLAN_REVIEW = PASS
 VERSION_IDENTITY_DECISION = ACCEPTED by the required ADR/compatibility review
@@ -535,7 +536,7 @@ CONTRACT_GROWTH_BOUNDARY = ACCEPTED
 EXACT_IMPLEMENTATION_BASELINE = FROZEN
 ```
 
-This G0 design task satisfies none of the G0 implementation/identity acceptance gates. Its own Spec is proposed and must receive independent review. Only after G0 Spec acceptance may its companion Plan be accepted as the implementation procedure. Only after both plus the exact identity decision can `G0_IMPLEMENTATION_AUTHORIZED = YES`.
+G0a acceptance authorizes preparation and review of G0b only. G0b remains unaccepted until its proposed ADR receives independent Exact-Head review, required CI, merge, and post-merge verification. No G0c producer work may begin before those steps. Only after the G0b identity decision is accepted, compatibility matrices are frozen, and an exact implementation baseline is frozen can `G0_IMPLEMENTATION_AUTHORIZED = YES`.
 
 G0 exit requires exact typed/canonical state records; one state authority; sound/complete Decision requests; total rejection nonmutation; state/event/delta/projection equality; Rust/Python/schema parity; noninterference; direct/restore/fork/replay parity; exact historic compatibility; and exact-head CI and independent review. It unblocks Shared S1–S7 contract use only. It does not implement game semantics or complete M4/R1/W1.
 

@@ -122,12 +122,14 @@ accepted persisted semantic codec.
 
 The detached V3 semantic digest mapping is specified in [`../STATE_HASHING.md`](../STATE_HASHING.md).
 
-## V5 state and V6 checkpoint/replay identity
+## V5 state and V6 checkpoint/replay identity (historical after M4.2 activation)
 
 ADR 0055 introduced `ExecutionIdentityV1` as the resumable checkpoint
-identity. S3.P0 adds authoritative Magic SBA-order continuation state, so the
-current full-state identity is now `FullStateDigestV5`; the detached V4 codec
-keeps its exact historical meaning and rejects the Magic continuation.
+identity. S3.P0 added authoritative Magic SBA-order continuation state, making
+`FullStateDigestV5` the current identity at that historical cut. PR #248 later
+activated the M4 successor; `FullStateDigestV5` is now exact historical
+verification only, and V6 is current on `master`. The detached V4 codec keeps
+its exact historical meaning and rejects the Magic continuation.
 
 `EnvironmentCheckpointV6` carries `FullStateDigestV5`,
 `execution_identity: ExecutionIdentityV1` (`program_kind: ExecutionProgramV1`,
@@ -147,12 +149,12 @@ contract that does not admit S3.A.
 
 Block 6 extends authoritative `CombatState` with the attackers that became
 blocked, independently of live blocker references, and a flag recording that
-the combat-damage turn-based action completed. These facts are validated as
-part of `EngineState`, included in the current V5 full-state identity, and
-preserved by V6 checkpoints. A blocked attacker remains blocked when its live
+the combat-damage turn-based action completed. At the Block 6/M3 cut, these facts were validated as part of `EngineState`,
+included in the then-current V5 full-state identity, and preserved by V6
+checkpoints. PR #248 later activated the V6/V7 M4 successor on `master`. A blocked attacker remains blocked when its live
 blocker reference is absent.
 
-## Accepted M4 state successor (not current runtime)
+## Accepted M4 state successor (current on master for bounded M4.2)
 
 The accepted M4 state-cut Semantic Spec defines the next current EngineState
 shape with exactly six additional closed authoritative families:
@@ -160,12 +162,13 @@ shape with exactly six additional closed authoritative families:
 `FaceState`, and `AbilityAuthorityState`. Their owners, invariants, lifecycle,
 cross-family validation, and external content-catalog joins are frozen in the
 [Semantic Spec](../superpowers/specs/2026-09-26-m4-unified-state-cut-semantic-spec.md).
-They are not current EngineState fields until the plan's final activation
-boundary.
+PR #248 crossed the plan's final activation boundary on `master` for the
+bounded M4.2 Mountain/Plains slice. These families are current state fields
+within that slice; their presence does not claim broader card/deck support.
 
-That state requires `FullStateDigestV6` and `StateDeltaV2` /
-`EngineStatePartsV2`; checkpoint, replay, decision, event and PlayerStep
-successors are coupled as specified there. FullStateDigestV5 and all current
-writers remain current while the successor is detached. No historical
-checkpoint or digest is reinterpreted and no partial successor is admitted as
-executable state.
+That state uses `FullStateDigestV6`, `StateDeltaV2`, and
+`EngineStatePartsV2`; the checkpoint, replay, decision, event, and PlayerStep
+successors were coupled and activated as specified by PR #248. FullStateDigestV5
+and its checkpoint/replay family are historical verification only. No
+historical checkpoint or digest is reinterpreted; current runtime admission
+remains bounded to the accepted M4.2 slice.

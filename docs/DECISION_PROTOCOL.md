@@ -229,7 +229,7 @@ A typed semantic rejection preserves:
 
 Wire-decode failure is earlier than this semantic rejection contract.
 
-## Accepted PlayLand request successor (not current runtime)
+## Accepted PlayLand request successor (current on master since PR #248)
 
 The accepted M4 state-cut Semantic Spec allocates
 `AuthoritativeDecisionRequestV3` / `PlayerDecisionRequestV3`,
@@ -242,6 +242,7 @@ CastSpell, SelectObject, Confirm, or a generic action. Ordering ranks
 exact order in the accepted Semantic Spec. The V2 response remains unchanged.
 
 V2 request bytes and semantics remain historical and are never relabeled V3.
-The V3 request is not a current writer until the implementation's final
-activation boundary. PlayLand legality and complete-candidate soundness and
-completeness are owned by the RulesKernel path, not by this wire contract.
+PR #248 activated the V3 request as the current player-request identity on
+`master` for the bounded M4.2 slice. PlayLand legality and complete-candidate
+soundness/completeness are owned by the RulesKernel path, not this wire
+contract; the M4.2 slice does not claim PlayLand or broader card support.

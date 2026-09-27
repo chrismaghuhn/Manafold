@@ -87,10 +87,12 @@ meaning, and requirement derivation before content using it can be admitted
 or hashed. Unknown fields, duplicate fields, unknown variants, and unknown
 profile IDs fail closed.
 
-## Accepted M4.2 basic-land profile successor (not current runtime)
+## Accepted M4.2 basic-land profile successor (current on master)
 
 The accepted M4 unified-state Semantic Spec defines the first closed profile
-as `basic-land@1.0.0`, using the unchanged M4.1 profile-ID grammar and the
+as `basic-land@1.0.0`. PR #248 activated it on `master` only for the bounded Mountain/Plains slice;
+this does not imply broader card support. The profile uses the unchanged M4.1
+profile-ID grammar and the
 unchanged outer `CardDefinitionEnvelopeV1` / `ContentContractManifestV1`
 shapes. Its body is exactly
 `BasicLandProfileV1 { subtype: BasicLandSubtypeV1 }`, where the closed subtype
@@ -296,7 +298,10 @@ No universal `ActionReceipt<T>` is persisted.
 M4.1 adds no authoritative EngineState, no Decision family, no continuation,
 and no player-visible information. `FullStateDigestV5`,
 `EnvironmentCheckpointV6`, `CheckpointDigestV6`, Replay V6, current M3
-semantic identities, and the existing execution catalog remain unchanged.
+semantic identities, and the existing execution catalog were the unchanged
+M4.1 design baseline. PR #248 later activated FullStateDigestV6, Checkpoint V7,
+and Replay V7 for the bounded M4.2 slice; this historical M4.1 contract does
+not claim or authorize broader support.
 `ContentContractIdV1` is external immutable content identity and is not
 inserted into state or checkpoint identity.
 

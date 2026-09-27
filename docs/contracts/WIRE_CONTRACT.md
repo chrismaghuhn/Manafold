@@ -77,14 +77,15 @@ It must not contain internal `DecisionId`, `ContinuationId`, authoritative candi
 
 The accepted M4 state-cut design adds `player-decision-request.v3`,
 `observed-event-envelope.v3`, `player-step.v3`, Replay V7, and the named
-payload codec `magic-basic-land-observation.v1`. These are separate closed
-successors. DecisionResponseV2, ObservationEnvelopeV1, and
-InformationStateDigestV2 remain unchanged. Replay V7 carries the content
-child in the exact accepted transport form: lowercase ContentContractIdV1
-plus the canonical ContentContractManifestV1 CBOR payload in bounded,
-canonical padded standard Base64. No JSON/Serde representation of the
-manifest is introduced. Until atomic runtime activation, existing V2/V6
-readers and writers retain their current status and meaning.
+payload codec `magic-basic-land-observation.v1`. PR #248 activated these
+successor identities on `master` for the bounded M4.2 Mountain/Plains slice.
+DecisionResponseV2, ObservationEnvelopeV1, and InformationStateDigestV2
+retain their exact meanings. Replay V7 carries the content child in the exact
+accepted transport form: lowercase ContentContractIdV1 plus the canonical
+ContentContractManifestV1 CBOR payload in bounded, canonical padded standard
+Base64. No JSON/Serde representation of the manifest is introduced. The
+predecessor readers/verifiers retain exact historical meanings and are not
+current writers.
 
 M2 uses new versions where meaning changes:
 
