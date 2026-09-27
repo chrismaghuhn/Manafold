@@ -115,6 +115,7 @@ fn state_delta_v2_binds_the_complete_v3_pending_decision_authority() {
         .as_mut()
         .unwrap()
         .decision_id = DecisionId(99);
+    after.predecessor_v5.allocators.next_decision_id = DecisionId(100);
     after.validate().unwrap();
 
     let delta = StateDeltaV2::between(&before, &after, Vec::new()).unwrap();

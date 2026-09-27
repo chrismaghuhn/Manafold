@@ -140,6 +140,15 @@ impl EngineStatePartsV2 {
             if request.validate().is_err()
                 || request.state_revision != state.revision
                 || !players.contains(&request.actor)
+                || self.predecessor_v5.allocators.next_decision_id.0 <= request.decision_id.0
+                || self
+                    .predecessor_v5
+                    .perspective_identities
+                    .players
+                    .get(&request.actor)
+                    .is_none_or(|identity| {
+                        identity.next_player_decision_id.0 <= request.player_decision_id.0
+                    })
                 || request
                     .validate_bindings(&PartsIdentityResolver(&state.perspective_identities))
                     .is_err()
@@ -577,6 +586,57 @@ mod tests {
     }
 
     #[test]
+    fn successor_pending_request_ids_must_be_below_their_allocator_cursors() {
+        let mut state = parts();
+        let request = state.execution_v3.pending_decision.as_ref().unwrap();
+        let decision_id = request.decision_id;
+        let player_decision_id = request.player_decision_id;
+        let actor = request.actor;
+        assert!(state.predecessor_v5.allocators.next_decision_id.0 > decision_id.0);
+        assert!(
+            state.predecessor_v5.perspective_identities.players[&actor]
+                .next_player_decision_id
+                .0
+                > player_decision_id.0
+        );
+
+        let mut trusted_cursor_not_ahead = state.clone();
+        trusted_cursor_not_ahead
+            .predecessor_v5
+            .allocators
+            .next_decision_id = decision_id;
+        assert_eq!(
+            trusted_cursor_not_ahead.validate(),
+            Err(EngineStatePartsV2Error::ExecutionState)
+        );
+
+        let mut player_cursor_not_ahead = state.clone();
+        player_cursor_not_ahead
+            .predecessor_v5
+            .perspective_identities
+            .players
+            .get_mut(&actor)
+            .unwrap()
+            .next_player_decision_id = player_decision_id;
+        assert_eq!(
+            player_cursor_not_ahead.validate(),
+            Err(EngineStatePartsV2Error::ExecutionState)
+        );
+
+        // The contract is strict ordering, not an exact cursor distance.
+        state.predecessor_v5.allocators.next_decision_id =
+            mtgml_model::DecisionId(decision_id.0 + 3);
+        state
+            .predecessor_v5
+            .perspective_identities
+            .players
+            .get_mut(&actor)
+            .unwrap()
+            .next_player_decision_id = mtgml_model::PlayerDecisionIdV1(player_decision_id.0 + 3);
+        state.validate().unwrap();
+    }
+
+    #[test]
     fn successor_pending_object_binding_must_resolve_to_a_live_identity() {
         use mtgml_decision::{
             AuthoritativeCandidateV3, AuthoritativeDecisionRequestV3, CandidateIntentV3,
@@ -607,6 +667,14 @@ mod tests {
             }],
             continuation_id: None,
         });
+        state.predecessor_v5.allocators.next_decision_id = DecisionId(101);
+        state
+            .predecessor_v5
+            .perspective_identities
+            .players
+            .get_mut(&actor)
+            .unwrap()
+            .next_player_decision_id = PlayerDecisionIdV1(101);
         state.validate().unwrap();
 
         let request = state.execution_v3.pending_decision.as_mut().unwrap();

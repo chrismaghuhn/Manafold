@@ -40,10 +40,13 @@
 - **Real Magic semantics:** accepted evidence covers the eleven bounded Foundation V2 capabilities. This does not claim arbitrary Magic support, cards, decks, formats, or playability.
 - **Real card support:** none
 
-**Current resumable execution contract:** V6. V6 binds the V5 full-state
-identity and `ExecutionIdentityV1` through `EnvironmentCheckpointV6`,
-`CheckpointDigestV6`, and Replay V6. V4/V5 artifacts retain their historical
-meanings and are not reinterpreted or automatically migrated.
+**Current resumable execution contract on `master`:** V6. V6 binds the V5
+full-state identity and `ExecutionIdentityV1` through
+`EnvironmentCheckpointV6`, `CheckpointDigestV6`, and Replay V6. The M4
+successor integration branch has migrated its sole executable runtime to
+V6 state identity, Checkpoint V7, and Replay V7; V5/V6 predecessor artifacts
+there retain historical read/verification only. V4/V5 artifacts retain their
+historical meanings and are not reinterpreted or automatically migrated.
 
 Manafold prioritizes:
 

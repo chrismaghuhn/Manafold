@@ -139,10 +139,15 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("0` are certified", readme)
         self.assertIn("**Playable engine:** no", readme)
         self.assertIn("**Real card support:** none", readme)
-        self.assertIn("**Current resumable execution contract:** V6.", readme)
+        self.assertIn("**Current resumable execution contract on `master`:** V6.", readme)
+        self.assertRegex(
+            readme,
+            r"The M4\s+successor integration branch has migrated its sole executable runtime",
+        )
+        self.assertIn("historical read/verification only", readme)
         self.assertIn("`EnvironmentCheckpointV6`", readme)
         self.assertIn("`CheckpointDigestV6`", readme)
-        self.assertRegex(readme, r"V4/V5 artifacts retain their historical\s+meanings")
+        self.assertRegex(readme, r"V4/V5 artifacts retain their\s+historical meanings")
         self.assertNotIn("M3 Pre-T0 plan hardening under Issue #178", readme)
         self.assertNotIn("HARDENED_PLAN_MERGE_AND_EXACT_MASTER_REAUTHORIZATION", readme)
         self.assertNotIn(
