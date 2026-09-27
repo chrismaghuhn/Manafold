@@ -15,6 +15,8 @@ ADR 0041 accepts the reviewed capability-oriented semantic-ownership candidate a
 
 Reviewed ADR candidates may be stored under `docs/adr/candidates/` without allocating a permanent ADR number. They are informative until a later acceptance change assigns the then-current number and changes the record to `Accepted`. ADR 0054 is accepted; its merge accepted the plan, but does not authorize execution.
 
+ADR 0056 is the proposed G0b version-identity/compatibility decision. Its number was allocated by `scripts/new_adr.py` after confirming the accepted sequence ended at 0055. It remains a proposal until its own Exact-Head review, required CI, merge, and post-merge verification; it does not authorize G0 implementation.
+
 A candidate must not be cited as accepted architecture, used to claim executable support, or used to begin a later milestone before its explicit acceptance change. Candidate numbering shown inside research material is provisional only.
 
 ADR 0049 accepts the Pre-M3 Batch-D knowledge chronology and ordered-zone

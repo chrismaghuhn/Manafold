@@ -255,7 +255,7 @@ For each perspective, visible events are assigned contiguous sequence values. Hi
 
 A visible random result may differ when the synthetic/rules visibility contract authorizes it. Root seed, typed stream key, derived key, stream cursor, raw words, rejection count, and hidden permutation remain trusted.
 
-## Accepted M4 observed-event and PlayerStep successors (not current runtime)
+## Accepted M4 observed-event and PlayerStep successors (current on master since PR #248)
 
 The accepted M4 state-cut Semantic Spec allocates
 `ObservedEventEnvelopeV3` (`observed-event-envelope.v3`) and `PlayerStepV3`
@@ -268,8 +268,9 @@ byte-exact historical contracts.
 
 `PlayerStepV3` embeds the V3 decision request and observed events while
 retaining `PlayerInformationStateV2`, unchanged DecisionResponseV2, and the
-existing revision, sequence, rejection, and endpoint-actor invariants. This
-successor is design authority only until final runtime activation.
+existing revision, sequence, rejection, and endpoint-actor invariants. PR #248 activated these successors on `master` for the bounded M4.2 slice.
+Their existence does not claim broader information/event support beyond the
+accepted content closure.
 
 ## Noninterference
 

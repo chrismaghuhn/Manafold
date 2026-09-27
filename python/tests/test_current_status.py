@@ -233,6 +233,7 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("M3_STARTED = YES", roadmap)
         self.assertIn("M3_AUTHORIZED = YES", roadmap)
         self.assertIn("M3_PRE_T0_HARDENING = COMPLETE / ACCEPTED", roadmap)
+
         self.assertIn("M3_PLAN_STATUS = ACCEPTED", roadmap)
         self.assertIn("ADR_0054 = ACCEPTED", roadmap)
         self.assertIn("FOUNDATION_V2 = ACCEPTED", roadmap)
@@ -261,7 +262,7 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("S1_IMPLEMENTED_CAPABILITY_COUNT = 0", roadmap)
         self.assertIn("S1_COVERED_CAPABILITY_COUNT = 1", roadmap)
         self.assertIn("S1_CERTIFIED_CAPABILITY_COUNT = 0", roadmap)
-        self.assertIn("CURRENT_RESUMABLE_EXECUTION_CONTRACT = V6", roadmap)
+        self.assertIn("CURRENT_RESUMABLE_EXECUTION_CONTRACT = V7", roadmap)
         self.assertIn(
             "V4_V5_RESUMABLE_CONTRACT_STATUS = HISTORICAL_ONLY / V5_TO_V6_MIGRATION_NONE",
             roadmap,
@@ -440,6 +441,35 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("Census-driven scope", roadmap)
         self.assertRegex(roadmap, r"outside\s+this authoritative\s+engine repository")
 
+
+    def test_g0a_is_accepted_for_g0b_without_authorizing_implementation(self) -> None:
+        spec = (
+            ROOT
+            / "docs"
+            / "superpowers"
+            / "specs"
+            / "2026-09-27-m4-shared-g0-contract-growth.md"
+        ).read_text(encoding="utf-8")
+        plan = (
+            ROOT
+            / "docs"
+            / "superpowers"
+            / "plans"
+            / "2026-09-27-m4-shared-g0-contract-growth.md"
+        ).read_text(encoding="utf-8")
+        adr = (
+            ROOT
+            / "docs"
+            / "adr"
+            / "0056-g0-successor-version-identities-and-compatibility.md"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("ACCEPTED FOR G0B — NO IMPLEMENTATION AUTHORITY", spec)
+        self.assertIn("G0A_ACCEPTANCE = PASS", spec)
+        self.assertIn("ACCEPTED FOR G0B — NO IMPLEMENTATION AUTHORITY UNTIL G0B ACCEPTANCE", plan)
+        self.assertIn("**Status:** proposed", adr)
+        self.assertIn("G0_IMPLEMENTATION_AUTHORIZED = NO", adr)
+        self.assertIn("**Implementation authorized:** NO", plan)
     def test_current_status_does_not_duplicate_a_second_status_file(self) -> None:
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertNotRegex(

@@ -3,7 +3,7 @@
 **Status:** accepted schema-evolution policy  
 **Stability:** normative
 
-## Accepted M4 successor cut (2026-09-26; not current writers)
+## Accepted M4 successor cut (activated on master for bounded M4.2 by PR #248)
 
 The accepted M4 Semantic Spec allocates one coupled successor family:
 FullStateDigestV6 / input V6, StateDeltaV2, Checkpoint V7 / digest V7, Replay
@@ -12,11 +12,12 @@ V7, Decision request V3, ObservedEventEnvelopeV3, PlayerStepV3 and the named
 cross-field rules, and predecessor dispositions are defined in the accepted
 [M4 Semantic Spec](../superpowers/specs/2026-09-26-m4-unified-state-cut-semantic-spec.md).
 
-The new JSON schemas are additive. Existing V2/V6 schema files and fixtures
-must remain unchanged. Replay V7 carries content-child CBOR via the accepted
-strict Base64 transport; it does not introduce a JSON CardDefinition manifest.
-The successor families remain non-current until a complete detached
-implementation passes the plan's gates and is atomically activated.
+The JSON schemas were additive at introduction; existing V2/V6 schema files
+and fixtures remain unchanged. Replay V7 carries content-child CBOR via the
+accepted strict Base64 transport; it does not introduce a JSON CardDefinition
+manifest. PR #248 atomically activated this successor family on `master` for
+the bounded M4.2 Mountain/Plains slice. Its current status does not imply
+complete M4 gameplay or broader card/deck support.
 
 1. name the exact semantic surface and current version;
 2. add/modify reader and writer fixtures before producer code;
