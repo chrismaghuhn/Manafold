@@ -34,6 +34,7 @@ The catalog owns only mechanically duplicated public vocabulary. It does **not**
 - `semantic.magic_m3_observation`
 - `semantic.magic_combat_observation`
 - `semantic.magic_combat_observation_v4`
+- `semantic.magic_basic_land_observation_v1`
 - `semantic.observation`
 - `semantic.information_state`
 - `semantic.observed_event`

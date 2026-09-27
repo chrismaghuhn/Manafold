@@ -7,7 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::SemanticContractIdV1;
+use crate::{RulesAuthorityV1, SemanticContractIdV1};
 
 /// Closed execution/dispatch family (spec §6; ADR 0055 §2.4).
 ///
@@ -20,6 +20,24 @@ pub enum ExecutionProgramV1 {
     MagicRules,
 }
 
+/// Returns whether an execution program is paired with its only permitted
+/// rules authority, as required by ADR 0055 §2.4.
+pub fn execution_program_matches_rules_authority(
+    program: ExecutionProgramV1,
+    authority: &RulesAuthorityV1,
+) -> bool {
+    matches!(
+        (program, authority),
+        (
+            ExecutionProgramV1::SyntheticRulesCompat,
+            RulesAuthorityV1::SyntheticLegacy
+        ) | (
+            ExecutionProgramV1::MagicRules,
+            RulesAuthorityV1::ComprehensiveRules { .. }
+        )
+    )
+}
+
 /// Full execution identity (spec §6; ADR 0055 §2.3).
 ///
 /// The checkpoint binds the FULL struct; the dispatch tag alone is never
@@ -29,4 +47,33 @@ pub enum ExecutionProgramV1 {
 pub struct ExecutionIdentityV1 {
     pub program_kind: ExecutionProgramV1,
     pub semantic_contract_id: SemanticContractIdV1,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn adr_0055_program_authority_pairs_are_closed_and_symmetric() {
+        assert!(execution_program_matches_rules_authority(
+            ExecutionProgramV1::SyntheticRulesCompat,
+            &RulesAuthorityV1::SyntheticLegacy,
+        ));
+        assert!(execution_program_matches_rules_authority(
+            ExecutionProgramV1::MagicRules,
+            &RulesAuthorityV1::ComprehensiveRules {
+                snapshot_id: "cr-snapshot".to_owned(),
+            },
+        ));
+        assert!(!execution_program_matches_rules_authority(
+            ExecutionProgramV1::MagicRules,
+            &RulesAuthorityV1::SyntheticLegacy,
+        ));
+        assert!(!execution_program_matches_rules_authority(
+            ExecutionProgramV1::SyntheticRulesCompat,
+            &RulesAuthorityV1::ComprehensiveRules {
+                snapshot_id: "cr-snapshot".to_owned(),
+            },
+        ));
+    }
 }

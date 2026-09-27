@@ -1,0 +1,58 @@
+{
+  "files": [
+    {
+      "path": "crates/mtgml-state/tests/fixtures/magic-sba-graveyard-order-v5-input.hex",
+      "sha256": "135bfcc76b5da20eb3cbcb09886a97b8b2ba125b427ef3e0da9dd230d67f7339"
+    },
+    {
+      "path": "persistence/golden/checkpoint-digest-v5-kat.v1.json",
+      "sha256": "67898952740535a5fa58f01825d8f14d906af9dc7dc94ed5ebd7cdc8afd1c83e"
+    },
+    {
+      "path": "persistence/golden/checkpoint-digest-v6-kat.v1.json",
+      "sha256": "6f6d1b7cc5557dd5c2d3fd656339be826a24e1191b4677e6f23d51287357a14c"
+    },
+    {
+      "path": "persistence/golden/content-contract-minimal-v1.cbor",
+      "sha256": "60c39ca9f38c8f3ed8d1e9e9c3a9df1394c52f77d771d33b482be6bf12976db7"
+    },
+    {
+      "path": "persistence/golden/semantic-contract-kat.v1.json",
+      "sha256": "c83f186c31fec72e88eb93df073c9367ff1f6f2c380b7877fe48c06759c50826"
+    },
+    {
+      "path": "wire/golden/replay-manifest.v6.json",
+      "sha256": "3701e826952c26ec59ec7bc7941c555df1bb399a98e814885cc312e35cca94a8"
+    },
+    {
+      "path": "wire/golden/authoritative-replay-empty.v6.json",
+      "sha256": "c1fd7159229f69ca5fb16f50ccb189d4db98591bcf38b3a158cd0b57117bf19a"
+    },
+    {
+      "path": "wire/golden/player-decision-request.v2.json",
+      "sha256": "44c0aa6450c63919bb9e8622147eb2a7e2a8a8c5150bbc10454882e9146aca65"
+    },
+    {
+      "path": "wire/golden/player-decision-request.v2-choose-many.json",
+      "sha256": "582c324adc9eea248c4ab23dda36a771596ad37ba973ac7f459c1bd28f10bd3b"
+    },
+    {
+      "path": "wire/golden/observed-event-envelope.v2.json",
+      "sha256": "ad868c1463f1311c15ad4bbe13561a1d77dbecf16a354d37cd49e4390bc7b2e0"
+    },
+    {
+      "path": "wire/golden/observed-event-v2-object-moved.json",
+      "sha256": "3db05d19eae8b7e3d3aba81dc9963c793055724631f005994bef3eee81579b72"
+    },
+    {
+      "path": "wire/golden/player-step.v2.json",
+      "sha256": "107963687013e87335397c0f8d803fd3b94738da0661d553d929d3f6b4e71bdb"
+    },
+    {
+      "path": "wire/golden/player-step.v2-events-running.json",
+      "sha256": "5039e04e0cca367329b43da4f9e4601a7800709b6b94fc68b5dbdc736d4a67c3"
+    }
+  ],
+  "meaning": "captured predecessor artifacts; future writers must not rebless or mutate",
+  "schema_version": "m4-phase2-historical-byte-invariance.v1"
+}

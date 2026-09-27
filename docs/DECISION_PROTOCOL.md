@@ -228,3 +228,20 @@ A typed semantic rejection preserves:
 - all player-visible bytes except the closed submission error code.
 
 Wire-decode failure is earlier than this semantic rejection contract.
+
+## Accepted PlayLand request successor (not current runtime)
+
+The accepted M4 state-cut Semantic Spec allocates
+`AuthoritativeDecisionRequestV3` / `PlayerDecisionRequestV3`,
+`CandidateIntentV3`, and `EngineCandidateBindingV3`, with wire identity
+`player-decision-request.v3` and `CandidateOrderingV2`. V3 adds only the
+distinct visible intent `PlayLand { object: OpaqueObjectId }` and trusted
+binding to the exact current hand `GameObjectId`; it is not represented as
+CastSpell, SelectObject, Confirm, or a generic action. Ordering ranks
+`pass_priority`, then `play_land`, then the existing intent families in the
+exact order in the accepted Semantic Spec. The V2 response remains unchanged.
+
+V2 request bytes and semantics remain historical and are never relabeled V3.
+The V3 request is not a current writer until the implementation's final
+activation boundary. PlayLand legality and complete-candidate soundness and
+completeness are owned by the RulesKernel path, not by this wire contract.

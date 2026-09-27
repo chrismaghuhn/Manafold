@@ -13,7 +13,7 @@ use crate::decision_stage::{advance_player_allocator, fresh_stage_identity};
 use crate::errors::KernelExecutionError;
 use crate::events::{AuthoritativeRuleEvent, AuthoritativeRuleEventKind};
 use crate::product::build_accepted_product;
-use crate::transition::TransitionResult;
+use crate::transition::PredecessorTransitionResult;
 use crate::validation::TransitionViolation;
 
 pub(crate) fn is_priority_bearing_position(position: TurnPosition) -> bool {
@@ -243,32 +243,32 @@ fn validate_pass_only_state_with_combat_and_blockers(
 
 pub(crate) fn open_priority_window(
     state: &EngineState,
-) -> Result<TransitionResult, KernelExecutionError> {
+) -> Result<PredecessorTransitionResult, KernelExecutionError> {
     open_priority_window_with_combat(state, false)
 }
 
 pub(crate) fn open_combat_priority_window(
     state: &EngineState,
-) -> Result<TransitionResult, KernelExecutionError> {
+) -> Result<PredecessorTransitionResult, KernelExecutionError> {
     open_priority_window_with_combat(state, true)
 }
 
 pub(crate) fn open_combat_blocker_priority_window(
     state: &EngineState,
-) -> Result<TransitionResult, KernelExecutionError> {
+) -> Result<PredecessorTransitionResult, KernelExecutionError> {
     open_priority_window_with_combat_and_blockers(state, true, true, false)
 }
 
 pub(crate) fn open_combat_damage_priority_window(
     state: &EngineState,
-) -> Result<TransitionResult, KernelExecutionError> {
+) -> Result<PredecessorTransitionResult, KernelExecutionError> {
     open_priority_window_with_combat_and_blockers(state, true, true, true)
 }
 
 fn open_priority_window_with_combat(
     state: &EngineState,
     combat_enabled: bool,
-) -> Result<TransitionResult, KernelExecutionError> {
+) -> Result<PredecessorTransitionResult, KernelExecutionError> {
     open_priority_window_with_combat_and_blockers(state, combat_enabled, false, false)
 }
 
@@ -277,7 +277,7 @@ fn open_priority_window_with_combat_and_blockers(
     combat_enabled: bool,
     blockers_enabled: bool,
     damage_enabled: bool,
-) -> Result<TransitionResult, KernelExecutionError> {
+) -> Result<PredecessorTransitionResult, KernelExecutionError> {
     validate_pass_only_state_with_combat_and_blockers(
         state,
         false,
@@ -336,7 +336,7 @@ fn open_priority_window_with_combat_and_blockers(
 
 pub(crate) fn validate_priority_transition(
     before: &EngineState,
-    result: &TransitionResult,
+    result: &PredecessorTransitionResult,
 ) -> Result<(), TransitionViolation> {
     if crate::contract::is_bounded_cleanup_to_upkeep_composition(before, result) {
         return Ok(());
@@ -534,7 +534,7 @@ fn validate_priority_endpoint(state: &EngineState) -> Result<(), KernelExecution
 
 pub(crate) fn validate_second_pass_combat_composition(
     before: &EngineState,
-    result: &TransitionResult,
+    result: &PredecessorTransitionResult,
 ) -> Result<bool, TransitionViolation> {
     let after = &result.next_state;
     let Some(pending) = before.execution.pending_decision.as_ref() else {

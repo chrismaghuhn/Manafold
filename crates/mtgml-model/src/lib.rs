@@ -12,7 +12,9 @@ pub use generated_contract_vocab::{
 
 mod execution_identity;
 mod semantic_contract;
-pub use execution_identity::{ExecutionIdentityV1, ExecutionProgramV1};
+pub use execution_identity::{
+    execution_program_matches_rules_authority, ExecutionIdentityV1, ExecutionProgramV1,
+};
 pub use semantic_contract::{
     CapabilityRequirementV1, RulesAuthorityV1, RulesContractManifestV1,
     RulesContractManifestValidationError, SemanticContractManifestV1,
@@ -336,12 +338,14 @@ raw_digest!(CheckpointDigestV3, "mtgml.checkpoint-digest.v3");
 raw_digest!(FullStateDigestV4, "mtgml.full-state-digest.v4");
 raw_digest!(CheckpointDigestV4, "mtgml.checkpoint-digest.v4");
 raw_digest!(FullStateDigestV5, "mtgml.full-state-digest.v5");
+raw_digest!(FullStateDigestV6, "mtgml.full-state-digest.v6");
 
 // === V5 contract identity and digest domains (spec §5) ===
 raw_digest!(RulesContractIdV1, "mtgml.rules-contract.v1");
 raw_digest!(SemanticContractIdV1, "mtgml.semantic-contract.v1");
 raw_digest!(CheckpointDigestV5, "mtgml.checkpoint-digest.v5");
 raw_digest!(CheckpointDigestV6, "mtgml.checkpoint-digest.v6");
+raw_digest!(CheckpointDigestV7, "mtgml.checkpoint-digest.v7");
 
 /// Reserved digest identity newtype: DOMAIN + canonical hex parse/serde only.
 ///
@@ -442,6 +446,32 @@ impl FullStateDigestV5 {
             semantic_domain: Self::DOMAIN.to_owned(),
             payload_codec_id: "mtgml.canonical-cbor.v1".to_owned(),
             input_schema_id: "full-state-digest-input.v5".to_owned(),
+            digest_bytes: self.raw_bytes(),
+        }
+    }
+}
+
+impl FullStateDigestV6 {
+    pub fn as_digest_reference(&self) -> DigestReferenceV1 {
+        DigestReferenceV1 {
+            envelope_version: "mtgml.digest-envelope.v1".to_owned(),
+            algorithm_id: "sha-256".to_owned(),
+            semantic_domain: Self::DOMAIN.to_owned(),
+            payload_codec_id: "mtgml.canonical-cbor.v1".to_owned(),
+            input_schema_id: "full-state-digest-input.v6".to_owned(),
+            digest_bytes: self.raw_bytes(),
+        }
+    }
+}
+
+impl CheckpointDigestV7 {
+    pub fn as_digest_reference(&self) -> DigestReferenceV1 {
+        DigestReferenceV1 {
+            envelope_version: "mtgml.digest-envelope.v1".to_owned(),
+            algorithm_id: "sha-256".to_owned(),
+            semantic_domain: Self::DOMAIN.to_owned(),
+            payload_codec_id: "mtgml.canonical-cbor.v1".to_owned(),
+            input_schema_id: "environment-checkpoint-digest-input.v7".to_owned(),
             digest_bytes: self.raw_bytes(),
         }
     }
@@ -647,6 +677,16 @@ mod tests {
         let public = PublicStateDigest::from_canonical_bytes(b"same canonical bytes");
         assert_ne!(full.as_str(), public.as_str());
         assert_eq!(FullStateDigest::parse(full.as_str()).unwrap(), full);
+    }
+
+    #[test]
+    fn full_state_digest_v6_has_distinct_typed_reference_identity() {
+        let digest = FullStateDigestV6::from_digest_bytes([0x6a; 32]);
+        let reference = digest.as_digest_reference();
+        assert_eq!(FullStateDigestV6::DOMAIN, "mtgml.full-state-digest.v6");
+        assert_eq!(reference.semantic_domain, FullStateDigestV6::DOMAIN);
+        assert_eq!(reference.input_schema_id, "full-state-digest-input.v6");
+        assert_eq!(reference.digest_bytes, [0x6a; 32]);
     }
 
     #[test]

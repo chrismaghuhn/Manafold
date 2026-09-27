@@ -1,0 +1,18 @@
+{
+  "actor": "0",
+  "candidates": [
+    {
+      "candidate_id": 0,
+      "intent": {
+        "kind": "activate_random"
+      }
+    }
+  ],
+  "decision": {
+    "kind": "choose_one"
+  },
+  "player_decision_id": "1",
+  "schema_version": "player-decision-request.v3",
+  "state_revision": "2",
+  "visibility": "public"
+}

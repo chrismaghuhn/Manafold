@@ -1,0 +1,39 @@
+{
+  "actor": "1",
+  "candidates": [
+    {
+      "candidate_id": 0,
+      "intent": {
+        "kind": "pass_priority"
+      }
+    },
+    {
+      "candidate_id": 1,
+      "intent": {
+        "kind": "play_land",
+        "object": "4"
+      }
+    },
+    {
+      "candidate_id": 2,
+      "intent": {
+        "kind": "cast_spell",
+        "object": "7"
+      }
+    },
+    {
+      "candidate_id": 3,
+      "intent": {
+        "ability": "2",
+        "kind": "activate_ability"
+      }
+    }
+  ],
+  "decision": {
+    "kind": "choose_one"
+  },
+  "player_decision_id": "9",
+  "schema_version": "player-decision-request.v3",
+  "state_revision": "12",
+  "visibility": "public"
+}

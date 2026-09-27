@@ -16,10 +16,14 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             r"\*\*Foundation closure/freeze:\*\* `COMPLETE`",
         )
         self.assertIn(
-            "**Current status:** M3 is complete and final acceptance passed; M4 is unblocked "
-            "and content implementation has not started",
+            "**Current status:** M3 is complete and final acceptance passed; the bounded "
+            "M4.2 Mountain/Plains implementation through Phase 12 is integrated. Phase 13 "
+            "is the master-activation boundary; M4.2 remains `IN_PROGRESS` until post-merge "
+            "exact-master verification and `FINAL_ACCEPTANCE_PASS`.",
             readme,
         )
+        self.assertNotIn("Phase 10 successor-runtime implementation is under review", readme)
+        self.assertNotIn("`master` remains on the predecessor V5/V6 runtime", readme)
         self.assertNotIn(
             "S1 implementation remains not authorized",
             readme,
@@ -126,7 +130,8 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             readme,
         )
         self.assertIn(
-            "**Current boundary:** `M3 = COMPLETE`; `M3_FINAL_ACCEPTANCE = PASS`; `M4 = UNBLOCKED`",
+            "**Current boundary:** `M3 = COMPLETE`; `M3_FINAL_ACCEPTANCE = PASS`; "
+            "`M4 = IN_PROGRESS`",
             readme,
         )
         self.assertIn(
@@ -136,11 +141,35 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         )
         self.assertIn("0` are certified", readme)
         self.assertIn("**Playable engine:** no", readme)
-        self.assertIn("**Real card support:** none", readme)
-        self.assertIn("**Current resumable execution contract:** V6.", readme)
+        self.assertIn(
+            "**Bounded executable real-card support:** Mountain + Plains under "
+            "`basic-land@1.0.0`; no broader card/deck support is claimed.",
+            readme,
+        )
+        self.assertIn("**Current resumable execution contract on `master`:** V7.", readme)
+        for current_contract in (
+            "`EngineStatePartsV2`",
+            "`FullStateDigestV6`",
+            "`StateDeltaV2`",
+            "`EnvironmentCheckpointV7`",
+            "Replay V7",
+            "Decision V3",
+            "ObservedEvent V3",
+            "PlayerStep V3",
+            "`basic-land@1.0.0`",
+        ):
+            with self.subTest(current_contract=current_contract):
+                self.assertIn(current_contract, readme)
+        self.assertRegex(readme, r"No predecessor gameplay\s+writer is current")
+        self.assertRegex(
+            readme,
+            r"V5/V6 predecessor artifacts, including[\s\S]+"
+            r"remain historical\s+read/verification only",
+        )
+        self.assertIn("historical read/verification only", readme)
         self.assertIn("`EnvironmentCheckpointV6`", readme)
         self.assertIn("`CheckpointDigestV6`", readme)
-        self.assertRegex(readme, r"V4/V5 artifacts retain their historical\s+meanings")
+        self.assertRegex(readme, r"V4/V5 artifacts retain their\s+historical meanings")
         self.assertNotIn("M3 Pre-T0 plan hardening under Issue #178", readme)
         self.assertNotIn("HARDENED_PLAN_MERGE_AND_EXACT_MASTER_REAUTHORIZATION", readme)
         self.assertNotIn(
@@ -180,8 +209,17 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
 
         self.assertIn("M3 = COMPLETE", current_status)
         self.assertIn("M3_FINAL_ACCEPTANCE = PASS", current_status)
-        self.assertIn("M4 = UNBLOCKED", current_status)
-        self.assertIn("M4_CONTENT_IMPLEMENTATION = NOT_STARTED", current_status)
+        self.assertIn("M4 = IN_PROGRESS", current_status)
+        self.assertIn("M4_CONTENT_IMPLEMENTATION = M4.2_BOUNDED_SLICE_IMPLEMENTED", current_status)
+        self.assertIn("M4_2_STATUS = IN_PROGRESS", current_status)
+        self.assertIn(
+            "M4_2_EXECUTABLE_SLICE = Mountain + Plains / basic-land@1.0.0",
+            current_status,
+        )
+        self.assertIn(
+            "M4_2_PHASE_13 = MASTER_ACTIVATION / POST_MERGE_VERIFICATION_PENDING", current_status
+        )
+        self.assertNotIn("M4_CONTENT_IMPLEMENTATION = NOT_STARTED", current_status)
         self.assertNotIn("M3_FINAL_ACCEPTANCE = PENDING", current_status)
         self.assertNotIn("M4_STARTED = NO", current_status)
 
@@ -424,7 +462,7 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         registry = json.loads(
             (ROOT / "cards" / "capabilities" / "registry.json").read_text(encoding="utf-8")
         )
-        expected = {
+        historical_m3_covered = {
             "rules/basic-priority",
             "rules/cleanup-reset",
             "rules/combat-damage",
@@ -437,9 +475,29 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             "rules/turn-structure",
             "rules/zone-incarnation",
         }
+        phase9_specified = {
+            "rules/basic-land-mana",
+            "rules/land-play",
+            "rules/mana-pool",
+        }
         entries = registry["entries"]
-        self.assertEqual({entry["key"] for entry in entries}, expected)
-        self.assertEqual(len(entries), 11)
+        entries_by_key = {entry["key"]: entry for entry in entries}
+        self.assertEqual(len(entries_by_key), len(entries))
+        self.assertTrue(historical_m3_covered <= entries_by_key.keys())
+        self.assertEqual(
+            {key for key in historical_m3_covered if entries_by_key[key]["lifecycle"] == "covered"},
+            historical_m3_covered,
+        )
+        self.assertEqual(
+            {key for key in entries_by_key if key not in historical_m3_covered},
+            phase9_specified,
+        )
+        self.assertEqual(
+            {key for key in phase9_specified if entries_by_key[key]["lifecycle"] == "specified"},
+            phase9_specified,
+        )
+        self.assertTrue(all(entries_by_key[key]["version"] == "0.1.0" for key in phase9_specified))
+        self.assertEqual(len(entries), len(historical_m3_covered) + len(phase9_specified))
         turn_structure = next(entry for entry in entries if entry["key"] == "rules/turn-structure")
         zone_incarnation = next(
             entry for entry in entries if entry["key"] == "rules/zone-incarnation"
@@ -460,7 +518,8 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         other_entries = [
             entry
             for entry in entries
-            if entry
+            if entry["key"] not in phase9_specified
+            and entry
             not in (
                 turn_structure,
                 zone_incarnation,
@@ -630,12 +689,12 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
                 self.assertTrue(entry["conformance_cases"])
                 self.assertEqual(entry["benchmark_scenarios"], [])
 
-        self.assertEqual(sum(entry["lifecycle"] == "specified" for entry in entries), 0)
+        self.assertEqual(sum(entry["lifecycle"] == "specified" for entry in entries), 3)
         self.assertEqual(sum(entry["lifecycle"] == "implemented" for entry in entries), 0)
         self.assertEqual(sum(entry["lifecycle"] == "covered" for entry in entries), 11)
         self.assertEqual(sum(entry["lifecycle"] == "certified" for entry in entries), 0)
         self.assertEqual(
-            sum(len(entry.get("dependencies", [])) for entry in entries),
+            sum(len(entries_by_key[key].get("dependencies", [])) for key in historical_m3_covered),
             13,
         )
 

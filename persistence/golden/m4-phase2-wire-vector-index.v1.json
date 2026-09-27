@@ -1,0 +1,117 @@
+{
+  "schema_version": "m4-phase2-wire-vector-index.v1",
+  "fixtures": [
+    {
+      "contract": "player-decision-request-v3-play-land",
+      "expected_validity": "valid-schema-example",
+      "fixture_purpose": "future-consumer-exact-json-bytes",
+      "path": "schemas/examples/player-decision-request-v3-play-land.json",
+      "sha256": "b03b8d6ba02a15494d87e122c2d451b532797e4dc8b386f4a8185c86a41ff1e5"
+    },
+    {
+      "contract": "player-decision-request-v3-ordering",
+      "expected_validity": "valid-schema-example",
+      "fixture_purpose": "future-consumer-exact-json-bytes",
+      "path": "schemas/examples/player-decision-request-v3-ordering.json",
+      "sha256": "f10dde7481208d64a82ab6da5caebaf2316a7740125a616027d51d4756e8dca9"
+    },
+    {
+      "contract": "observed-event-v3-mana-pool-changed",
+      "expected_validity": "valid-schema-example",
+      "fixture_purpose": "future-consumer-exact-json-bytes",
+      "path": "schemas/examples/observed-event-v3-mana-pool-changed.json",
+      "sha256": "a421d3623603ae2b498b8e5cabedd9f52f5a48a66ce8b8aba34f0c915a631b0d"
+    },
+    {
+      "contract": "observed-event-v3-counters-changed",
+      "expected_validity": "valid-schema-example",
+      "fixture_purpose": "future-consumer-exact-json-bytes",
+      "path": "schemas/examples/observed-event-v3-counters-changed.json",
+      "sha256": "286937fb95bd01e21ed7ace63756093fa7141f9f55248e1fa87d7c5ae8bfc98b"
+    },
+    {
+      "contract": "observed-event-v3-attachment-changed",
+      "expected_validity": "valid-schema-example",
+      "fixture_purpose": "future-consumer-exact-json-bytes",
+      "path": "schemas/examples/observed-event-v3-attachment-changed.json",
+      "sha256": "0e6e962de21db39022a6b68529813762e4a30e7659e9be60adeb2f37a6081b84"
+    },
+    {
+      "contract": "observed-event-v3-face-changed",
+      "expected_validity": "valid-schema-example",
+      "fixture_purpose": "future-consumer-exact-json-bytes",
+      "path": "schemas/examples/observed-event-v3-face-changed.json",
+      "sha256": "32988dbfd9a21545b0e882d77f0262004879715b45fef989d94fff9c05227483"
+    },
+    {
+      "contract": "observed-event-v3-object-moved",
+      "expected_validity": "valid-schema-example",
+      "fixture_purpose": "future-consumer-exact-json-bytes",
+      "path": "schemas/examples/observed-event-v3-object-moved.json",
+      "sha256": "8a96111fff502f772a2f5913cea6b08c09cb57b6a5f0e10ba214a8356a21ba17"
+    },
+    {
+      "contract": "observed-event-v3-entry-back-tapped",
+      "expected_validity": "valid-schema-example",
+      "fixture_purpose": "future-consumer-exact-json-bytes",
+      "path": "schemas/examples/observed-event-v3-entry-back-tapped.json",
+      "sha256": "4da078fa6f99d1669b1008dfb83d029218b196632c16c7df272eeb5d56a1ee53"
+    },
+    {
+      "contract": "player-step-v3",
+      "expected_validity": "valid-schema-example",
+      "fixture_purpose": "future-consumer-exact-json-bytes",
+      "path": "schemas/examples/player-step-v3.json",
+      "sha256": "0f732d085511f9a36c3648d3491baae7e255c14ba99e780afd204cc1f0efe777"
+    },
+    {
+      "contract": "player-step-v3-event-next-decision",
+      "expected_validity": "valid-schema-example",
+      "fixture_purpose": "future-consumer-exact-json-bytes",
+      "path": "schemas/examples/player-step-v3-event-next-decision.json",
+      "sha256": "b6f31355193a2c7c6d2253a9ba1e26664740c0ca2374cd65ef0c201e824f5403"
+    },
+    {
+      "contract": "player-step-v3-rejected-no-events",
+      "expected_validity": "valid-schema-example",
+      "fixture_purpose": "future-consumer-exact-json-bytes",
+      "path": "schemas/examples/player-step-v3-rejected-no-events.json",
+      "sha256": "94f2731a08ccf4d114337028b06be33d3bdf76d0dd0c92cd7c21d91acb2f03c9"
+    },
+    {
+      "contract": "magic-basic-land-observation-v1",
+      "expected_validity": "valid-schema-example",
+      "fixture_purpose": "future-consumer-exact-json-bytes",
+      "path": "schemas/examples/magic-basic-land-observation-v1.json",
+      "sha256": "aa6bfd3b79cc915593a27df7d6e73ce11d91a641990bfb6eec5f7b45a1c057f7"
+    },
+    {
+      "contract": "magic-basic-land-observation-v1-ordered",
+      "expected_validity": "valid-schema-example",
+      "fixture_purpose": "future-consumer-exact-json-bytes",
+      "path": "schemas/examples/magic-basic-land-observation-v1-ordered.json",
+      "sha256": "55baecab8c0217e48a5e40595ec8834a105bdd2ddf6fdef7b6ca7d4b1eb1c18e"
+    },
+    {
+      "contract": "replay-manifest.v7",
+      "expected_validity": "valid-schema-example",
+      "fixture_purpose": "future-consumer-exact-json-bytes",
+      "path": "schemas/examples/replay-manifest.v7.json",
+      "sha256": "3a954d6571ed08a8967d302034c43482a3a651baa659cda35a940cbefdf4e09c"
+    },
+    {
+      "contract": "authoritative-replay-empty.v7",
+      "expected_validity": "valid-schema-example",
+      "fixture_purpose": "future-consumer-exact-json-bytes",
+      "path": "schemas/examples/authoritative-replay-empty.v7.json",
+      "sha256": "8242a450cdddacbb61dc5b479edd35d06681b0090564ea080b348e7e59580a69"
+    },
+    {
+      "contract": "authoritative-replay-v7-rejected-step",
+      "expected_validity": "valid-schema-example",
+      "fixture_purpose": "future-consumer-exact-json-bytes",
+      "path": "schemas/examples/authoritative-replay-v7-rejected-step.json",
+      "sha256": "f0f52b46732233cc368dac6ce3b365081096973f4a39ba30fd306889a01f562a"
+    }
+  ]
+}

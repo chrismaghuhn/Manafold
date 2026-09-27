@@ -5,10 +5,13 @@ import json
 from collections.abc import Callable
 from typing import TypeVar
 
+from ._events_v3 import ObservedEventEnvelopeV3
+from ._magic_basic_land_observation_v1 import MagicBasicLandObservationV1
 from ._magic_combat_observation import MagicObservationV2
 from ._magic_combat_observation_v3 import MagicObservationV3
 from ._magic_combat_observation_v4 import MagicObservationV4
 from ._magic_observation import MagicObservation
+from ._player_step_v3 import PlayerStepV3
 from ._synthetic_observation import SyntheticObservation
 from .canonical import canonical_json_bytes
 from .decision import (
@@ -17,6 +20,7 @@ from .decision import (
     PlayerDecisionRequest,
     PlayerDecisionRequestV2,
 )
+from .decision_v3 import PlayerDecisionRequestV3
 from .episode import EpisodeStatus
 from .errors import WireError
 from .events import ObservedEventEnvelope
@@ -36,12 +40,14 @@ from .replay import (
     AuthoritativeReplayV4,
     AuthoritativeReplayV5,
     AuthoritativeReplayV6,
+    AuthoritativeReplayV7,
     ReplayManifestV1,
     ReplayManifestV2,
     ReplayManifestV3,
     ReplayManifestV4,
     ReplayManifestV5,
     ReplayManifestV6,
+    ReplayManifestV7,
 )
 
 T = TypeVar("T")
@@ -50,6 +56,7 @@ _DECODERS: dict[str, Callable[[object], object]] = {
     "player-decision-request.v1": PlayerDecisionRequest.from_wire,
     "decision-response.v1": DecisionResponse.from_wire,
     "player-decision-request.v2": PlayerDecisionRequestV2.from_wire,
+    "player-decision-request.v3": PlayerDecisionRequestV3.from_wire,
     "decision-response.v2": DecisionResponseV2.from_wire,
     "episode-status.v1": EpisodeStatus.from_wire,
     "observed-event-envelope.v1": ObservedEventEnvelope.from_wire,
@@ -59,7 +66,9 @@ _DECODERS: dict[str, Callable[[object], object]] = {
     "information-state-envelope.v2": PlayerInformationStateV2.from_wire,
     "information-state-digest-input.v2": InformationStateDigestInputV2.from_wire,
     "observed-event-envelope.v2": ObservedEventEnvelopeV2.from_wire,
+    "observed-event-envelope.v3": ObservedEventEnvelopeV3.from_wire,
     "player-step.v2": PlayerStepV2.from_wire,
+    "player-step.v3": PlayerStepV3.from_wire,
     "replay-manifest.v1": ReplayManifestV1.from_wire,
     "authoritative-replay.v1": AuthoritativeReplayV1.from_wire,
     "replay-manifest.v2": ReplayManifestV2.from_wire,
@@ -71,12 +80,15 @@ _DECODERS: dict[str, Callable[[object], object]] = {
     "magic-combat-observation.v2": MagicObservationV2.from_wire,
     "magic-combat-observation.v3": MagicObservationV3.from_wire,
     "magic-combat-observation.v4": MagicObservationV4.from_wire,
+    "magic-basic-land-observation.v1": MagicBasicLandObservationV1.from_wire,
     "replay-manifest.v4": ReplayManifestV4.from_wire,
     "authoritative-replay.v4": AuthoritativeReplayV4.from_wire,
     "replay-manifest.v5": ReplayManifestV5.from_wire,
     "authoritative-replay.v5": AuthoritativeReplayV5.from_wire,
     "replay-manifest.v6": ReplayManifestV6.from_wire,
     "authoritative-replay.v6": AuthoritativeReplayV6.from_wire,
+    "replay-manifest.v7": ReplayManifestV7.from_wire,
+    "authoritative-replay.v7": AuthoritativeReplayV7.from_wire,
 }
 
 
@@ -91,9 +103,18 @@ def decode_canonical(contract: str, payload: bytes) -> object:
     decoder = _DECODERS.get(contract)
     if decoder is None:
         raise WireError("fixture.unknown_contract", f"unknown contract {contract}")
+
+    def reject_duplicate_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("duplicate object key")
+            result[key] = value
+        return result
+
     try:
-        raw = json.loads(payload.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raw = json.loads(payload.decode("utf-8"), object_pairs_hook=reject_duplicate_pairs)
+    except (UnicodeDecodeError, ValueError) as exc:
         raise WireError("decode.invalid_json", str(exc)) from exc
     try:
         result = decoder(raw)

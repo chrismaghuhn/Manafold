@@ -12,7 +12,7 @@ use mtgml_decision::DecisionResponseV2;
 use mtgml_model::{EpisodeStatus, ExecutionIdentityV1, PlayerId};
 use mtgml_observation::ObservedEventEnvelopeV2;
 use mtgml_replay::{ReplayRecorderV6, ReplayStepV6};
-use mtgml_rules::{validate_transition_contract, ProgramKernelV1, TransitionResult};
+use mtgml_rules::{validate_transition_contract, PredecessorTransitionResult, ProgramKernelV1};
 use mtgml_state::{EngineState, StateDelta};
 
 use crate::checkpoint::{
@@ -47,7 +47,7 @@ pub(crate) type TestApplyOverride =
         &EngineState,
         PlayerId,
         &DecisionResponseV2,
-    ) -> Result<TransitionResult, mtgml_rules::KernelExecutionError>;
+    ) -> Result<PredecessorTransitionResult, mtgml_rules::KernelExecutionError>;
 
 pub(crate) fn execute_response_transaction<F>(
     transaction: ResponseTransaction<'_>,
@@ -56,11 +56,11 @@ pub(crate) fn execute_response_transaction<F>(
     before_commit: F,
     #[cfg(test)] failure_point: Option<ResponseTransactionFailurePoint>,
     #[cfg(test)] apply_override: Option<TestApplyOverride>,
-) -> Result<TransitionResult, ControllerError>
+) -> Result<PredecessorTransitionResult, ControllerError>
 where
     F: FnOnce(
         &EnvironmentCheckpointV6,
-        &TransitionResult,
+        &PredecessorTransitionResult,
         &BTreeMap<PlayerId, Vec<ObservedEventEnvelopeV2>>,
     ) -> Result<(), ControllerError>,
 {
@@ -84,10 +84,10 @@ where
     #[cfg(test)]
     let mut transition = match apply_override {
         Some(apply) => apply(&before.state, actor, &response)?,
-        None => kernel.apply(&before.state, actor, &response)?,
+        None => kernel.apply_predecessor(&before.state, actor, &response)?,
     };
     #[cfg(not(test))]
-    let mut transition = kernel.apply(&before.state, actor, &response)?;
+    let mut transition = kernel.apply_predecessor(&before.state, actor, &response)?;
 
     // The kernel owns deterministic closure. The environment invokes at most
     // one forced advance, and only for an accepted response that leaves a
@@ -114,7 +114,7 @@ where
                 StateDelta::between(&before.state, &advanced.next_state, audit).map_err(|_| {
                     ControllerError::Backend("forced-progress merged delta failed".into())
                 })?;
-            transition = TransitionResult {
+            transition = PredecessorTransitionResult {
                 accepted: true,
                 next_state: advanced.next_state,
                 delta,

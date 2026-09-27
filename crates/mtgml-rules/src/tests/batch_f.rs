@@ -2,10 +2,10 @@ fn single_event_product(
     before: &EngineState,
     after: EngineState,
     event: AuthoritativeRuleEvent,
-) -> TransitionResult {
+) -> PredecessorTransitionResult {
     let audit = vec![event.event.semantic_delta()];
     let delta = mtgml_state::StateDelta::between(before, &after, audit).unwrap();
-    TransitionResult {
+    PredecessorTransitionResult {
         accepted: true,
         next_state: after.clone(),
         delta,

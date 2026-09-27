@@ -15,6 +15,7 @@ mod v3;
 mod v4;
 mod v5;
 mod v6;
+mod v7;
 mod validation;
 
 #[cfg(test)]
@@ -44,6 +45,12 @@ pub use v6::{
     AuthoritativeReplayV6, InitialEnvironmentIdentityV6, ReplayManifestV6, ReplayRecorderV6,
     ReplaySchemaVersionsV6, ReplayStepV6, REPLAY_FILE_SCHEMA_V6, REPLAY_MANIFEST_SCHEMA_V6,
     REPLAY_STEP_SCHEMA_V6,
+};
+pub use v7::{
+    AuthoritativeReplayV7, ContentContractMaterialV1, InitialEnvironmentIdentityV7,
+    ReplayManifestV7, ReplayRecorderV7, ReplaySchemaVersionsV7, ReplayStepV7,
+    SemanticContractMaterialV7, REPLAY_FILE_SCHEMA_V7, REPLAY_MANIFEST_SCHEMA_V7,
+    REPLAY_STEP_SCHEMA_V7,
 };
 pub use validation::ReplayValidationError;
 

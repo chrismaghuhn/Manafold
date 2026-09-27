@@ -1,5 +1,6 @@
 //! Authoritative events and exact, compositional transition validation.
 
+mod basic_land;
 mod basic_priority;
 mod combat_damage;
 mod contract;
@@ -15,6 +16,7 @@ mod semantic_cursor;
 mod semantic_execution_generated;
 mod snapshots;
 mod state_based_actions;
+mod successor_contract;
 mod synthetic;
 mod transition;
 mod turn_structure;
@@ -24,6 +26,12 @@ mod zone_incarnation;
 #[cfg(test)]
 mod tests;
 
+pub use basic_land::{
+    derive_basic_land_candidates, validate_basic_land_pending_request,
+    AuthoritativeRuleEventKindV2, AuthoritativeRuleEventV2, BasicLandCandidateError,
+    BasicLandFaceV1, BasicLandTransitionError, BasicLandTransitionProductV1, MagicActionRequestV1,
+    SelectedSuccessorDecisionV1, SuccessorObservationPolicyV1,
+};
 pub use contract::validate_transition_contract;
 pub use errors::{KernelExecutionError, ZoneIncarnationError};
 pub use events::{
@@ -37,8 +45,9 @@ pub use program_kernel::{
 pub use semantic_execution_generated::execution_contract_supported;
 #[cfg(feature = "magic-conformance-testkit")]
 pub use state_based_actions::SbaContinuationValidationError;
+pub use successor_contract::validate_successor_transition_contract;
 pub use synthetic::validate_synthetic_runtime_state;
-pub use transition::{RulesKernel, TransitionResult};
+pub use transition::{PredecessorTransitionResult, RulesKernel, TransitionResult};
 pub use turn_structure::{
     temporal_successor, unsupported_rules_boundary, validate_turn_structure_support,
     TurnStructureError, TurnStructureSupportProfile, UnsupportedRulesBoundary,

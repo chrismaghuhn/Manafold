@@ -102,11 +102,20 @@ impl DecisionAnswerV2 {
         domain: &DecisionDomainV2,
         candidates: &[VisibleCandidateV2],
     ) -> Result<(), DecisionValidationError> {
-        let ids: BTreeSet<_> = candidates
+        let ids = candidates
             .iter()
             .map(|candidate| candidate.candidate_id)
-            .collect();
-        match (domain, self) {
+            .collect::<Vec<_>>();
+        Self::validate_for_candidate_ids(self, domain, &ids)
+    }
+
+    pub(crate) fn validate_for_candidate_ids(
+        answer: &Self,
+        domain: &DecisionDomainV2,
+        candidate_ids: &[CandidateIdV1],
+    ) -> Result<(), DecisionValidationError> {
+        let ids: BTreeSet<_> = candidate_ids.iter().copied().collect();
+        match (domain, answer) {
             (DecisionDomainV2::ChooseOne, Self::SelectOne { candidate_id }) => {
                 if ids.contains(candidate_id) {
                     Ok(())

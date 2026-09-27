@@ -81,10 +81,31 @@ DefinitionReferenceV1 {
 The profiled alternative is a typed binding seam, not a generic payload.
 M4.1 production accepts only `UnprofiledV1`; it defines no profile body,
 profile catalog, executable vocabulary, opcode, `any`, extension map, JSON
-blob, or plugin payload. A future profile must separately specify its closed
-body type, exact encoding, semantic meaning, and requirement derivation before
-content using it can be admitted or hashed. Unknown fields, duplicate fields,
-unknown variants, and unknown profile IDs fail closed.
+blob, or plugin payload. Outside the separately accepted M4.2 profile below,
+each future profile must specify its closed body type, exact encoding, semantic
+meaning, and requirement derivation before content using it can be admitted
+or hashed. Unknown fields, duplicate fields, unknown variants, and unknown
+profile IDs fail closed.
+
+## Accepted M4.2 basic-land profile successor (not current runtime)
+
+The accepted M4 unified-state Semantic Spec defines the first closed profile
+as `basic-land@1.0.0`, using the unchanged M4.1 profile-ID grammar and the
+unchanged outer `CardDefinitionEnvelopeV1` / `ContentContractManifestV1`
+shapes. Its body is exactly
+`BasicLandProfileV1 { subtype: BasicLandSubtypeV1 }`, where the closed subtype
+is `Mountain | Plains`; canonical content encoding is the fixed array
+`["basic-land-profile.v1", "mountain" | "plains"]`. The subtype must agree
+with the sole face's type line and derives, rather than stores, the basic
+land's intrinsic mana ability under CR 305.6. The body is requirement-derived
+and admits no optional fields, map, extension, opcode, or string dispatcher.
+
+This is an additive successor content-validation contract. The profiled
+content prerequisite admits this body for strict typed validation and
+`ContentContractIdV1` identity only. It does not change historical M4.1
+`UnprofiledV1` bytes or identity. The profile is not executable; executable
+admission remains at the unified state cut's sole activation boundary. No
+other profile is admitted by this addition.
 
 Definitions in a manifest are unique and sorted by numeric ID. Repeating an
 ID is invalid even if the values are byte-identical. The invariant is:
@@ -100,6 +121,12 @@ Lookups require both the verified content ID and definition ID. A bare ID
 must never fall back to another catalog, a process-global registry, or the
 first matching definition. Conflicting definitions never use load order to
 select a winner.
+
+The prerequisite codec/identity slice for this accepted M4.2 body is
+implemented on the non-current integration branch. It extends the typed
+content-validation and `ContentContractIdV1` path only; it does not admit an
+executable semantic profile or change the historical M4.1 `UnprofiledV1`
+bytes or identity.
 
 ## Provenance
 
@@ -205,7 +232,7 @@ admission policy is outside M4.1.
 
 1. strict manifest and provenance decoding;
 2. closed-schema and structural validation of all definitions;
-3. rejection of every profiled binding in M4.1;
+3. rejection of every profiled binding by the historical M4.1 validator;
 4. local identity and reference-shape validation;
 5. content identity recomputation and equality check;
 6. exact provenance membership validation;

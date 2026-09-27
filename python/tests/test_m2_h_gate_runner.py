@@ -543,6 +543,46 @@ class PlayerClient(Protocol):
     def submit(self, response: DecisionResponseV2) -> PlayerStepV2: ...
 """
 
+ENDPOINT_RS_SUCCESSOR_FACADE = """\
+pub use crate::endpoint_successor::*;
+"""
+
+ENDPOINT_SUCCESSOR_RS_PINNED = """\
+pub trait PlayerEndpoint {
+    fn perspective(&self) -> PlayerId;
+    fn observation(&self) -> Result<ObservationEnvelope, PlayerEndpointError>;
+    fn information_state(&self) -> Result<PlayerInformationStateV2, PlayerEndpointError>;
+    fn visible_decision(&self) -> Result<Option<PlayerDecisionRequestV3>, PlayerEndpointError>;
+    fn submit(&self, response: DecisionResponseV2) -> Result<PlayerStepV3, PlayerEndpointError>;
+}
+"""
+
+ENDPOINT_PREDECESSOR_RS_PINNED = """\
+pub trait PlayerEndpoint {
+    fn perspective(&self) -> PlayerId;
+    fn observation(&self) -> Result<ObservationEnvelope, PlayerEndpointError>;
+    fn information_state(&self) -> Result<PlayerInformationStateV2, PlayerEndpointError>;
+    fn visible_decision(&self) -> Result<Option<PlayerDecisionRequestV2>, PlayerEndpointError>;
+    fn submit(&self, response: DecisionResponseV2) -> Result<PlayerStepV2, PlayerEndpointError>;
+}
+"""
+
+PLAYER_CLIENT_PY_SUCCESSOR = """\
+from typing import Protocol
+
+class PlayerClient(Protocol):
+    def observation(self) -> ObservationEnvelope: ...
+    def information_state(self) -> PlayerInformationStateV2: ...
+    def visible_decision(self) -> PlayerDecisionRequestV3 | None: ...
+    def submit(self, response: DecisionResponseV2) -> PlayerStepV3: ...
+
+class HistoricalPlayerClientV2(Protocol):
+    def observation(self) -> ObservationEnvelope: ...
+    def information_state(self) -> PlayerInformationStateV2: ...
+    def visible_decision(self) -> PlayerDecisionRequestV2 | None: ...
+    def submit(self, response: DecisionResponseV2) -> PlayerStepV2: ...
+"""
+
 ADAPTER_CLIENT_PY_PINNED = """\
 class AdapterPlayerClient:
     def __init__(self) -> None:
@@ -584,6 +624,12 @@ def _synthetic_surface(
             yield
 
 
+def _write_fixture(directory: Path, name: str, content: str) -> Path:
+    path = directory / name
+    path.write_text(content, encoding="utf-8")
+    return path
+
+
 class PlayerSurfaceExtractorTests(unittest.TestCase):
     """Extractors reproduce the pinned closure and fail closed on drift."""
 
@@ -604,7 +650,7 @@ class PlayerSurfaceExtractorTests(unittest.TestCase):
                     },
                     "returns": runner._norm_type(str(signature["returns"])),
                 }
-                for name, signature in runner.RUST_PLAYER_ENDPOINT_METHODS.items()
+                for name, signature in runner.RUST_PLAYER_ENDPOINT_METHODS_V2.items()
             }
             self.assertEqual(runner.extract_rust_trait_methods("t"), normalized_rust)
             self.assertEqual(
@@ -612,7 +658,7 @@ class PlayerSurfaceExtractorTests(unittest.TestCase):
                 frozenset(map(runner._norm_type, runner.RUST_PLAYER_BOUNDARY_VARIANTS)),
             )
             self.assertEqual(
-                runner.extract_python_protocol_methods("t"), runner.PYTHON_PROTOCOL_METHODS
+                runner.extract_python_protocol_methods("t"), runner.PYTHON_PROTOCOL_METHODS_V2
             )
             self.assertEqual(
                 runner.extract_adapter_public_methods("t"), runner.ADAPTER_PUBLIC_METHODS
@@ -655,6 +701,73 @@ class PlayerSurfaceExtractorTests(unittest.TestCase):
         ):
             runner.verify_player_surface_closure()
         self.assertIn("PlayerClient protocol drift", str(raised.exception))
+
+    def test_successor_runtime_closure_pins_current_and_historical_surfaces(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            facade = base / "endpoint.rs"
+            successor = base / "endpoint_successor.rs"
+            predecessor = base / "endpoint_predecessor.rs"
+            facade.write_text(ENDPOINT_RS_SUCCESSOR_FACADE, encoding="utf-8")
+            successor.write_text(ENDPOINT_SUCCESSOR_RS_PINNED, encoding="utf-8")
+            predecessor.write_text(ENDPOINT_PREDECESSOR_RS_PINNED, encoding="utf-8")
+            with (
+                mock.patch.object(runner, "ENDPOINT_RS", facade),
+                mock.patch.object(runner, "ENDPOINT_SUCCESSOR_RS", successor),
+                mock.patch.object(runner, "ENDPOINT_PREDECESSOR_RS", predecessor),
+                mock.patch.object(
+                    runner, "BOUNDARY_RS", _write_fixture(base, "boundary.rs", BOUNDARY_RS_PINNED)
+                ),
+                mock.patch.object(
+                    runner,
+                    "PLAYER_CLIENT_PY",
+                    _write_fixture(base, "player_client.py", PLAYER_CLIENT_PY_SUCCESSOR),
+                ),
+                mock.patch.object(
+                    runner,
+                    "ADAPTER_CLIENT_PY",
+                    _write_fixture(base, "adapter_client.py", ADAPTER_CLIENT_PY_PINNED),
+                ),
+            ):
+                detail = runner.verify_player_surface_closure()
+        self.assertTrue(detail.startswith("closure holds:"), detail)
+
+    def test_successor_closure_rejects_missing_historical_rust_surface(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            facade = base / "endpoint.rs"
+            successor = base / "endpoint_successor.rs"
+            predecessor = base / "endpoint_predecessor.rs"
+            facade.write_text(ENDPOINT_RS_SUCCESSOR_FACADE, encoding="utf-8")
+            successor.write_text(ENDPOINT_SUCCESSOR_RS_PINNED, encoding="utf-8")
+            predecessor.write_text(
+                ENDPOINT_PREDECESSOR_RS_PINNED.replace(
+                    "    fn visible_decision(&self) -> "
+                    "Result<Option<PlayerDecisionRequestV2>, PlayerEndpointError>;\n",
+                    "",
+                ),
+                encoding="utf-8",
+            )
+            with (
+                mock.patch.object(runner, "ENDPOINT_RS", facade),
+                mock.patch.object(runner, "ENDPOINT_SUCCESSOR_RS", successor),
+                mock.patch.object(runner, "ENDPOINT_PREDECESSOR_RS", predecessor),
+                mock.patch.object(
+                    runner, "BOUNDARY_RS", _write_fixture(base, "boundary.rs", BOUNDARY_RS_PINNED)
+                ),
+                mock.patch.object(
+                    runner,
+                    "PLAYER_CLIENT_PY",
+                    _write_fixture(base, "player_client.py", PLAYER_CLIENT_PY_SUCCESSOR),
+                ),
+                mock.patch.object(
+                    runner,
+                    "ADAPTER_CLIENT_PY",
+                    _write_fixture(base, "adapter_client.py", ADAPTER_CLIENT_PY_PINNED),
+                ),
+                self.assertRaises(runner.GateConfigurationError),
+            ):
+                runner.verify_player_surface_closure()
 
 
 # ---------------------------------------------------------------------------
@@ -715,7 +828,7 @@ def _synthetic_registry(
 
 
 class RegistryRelationTests(unittest.TestCase):
-    """rust == COMMON, python == COMMON + exception, schemas == COMMON."""
+    """Rust is COMMON; Python has pinned extras; schemas are COMMON."""
 
     def test_replay_v6_contracts_are_pinned_as_common_named_contracts(self) -> None:
         self.assertTrue(
@@ -726,15 +839,37 @@ class RegistryRelationTests(unittest.TestCase):
             <= runner.COMMON_NAMED_CONTRACTS
         )
 
+    def test_schema_only_successors_exclude_typed_replay_v7_owners(self) -> None:
+        self.assertEqual(
+            runner.SCHEMA_ONLY_SUCCESSORS,
+            frozenset(
+                {
+                    "player-decision-request.v3",
+                    "observed-event-envelope.v3",
+                    "player-step.v3",
+                    "magic-basic-land-observation.v1",
+                }
+            ),
+        )
+        self.assertTrue(
+            {
+                "replay-manifest.v7",
+                "authoritative-replay.v7",
+            }
+            <= runner.COMMON_NAMED_CONTRACTS
+        )
+
     def test_live_decoder_registry_relation_passes(self) -> None:
         detail = runner.verify_registry_relation()
         self.assertTrue(detail.startswith("relation holds:"), detail)
 
     def test_relation_holds_on_the_pinned_sets(self) -> None:
         common = runner.COMMON_NAMED_CONTRACTS
-        python_set = common | runner.PYTHON_MECHANICAL_ONLY
+        python_set = common | runner.PYTHON_MECHANICAL_ONLY | runner.PYTHON_TYPED_SUCCESSORS
         with _synthetic_registry(
-            _wire_fixtures_rs(common), _decoders_py(python_set), _validate_schemas_py(common)
+            _wire_fixtures_rs(common),
+            _decoders_py(python_set),
+            _validate_schemas_py(common | runner.SCHEMA_ONLY_SUCCESSORS),
         ):
             self.assertEqual(runner.extract_rust_decode_named_contracts("t"), common)
             detail = runner.verify_registry_relation()
@@ -744,18 +879,34 @@ class RegistryRelationTests(unittest.TestCase):
         common = runner.COMMON_NAMED_CONTRACTS
         with (
             _synthetic_registry(
-                _wire_fixtures_rs(common), _decoders_py(common), _validate_schemas_py(common)
+                _wire_fixtures_rs(common),
+                _decoders_py(common | runner.PYTHON_TYPED_SUCCESSORS),
+                _validate_schemas_py(common),
             ),
             self.assertRaises(runner.GateConfigurationError) as raised,
         ):
             runner.verify_registry_relation()
         message = str(raised.exception)
-        self.assertIn("python _DECODERS != COMMON union PYTHON_MECHANICAL_ONLY", message)
+        self.assertIn("python _DECODERS != COMMON union pinned Python decoder sets", message)
         self.assertIn("'information-state-digest-input.v2'", message)
+
+    def test_python_missing_typed_successor_decoder_entry_fails(self) -> None:
+        common = runner.COMMON_NAMED_CONTRACTS
+        python_set = common | runner.PYTHON_MECHANICAL_ONLY
+        with (
+            _synthetic_registry(
+                _wire_fixtures_rs(common),
+                _decoders_py(python_set),
+                _validate_schemas_py(common | runner.SCHEMA_ONLY_SUCCESSORS),
+            ),
+            self.assertRaises(runner.GateConfigurationError) as raised,
+        ):
+            runner.verify_registry_relation()
+        self.assertIn("'player-decision-request.v3'", str(raised.exception))
 
     def test_rust_gaining_an_extra_arm_fails_against_pinned_common(self) -> None:
         common = runner.COMMON_NAMED_CONTRACTS
-        python_set = common | runner.PYTHON_MECHANICAL_ONLY
+        python_set = common | runner.PYTHON_MECHANICAL_ONLY | runner.PYTHON_TYPED_SUCCESSORS
         with (
             _synthetic_registry(
                 _wire_fixtures_rs(common, extra_arm="bonus-contract.v9"),
@@ -769,7 +920,7 @@ class RegistryRelationTests(unittest.TestCase):
 
     def test_schema_mapping_drift_fails(self) -> None:
         common = runner.COMMON_NAMED_CONTRACTS
-        python_set = common | runner.PYTHON_MECHANICAL_ONLY
+        python_set = common | runner.PYTHON_MECHANICAL_ONLY | runner.PYTHON_TYPED_SUCCESSORS
         drifted = common - {"episode-status.v1"}
         with (
             _synthetic_registry(

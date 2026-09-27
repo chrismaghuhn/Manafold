@@ -1,0 +1,10 @@
+{
+  "schema_version": "observed-event-envelope.v3",
+  "sequence": "4",
+  "state_revision": "5",
+  "event": {
+    "kind": "object_face_changed",
+    "object": "7",
+    "face": "back"
+  }
+}

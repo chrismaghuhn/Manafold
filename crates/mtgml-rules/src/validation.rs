@@ -71,4 +71,6 @@ pub enum TransitionViolation {
     Priority,
     #[error("combat declaration or completion event is invalid")]
     Combat,
+    #[error("successor transition product is not exactly explained by its operations and events")]
+    SuccessorProduct,
 }

@@ -11,9 +11,9 @@ use mtgml_rules::{
 };
 use mtgml_state::{
     construct_synthetic_engine_state, validate_engine_state, BaseCharacteristics, ControlHistory,
-    EngineState, FoundationCreatureSource, FoundationSourceKind, GameObject, ObjectSnapshot,
-    SyntheticResetInputs, SyntheticV4Setup, VisibilityPartition, ZoneKey, ZoneLocation,
-    ZonePosition,
+    EngineState, FaceStateV1, FoundationCreatureSource, FoundationSourceKind, GameObject,
+    ObjectSnapshot, SyntheticResetInputs, SyntheticV4Setup, VisibilityPartition, ZoneKey,
+    ZoneLocation, ZonePosition,
 };
 use std::collections::BTreeMap;
 
@@ -204,6 +204,297 @@ fn remove_object_tracking(state: &mut EngineState, object: GameObjectId) {
     }
 }
 
+#[test]
+fn generic_ojer_like_return_is_a_new_tapped_back_face_incarnation_without_transform_event() {
+    use mtgml_state::{
+        IdentityMutationV1, KnowledgeAcquisitionCause, KnowledgeAcquisitionReason,
+        KnowledgeHistoryChannel, KnowledgeMutationV1, KnownLocationFactV2,
+        PerspectiveLifecycleAuditV1, PerspectiveLifecycleMutationV1, ZoneTransition,
+    };
+
+    let before = battlefield_case_state();
+    let original = before.zones.objects[&OLD_BATTLEFIELD].clone();
+    let live: std::collections::BTreeSet<_> = before.zones.objects.keys().copied().collect();
+    let mut faces = FaceStateV1::for_objects(&live, 0);
+
+    // The first leg uses the rules-owned zone executor. This characterizes
+    // only the generic incarnation substrate; no card trigger is implemented.
+    let died = execute_selected_zone_transition_for_conformance(
+        &before,
+        OLD_BATTLEFIELD,
+        battlefield_from(),
+        owner_graveyard_top(original.owner),
+        ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+    )
+    .unwrap();
+    let graveyard_incarnation = died
+        .events
+        .iter()
+        .find_map(|event| match &event.event {
+            mtgml_rules::AuthoritativeRuleEventKind::ZoneTransition { transition } => {
+                Some(transition.new_object)
+            }
+            _ => None,
+        })
+        .unwrap();
+    faces.faces.remove(&OLD_BATTLEFIELD);
+    faces.faces.insert(graveyard_incarnation, 0);
+    assert_ne!(graveyard_incarnation, OLD_BATTLEFIELD);
+    assert_eq!(
+        died.next_state.zones.objects[&graveyard_incarnation].physical_card,
+        original.physical_card
+    );
+
+    // Construct the generic return snapshot explicitly: fresh GameObjectId,
+    // same physical card, owner-controlled, tapped, with the back FaceKey
+    // installed before the returned authoritative boundary is inspected.
+    let mut before_return = died.next_state.clone();
+    before_return
+        .zones
+        .objects
+        .get_mut(&graveyard_incarnation)
+        .unwrap()
+        .tapped = true;
+    let old_object = before_return.zones.objects[&graveyard_incarnation].clone();
+    let from = before_return.zones.locations[&graveyard_incarnation].clone();
+    let new_id = before_return.allocators.next_object_id;
+    let to = battlefield_from();
+    let mut new_object = old_object.clone();
+    new_object.id = new_id;
+    new_object.controller = new_object.owner;
+    new_object.tapped = true;
+    new_object.face_down = false;
+    let last_known = ObjectSnapshot {
+        object: graveyard_incarnation,
+        physical_card: old_object.physical_card,
+        card_definition: old_object.card_definition,
+        owner: old_object.owner,
+        controller: old_object.controller,
+        tapped: old_object.tapped,
+        face_down: old_object.face_down,
+        location: from.clone(),
+    };
+    let new_snapshot = ObjectSnapshot {
+        object: new_id,
+        physical_card: new_object.physical_card,
+        card_definition: new_object.card_definition,
+        owner: new_object.owner,
+        controller: new_object.controller,
+        tapped: true,
+        face_down: false,
+        location: to.clone(),
+    };
+    let transition = ZoneTransition {
+        old_object: graveyard_incarnation,
+        new_object: new_id,
+        physical_card: old_object.physical_card,
+        from: from.clone(),
+        to: to.clone(),
+        last_known,
+        new_snapshot: new_snapshot.clone(),
+    };
+
+    let mut returned = before_return.clone();
+    returned.revision = mtgml_model::StateRevision(before_return.revision.0 + 1);
+    returned.allocators.next_object_id = mtgml_model::GameObjectId(new_id.0 + 1);
+    returned.allocators.next_rule_event_id.0 += 1;
+    returned.zones.objects.remove(&graveyard_incarnation);
+    returned.zones.locations.remove(&graveyard_incarnation);
+    if let Some(ordered) = returned.zones.ordered_zones.get_mut(&from.key()) {
+        ordered.retain(|object| *object != graveyard_incarnation);
+        if ordered.is_empty() {
+            returned.zones.ordered_zones.remove(&from.key());
+        } else {
+            for (offset, object) in ordered.iter().copied().enumerate() {
+                returned.zones.locations.get_mut(&object).unwrap().position = ZonePosition::Top {
+                    offset: u32::try_from(offset).unwrap(),
+                };
+            }
+        }
+    }
+    returned.zones.objects.insert(new_id, new_object);
+    returned.zones.locations.insert(new_id, to.clone());
+    let tracked: Vec<_> = before_return
+        .perspective_identities
+        .players
+        .iter()
+        .filter_map(|(perspective, identity)| {
+            identity
+                .object_to_opaque
+                .get(&graveyard_incarnation)
+                .copied()
+                .map(|opaque| {
+                    (
+                        *perspective,
+                        opaque,
+                        before_return.knowledge.players[perspective].next_visible_sequence,
+                    )
+                })
+        })
+        .collect();
+    for (perspective, opaque, sequence) in tracked {
+        let lifecycle = PerspectiveLifecycleAuditV1 {
+            perspective,
+            sequence,
+            mutation: PerspectiveLifecycleMutationV1 {
+                identity: IdentityMutationV1::Remap {
+                    opaque,
+                    from_object: graveyard_incarnation,
+                    to_object: new_id,
+                },
+                knowledge: Some(KnowledgeMutationV1::UpdateLocation {
+                    opaque,
+                    fact: KnownLocationFactV2 {
+                        location: to.clone(),
+                        provenance: KnowledgeAcquisitionReason::Observed {
+                            channel: KnowledgeHistoryChannel::Public,
+                            sequence,
+                            cause: KnowledgeAcquisitionCause::PublicEvent,
+                        },
+                    },
+                }),
+            },
+        };
+        mtgml_state::apply_perspective_lifecycle(&mut returned, &lifecycle).unwrap();
+    }
+    validate_engine_state(&returned).unwrap();
+    faces.faces.remove(&graveyard_incarnation);
+    faces.faces.insert(new_id, 1);
+    let live_after: std::collections::BTreeSet<_> =
+        returned.zones.objects.keys().copied().collect();
+    faces.validate_live_objects(&live_after).unwrap();
+
+    assert_ne!(new_id, graveyard_incarnation);
+    assert_ne!(new_id, OLD_BATTLEFIELD);
+    assert_eq!(
+        returned.zones.objects[&new_id].physical_card,
+        original.physical_card
+    );
+    assert!(returned.zones.objects[&new_id].tapped);
+    assert_eq!(faces.faces[&new_id], 1);
+    assert!(new_snapshot.tapped);
+    assert!(died.events.iter().all(|event| matches!(
+        &event.event,
+        mtgml_rules::AuthoritativeRuleEventKind::ZoneTransition { .. }
+            | mtgml_rules::AuthoritativeRuleEventKind::PerspectiveOccurrence { .. }
+    )));
+    assert_eq!(
+        died.events
+            .iter()
+            .filter(|event| matches!(
+                &event.event,
+                mtgml_rules::AuthoritativeRuleEventKind::ZoneTransition { .. }
+            ))
+            .count(),
+        1
+    );
+    // The return's trusted event is exactly its new-incarnation snapshot. The
+    // event vocabulary has no follow-up in-place face-change operation here.
+    let return_event = mtgml_rules::AuthoritativeRuleEvent {
+        event_id: before_return.allocators.next_rule_event_id,
+        state_revision: returned.revision,
+        event: mtgml_rules::AuthoritativeRuleEventKind::ZoneTransition {
+            transition: Box::new(transition),
+        },
+    };
+    assert!(matches!(
+        return_event.event,
+        mtgml_rules::AuthoritativeRuleEventKind::ZoneTransition { .. }
+    ));
+    assert_eq!(
+        returned.zones.objects[&new_id].tapped,
+        match &return_event.event {
+            mtgml_rules::AuthoritativeRuleEventKind::ZoneTransition { transition } => {
+                transition.new_snapshot.tapped
+            }
+            _ => false,
+        }
+    );
+}
+
+#[test]
+fn role_uniqueness_retirement_moves_old_role_incarnation_to_its_owner_graveyard() {
+    use mtgml_state::{AttachmentStateV1, AttachmentTimestampV1, AttachmentV1};
+
+    let mut state = base_state();
+    let target = OLD_BATTLEFIELD;
+    let older_role = GameObjectId(3);
+    let newer_role = GameObjectId(4);
+    for (id, owner, controller) in [(older_role, P2, P1), (newer_role, P2, P1)] {
+        state.zones.objects.insert(
+            id,
+            GameObject {
+                id,
+                physical_card: Some(PhysicalCardId(id.0)),
+                card_definition: CardDefinitionId(id.0),
+                owner,
+                controller,
+                tapped: false,
+                face_down: false,
+            },
+        );
+        state.zones.locations.insert(id, battlefield_from());
+    }
+    state.allocators.next_object_id = GameObjectId(5);
+    let roles = std::collections::BTreeSet::from([older_role, newer_role]);
+    let mut attachments = AttachmentStateV1 {
+        by_source: BTreeMap::from([
+            (
+                older_role,
+                AttachmentV1 {
+                    target,
+                    timestamp: AttachmentTimestampV1 {
+                        revision: mtgml_model::StateRevision(4),
+                        operation_ordinal: 0,
+                    },
+                },
+            ),
+            (
+                newer_role,
+                AttachmentV1 {
+                    target,
+                    timestamp: AttachmentTimestampV1 {
+                        revision: mtgml_model::StateRevision(5),
+                        operation_ordinal: 0,
+                    },
+                },
+            ),
+        ]),
+    };
+
+    let retirements = attachments.enforce_role_uniqueness(&state, &roles).unwrap();
+    assert_eq!(retirements.len(), 1);
+    assert_eq!(retirements[0].source, older_role);
+    assert_eq!(retirements[0].owner, P2);
+    assert!(!attachments.by_source.contains_key(&older_role));
+    assert!(attachments.by_source.contains_key(&newer_role));
+
+    let retirement = retirements[0];
+    let result = execute_selected_zone_transition_for_conformance(
+        &state,
+        retirement.source,
+        battlefield_from(),
+        owner_graveyard_top(retirement.owner),
+        ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+    )
+    .unwrap();
+    assert_event_delta_mirror(&result);
+    let transition = match &result.events[0].event {
+        mtgml_rules::AuthoritativeRuleEventKind::ZoneTransition { transition } => transition,
+        other => panic!("Role retirement emits a zone transition, got {other:?}"),
+    };
+    assert_eq!(transition.from.zone, ZoneKind::Battlefield);
+    assert_eq!(transition.to.zone, ZoneKind::Graveyard);
+    assert_eq!(transition.to.player, Some(retirement.owner));
+    assert_eq!(transition.new_snapshot.owner, retirement.owner);
+    assert_eq!(
+        result.next_state.zones.locations[&transition.new_object],
+        owner_graveyard_top(P2)
+    );
+    assert!(!result.next_state.zones.objects.contains_key(&older_role));
+    assert!(result.next_state.zones.objects.contains_key(&newer_role));
+}
+
 /// Task-2-only positive fixture: source objects are intentionally untracked
 /// and carry no FoundationSource so that Task-3 lifecycle/closure semantics
 /// are not smuggled into this slice.
@@ -231,7 +522,7 @@ fn first_private_library_case_state() -> EngineState {
     state
 }
 
-fn battlefield_request() -> Result<mtgml_rules::TransitionResult, KernelExecutionError> {
+fn battlefield_request() -> Result<mtgml_rules::PredecessorTransitionResult, KernelExecutionError> {
     execute_selected_zone_transition_for_conformance(
         &task2_battlefield_case_state(),
         OLD_BATTLEFIELD,
@@ -241,7 +532,7 @@ fn battlefield_request() -> Result<mtgml_rules::TransitionResult, KernelExecutio
     )
 }
 
-fn library_request() -> Result<mtgml_rules::TransitionResult, KernelExecutionError> {
+fn library_request() -> Result<mtgml_rules::PredecessorTransitionResult, KernelExecutionError> {
     execute_selected_zone_transition_for_conformance(
         &task2_library_case_state(),
         OLD_LIBRARY_TOP,
@@ -263,7 +554,7 @@ fn assert_unrelated_allocators_unchanged(
     assert_eq!(after.next_continuation_id, before.next_continuation_id);
 }
 
-fn assert_event_delta_mirror(result: &mtgml_rules::TransitionResult) {
+fn assert_event_delta_mirror(result: &mtgml_rules::PredecessorTransitionResult) {
     assert_eq!(
         result.delta.audit,
         result
@@ -310,7 +601,7 @@ fn assert_rejected_request_preserves_complete_state<T>(
     assert_eq!(before.format, before_state.format);
 }
 
-fn accepted_task2_battlefield_product() -> (EngineState, mtgml_rules::TransitionResult) {
+fn accepted_task2_battlefield_product() -> (EngineState, mtgml_rules::PredecessorTransitionResult) {
     let before = task2_battlefield_case_state();
     let result = execute_selected_zone_transition_for_conformance(
         &before,
@@ -323,8 +614,8 @@ fn accepted_task2_battlefield_product() -> (EngineState, mtgml_rules::Transition
     (before, result)
 }
 
-fn accepted_task2_library_product_with_three_cards() -> (EngineState, mtgml_rules::TransitionResult)
-{
+fn accepted_task2_library_product_with_three_cards(
+) -> (EngineState, mtgml_rules::PredecessorTransitionResult) {
     let mut before = task2_library_case_state();
     let third = GameObjectId(4);
     before.zones.objects.insert(
@@ -368,7 +659,7 @@ fn accepted_task2_library_product_with_three_cards() -> (EngineState, mtgml_rule
 }
 
 fn mutated_zone_transition(
-    result: &mut mtgml_rules::TransitionResult,
+    result: &mut mtgml_rules::PredecessorTransitionResult,
 ) -> &mut mtgml_state::ZoneTransition {
     match &mut result.events[0].event {
         mtgml_rules::AuthoritativeRuleEventKind::ZoneTransition { transition } => transition,
@@ -376,7 +667,10 @@ fn mutated_zone_transition(
     }
 }
 
-fn rebuild_candidate_delta(before: &EngineState, result: &mut mtgml_rules::TransitionResult) {
+fn rebuild_candidate_delta(
+    before: &EngineState,
+    result: &mut mtgml_rules::PredecessorTransitionResult,
+) {
     let audit = result
         .events
         .iter()
@@ -387,7 +681,7 @@ fn rebuild_candidate_delta(before: &EngineState, result: &mut mtgml_rules::Trans
 
 fn assert_transition_violation(
     before: &EngineState,
-    result: &mtgml_rules::TransitionResult,
+    result: &mtgml_rules::PredecessorTransitionResult,
     expected: impl FnOnce(&mtgml_rules::TransitionViolation) -> bool,
 ) {
     let violation = mtgml_rules::validate_transition_contract(before, result)
@@ -3355,7 +3649,7 @@ fn s2_scenario_request(
 fn execute_s2_scenario(
     before: &EngineState,
     scenario: ZoneIncarnationParityScenario,
-) -> mtgml_rules::TransitionResult {
+) -> mtgml_rules::PredecessorTransitionResult {
     let (object, from, to, kind) = s2_scenario_request(scenario, before);
     execute_selected_zone_transition_for_conformance(before, object, from, to, kind)
         .expect("selected S2 scenario is accepted by the production-owned executor")

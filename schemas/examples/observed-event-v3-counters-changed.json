@@ -1,0 +1,12 @@
+{
+  "schema_version": "observed-event-envelope.v3",
+  "sequence": "2",
+  "state_revision": "3",
+  "event": {
+    "kind": "counters_changed",
+    "object": "7",
+    "counter_kind": "plus_one_plus_one",
+    "from": 0,
+    "to": 1
+  }
+}

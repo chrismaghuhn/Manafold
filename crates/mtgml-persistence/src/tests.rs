@@ -1,5 +1,8 @@
 use super::{cbor, checkpoint_digest, envelope, PersistenceDecodeErrorV1};
-use mtgml_model::{CheckpointCodecIdentity, EnvironmentLimitCounters, EpisodeStatus};
+use mtgml_model::{
+    CheckpointCodecIdentity, EnvironmentLimitCounters, EpisodeStatus, ExecutionIdentityV1,
+    ExecutionProgramV1, FullStateDigestV5, FullStateDigestV6, SemanticContractIdV1,
+};
 
 #[test]
 fn canonical_cbor_v1_complete_profile_matrix() {
@@ -667,6 +670,131 @@ fn error_categories_are_closed_and_stable() {
     assert_eq!(
         PersistenceDecodeErrorV1::UnsupportedHistoricalVersion.as_str(),
         "unsupported_historical_version"
+    );
+}
+
+#[test]
+fn checkpoint_digest_v7_matches_phase2_known_answer_and_rejects_predecessors() {
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../persistence/golden/checkpoint-digest-v7-kat.v1.json"
+    ))
+    .unwrap();
+    let state_digest =
+        FullStateDigestV6::parse(fixture["full_state_digest"].as_str().unwrap()).unwrap();
+    let identity = ExecutionIdentityV1 {
+        program_kind: ExecutionProgramV1::MagicRules,
+        semantic_contract_id: SemanticContractIdV1::parse(
+            fixture["semantic_contract_id"].as_str().unwrap().to_owned(),
+        )
+        .unwrap(),
+    };
+    let codec = CheckpointCodecIdentity {
+        codec_id: "in-memory-reference".to_owned(),
+        semantic_version: "7".to_owned(),
+    };
+    let digest = checkpoint_digest::calculate_checkpoint_digest_v7(
+        &state_digest.as_digest_reference(),
+        &EpisodeStatus::Running,
+        &EnvironmentLimitCounters::default(),
+        &codec,
+        &identity,
+    )
+    .unwrap();
+    assert_eq!(
+        digest.to_string(),
+        fixture["expected_digest"].as_str().unwrap()
+    );
+    assert_eq!(
+        digest.to_string(),
+        "ac93173f5822c87bc9c6856b1390298bfa258c1436a2c7441ef016bd7f6568dd"
+    );
+
+    let predecessor = FullStateDigestV5::from_digest_bytes(state_digest.raw_bytes());
+    assert!(checkpoint_digest::calculate_checkpoint_digest_v7(
+        &predecessor.as_digest_reference(),
+        &EpisodeStatus::Running,
+        &EnvironmentLimitCounters::default(),
+        &codec,
+        &identity,
+    )
+    .is_err());
+    let wrong_codec = CheckpointCodecIdentity {
+        semantic_version: "6".to_owned(),
+        ..codec.clone()
+    };
+    assert!(checkpoint_digest::calculate_checkpoint_digest_v7(
+        &state_digest.as_digest_reference(),
+        &EpisodeStatus::Running,
+        &EnvironmentLimitCounters::default(),
+        &wrong_codec,
+        &identity,
+    )
+    .is_err());
+
+    let expected_mutations = &fixture["mutation_digests"];
+    let mut changed_state_bytes = state_digest.raw_bytes();
+    changed_state_bytes[0] ^= 1;
+    let changed_state = FullStateDigestV6::from_digest_bytes(changed_state_bytes);
+    assert_eq!(
+        checkpoint_digest::calculate_checkpoint_digest_v7(
+            &changed_state.as_digest_reference(),
+            &EpisodeStatus::Running,
+            &EnvironmentLimitCounters::default(),
+            &codec,
+            &identity,
+        )
+        .unwrap()
+        .to_string(),
+        expected_mutations["full_state_digest"].as_str().unwrap()
+    );
+    assert_eq!(
+        checkpoint_digest::calculate_checkpoint_digest_v7(
+            &state_digest.as_digest_reference(),
+            &EpisodeStatus::Truncated {
+                reason: mtgml_model::TruncationReason::ExternalStop,
+                players: vec![],
+            },
+            &EnvironmentLimitCounters::default(),
+            &codec,
+            &identity,
+        )
+        .unwrap()
+        .to_string(),
+        expected_mutations["status"].as_str().unwrap()
+    );
+    let changed_counters = EnvironmentLimitCounters {
+        decisions_submitted: 1,
+        ..EnvironmentLimitCounters::default()
+    };
+    assert_eq!(
+        checkpoint_digest::calculate_checkpoint_digest_v7(
+            &state_digest.as_digest_reference(),
+            &EpisodeStatus::Running,
+            &changed_counters,
+            &codec,
+            &identity,
+        )
+        .unwrap()
+        .to_string(),
+        expected_mutations["counter"].as_str().unwrap()
+    );
+    let mut changed_semantic_bytes = identity.semantic_contract_id.raw_bytes();
+    changed_semantic_bytes[0] ^= 1;
+    let changed_identity = ExecutionIdentityV1 {
+        semantic_contract_id: SemanticContractIdV1::parse(hex(&changed_semantic_bytes)).unwrap(),
+        ..identity.clone()
+    };
+    assert_eq!(
+        checkpoint_digest::calculate_checkpoint_digest_v7(
+            &state_digest.as_digest_reference(),
+            &EpisodeStatus::Running,
+            &EnvironmentLimitCounters::default(),
+            &codec,
+            &changed_identity,
+        )
+        .unwrap()
+        .to_string(),
+        expected_mutations["semantic_contract_id"].as_str().unwrap()
     );
 }
 

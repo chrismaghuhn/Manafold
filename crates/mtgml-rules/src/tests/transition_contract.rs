@@ -5,13 +5,13 @@ fn accepted_product_for_contract(
     before: &EngineState,
     after: EngineState,
     events: Vec<AuthoritativeRuleEvent>,
-) -> TransitionResult {
+) -> PredecessorTransitionResult {
     let audit = events
         .iter()
         .map(|event| event.event.semantic_delta())
         .collect();
     let delta = mtgml_state::StateDelta::between(before, &after, audit).unwrap();
-    TransitionResult {
+    PredecessorTransitionResult {
         accepted: true,
         next_state: after.clone(),
         delta,
@@ -25,7 +25,7 @@ fn accepted_product_for_contract(
     }
 }
 
-fn assert_contract_rejects_without_mutation(before: &EngineState, result: &TransitionResult) {
+fn assert_contract_rejects_without_mutation(before: &EngineState, result: &PredecessorTransitionResult) {
     let before_snapshot = before.clone();
     let result_snapshot = result.clone();
     assert!(validate_transition_contract(before, result).is_err());
@@ -38,7 +38,7 @@ fn decision_creation_product(
     player_decision_id: PlayerDecisionIdV1,
     allocator_cursor: u64,
     perspective_cursor: u64,
-) -> (EngineState, TransitionResult) {
+) -> (EngineState, PredecessorTransitionResult) {
     let mut before = state_without_pending_decision();
     before.allocators.next_decision_id = DecisionId(allocator_cursor);
     before
@@ -82,7 +82,7 @@ fn decision_creation_product(
 fn invalid_v2_answer_is_rejected_without_state_mutation() {
     let state = synthetic_state();
     let mut kernel = boundary_kernel();
-    let result = kernel.apply(&state, PlayerId(1), &response(1, 0)).unwrap();
+    let result = kernel.apply_predecessor(&state, PlayerId(1), &response(1, 0)).unwrap();
 
     assert!(!result.accepted);
     assert_eq!(result.next_state, state);
@@ -98,11 +98,11 @@ fn invalid_v2_answer_is_rejected_without_state_mutation() {
 fn wrong_actor_and_stale_revision_fail_closed() {
     let state = synthetic_state();
     let mut kernel = boundary_kernel();
-    let wrong_actor = kernel.apply(&state, PlayerId(2), &response(0, 0)).unwrap();
+    let wrong_actor = kernel.apply_predecessor(&state, PlayerId(2), &response(0, 0)).unwrap();
     assert!(!wrong_actor.accepted);
     assert_eq!(wrong_actor.next_state, state);
 
-    let stale = kernel.apply(&state, PlayerId(1), &response(0, 1)).unwrap();
+    let stale = kernel.apply_predecessor(&state, PlayerId(1), &response(0, 1)).unwrap();
     assert!(!stale.accepted);
     assert_eq!(stale.next_state, state);
 }
@@ -149,7 +149,7 @@ fn synthetic_rejection_matrix_preserves_complete_nonmutation() {
 
     for case in &cases {
         let mut kernel = boundary_kernel();
-        let result = kernel.apply(&state, PlayerId(1), case).unwrap();
+        let result = kernel.apply_predecessor(&state, PlayerId(1), case).unwrap();
         assert!(!result.accepted);
         assert_eq!(result.next_state, state);
         assert!(result.events.is_empty());
@@ -164,7 +164,7 @@ fn synthetic_rejection_matrix_preserves_complete_nonmutation() {
     // rejection.
     let mut kernel = boundary_kernel();
     assert!(matches!(
-        kernel.apply(&wrong_domain, PlayerId(1), &cases[0]),
+        kernel.apply_predecessor(&wrong_domain, PlayerId(1), &cases[0]),
         Err(KernelExecutionError::UnsupportedStagePath)
     ));
 }
@@ -176,7 +176,7 @@ fn sequential_event_delta_audit_rejects_tampered_products() {
 
     let state = synthetic_state();
     let mut kernel = boundary_kernel();
-    let result = kernel.apply(&state, PlayerId(1), &response(0, 0)).unwrap();
+    let result = kernel.apply_predecessor(&state, PlayerId(1), &response(0, 0)).unwrap();
     assert_eq!(result.events.len(), 5);
     validate_transition_contract(&state, &result).unwrap();
 
@@ -215,7 +215,7 @@ fn sequential_event_delta_audit_rejects_tampered_products() {
     let mut tampered = result.clone();
     let mut second_kernel = boundary_kernel();
     let fresh = second_kernel
-        .apply(&synthetic_state(), PlayerId(1), &response(0, 0))
+        .apply_predecessor(&synthetic_state(), PlayerId(1), &response(0, 0))
         .unwrap();
     tampered.events = fresh.events.clone();
     if let AuthoritativeRuleEventKind::RandomValueSampled { value, .. } =
@@ -394,7 +394,7 @@ fn cross_perspective_decision_cursor_inheritance_must_not_pass() {
 
 fn outcome_occurrence_product(
     policy: PerspectiveObservationPolicyV1,
-) -> (EngineState, TransitionResult) {
+) -> (EngineState, PredecessorTransitionResult) {
     let before = state_without_pending_decision();
     let mut after = before.clone();
     after.revision = StateRevision(1);

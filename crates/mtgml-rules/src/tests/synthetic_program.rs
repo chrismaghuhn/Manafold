@@ -339,7 +339,7 @@ fn unsatisfiable_authoritative_requests_are_internal_failures() {
     fn kernel_apply_is_before_state_failure(state: &EngineState) -> bool {
         let mut kernel = boundary_kernel();
         matches!(
-            kernel.apply(state, PlayerId(1), &select_one_response(0, 0)),
+            kernel.apply_predecessor(state, PlayerId(1), &select_one_response(0, 0)),
             Err(KernelExecutionError::BeforeState(_))
         )
     }
@@ -427,7 +427,7 @@ fn completion_succeeds_when_stage_allocators_are_exhausted() {
     };
     let mut kernel = boundary_kernel();
     assert!(matches!(
-        kernel.apply(&advanced_stage, PlayerId(1), &many_response(3, &[0, 1], 2)),
+        kernel.apply_predecessor(&advanced_stage, PlayerId(1), &many_response(3, &[0, 1], 2)),
         Err(KernelExecutionError::Exhaustion("decision"))
     ));
 }

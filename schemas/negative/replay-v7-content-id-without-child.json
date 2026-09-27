@@ -1,0 +1,15 @@
+{
+  "semantic_contract_id": "0000000000000000000000000000000000000000000000000000000000000000",
+  "manifest": {
+    "rules_contract_id": "0000000000000000000000000000000000000000000000000000000000000000",
+    "format_contract_id": null,
+    "content_contract_id": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "rules_manifest": {
+    "rules_authority": {
+      "variant": "synthetic_legacy"
+    },
+    "capability_closure": null
+  },
+  "content_contract": null
+}

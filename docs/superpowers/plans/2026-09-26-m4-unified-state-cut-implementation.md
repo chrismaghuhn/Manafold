@@ -1,16 +1,16 @@
 # Unified M4 State Cut Implementation Plan
 
 **Task:** `M4_UNIFIED_STATE_CUT_IMPLEMENTATION_PLAN`
-**Status:** candidate for independent review
+**Status:** accepted; implementation authorized only within the ordered plan below
 **Normative source:** [M4 Unified State Cut Semantic Spec](../specs/2026-09-26-m4-unified-state-cut-semantic-spec.md)
-**M4.2 status:** PAUSED; this plan does not authorize implementation
+**M4.2 status:** implementation in progress under this plan; M4.2 is NOT COMPLETE until final slice acceptance
 **Date:** 2026-09-26
 
 ## 1. Purpose and exact baseline
 
 This plan implements the Semantic Spec exactly. It adds no contract behavior, fields, event meaning, capability, candidate or mechanic beyond that Spec. If implementation requires such a choice, stop, amend and independently re-review the Spec, then regenerate this Plan before proceeding.
 
-The accepted implementation baseline is the master commit that contains the independently accepted Spec and Plan, not the pre-review M4.1 SHA. After both docs are accepted, merge this docs branch through the repository review process, fetch origin, verify the new exact `origin/master` contains the accepted docs and their parent M4.1 baseline, and record that SHA in the implementation issue. The implementation branch/worktree must be created from that new master. Do not implement from this side branch, an earlier SHA, or an unreviewed replacement head. Before work, verify #222 authority, #225 open/paused status, accepted audit/spec/plan status and clean isolation; preserve unrelated work.
+The accepted implementation baseline is `origin/master = 6faf1b970def779adc2a8d8bd14ae8aff331dba4`, which contains the independently accepted Spec, Plan and Replay V7 content-child wire amendment and descends from the accepted M4.1 baseline. #225 records Phase 1 authorization. Implementation must use a dedicated worktree and the non-current integration branch created from that exact master. Do not implement from an earlier SHA or an unreviewed replacement head. Before each stage, verify #222 authority, #225 open/authorized status, accepted audit/spec/plan status and clean isolation; preserve unrelated work.
 
 No stage makes an incomplete FullStateDigestV6 / checkpoint V7 / replay V7 current on `master`. Stages 1–5 and the completed successor runtime are built and reviewed on a dedicated integration branch while `master` retains the predecessor runtime. On the integration branch, Phase 10 migrates the one executable RulesKernel/environment path in place to the successor family; it does not retain a second executable V5/V6 gameplay path. Historical predecessor artifacts remain readable/verifiable as specified but are not executable there. Phase 13 is the sole repository/master authority activation: it merges the already integrated and fully gated successor branch and performs no further runtime behavior/type migration. Stacked implementation PRs target the integration branch; only the fully integrated, fully gated final branch is proposed to master.
 
@@ -89,10 +89,24 @@ runtime migration.
 - `docs/contracts/ML_CONTRACT.md`
 - `docs/maintenance/SCHEMA_EVOLUTION.md`
 - `docs/normative-document-register.v1.json`
+- `schemas/README.json`
+- `schemas/player-decision-request.v3.schema.json`
+- `schemas/observed-event-envelope.v3.schema.json`
+- `schemas/player-step.v3.schema.json`
+- `schemas/magic-basic-land-observation.v1.schema.json`
+- `schemas/replay-manifest.v7.schema.json`
+- `schemas/authoritative-replay.v7.schema.json`
+- `schemas/examples/`, `schemas/negative/`
+- `scripts/validate_schemas.py`
 - relevant `docs/adr/` only if existing accepted policy requires a new durable ADR (do not restate an ADR unnecessarily)
 - contract vocabulary source under `contracts/catalog/` and generated vocabulary outputs only through their generator
 
 **RED first:** add schema identity and unknown-version/unknown-field negative cases before Rust writer code. Add the proposed exact successor schemas, closed enum tags, content profile body array, canonical digest-input description, historical disposition table, and V7 replay schema inventory. Do not add production types first.
+
+Schema examples and negatives are schema-only fixtures validated by
+`scripts/validate_schemas.py`; they do not claim current Rust/Python DTO
+support. The V2/V6 runtime decoders remain current until the later detached
+implementation stages.
 
 Replay V7's `content_contract` JSON child must use the exact Spec-defined closed transport object: ContentContractIdV1 plus the canonical ContentContractManifestV1 CBOR payload in bounded canonical padded standard Base64. Keep the manifest a closed typed CBOR contract; do not add a Serde/JSON manifest DTO.
 

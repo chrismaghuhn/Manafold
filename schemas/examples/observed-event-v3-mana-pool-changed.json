@@ -1,0 +1,14 @@
+{
+  "schema_version": "observed-event-envelope.v3",
+  "sequence": "1",
+  "state_revision": "2",
+  "event": {
+    "kind": "mana_pool_changed",
+    "player": "0",
+    "pool_after": {
+      "unrestricted": [0, 0, 0, 1, 0, 0],
+      "creature_spell_only": [0, 0, 0, 0, 0, 0]
+    },
+    "cause": "produced"
+  }
+}

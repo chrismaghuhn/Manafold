@@ -4,9 +4,15 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 
+[features]
+# Historical V5/V6 execution surfaces are retained only for the isolated
+# conformance and migration tools which explicitly request them.
+historical-conformance-runtime = ["mtgml-rules/historical-runtime-testkit"]
+
 [dependencies]
 base64.workspace = true
 mtgml-decision = { path = "../mtgml-decision" }
+mtgml-card-ir = { path = "../mtgml-card-ir" }
 mtgml-model = { path = "../mtgml-model" }
 mtgml-observation = { path = "../mtgml-observation" }
 mtgml-persistence = { path = "../mtgml-persistence" }
@@ -22,4 +28,4 @@ thiserror.workspace = true
 [dev-dependencies]
 # Test-only access to the M2.E lifecycle fixture driver; never enabled for
 # production builds of this crate.
-mtgml-rules = { path = "../mtgml-rules", features = ["synthetic-conformance-fixtures"] }
+mtgml-rules = { path = "../mtgml-rules", features = ["synthetic-conformance-fixtures", "historical-runtime-testkit"] }

@@ -35,7 +35,7 @@ use mtgml_state::{
 use crate::errors::KernelExecutionError;
 use crate::events::AuthoritativeRuleEventKind;
 use crate::product::build_accepted_product;
-use crate::transition::{RulesKernel, TransitionResult};
+use crate::transition::PredecessorTransitionResult;
 
 // The inclusive ChooseCount interval has a single authority in the state
 // crate beside the frozen payload it governs; never redefine it locally.
@@ -57,13 +57,13 @@ fn mtgml_rules_validate_runtime(state: &EngineState) -> Result<(), KernelExecuti
 #[derive(Debug)]
 pub struct SyntheticLegacyRulesKernel;
 
-impl RulesKernel for SyntheticLegacyRulesKernel {
-    fn apply(
+impl SyntheticLegacyRulesKernel {
+    pub(crate) fn apply_legacy(
         &mut self,
         state: &EngineState,
         trusted_actor: PlayerId,
         response: &DecisionResponseV2,
-    ) -> Result<TransitionResult, KernelExecutionError> {
+    ) -> Result<PredecessorTransitionResult, KernelExecutionError> {
         mtgml_rules_validate_runtime(state)?;
 
         let Some(pending) = state.execution.pending_decision.as_ref() else {
@@ -125,7 +125,7 @@ impl SyntheticLegacyRulesKernel {
     pub fn advance_forced_progress(
         &mut self,
         state: &EngineState,
-    ) -> Result<TransitionResult, KernelExecutionError> {
+    ) -> Result<PredecessorTransitionResult, KernelExecutionError> {
         mtgml_rules_validate_runtime(state)?;
         if state.execution.pending_decision.is_some() || !state.execution.continuations.is_empty() {
             return Err(KernelExecutionError::UnsupportedStagePath);
@@ -183,7 +183,7 @@ impl SyntheticLegacyRulesKernel {
         &mut self,
         state: &EngineState,
         response: &DecisionResponseV2,
-    ) -> Result<TransitionResult, KernelExecutionError> {
+    ) -> Result<PredecessorTransitionResult, KernelExecutionError> {
         let pending = state.execution.pending_decision.as_ref().expect("checked");
         let request = &pending.request;
         let actor = request.actor;
@@ -305,7 +305,7 @@ impl SyntheticLegacyRulesKernel {
         &self,
         state: &EngineState,
         value: i64,
-    ) -> Result<TransitionResult, KernelExecutionError> {
+    ) -> Result<PredecessorTransitionResult, KernelExecutionError> {
         let pending = state.execution.pending_decision.as_ref().expect("checked");
         let request = &pending.request;
         let actor = request.actor;

@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 use mtgml_decision::DecisionResponseV2;
 use mtgml_model::PlayerId;
 use mtgml_observation::ObservedEventEnvelopeV2;
-use mtgml_rules::TransitionResult;
+use mtgml_rules::PredecessorTransitionResult;
 
 use super::replay::build_manifest;
 use super::SyntheticRulesEnvironmentBackend;
@@ -35,11 +35,11 @@ impl SyntheticRulesEnvironmentBackend {
         actor: PlayerId,
         response: DecisionResponseV2,
         before_commit: F,
-    ) -> Result<TransitionResult, ControllerError>
+    ) -> Result<PredecessorTransitionResult, ControllerError>
     where
         F: FnOnce(
             &EnvironmentCheckpointV6,
-            &TransitionResult,
+            &PredecessorTransitionResult,
             &BTreeMap<PlayerId, Vec<ObservedEventEnvelopeV2>>,
         ) -> Result<(), ControllerError>,
     {
@@ -67,11 +67,11 @@ impl SyntheticRulesEnvironmentBackend {
             crate::response_transaction::ResponseTransactionFailurePoint,
         >,
         #[cfg(test)] apply_override: Option<crate::response_transaction::TestApplyOverride>,
-    ) -> Result<TransitionResult, ControllerError>
+    ) -> Result<PredecessorTransitionResult, ControllerError>
     where
         F: FnOnce(
             &EnvironmentCheckpointV6,
-            &TransitionResult,
+            &PredecessorTransitionResult,
             &BTreeMap<PlayerId, Vec<ObservedEventEnvelopeV2>>,
         ) -> Result<(), ControllerError>,
     {
@@ -113,11 +113,11 @@ impl SyntheticRulesEnvironmentBackend {
         response: DecisionResponseV2,
         failure_point: Option<crate::response_transaction::ResponseTransactionFailurePoint>,
         before_commit: F,
-    ) -> Result<TransitionResult, ControllerError>
+    ) -> Result<PredecessorTransitionResult, ControllerError>
     where
         F: FnOnce(
             &EnvironmentCheckpointV6,
-            &TransitionResult,
+            &PredecessorTransitionResult,
             &BTreeMap<PlayerId, Vec<ObservedEventEnvelopeV2>>,
         ) -> Result<(), ControllerError>,
     {
@@ -136,7 +136,9 @@ impl SyntheticRulesEnvironmentBackend {
     /// Standalone forced progress has no player response and remains a
     /// distinct transaction: it rebases an empty replay baseline and never
     /// fabricates a ReplayStepV6 input.
-    pub(crate) fn execute_forced_progress(&mut self) -> Result<TransitionResult, ControllerError> {
+    pub(crate) fn execute_forced_progress(
+        &mut self,
+    ) -> Result<PredecessorTransitionResult, ControllerError> {
         let config = self.config.clone();
         let mut transaction = crate::reference::ReferenceEnvironmentTransaction {
             state: &mut self.state,

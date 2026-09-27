@@ -41,8 +41,8 @@ player-surface closure (Rust ``PlayerEndpoint`` trait signatures, boundary
 error variants, Python ``PlayerClient`` protocol annotations,
 ``AdapterPlayerClient`` public surface), pinned per-contract
 SchemaContractDigest identities, the decoder-registry set relation
-(``COMMON_NAMED_CONTRACTS`` + the pinned ``PYTHON_MECHANICAL_ONLY``
-exception, never bare three-way equality), and transitive variant-closure
+(``COMMON_NAMED_CONTRACTS`` + the pinned Python-only decoder sets, never bare
+three-way equality), and transitive variant-closure
 pins cross-checked against the generated contract vocabulary and the JSON
 Schemas.
 """
@@ -349,7 +349,7 @@ GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
         check(
             CHECK_REGISTRY,
             "SUPPLEMENTAL: decoder registry relation rust == COMMON, "
-            "python == COMMON union PYTHON_MECHANICAL_ONLY, schemas == COMMON",
+            "python == COMMON union pinned Python decoder sets, schemas == COMMON",
         ),
         check(
             CHECK_VARIANTS,
@@ -435,6 +435,8 @@ EXPECTED_EVIDENCE: dict[str, tuple[str, ...]] = {
 # ---------------------------------------------------------------------------
 
 ENDPOINT_RS = ROOT / "crates" / "mtgml-environment" / "src" / "endpoint.rs"
+ENDPOINT_SUCCESSOR_RS = ROOT / "crates" / "mtgml-environment" / "src" / "endpoint_successor.rs"
+ENDPOINT_PREDECESSOR_RS = ROOT / "crates" / "mtgml-environment" / "src" / "endpoint_predecessor.rs"
 BOUNDARY_RS = ROOT / "crates" / "mtgml-environment" / "src" / "boundary.rs"
 WIRE_FIXTURES_RS = ROOT / "crates" / "mtgml-wire" / "src" / "fixtures.rs"
 PLAYER_CLIENT_PY = ROOT / "python" / "src" / "mtgml" / "player_client.py"
@@ -442,7 +444,7 @@ ADAPTER_CLIENT_PY = ROOT / "python" / "src" / "mtgml" / "_m2_adapter" / "client.
 WIRE_PY = ROOT / "python" / "src" / "mtgml" / "wire.py"
 VALIDATE_SCHEMAS_PY = ROOT / "scripts" / "validate_schemas.py"
 
-RUST_PLAYER_ENDPOINT_METHODS: dict[str, dict[str, object]] = {
+RUST_PLAYER_ENDPOINT_METHODS_V2: dict[str, dict[str, object]] = {
     "perspective": {"params": {}, "returns": "PlayerId"},
     "observation": {
         "params": {},
@@ -462,6 +464,18 @@ RUST_PLAYER_ENDPOINT_METHODS: dict[str, dict[str, object]] = {
     },
 }
 
+RUST_PLAYER_ENDPOINT_METHODS_V3: dict[str, dict[str, object]] = {
+    **RUST_PLAYER_ENDPOINT_METHODS_V2,
+    "visible_decision": {
+        "params": {},
+        "returns": "Result<Option<PlayerDecisionRequestV3>, PlayerEndpointError>",
+    },
+    "submit": {
+        "params": {"response": "DecisionResponseV2"},
+        "returns": "Result<PlayerStepV3, PlayerEndpointError>",
+    },
+}
+
 RUST_PLAYER_BOUNDARY_VARIANTS = frozenset(
     {
         "Wire(PlayerWireErrorCodeV1)",
@@ -469,7 +483,7 @@ RUST_PLAYER_BOUNDARY_VARIANTS = frozenset(
     }
 )
 
-PYTHON_PROTOCOL_METHODS: dict[str, dict[str, object]] = {
+PYTHON_PROTOCOL_METHODS_V2: dict[str, dict[str, object]] = {
     "observation": {"params": {}, "returns": "ObservationEnvelope"},
     "information_state": {"params": {}, "returns": "PlayerInformationStateV2"},
     "visible_decision": {"params": {}, "returns": "PlayerDecisionRequestV2 | None"},
@@ -478,6 +492,13 @@ PYTHON_PROTOCOL_METHODS: dict[str, dict[str, object]] = {
         "returns": "PlayerStepV2",
     },
 }
+
+PYTHON_PROTOCOL_METHODS_V3: dict[str, dict[str, object]] = {
+    **PYTHON_PROTOCOL_METHODS_V2,
+    "visible_decision": {"params": {}, "returns": "PlayerDecisionRequestV3 | None"},
+    "submit": {"params": {"response": "DecisionResponseV2"}, "returns": "PlayerStepV3"},
+}
+PYTHON_HISTORICAL_PROTOCOL_CLASS = "HistoricalPlayerClientV2"
 
 ADAPTER_PUBLIC_METHODS = frozenset(
     {"observation", "information_state", "visible_decision", "submit"}
@@ -488,8 +509,8 @@ ADAPTER_PUBLIC_METHODS = frozenset(
 # Pinned decoder-registry relation (drift regression, NOT completeness).
 #
 # Plan §G.6: three-way equality would permanently contradict the deliberately
-# kept Python-only digest-input registry entry, so the relation below IS the
-# accepted contract.
+# kept Python-only digest-input registry entry. Schema-only successors may
+# have detached typed owners without joining this shared runtime decoder set.
 # ---------------------------------------------------------------------------
 
 COMMON_NAMED_CONTRACTS = frozenset(
@@ -528,10 +549,31 @@ COMMON_NAMED_CONTRACTS = frozenset(
         "authoritative-replay.v5",
         "replay-manifest.v6",
         "authoritative-replay.v6",
+        "replay-manifest.v7",
+        "authoritative-replay.v7",
     }
 )
 
 PYTHON_MECHANICAL_ONLY = frozenset({"information-state-digest-input.v2"})
+# Closed typed successor mirrors. They are not Rust persistence decode_named
+# arms; each Rust DTO is validated in its owning crate.
+PYTHON_TYPED_SUCCESSORS = frozenset(
+    {
+        "player-decision-request.v3",
+        "observed-event-envelope.v3",
+        "player-step.v3",
+        "magic-basic-land-observation.v1",
+    }
+)
+
+SCHEMA_ONLY_SUCCESSORS = frozenset(
+    {
+        "player-decision-request.v3",
+        "observed-event-envelope.v3",
+        "player-step.v3",
+        "magic-basic-land-observation.v1",
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -755,8 +797,12 @@ def _read_source(path: Path) -> str:
         raise GateConfigurationError(f"unreadable source {path}: {error}") from error
 
 
-def extract_rust_trait_methods(origin: str) -> dict[str, dict[str, object]]:
-    block = _rust_balanced_block(_read_source(ENDPOINT_RS), "pub trait PlayerEndpoint", origin)
+def extract_rust_trait_methods(
+    origin: str, path: Path | None = None
+) -> dict[str, dict[str, object]]:
+    if path is None:
+        path = ENDPOINT_RS
+    block = _rust_balanced_block(_read_source(path), "pub trait PlayerEndpoint", origin)
     methods: dict[str, dict[str, object]] = {}
     pattern = re.compile(r"\n\s*(?:pub\s+)?fn\s+(\w+)\s*\(([^)]*)\)\s*(?:->\s*([^;{]+))?")
     for match in pattern.finditer(block):
@@ -797,8 +843,10 @@ def _python_class(path: Path, class_name: str, origin: str) -> ast.ClassDef:
     raise GateConfigurationError(f"{origin}: class {class_name} not found")
 
 
-def extract_python_protocol_methods(origin: str) -> dict[str, dict[str, object]]:
-    klass = _python_class(PLAYER_CLIENT_PY, "PlayerClient", origin)
+def extract_python_protocol_methods(
+    origin: str, class_name: str = "PlayerClient"
+) -> dict[str, dict[str, object]]:
+    klass = _python_class(PLAYER_CLIENT_PY, class_name, origin)
     bases = {base.id for base in klass.bases if isinstance(base, ast.Name)}
     if "Protocol" not in bases:
         raise GateConfigurationError(f"{origin}: PlayerClient is not a Protocol")
@@ -957,22 +1005,47 @@ def validate_gate_manifest() -> None:
 
 def verify_player_surface_closure() -> str:
     origin = "player-surface closure"
-    extracted_rust = extract_rust_trait_methods(origin)
-    expected_rust = {
-        name: {
-            "params": {
-                param: _norm_type(value)  # type: ignore[union-attr]
-                for param, value in signature["params"].items()  # type: ignore[union-attr]
-            },
-            "returns": _norm_type(str(signature["returns"])),
-        }
-        for name, signature in RUST_PLAYER_ENDPOINT_METHODS.items()
-    }
-    if extracted_rust != expected_rust:
-        raise GateConfigurationError(
-            f"{origin}: PlayerEndpoint trait drift: "
-            f"extracted={extracted_rust} pinned={expected_rust}"
+    successor_facade = "pub use crate::endpoint_successor::*;" in _read_source(ENDPOINT_RS)
+    if successor_facade:
+        rust_contracts = (
+            (
+                "successor PlayerEndpoint",
+                extract_rust_trait_methods(origin, ENDPOINT_SUCCESSOR_RS),
+                RUST_PLAYER_ENDPOINT_METHODS_V3,
+            ),
+            (
+                "historical PlayerEndpoint V2",
+                extract_rust_trait_methods(origin, ENDPOINT_PREDECESSOR_RS),
+                RUST_PLAYER_ENDPOINT_METHODS_V2,
+            ),
         )
+        python_pin = PYTHON_PROTOCOL_METHODS_V3
+    else:
+        rust_contracts = (
+            (
+                "PlayerEndpoint",
+                extract_rust_trait_methods(origin, ENDPOINT_RS),
+                RUST_PLAYER_ENDPOINT_METHODS_V2,
+            ),
+        )
+        python_pin = PYTHON_PROTOCOL_METHODS_V2
+
+    for label, extracted_rust, rust_pin in rust_contracts:
+        expected_rust = {
+            name: {
+                "params": {
+                    param: _norm_type(value)  # type: ignore[union-attr]
+                    for param, value in signature["params"].items()  # type: ignore[union-attr]
+                },
+                "returns": _norm_type(str(signature["returns"])),
+            }
+            for name, signature in rust_pin.items()
+        }
+        if extracted_rust != expected_rust:
+            raise GateConfigurationError(
+                f"{origin}: {label} trait drift: extracted={extracted_rust} pinned={expected_rust}"
+            )
+
     extracted_boundary = extract_rust_enum_variants(origin)
     expected_boundary = frozenset(map(_norm_type, RUST_PLAYER_BOUNDARY_VARIANTS))
     if extracted_boundary != expected_boundary:
@@ -986,13 +1059,29 @@ def verify_player_surface_closure() -> str:
             "params": dict(signature["params"]),  # type: ignore[arg-type]
             "returns": str(signature["returns"]),
         }
-        for name, signature in PYTHON_PROTOCOL_METHODS.items()
+        for name, signature in python_pin.items()
     }
     if extracted_protocol != expected_protocol:
         raise GateConfigurationError(
             f"{origin}: PlayerClient protocol drift: "
             f"extracted={extracted_protocol} pinned={expected_protocol}"
         )
+    if successor_facade:
+        extracted_historical = extract_python_protocol_methods(
+            origin, PYTHON_HISTORICAL_PROTOCOL_CLASS
+        )
+        expected_historical = {
+            name: {
+                "params": dict(signature["params"]),  # type: ignore[arg-type]
+                "returns": str(signature["returns"]),
+            }
+            for name, signature in PYTHON_PROTOCOL_METHODS_V2.items()
+        }
+        if extracted_historical != expected_historical:
+            raise GateConfigurationError(
+                f"{origin}: historical Python V2 protocol drift: "
+                f"extracted={extracted_historical} pinned={expected_historical}"
+            )
     extracted_adapter = extract_adapter_public_methods(origin)
     if extracted_adapter != ADAPTER_PUBLIC_METHODS:
         raise GateConfigurationError(
@@ -1000,8 +1089,9 @@ def verify_player_surface_closure() -> str:
             f"extracted={sorted(extracted_adapter)} "
             f"pinned={sorted(ADAPTER_PUBLIC_METHODS)}"
         )
+    rust_method_count = sum(len(contract[2]) for contract in rust_contracts)
     return (
-        f"closure holds: {len(expected_rust)} rust trait methods, "
+        f"closure holds: {rust_method_count} rust contract methods, "
         f"{len(expected_boundary)} boundary variants, "
         f"{len(expected_protocol)} python protocol methods, "
         f"{len(extracted_adapter)} adapter public methods"
@@ -1035,24 +1125,27 @@ def verify_registry_relation() -> str:
             f"extra={sorted(rust_arms - COMMON_NAMED_CONTRACTS)} "
             f"missing={sorted(COMMON_NAMED_CONTRACTS - rust_arms)}"
         )
-    expected_python = COMMON_NAMED_CONTRACTS | PYTHON_MECHANICAL_ONLY
+    expected_python = COMMON_NAMED_CONTRACTS | PYTHON_MECHANICAL_ONLY | PYTHON_TYPED_SUCCESSORS
     if python_decoders != expected_python:
         problems.append(
-            f"python _DECODERS != COMMON union PYTHON_MECHANICAL_ONLY: "
+            "python _DECODERS != COMMON union pinned Python decoder sets: "
             f"extra={sorted(python_decoders - expected_python)} "
             f"missing={sorted(expected_python - python_decoders)}"
         )
-    if schema_mapping != COMMON_NAMED_CONTRACTS:
+    expected_schemas = COMMON_NAMED_CONTRACTS | SCHEMA_ONLY_SUCCESSORS
+    if schema_mapping != expected_schemas:
         problems.append(
-            f"schemas WIRE_MAPPING != COMMON: "
-            f"extra={sorted(schema_mapping - COMMON_NAMED_CONTRACTS)} "
-            f"missing={sorted(COMMON_NAMED_CONTRACTS - schema_mapping)}"
+            f"schemas WIRE_MAPPING != COMMON union SCHEMA_ONLY_SUCCESSORS: "
+            f"extra={sorted(schema_mapping - expected_schemas)} "
+            f"missing={sorted(expected_schemas - schema_mapping)}"
         )
     if problems:
         raise GateConfigurationError(f"{origin}: " + "; ".join(problems))
     return (
         f"relation holds: |COMMON|={len(COMMON_NAMED_CONTRACTS)}, "
-        f"|python exception|={len(PYTHON_MECHANICAL_ONLY)}"
+        f"|python exception|={len(PYTHON_MECHANICAL_ONLY)}, "
+        f"|typed successors|={len(PYTHON_TYPED_SUCCESSORS)}, "
+        f"|schema-only successors|={len(SCHEMA_ONLY_SUCCESSORS)}"
     )
 
 

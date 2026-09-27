@@ -13,7 +13,7 @@ use std::collections::BTreeSet;
 use std::convert::TryFrom;
 
 use crate::semantic_cursor::SemanticValidationCursor;
-use crate::transition::TransitionResult;
+use crate::transition::PredecessorTransitionResult;
 use crate::turn_structure::validate_quiescent_cleanup_boundary;
 use crate::validation::TransitionViolation;
 
@@ -226,7 +226,7 @@ fn object_references_old(state: &EngineState, object: GameObjectId) -> bool {
 
 fn validate_s2_zone_transition_product(
     before: &EngineState,
-    result: &TransitionResult,
+    result: &PredecessorTransitionResult,
 ) -> Result<(), TransitionViolation> {
     if is_upkeep_pass_draw_composition(before, result) {
         let (draw_before, _, forced) = split_upkeep_pass_draw_products(before, result)?;
@@ -238,7 +238,10 @@ fn validate_s2_zone_transition_product(
     validate_s2_zone_transition_product_core(before, result)
 }
 
-fn is_draw_s2_priority_composition(before: &EngineState, result: &TransitionResult) -> bool {
+fn is_draw_s2_priority_composition(
+    before: &EngineState,
+    result: &PredecessorTransitionResult,
+) -> bool {
     let library_to_hand = result.events.iter().any(|event| {
         matches!(
             &event.event,
@@ -266,7 +269,7 @@ fn is_draw_s2_priority_composition(before: &EngineState, result: &TransitionResu
 
 fn validate_s2_zone_transition_product_core(
     before: &EngineState,
-    result: &TransitionResult,
+    result: &PredecessorTransitionResult,
 ) -> Result<(), TransitionViolation> {
     if result.events.iter().any(|event| {
         matches!(
@@ -560,8 +563,8 @@ fn validate_s2_zone_transition_product_core(
 
 fn split_combat_damage_sba_product(
     before: &EngineState,
-    result: &TransitionResult,
-) -> Result<(EngineState, TransitionResult), TransitionViolation> {
+    result: &PredecessorTransitionResult,
+) -> Result<(EngineState, PredecessorTransitionResult), TransitionViolation> {
     use AuthoritativeRuleEventKind as Event;
     let sba_index = result
         .events
@@ -717,7 +720,7 @@ fn split_combat_damage_sba_product(
             .collect(),
     )
     .map_err(|_| TransitionViolation::DeltaReapplication)?;
-    let sba_result = TransitionResult {
+    let sba_result = PredecessorTransitionResult {
         accepted: true,
         next_decision: result.next_decision.clone(),
         status: result.status.clone(),
@@ -730,7 +733,7 @@ fn split_combat_damage_sba_product(
 
 fn validate_draw_composed_product(
     before: &EngineState,
-    result: &TransitionResult,
+    result: &PredecessorTransitionResult,
 ) -> Result<(), TransitionViolation> {
     if before.core.turn_number < 2
         || !result.accepted
@@ -826,7 +829,7 @@ fn validate_draw_composed_product(
     {
         return Err(TransitionViolation::ZoneTransition);
     }
-    let draw_only = TransitionResult {
+    let draw_only = PredecessorTransitionResult {
         accepted: true,
         next_state: drawn_state.clone(),
         delta: mtgml_state::StateDelta::between(
@@ -879,7 +882,7 @@ fn validate_draw_composed_product(
             event.state_revision = followup_revision;
         }
     }
-    let followup = TransitionResult {
+    let followup = PredecessorTransitionResult {
         accepted: true,
         delta: mtgml_state::StateDelta::between(
             &drawn_state,
@@ -931,7 +934,7 @@ fn validate_draw_composed_product(
 
 fn validate_sba_batch_product(
     before: &EngineState,
-    result: &TransitionResult,
+    result: &PredecessorTransitionResult,
 ) -> Result<(), TransitionViolation> {
     let batches: Vec<_> = result
         .events
@@ -1309,7 +1312,7 @@ fn foundation_sources_match_selected_zone_transitions(
 
 fn validate_accepted_progression(
     before: &EngineState,
-    result: &TransitionResult,
+    result: &PredecessorTransitionResult,
 ) -> Result<(), TransitionViolation> {
     // Exhaustive review seam for authoritative mutation ownership. Every
     // EngineState top-level field must be classified here when the state
@@ -1787,7 +1790,7 @@ fn validate_sba_order_stage_world(
 
 fn validate_sba_order_transition(
     before: &EngineState,
-    result: &TransitionResult,
+    result: &PredecessorTransitionResult,
 ) -> Result<(), TransitionViolation> {
     use crate::events::AuthoritativeRuleEventKind as Event;
     let after = &result.next_state;
@@ -2040,7 +2043,7 @@ fn validate_sba_order_transition(
 
 fn is_final_sba_order_priority_composition(
     before: &EngineState,
-    result: &TransitionResult,
+    result: &PredecessorTransitionResult,
 ) -> bool {
     let after = &result.next_state;
     let has_sba_continuation = before.execution.continuations.values().any(|record| {
@@ -2113,7 +2116,10 @@ fn is_final_sba_order_priority_composition(
         )
 }
 
-fn is_upkeep_pass_draw_composition(before: &EngineState, result: &TransitionResult) -> bool {
+fn is_upkeep_pass_draw_composition(
+    before: &EngineState,
+    result: &PredecessorTransitionResult,
+) -> bool {
     use crate::events::AuthoritativeRuleEventKind as Event;
     let Some(pending) = before.execution.pending_decision.as_ref() else {
         return false;
@@ -2182,8 +2188,15 @@ fn is_upkeep_pass_draw_composition(before: &EngineState, result: &TransitionResu
 
 fn split_upkeep_pass_draw_products(
     before: &EngineState,
-    result: &TransitionResult,
-) -> Result<(EngineState, TransitionResult, TransitionResult), TransitionViolation> {
+    result: &PredecessorTransitionResult,
+) -> Result<
+    (
+        EngineState,
+        PredecessorTransitionResult,
+        PredecessorTransitionResult,
+    ),
+    TransitionViolation,
+> {
     if !is_upkeep_pass_draw_composition(before, result) {
         return Err(TransitionViolation::Priority);
     }
@@ -2217,7 +2230,7 @@ fn split_upkeep_pass_draw_products(
             .checked_add(3)
             .ok_or(TransitionViolation::EventIdentity)?,
     );
-    let response = TransitionResult {
+    let response = PredecessorTransitionResult {
         accepted: true,
         next_state: draw_before.clone(),
         delta: mtgml_state::StateDelta::between(
@@ -2233,7 +2246,7 @@ fn split_upkeep_pass_draw_products(
         next_decision: None,
         status: EpisodeStatus::Running,
     };
-    let forced = TransitionResult {
+    let forced = PredecessorTransitionResult {
         accepted: true,
         next_state: result.next_state.clone(),
         delta: mtgml_state::StateDelta::between(
@@ -2254,7 +2267,7 @@ fn split_upkeep_pass_draw_products(
 
 pub(crate) fn is_second_pass_cleanup_composition(
     before: &EngineState,
-    result: &TransitionResult,
+    result: &PredecessorTransitionResult,
 ) -> bool {
     use crate::events::AuthoritativeRuleEventKind as Event;
     let after = &result.next_state;
@@ -2317,7 +2330,7 @@ pub(crate) fn is_second_pass_cleanup_composition(
 
 pub(crate) fn is_bounded_cleanup_to_upkeep_composition(
     before: &EngineState,
-    result: &TransitionResult,
+    result: &PredecessorTransitionResult,
 ) -> bool {
     use crate::events::AuthoritativeRuleEventKind as Event;
     let after = &result.next_state;
@@ -2459,7 +2472,7 @@ pub(crate) fn is_bounded_cleanup_to_upkeep_composition(
 
 pub(crate) fn is_second_pass_priority_progress_composition(
     before: &EngineState,
-    result: &TransitionResult,
+    result: &PredecessorTransitionResult,
 ) -> bool {
     use crate::events::AuthoritativeRuleEventKind as Event;
     let Some(pending) = before.execution.pending_decision.as_ref() else {
@@ -2519,7 +2532,7 @@ pub(crate) fn is_second_pass_priority_progress_composition(
 
 pub(crate) fn is_endstep_cleanup_upkeep_composition(
     before: &EngineState,
-    result: &TransitionResult,
+    result: &PredecessorTransitionResult,
 ) -> bool {
     use crate::events::AuthoritativeRuleEventKind as Event;
     let Some(pending) = before.execution.pending_decision.as_ref() else {
@@ -2557,7 +2570,7 @@ pub(crate) fn is_endstep_cleanup_upkeep_composition(
     };
     cleanup_before.core.priority = mtgml_state::PriorityState::None;
     cleanup_before.execution.pending_decision = None;
-    let sliced = TransitionResult {
+    let sliced = PredecessorTransitionResult {
         accepted: result.accepted,
         next_state: result.next_state.clone(),
         delta: result.delta.clone(),
@@ -2570,7 +2583,7 @@ pub(crate) fn is_endstep_cleanup_upkeep_composition(
 
 fn is_attacker_declaration_priority_composition(
     before: &EngineState,
-    result: &TransitionResult,
+    result: &PredecessorTransitionResult,
 ) -> bool {
     use crate::events::AuthoritativeRuleEventKind as Event;
     let after = &result.next_state;
@@ -2659,7 +2672,7 @@ fn is_attacker_declaration_priority_composition(
 
 fn is_blocker_declaration_priority_composition(
     before: &EngineState,
-    result: &TransitionResult,
+    result: &PredecessorTransitionResult,
 ) -> bool {
     use crate::events::AuthoritativeRuleEventKind as Event;
     let after = &result.next_state;
@@ -2766,7 +2779,7 @@ fn is_blocker_declaration_priority_composition(
 
 pub fn validate_transition_contract(
     before: &EngineState,
-    result: &TransitionResult,
+    result: &PredecessorTransitionResult,
 ) -> Result<(), TransitionViolation> {
     validate_engine_state(before).map_err(TransitionViolation::BeforeState)?;
     validate_engine_state(&result.next_state).map_err(TransitionViolation::AfterState)?;

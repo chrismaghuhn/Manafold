@@ -69,6 +69,8 @@ pub enum KernelExecutionError {
     TurnStructure(TurnStructureError),
     #[error("player response is not accepted on this no-choice Magic path")]
     UnsupportedPlayerResponse,
+    #[error("successor basic-land transition rejected: {0}")]
+    BasicLandTransition(#[from] crate::BasicLandTransitionError),
     #[error("unsupported rules boundary: {0:?}")]
     UnsupportedRulesBoundary(UnsupportedRulesBoundary),
 }

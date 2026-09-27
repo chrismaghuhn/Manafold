@@ -5,8 +5,9 @@
 //! every V4 state field and adds a closed canonical Magic continuation variant.
 
 use mtgml_decision::{
-    AuthoritativeCandidateV2, AuthoritativeDecisionRequestV2, CandidateIntent, DecisionDomainV2,
-    DecisionVisibility, EngineCandidateBinding,
+    AuthoritativeCandidateV2, AuthoritativeDecisionRequestV2, AuthoritativeDecisionRequestV3,
+    CandidateIntent, CandidateIntentV3, DecisionDomainV2, DecisionVisibility,
+    EngineCandidateBinding, EngineCandidateBindingV3,
 };
 use mtgml_model::FullStateDigestV5;
 use mtgml_persistence::{
@@ -24,6 +25,7 @@ use crate::engine_state_shape::{
     AssemblyStageV2, ContinuationPayloadV2, KnowledgeInvalidationV2, KnowledgeRecordV2,
     KnownLocationFactV2, RetiredKnowledgeRecordV2,
 };
+use crate::execution::ExecutionStateV3;
 use crate::format::FormatState;
 use crate::knowledge::{KnowledgeAcquisitionReason, KnowledgeInvalidationReason};
 use crate::zones::{VisibilityPartition, ZoneKey, ZoneLocation, ZonePosition};
@@ -447,6 +449,99 @@ fn execution_value(state: &EngineState) -> Result<Value, StateDigestError> {
         array([]),
         array([]),
     ]))
+}
+
+/// Canonical producer for the frozen `PersistedExecutionV3` value. This is
+/// intentionally separate from the historical V5 execution encoder.
+pub(crate) fn successor_execution_value_v3(
+    state: &ExecutionStateV3,
+) -> Result<Value, StateDigestError> {
+    if !state.effects.is_empty()
+        || !state.waiting_triggers.is_empty()
+        || !state.delayed_effects.is_empty()
+    {
+        return Err(semantic_error());
+    }
+    let pending = state.pending_decision.as_ref().map(decision_v3_value);
+    let continuations = state
+        .continuations
+        .values()
+        .map(continuation_value)
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(array([
+        optional(pending),
+        array(continuations),
+        array([]),
+        array([]),
+        array([]),
+    ]))
+}
+
+fn decision_v3_value(request: &AuthoritativeDecisionRequestV3) -> Value {
+    array([
+        u(request.decision_id.0),
+        u(request.player_decision_id.0),
+        u(request.state_revision.0),
+        u(request.actor.0),
+        text(decision_visibility(request.visibility)),
+        decision_domain(&request.decision),
+        array(request.candidates.iter().map(|candidate| {
+            array([
+                u32_value(candidate.candidate_id.0),
+                visible_intent_v3(&candidate.visible_intent),
+                trusted_binding_v3(&candidate.trusted_binding),
+            ])
+        })),
+        optional(request.continuation_id.map(|value| u(value.0))),
+    ])
+}
+
+fn visible_intent_v3(value: &CandidateIntentV3) -> Value {
+    match value {
+        CandidateIntentV3::PassPriority => array([text("pass_priority"), Value::Null]),
+        CandidateIntentV3::PlayLand { object } => array([text("play_land"), u(object.0)]),
+        CandidateIntentV3::CastSpell { object } => array([text("cast_spell"), u(object.0)]),
+        CandidateIntentV3::ActivateAbility { ability } => {
+            array([text("activate_ability"), u(ability.0)])
+        }
+        CandidateIntentV3::SelectObject { object } => array([text("select_object"), u(object.0)]),
+        CandidateIntentV3::SelectPlayer { player } => array([text("select_player"), u(player.0)]),
+        CandidateIntentV3::SelectMode { mode_index } => {
+            array([text("select_mode"), u32_value(*mode_index)])
+        }
+        CandidateIntentV3::ChooseBoolean { value } => {
+            array([text("choose_boolean"), Value::Bool(*value)])
+        }
+        CandidateIntentV3::DeclareNumber { value } => array([text("declare_number"), i(*value)]),
+        CandidateIntentV3::Confirm => array([text("confirm"), Value::Null]),
+    }
+}
+
+fn trusted_binding_v3(value: &EngineCandidateBindingV3) -> Value {
+    match value {
+        EngineCandidateBindingV3::PassPriority => array([text("pass_priority"), Value::Null]),
+        EngineCandidateBindingV3::PlayLand { object } => array([text("play_land"), u(object.0)]),
+        EngineCandidateBindingV3::CastSpell { object } => array([text("cast_spell"), u(object.0)]),
+        EngineCandidateBindingV3::ActivateAbility { ability } => {
+            array([text("activate_ability"), u(ability.0)])
+        }
+        EngineCandidateBindingV3::SelectObject { object } => {
+            array([text("select_object"), u(object.0)])
+        }
+        EngineCandidateBindingV3::SelectPlayer { player } => {
+            array([text("select_player"), u(player.0)])
+        }
+        EngineCandidateBindingV3::SelectMode { mode_index } => {
+            array([text("select_mode"), u32_value(*mode_index)])
+        }
+        EngineCandidateBindingV3::ChooseBoolean { value } => {
+            array([text("choose_boolean"), Value::Bool(*value)])
+        }
+        EngineCandidateBindingV3::DeclareNumber { value } => {
+            array([text("declare_number"), i(*value)])
+        }
+        EngineCandidateBindingV3::Confirm => array([text("confirm"), Value::Null]),
+    }
 }
 
 fn decision_value(request: &AuthoritativeDecisionRequestV2) -> Value {

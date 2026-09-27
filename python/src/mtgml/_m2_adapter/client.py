@@ -1,4 +1,4 @@
-"""Typed clients over the M2 semantic adapter transport.
+"""Typed clients over the historical M2 semantic adapter transport.
 
 ``SyntheticEnvironmentClient`` is the trusted orchestration surface
 (reset/bind/shutdown): it generates the trusted key once, builds the
@@ -7,7 +7,7 @@ child environment copy, eagerly assembles the ``ProcessCore`` plus
 transport; it never exposes it. ``AdapterPlayerClient`` implements the
 ``mtgml.PlayerClient`` protocol exactly, holds exactly one token inside
 its ``BoundPlayerTransport``, decodes payloads through the real mtgml
-codecs, and carries no generic command method and no choice-making
+V2 codecs, and carries no generic command method and no choice-making
 logic; no trusted secret exists anywhere in its reachable object graph.
 """
 
@@ -32,7 +32,7 @@ from ..observation import (
 from ..wire import decode_canonical
 
 if TYPE_CHECKING:
-    from ..player_client import PlayerClient
+    from ..player_client import HistoricalPlayerClientV2
 
 from . import process as _adapter_process
 from .process import (
@@ -163,5 +163,5 @@ class AdapterPlayerClient:
 
 if TYPE_CHECKING:
 
-    def _protocol_witness(client: AdapterPlayerClient) -> PlayerClient:
+    def _protocol_witness(client: AdapterPlayerClient) -> HistoricalPlayerClientV2:
         return client

@@ -10,10 +10,9 @@
 //! available only with the non-default `magic-conformance-testkit` feature; it
 //! is not a production admission route.
 //!
-//! Production Magic admission: `for_admitted_execution` receives the
-//! semantic contract ID after the V6 catalog confirms support for the exact
-//! an exact catalog-recognized semantic contract. Only that production constructor uses
-//! `magic_execution_profile()`.
+//! Successor Magic admission: `for_executable_profile` receives the verified
+//! Phase-9 content/profile admission and constructs the one executable bounded
+//! Magic kernel. Historical semantic-ID constructors are test/conformance-only.
 //! The testkit constructor uses a fixed prospective profile without any
 //! SemanticContractId.
 
@@ -21,7 +20,10 @@ use crate::magic::MagicRulesKernel;
 use crate::semantic_execution_generated::magic_execution_profile;
 use crate::synthetic::{validate_synthetic_runtime_state, SyntheticLegacyRulesKernel};
 use crate::turn_structure::validate_turn_structure_support;
+#[cfg(any(test, feature = "historical-runtime-testkit"))]
+use crate::PredecessorTransitionResult;
 use crate::{KernelExecutionError, RulesKernel, TransitionResult};
+use mtgml_card_ir::ExecutableProfileAdmissionV1;
 use mtgml_decision::DecisionResponseV2;
 use mtgml_model::PlayerId;
 use mtgml_model::{
@@ -31,9 +33,8 @@ use mtgml_model::{
 use mtgml_state::EngineState;
 
 /// Opaque public kernel adapter. Production construction flows through
-/// [`ProgramKernelV1::for_program`] or
-/// [`ProgramKernelV1::for_admitted_execution`]. A separate constructor is
-/// available only with the non-default conformance-testkit feature.
+/// [`ProgramKernelV1::for_executable_profile`]. Predecessor constructors are
+/// available only with the explicit historical testkit feature.
 pub struct ProgramKernelV1 {
     inner: ProgramKernelInner,
 }
@@ -51,6 +52,9 @@ pub enum ProgramKernelConstructionErrorV1 {
     /// The requested execution program has no production kernel contract in
     /// the current slice.
     UnsupportedProgram,
+    /// The immutable admission token does not describe the closed executable
+    /// basic-land profile required by this constructor.
+    InvalidExecutableAdmission,
 }
 
 impl std::fmt::Debug for ProgramKernelV1 {
@@ -65,11 +69,18 @@ impl std::fmt::Debug for ProgramKernelV1 {
 }
 
 impl ProgramKernelV1 {
-    /// The single named construction path. Behavior is unchanged for the
-    /// synthetic program: the wrapped kernel is the existing
-    /// `SyntheticLegacyRulesKernel`. `MagicRules` remains fail-closed;
-    /// production Magic construction goes through
-    /// `for_admitted_execution` only.
+    /// The exact immutable content/semantic admission used by the executable
+    /// Magic transition path. Synthetic and historical kernels have none.
+    pub fn executable_profile_admission(&self) -> Option<&ExecutableProfileAdmissionV1> {
+        match &self.inner {
+            ProgramKernelInner::Magic(kernel) => kernel.executable_admission(),
+            ProgramKernelInner::SyntheticLegacy(_) => None,
+        }
+    }
+
+    /// Historical predecessor construction path. It is unavailable in the
+    /// default successor runtime and exists only for archived conformance tools.
+    #[cfg(any(test, feature = "historical-runtime-testkit"))]
     pub fn for_program(
         program_kind: ExecutionProgramV1,
     ) -> Result<Self, ProgramKernelConstructionErrorV1> {
@@ -83,7 +94,7 @@ impl ProgramKernelV1 {
         }
     }
 
-    /// Contract-aware admitted construction for Magic execution.
+    /// Historical contract-aware construction for predecessor Magic execution.
     ///
     /// Requires a semantic contract ID that the V6 admission layer has
     /// already confirmed is the exact supported contract via
@@ -93,6 +104,7 @@ impl ProgramKernelV1 {
     /// Admission is validated through `magic_execution_profile()`: only
     /// the exact supported contract ID maps to a profile. Any other
     /// ID returns `None` and is rejected with `UnsupportedProgram`.
+    #[cfg(any(test, feature = "historical-runtime-testkit"))]
     pub fn for_admitted_execution(
         program_kind: ExecutionProgramV1,
         semantic_contract_id: SemanticContractIdV1,
@@ -111,6 +123,45 @@ impl ProgramKernelV1 {
                 Err(ProgramKernelConstructionErrorV1::UnsupportedProgram)
             }
         }
+    }
+
+    /// Construct the bounded executable Magic kernel from the Phase-9
+    /// identity/provenance/requirement admission. Unlike the historical
+    /// semantic-ID constructor, this path retains the exact verified catalog
+    /// that was included in admission.
+    pub fn for_executable_profile(
+        admission: ExecutableProfileAdmissionV1,
+    ) -> Result<Self, ProgramKernelConstructionErrorV1> {
+        use mtgml_model::ExecutionProgramV1;
+
+        let identity = admission.execution_identity();
+        if identity.program_kind != ExecutionProgramV1::MagicRules
+            || identity.semantic_contract_id != *admission.semantic_contract_id()
+            || admission.content_contract_id() != admission.verified_catalog().content_contract_id()
+        {
+            return Err(ProgramKernelConstructionErrorV1::InvalidExecutableAdmission);
+        }
+        let roots = admission
+            .direct_requirement_roots()
+            .iter()
+            .map(|requirement| requirement.key.as_str())
+            .collect::<std::collections::BTreeSet<_>>();
+        if roots
+            != [
+                "rules/basic-land-mana",
+                "rules/land-play",
+                "rules/mana-pool",
+            ]
+            .into_iter()
+            .collect()
+        {
+            return Err(ProgramKernelConstructionErrorV1::InvalidExecutableAdmission);
+        }
+        Ok(Self {
+            inner: ProgramKernelInner::Magic(MagicRulesKernel::from_executable_admission(
+                admission,
+            )),
+        })
     }
 
     /// Construct the real Magic kernel implementation under the fixed state-based-actions
@@ -145,26 +196,120 @@ impl ProgramKernelV1 {
 
     /// Mandatory entry point 1: trusted response execution, dispatched to
     /// the wrapped kernel.
-    pub fn apply(
+    #[cfg(any(test, feature = "historical-runtime-testkit"))]
+    pub fn apply_predecessor(
         &mut self,
         state: &EngineState,
         trusted_actor: PlayerId,
         response: &DecisionResponseV2,
-    ) -> Result<TransitionResult, KernelExecutionError> {
+    ) -> Result<PredecessorTransitionResult, KernelExecutionError> {
         match &mut self.inner {
             ProgramKernelInner::SyntheticLegacy(kernel) => {
-                kernel.apply(state, trusted_actor, response)
+                kernel.apply_legacy(state, trusted_actor, response)
             }
-            ProgramKernelInner::Magic(kernel) => kernel.apply(state, trusted_actor, response),
+            ProgramKernelInner::Magic(kernel) => {
+                if kernel.is_successor_profile() {
+                    return Err(KernelExecutionError::UnsupportedPlayerResponse);
+                }
+                kernel.apply_legacy(state, trusted_actor, response)
+            }
+        }
+    }
+
+    /// Return the current bounded Magic candidate surface from complete
+    /// successor state. Only an immutable Phase-9 executable admission can
+    /// reach the Basic-Land producer; the synthetic and historical
+    /// semantic-ID kernels fail closed.
+    pub fn successor_candidates(
+        &self,
+        state: &mtgml_state::EngineStatePartsV2,
+        actor: PlayerId,
+        status: &EpisodeStatus,
+    ) -> Result<Vec<mtgml_decision::AuthoritativeCandidateV3>, crate::BasicLandCandidateError> {
+        match &self.inner {
+            ProgramKernelInner::Magic(kernel) => {
+                kernel.derive_basic_land_candidates(state, actor, status)
+            }
+            ProgramKernelInner::SyntheticLegacy(_) => {
+                Err(crate::BasicLandCandidateError::WrongExecutionIdentity)
+            }
+        }
+    }
+
+    /// Install a rules-derived successor request into a revisioned transition
+    /// workspace. The surrounding RulesKernel product owns revision advance,
+    /// event creation, and atomic commit.
+    pub fn install_successor_request(
+        &self,
+        state: &mut mtgml_state::EngineStatePartsV2,
+        actor: PlayerId,
+        status: &EpisodeStatus,
+    ) -> Result<mtgml_decision::AuthoritativeDecisionRequestV3, crate::BasicLandCandidateError>
+    {
+        match &self.inner {
+            ProgramKernelInner::Magic(kernel) => {
+                kernel.install_basic_land_request(state, actor, status)
+            }
+            ProgramKernelInner::SyntheticLegacy(_) => {
+                Err(crate::BasicLandCandidateError::WrongExecutionIdentity)
+            }
+        }
+    }
+
+    /// Resolve a response to the exact trusted PlayLand or mana-ability
+    /// binding stored in successor state. This is still read-only; execution
+    /// and product construction remain inside the kernel transition.
+    pub fn selected_successor_action(
+        &self,
+        state: &mtgml_state::EngineStatePartsV2,
+        actor: PlayerId,
+        response: &DecisionResponseV2,
+        status: &EpisodeStatus,
+    ) -> Result<crate::MagicActionRequestV1, crate::BasicLandCandidateError> {
+        match &self.inner {
+            ProgramKernelInner::Magic(kernel) => {
+                kernel.selected_basic_land_action(state, actor, response, status)
+            }
+            ProgramKernelInner::SyntheticLegacy(_) => {
+                Err(crate::BasicLandCandidateError::WrongExecutionIdentity)
+            }
+        }
+    }
+
+    /// Execute one exact response against the complete successor state using
+    /// the immutable Phase-9 admission held by this program kernel.
+    fn apply_admitted_successor(
+        &self,
+        state: &mtgml_state::EngineStatePartsV2,
+        actor: PlayerId,
+        response: &DecisionResponseV2,
+        status: &EpisodeStatus,
+    ) -> Result<TransitionResult, KernelExecutionError> {
+        match &self.inner {
+            ProgramKernelInner::Magic(kernel) => {
+                let product = kernel.execute_basic_land_response(state, actor, response, status)?;
+                Ok(TransitionResult {
+                    accepted: product.accepted,
+                    next_state: product.next_state,
+                    delta: product.delta,
+                    events: product.events,
+                    next_decision: product.next_decision,
+                    status: product.status,
+                })
+            }
+            ProgramKernelInner::SyntheticLegacy(_) => {
+                Err(KernelExecutionError::UnsupportedPlayerResponse)
+            }
         }
     }
 
     /// Mandatory entry point 2: rules-owned forced-progress execution,
     /// dispatched to the wrapped kernel's inherent primitive.
+    #[cfg(any(test, feature = "historical-runtime-testkit"))]
     pub fn advance_forced_progress(
         &mut self,
         state: &EngineState,
-    ) -> Result<TransitionResult, KernelExecutionError> {
+    ) -> Result<PredecessorTransitionResult, KernelExecutionError> {
         match &mut self.inner {
             ProgramKernelInner::SyntheticLegacy(kernel) => kernel.advance_forced_progress(state),
             ProgramKernelInner::Magic(kernel) => kernel.advance_forced_progress(state),
@@ -174,15 +319,28 @@ impl ProgramKernelV1 {
     /// Contract-aware admission for a forced product that closes an accepted
     /// player response. Magic uses this seam to preserve historical profile
     /// behavior while authorizing the cumulative bounded-turn continuation.
+    #[cfg(any(test, feature = "historical-runtime-testkit"))]
     pub fn authorize_response_progress(
         &self,
         before: &EngineState,
-        result: &TransitionResult,
+        result: &PredecessorTransitionResult,
     ) -> Result<(), crate::TransitionViolation> {
         match &self.inner {
             ProgramKernelInner::SyntheticLegacy(_) => Ok(()),
             ProgramKernelInner::Magic(kernel) => kernel.authorize_response_progress(before, result),
         }
+    }
+}
+
+impl RulesKernel for ProgramKernelV1 {
+    fn apply(
+        &mut self,
+        state: &mtgml_state::EngineStatePartsV2,
+        trusted_actor: PlayerId,
+        response: &DecisionResponseV2,
+        status: &EpisodeStatus,
+    ) -> Result<TransitionResult, KernelExecutionError> {
+        ProgramKernelV1::apply_admitted_successor(self, state, trusted_actor, response, status)
     }
 }
 

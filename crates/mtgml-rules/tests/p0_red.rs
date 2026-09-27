@@ -55,7 +55,9 @@ fn assert_v4_fact_mutation_is_rejected_from(
     let mut kernel =
         ProgramKernelV1::for_program(mtgml_model::ExecutionProgramV1::SyntheticRulesCompat)
             .expect("the synthetic program is supported by the current kernel boundary");
-    let mut transition = kernel.apply(&before, PlayerId(1), &response()).unwrap();
+    let mut transition = kernel
+        .apply_predecessor(&before, PlayerId(1), &response())
+        .unwrap();
     mutate(&mut transition.next_state);
     transition.delta = StateDelta::between(
         &before,

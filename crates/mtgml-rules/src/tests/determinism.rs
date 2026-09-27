@@ -8,10 +8,10 @@ fn deterministic_services_repeat_exact_transition_result() {
     let mut kernel_a = boundary_kernel();
     let mut kernel_b = boundary_kernel();
     let left = kernel_a
-        .apply(&first, PlayerId(1), &response(0, 0))
+        .apply_predecessor(&first, PlayerId(1), &response(0, 0))
         .unwrap();
     let right = kernel_b
-        .apply(&second, PlayerId(1), &response(0, 0))
+        .apply_predecessor(&second, PlayerId(1), &response(0, 0))
         .unwrap();
     assert_eq!(left, right);
     assert_eq!(
@@ -34,10 +34,10 @@ fn deterministic_services_isolate_unrelated_stream_cursors() {
     let mut kernel_a = boundary_kernel();
     let mut kernel_b = boundary_kernel();
     let baseline = kernel_a
-        .apply(&baseline_state, PlayerId(1), &response(0, 0))
+        .apply_predecessor(&baseline_state, PlayerId(1), &response(0, 0))
         .unwrap();
     let isolated = kernel_b
-        .apply(&isolated_state, PlayerId(1), &response(0, 0))
+        .apply_predecessor(&isolated_state, PlayerId(1), &response(0, 0))
         .unwrap();
     // The unrelated player-scoped cursor must not influence the transition:
     // identical events, audit trace, and consumed global-stream progression.

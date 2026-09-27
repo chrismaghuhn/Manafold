@@ -1,9 +1,10 @@
 use crate::{cbor, envelope, PersistenceDecodeErrorV1};
 use mtgml_model::{
     CheckpointCodecIdentity, CheckpointDigestV3, CheckpointDigestV4, CheckpointDigestV5,
-    CheckpointDigestV6, DigestReferenceV1, EnvironmentLimitCounters, EpisodeStatus,
-    ExecutionIdentityV1, ExecutionProgramV1, FullStateDigestV3, FullStateDigestV4,
-    FullStateDigestV5, PlayerOutcome, PlayerResult, TerminalReason, TruncationReason,
+    CheckpointDigestV6, CheckpointDigestV7, DigestReferenceV1, EnvironmentLimitCounters,
+    EpisodeStatus, ExecutionIdentityV1, ExecutionProgramV1, FullStateDigestV3, FullStateDigestV4,
+    FullStateDigestV5, FullStateDigestV6, PlayerOutcome, PlayerResult, TerminalReason,
+    TruncationReason,
 };
 
 pub const CHECKPOINT_DOMAIN: &str = "mtgml.checkpoint-digest.v3";
@@ -14,12 +15,16 @@ pub const CHECKPOINT_DOMAIN_V5: &str = "mtgml.checkpoint-digest.v5";
 pub const CHECKPOINT_INPUT_SCHEMA_V5: &str = "environment-checkpoint-digest-input.v5";
 pub const CHECKPOINT_DOMAIN_V6: &str = "mtgml.checkpoint-digest.v6";
 pub const CHECKPOINT_INPUT_SCHEMA_V6: &str = "environment-checkpoint-digest-input.v6";
+pub const CHECKPOINT_DOMAIN_V7: &str = "mtgml.checkpoint-digest.v7";
+pub const CHECKPOINT_INPUT_SCHEMA_V7: &str = "environment-checkpoint-digest-input.v7";
 
 /// FROZEN V5 checkpoint codec identity (spec §9 element 6).
 pub const CHECKPOINT_CODEC_ID_V5: &str = "in-memory-reference";
 pub const CHECKPOINT_CODEC_SEMANTIC_VERSION_V5: &str = "5";
 pub const CHECKPOINT_CODEC_ID_V6: &str = "in-memory-reference";
 pub const CHECKPOINT_CODEC_SEMANTIC_VERSION_V6: &str = "6";
+pub const CHECKPOINT_CODEC_ID_V7: &str = "in-memory-reference";
+pub const CHECKPOINT_CODEC_SEMANTIC_VERSION_V7: &str = "7";
 
 fn validate_full_state_reference(
     reference: &DigestReferenceV1,
@@ -235,6 +240,51 @@ pub fn calculate_checkpoint_digest_v6(
         envelope::encode_envelope(CHECKPOINT_DOMAIN_V6, CHECKPOINT_INPUT_SCHEMA_V6, &bytes)?;
     Ok(CheckpointDigestV6::from_digest_bytes(
         envelope::hash_envelope(&envelope),
+    ))
+}
+
+/// Detached checkpoint identity for the complete V6 state identity.
+/// This does not change or replace the current V6 checkpoint path.
+pub fn calculate_checkpoint_digest_v7(
+    full_state_digest: &DigestReferenceV1,
+    status: &EpisodeStatus,
+    counters: &EnvironmentLimitCounters,
+    codec: &CheckpointCodecIdentity,
+    execution_identity: &ExecutionIdentityV1,
+) -> Result<CheckpointDigestV7, PersistenceDecodeErrorV1> {
+    validate_full_state_reference(
+        full_state_digest,
+        FullStateDigestV6::DOMAIN,
+        "full-state-digest-input.v6",
+    )?;
+    status
+        .validate()
+        .map_err(|_| PersistenceDecodeErrorV1::SemanticValidation)?;
+    counters
+        .validate()
+        .map_err(|_| PersistenceDecodeErrorV1::SemanticValidation)?;
+    if codec.codec_id != CHECKPOINT_CODEC_ID_V7
+        || codec.semantic_version != CHECKPOINT_CODEC_SEMANTIC_VERSION_V7
+    {
+        return Err(PersistenceDecodeErrorV1::SemanticValidation);
+    }
+    let payload = cbor::Value::Array(vec![
+        cbor::Value::Text(CHECKPOINT_INPUT_SCHEMA_V7.to_owned()),
+        cbor::Value::Text(CHECKPOINT_DOMAIN_V7.to_owned()),
+        envelope::digest_reference_value(full_state_digest),
+        episode_status_value(status)?,
+        counters_value(counters),
+        cbor::Value::Array(vec![
+            cbor::Value::Text(codec.codec_id.clone()),
+            cbor::Value::Text(codec.semantic_version.clone()),
+        ]),
+        execution_identity_value(execution_identity),
+    ]);
+    let bytes = cbor::encode_canonical(&payload)?;
+    let encoded =
+        envelope::encode_envelope(CHECKPOINT_DOMAIN_V7, CHECKPOINT_INPUT_SCHEMA_V7, &bytes)?;
+    Ok(CheckpointDigestV7::from_digest_bytes(
+        envelope::hash_envelope(&encoded),
     ))
 }
 

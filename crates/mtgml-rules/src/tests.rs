@@ -141,9 +141,11 @@ fn order_response(
     }
 }
 
-fn apply(state: &EngineState, response: &DecisionResponseV2) -> TransitionResult {
+fn apply(state: &EngineState, response: &DecisionResponseV2) -> PredecessorTransitionResult {
     let mut kernel = boundary_kernel();
-    kernel.apply(state, PlayerId(1), response).unwrap()
+    kernel
+        .apply_predecessor(state, PlayerId(1), response)
+        .unwrap()
 }
 
 #[test]
@@ -163,7 +165,7 @@ fn rng_exhaustion_is_a_typed_internal_failure_without_input_mutation() {
     let before = state.clone();
     let mut kernel = boundary_kernel();
     let error = kernel
-        .apply(&state, PlayerId(1), &response(0, 0))
+        .apply_predecessor(&state, PlayerId(1), &response(0, 0))
         .unwrap_err();
     assert!(matches!(error, KernelExecutionError::Random(_)));
     assert_eq!(state, before, "kernel input must never be mutated");
@@ -179,7 +181,7 @@ fn effect_allocator_exhaustion_is_a_typed_internal_failure_before_rng() {
     let cursor_before = state.random.lookup_stream(&key).unwrap().next_raw_u64;
     let mut kernel = boundary_kernel();
     let error = kernel
-        .apply(&state, PlayerId(1), &response(0, 0))
+        .apply_predecessor(&state, PlayerId(1), &response(0, 0))
         .unwrap_err();
     assert!(matches!(error, KernelExecutionError::IdentityAllocation(_)));
     assert_eq!(

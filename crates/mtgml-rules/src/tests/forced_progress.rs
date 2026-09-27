@@ -10,7 +10,7 @@ use mtgml_state::SemanticDeltaOperation;
 
 fn advance_forced_progress(
     state: &EngineState,
-) -> Result<TransitionResult, KernelExecutionError> {
+) -> Result<PredecessorTransitionResult, KernelExecutionError> {
     let mut kernel = boundary_kernel();
     kernel.advance_forced_progress(state)
 }

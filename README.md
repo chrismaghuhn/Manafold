@@ -5,7 +5,7 @@
 - **Foundation closure/freeze:** `COMPLETE` (`FINAL_FOUNDATION_CLOSURE = PASS`, `PRE_M3_REMEDIATION_FREEZE = PASS`, `FOUNDATION_READY_FOR_M3 = YES`)
 - **Core modularization:** Issue #162 `COMPLETE`, merged by PR #179; the refactor was semantic-neutral and did not change public, wire, schema, digest, replay, or rules contracts
 - **M2.5 scope work:** `NOT_CLAIMED` / `NOT_FROZEN`; the abandoned census and research machinery remains historical Git evidence, not active engine scope
-- **Current status:** M3 is complete and final acceptance passed; M4 is unblocked and content implementation has not started
+- **Current status:** M3 is complete and final acceptance passed; the bounded M4.2 Mountain/Plains implementation through Phase 12 is integrated. Phase 13 is the master-activation boundary; M4.2 remains `IN_PROGRESS` until post-merge exact-master verification and `FINAL_ACCEPTANCE_PASS`.
 - **Pre-M3 governance cleanup:** `COMPLETE`; the accepted M3 Entry Decision and its historical authorization are preserved, with the hardened scope accepted by PR #184
 - **M3 authorization:** `AUTHORIZED` at `ea668c47ef1361b3d989fd32b8f3cfd4751b1e79`; the authorized task at that head was `M3.P0_STATE_IDENTITY_CUT`
 - **M3 milestone execution:** `STARTED` — P0 infrastructure is merged and frozen
@@ -34,16 +34,24 @@
 - **M3 Block 8:** cumulative final closure accepted by PR #220; exact Foundation V2 turn integration reaches P2 Draw and its next visible priority Decision.
 - **M3 hardening acceptance:** PR #184 merged and accepted ADR 0054/Foundation V2; T0 was reauthorized under Issue #178, implemented by merged PRs #189/#190/#191, and finalized as COMPLETE / FROZEN
 - **Capability lifecycle:** 11 Foundation capabilities are `covered`; `0` are certified.
-- **Current boundary:** `M3 = COMPLETE`; `M3_FINAL_ACCEPTANCE = PASS`; `M4 = UNBLOCKED`; no certification or card/deck/format/Commander/playability support is claimed.
+- **Current boundary:** `M3 = COMPLETE`; `M3_FINAL_ACCEPTANCE = PASS`; `M4 = IN_PROGRESS`; the executable real-card slice is Mountain + Plains under `basic-land@1.0.0`; no broader certification, card/deck/format/Commander/playability support is claimed.
 - **Project type:** independent greenfield MTG/ML rules and simulation engine
 - **Playable engine:** no
 - **Real Magic semantics:** accepted evidence covers the eleven bounded Foundation V2 capabilities. This does not claim arbitrary Magic support, cards, decks, formats, or playability.
-- **Real card support:** none
+- **Bounded executable real-card support:** Mountain + Plains under `basic-land@1.0.0`; no broader card/deck support is claimed.
 
-**Current resumable execution contract:** V6. V6 binds the V5 full-state
-identity and `ExecutionIdentityV1` through `EnvironmentCheckpointV6`,
-`CheckpointDigestV6`, and Replay V6. V4/V5 artifacts retain their historical
-meanings and are not reinterpreted or automatically migrated.
+**Current resumable execution contract on `master`:** V7. The production
+runtime uses `EngineStatePartsV2`, `FullStateDigestV6`, `StateDeltaV2`,
+`EnvironmentCheckpointV7` / `CheckpointDigestV7`, Replay V7, Decision V3,
+ObservedEvent V3, PlayerStep V3, and the Magic observation projection. Its
+executable admission is bounded to Mountain and Plains under
+`basic-land@1.0.0`. V5/V6 predecessor artifacts, including
+`FullStateDigestV5`, `EnvironmentCheckpointV6`, `CheckpointDigestV6`, and
+Replay V6, remain historical read/verification only (reader/verifier only).
+No predecessor gameplay writer is current, and no historical identity is
+reinterpreted or automatically migrated; V4/V5 artifacts retain their
+historical meanings. M4.2 remains `IN_PROGRESS` until post-merge exact-master
+verification and final acceptance.
 
 Manafold prioritizes:
 

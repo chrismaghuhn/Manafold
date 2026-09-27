@@ -255,6 +255,22 @@ For each perspective, visible events are assigned contiguous sequence values. Hi
 
 A visible random result may differ when the synthetic/rules visibility contract authorizes it. Root seed, typed stream key, derived key, stream cursor, raw words, rejection count, and hidden permutation remain trusted.
 
+## Accepted M4 observed-event and PlayerStep successors (not current runtime)
+
+The accepted M4 state-cut Semantic Spec allocates
+`ObservedEventEnvelopeV3` (`observed-event-envelope.v3`) and `PlayerStepV3`
+(`player-step.v3`). V3 supersedes the V2 `object_moved` payload with one
+expanded `object_moved` variant carrying explicit nullable entry face/tapped
+values; there is no second move-event tag. It adds public mana-pool,
+counter, attachment, and face events using only authorized public values and
+perspective-local opaque object identities. The V2 union and PlayerStep remain
+byte-exact historical contracts.
+
+`PlayerStepV3` embeds the V3 decision request and observed events while
+retaining `PlayerInformationStateV2`, unchanged DecisionResponseV2, and the
+existing revision, sequence, rejection, and endpoint-actor invariants. This
+successor is design authority only until final runtime activation.
+
 ## Noninterference
 
 For perspective `P`, two valid authoritative states that differ only in unauthorized information must produce byte-identical:

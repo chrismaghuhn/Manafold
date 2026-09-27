@@ -1,9 +1,8 @@
-//! Shared reference-environment mechanics and the durable MagicRules backend.
+//! Historical V5/V6 reference-environment mechanics.
 //!
-//! This module owns environment transaction mechanics that are independent of
-//! rules meaning. The rules product is always supplied by `ProgramKernelV1`;
-//! this module only validates, projects, checkpoints, rebases replay, and
-//! commits the complete candidate atomically.
+//! Compiled only for the explicit migration/conformance testkit. The default
+//! integration runtime is `SuccessorEnvironmentRuntime` and has no V6
+//! controller or gameplay path.
 
 use mtgml_decision::{DecisionResponseV2, PlayerDecisionRequestV2};
 use mtgml_model::{
@@ -21,7 +20,7 @@ use mtgml_replay::{
     RandomnessIdentityV2, ReplayManifestV6, ReplayRecorderV6, ReplaySchemaVersionsV6,
     SemanticContractMaterialV5, REPLAY_MANIFEST_SCHEMA_V6, REPLAY_STEP_SCHEMA_V6,
 };
-use mtgml_rules::{validate_transition_contract, ProgramKernelV1, TransitionResult};
+use mtgml_rules::{validate_transition_contract, PredecessorTransitionResult, ProgramKernelV1};
 use mtgml_state::EngineState;
 
 use crate::checkpoint::{EnvironmentCheckpointV6, EnvironmentLimitCounters as CheckpointCounters};
@@ -394,7 +393,7 @@ pub(crate) struct ReferenceEnvironmentTransaction<'a> {
 pub(crate) fn execute_forced_progress_transaction<F>(
     transaction: &mut ReferenceEnvironmentTransaction<'_>,
     build_manifest: F,
-) -> Result<TransitionResult, ControllerError>
+) -> Result<PredecessorTransitionResult, ControllerError>
 where
     F: FnOnce(&EnvironmentCheckpointV6) -> Result<ReplayManifestV6, ControllerError>,
 {
@@ -592,11 +591,11 @@ impl ReferenceEnvironmentBackend {
         actor: PlayerId,
         response: DecisionResponseV2,
         before_commit: F,
-    ) -> Result<TransitionResult, ControllerError>
+    ) -> Result<PredecessorTransitionResult, ControllerError>
     where
         F: FnOnce(
             &EnvironmentCheckpointV6,
-            &TransitionResult,
+            &PredecessorTransitionResult,
             &std::collections::BTreeMap<PlayerId, Vec<ObservedEventEnvelopeV2>>,
         ) -> Result<(), ControllerError>,
     {
@@ -671,11 +670,11 @@ impl EnvironmentBackend for ReferenceEnvironmentBackend {
         &mut self,
         actor: PlayerId,
         response: DecisionResponseV2,
-    ) -> Result<TransitionResult, ControllerError> {
+    ) -> Result<PredecessorTransitionResult, ControllerError> {
         self.execute_response_transaction(actor, response, |_, _, _| Ok(()))
     }
 
-    fn execute_forced_progress(&mut self) -> Result<TransitionResult, ControllerError> {
+    fn execute_forced_progress(&mut self) -> Result<PredecessorTransitionResult, ControllerError> {
         let replay_config = self.replay_config.clone();
         let mut transaction = ReferenceEnvironmentTransaction {
             state: &mut self.state,

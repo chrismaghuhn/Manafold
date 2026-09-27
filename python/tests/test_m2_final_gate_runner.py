@@ -763,11 +763,16 @@ class ScopeScanTests(unittest.TestCase):
         for name, function in final.SCOPE_CHECKS:
             with self.subTest(check=name):
                 if name == "scope::rules_backend_inventory":
+                    # This is an immutable M2 scope gate, not the live M4
+                    # runtime inventory. Phase 10 intentionally replaces
+                    # direct synthetic-kernel execution with the single
+                    # ProgramKernelV1 successor adapter on this branch.
                     with self.assertRaises(final.ScopeCheckFailure) as caught:
                         function(ROOT)
                     message = str(caught.exception)
                     self.assertIn("pinned M2 inventory", message)
-                    self.assertIn("MagicRulesKernel", message)
+                    self.assertIn("ProgramKernelV1", message)
+                    self.assertIn("SyntheticLegacyRulesKernel", message)
                     continue
                 detail = function(ROOT)
                 self.assertIsInstance(detail, str)
@@ -1036,6 +1041,45 @@ class ScopeInventoryNegativeTests(unittest.TestCase):
             (nested / "trajectory.v1.schema.json").write_text("{}", encoding="utf-8")
             with self.assertRaises(final.ScopeCheckFailure):
                 final.check_schema_inventory_pinned(base)
+
+    def test_exact_phase9_basic_land_definition_allowlist_is_admitted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            decks = base / "cards" / "decks"
+            decks.mkdir(parents=True)
+            (decks / "example-deck-a.json").write_text("{}", encoding="utf-8")
+            (decks / "example-deck-b.json").write_text("{}", encoding="utf-8")
+            definitions = base / "cards" / "definitions"
+            (definitions / "example").mkdir(parents=True)
+            (definitions / ".gitkeep").write_text("", encoding="utf-8")
+            basic_land = definitions / "basic-land-v1"
+            basic_land.mkdir()
+            for name in final.M4_BASIC_LAND_DEFINITION_FILES_ALLOWED:
+                (basic_land / name).write_bytes(b"fixture")
+            (base / "cards" / "generated").mkdir(parents=True)
+
+            result = final.check_card_and_deck_artifacts_unclaimed(base)
+            self.assertIn("basic-land-v1", result)
+
+    def test_unlisted_definition_artifact_remains_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            decks = base / "cards" / "decks"
+            decks.mkdir(parents=True)
+            (decks / "example-deck-a.json").write_text("{}", encoding="utf-8")
+            (decks / "example-deck-b.json").write_text("{}", encoding="utf-8")
+            definitions = base / "cards" / "definitions"
+            (definitions / "example").mkdir(parents=True)
+            (definitions / ".gitkeep").write_text("", encoding="utf-8")
+            basic_land = definitions / "basic-land-v1"
+            basic_land.mkdir()
+            for name in final.M4_BASIC_LAND_DEFINITION_FILES_ALLOWED:
+                (basic_land / name).write_bytes(b"fixture")
+            (basic_land / "unreviewed.json").write_text("{}", encoding="utf-8")
+            (base / "cards" / "generated").mkdir(parents=True)
+
+            with self.assertRaises(final.ScopeCheckFailure):
+                final.check_card_and_deck_artifacts_unclaimed(base)
 
     def test_deck_subdirectory_is_rejected(self) -> None:
         import tempfile

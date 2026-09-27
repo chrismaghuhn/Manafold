@@ -1,0 +1,59 @@
+{
+  "cases": [
+    {
+      "case": "uppercase child id",
+      "content_contract": {
+        "content_contract_id": "80D26C187739664E880948E767E44ED9791AA7C25E7EF703E6D63385311FB346",
+        "manifest_canonical_cbor_base64": "g3gcY29udGVudC1jb250cmFjdC1tYW5pZmVzdC52MXgZbXRnbWwuY29udGVudC1jb250cmFjdC52MYKHeBtjYXJkLWRlZmluaXRpb24tZW52ZWxvcGUudjEBgYIAh2hNb3VudGFpbvaAg4FlQmFzaWOBZExhbmSBaE1vdW50YWlu9vb2gYIAAIJocHJvZmlsZWSCcGJhc2ljLWxhbmRAMS4wLjCCdWJhc2ljLWxhbmQtcHJvZmlsZS52MWhtb3VudGFpboCAh3gbY2FyZC1kZWZpbml0aW9uLWVudmVsb3BlLnYxAoGCAIdmUGxhaW5z9oCDgWVCYXNpY4FkTGFuZIFmUGxhaW5z9vb2gYIAAIJocHJvZmlsZWSCcGJhc2ljLWxhbmRAMS4wLjCCdWJhc2ljLWxhbmQtcHJvZmlsZS52MWZwbGFpbnOAgA=="
+      },
+      "expectation": "reject_by_content_identity_contract",
+      "parent_content_contract_id": "80d26c187739664e880948e767e44ed9791aa7c25e7ef703e6d63385311fb346"
+    },
+    {
+      "case": "child digest mismatch",
+      "content_contract": {
+        "content_contract_id": "0000000000000000000000000000000000000000000000000000000000000000",
+        "manifest_canonical_cbor_base64": "g3gcY29udGVudC1jb250cmFjdC1tYW5pZmVzdC52MXgZbXRnbWwuY29udGVudC1jb250cmFjdC52MYKHeBtjYXJkLWRlZmluaXRpb24tZW52ZWxvcGUudjEBgYIAh2hNb3VudGFpbvaAg4FlQmFzaWOBZExhbmSBaE1vdW50YWlu9vb2gYIAAIJocHJvZmlsZWSCcGJhc2ljLWxhbmRAMS4wLjCCdWJhc2ljLWxhbmQtcHJvZmlsZS52MWhtb3VudGFpboCAh3gbY2FyZC1kZWZpbml0aW9uLWVudmVsb3BlLnYxAoGCAIdmUGxhaW5z9oCDgWVCYXNpY4FkTGFuZIFmUGxhaW5z9vb2gYIAAIJocHJvZmlsZWSCcGJhc2ljLWxhbmRAMS4wLjCCdWJhc2ljLWxhbmQtcHJvZmlsZS52MWZwbGFpbnOAgA=="
+      },
+      "expectation": "reject_by_content_identity_contract",
+      "parent_content_contract_id": "80d26c187739664e880948e767e44ed9791aa7c25e7ef703e6d63385311fb346"
+    },
+    {
+      "case": "invalid decoded CBOR",
+      "content_contract": {
+        "content_contract_id": "80d26c187739664e880948e767e44ed9791aa7c25e7ef703e6d63385311fb346",
+        "manifest_canonical_cbor_base64": "n/8="
+      },
+      "expectation": "reject_by_content_identity_contract",
+      "parent_content_contract_id": "80d26c187739664e880948e767e44ed9791aa7c25e7ef703e6d63385311fb346"
+    },
+    {
+      "case": "noncanonical decoded CBOR",
+      "content_contract": {
+        "content_contract_id": "80d26c187739664e880948e767e44ed9791aa7c25e7ef703e6d63385311fb346",
+        "manifest_canonical_cbor_base64": "GAE="
+      },
+      "expectation": "reject_by_content_identity_contract",
+      "parent_content_contract_id": "80d26c187739664e880948e767e44ed9791aa7c25e7ef703e6d63385311fb346"
+    },
+    {
+      "case": "nonzero Base64 pad bits",
+      "content_contract": {
+        "content_contract_id": "80d26c187739664e880948e767e44ed9791aa7c25e7ef703e6d63385311fb346",
+        "manifest_canonical_cbor_base64": "g3gcY29udGVudC1jb250cmFjdC1tYW5pZmVzdC52MXgZbXRnbWwuY29udGVudC1jb250cmFjdC52MYKHeBtjYXJkLWRlZmluaXRpb24tZW52ZWxvcGUudjEBgYIAh2hNb3VudGFpbvaAg4FlQmFzaWOBZExhbmSBaE1vdW50YWlu9vb2gYIAAIJocHJvZmlsZWSCcGJhc2ljLWxhbmRAMS4wLjCCdWJhc2ljLWxhbmQtcHJvZmlsZS52MWhtb3VudGFpboCAh3gbY2FyZC1kZWZpbml0aW9uLWVudmVsb3BlLnYxAoGCAIdmUGxhaW5z9oCDgWVCYXNpY4FkTGFuZIFmUGxhaW5z9vb2gYIAAIJocHJvZmlsZWSCcGJhc2ljLWxhbmRAMS4wLjCCdWJhc2ljLWxhbmQtcHJvZmlsZS52MWZwbGFpbnOAgB=="
+      },
+      "expectation": "reject_by_content_identity_contract",
+      "parent_content_contract_id": "80d26c187739664e880948e767e44ed9791aa7c25e7ef703e6d63385311fb346"
+    },
+    {
+      "case": "parent child mismatch",
+      "content_contract": {
+        "content_contract_id": "80d26c187739664e880948e767e44ed9791aa7c25e7ef703e6d63385311fb346",
+        "manifest_canonical_cbor_base64": "g3gcY29udGVudC1jb250cmFjdC1tYW5pZmVzdC52MXgZbXRnbWwuY29udGVudC1jb250cmFjdC52MYKHeBtjYXJkLWRlZmluaXRpb24tZW52ZWxvcGUudjEBgYIAh2hNb3VudGFpbvaAg4FlQmFzaWOBZExhbmSBaE1vdW50YWlu9vb2gYIAAIJocHJvZmlsZWSCcGJhc2ljLWxhbmRAMS4wLjCCdWJhc2ljLWxhbmQtcHJvZmlsZS52MWhtb3VudGFpboCAh3gbY2FyZC1kZWZpbml0aW9uLWVudmVsb3BlLnYxAoGCAIdmUGxhaW5z9oCDgWVCYXNpY4FkTGFuZIFmUGxhaW5z9vb2gYIAAIJocHJvZmlsZWSCcGJhc2ljLWxhbmRAMS4wLjCCdWJhc2ljLWxhbmQtcHJvZmlsZS52MWZwbGFpbnOAgA=="
+      },
+      "expectation": "reject_by_content_identity_contract",
+      "parent_content_contract_id": "1111111111111111111111111111111111111111111111111111111111111111"
+    }
+  ],
+  "schema_version": "m4-phase2-replay-v7-child-negative-cases.v1"
+}

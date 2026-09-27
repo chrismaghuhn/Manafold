@@ -5,6 +5,8 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+base64.workspace = true
+mtgml-card-ir = { path = "../mtgml-card-ir" }
 mtgml-decision = { path = "../mtgml-decision" }
 mtgml-model = { path = "../mtgml-model" }
 mtgml-persistence = { path = "../mtgml-persistence" }

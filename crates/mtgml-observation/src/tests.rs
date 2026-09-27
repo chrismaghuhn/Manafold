@@ -176,6 +176,141 @@ fn observed_event_v2_random_empty_label_uses_empty_text_error() {
 }
 
 #[test]
+fn observed_event_v3_entry_has_one_move_with_explicit_entry_values() {
+    let event: ObservedEventEnvelopeV3 = serde_json::from_str(include_str!(
+        "../../../schemas/examples/observed-event-v3-entry-back-tapped.json"
+    ))
+    .unwrap();
+    event.validate().unwrap();
+    assert!(matches!(
+        event.event,
+        ObservedEventKindV3::ObjectMoved {
+            old_object: Some(OpaqueObjectId(3)),
+            new_object: Some(OpaqueObjectId(9)),
+            entering_face: Some(ObservedFaceV1::Back),
+            tapped: Some(true),
+            ..
+        }
+    ));
+}
+
+#[test]
+fn observed_event_v3_rejects_move_without_any_visible_identity() {
+    let mut value: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../schemas/examples/observed-event-v3-object-moved.json"
+    ))
+    .unwrap();
+    value["event"]["old_object"] = serde_json::Value::Null;
+    value["event"]["new_object"] = serde_json::Value::Null;
+    let event: ObservedEventEnvelopeV3 = serde_json::from_value(value).unwrap();
+    assert_eq!(
+        event.validate(),
+        Err(ObservationValidationError::ObjectMovedIdentity)
+    );
+}
+
+#[test]
+fn player_step_v3_composes_request_and_rejected_steps_have_no_events() {
+    let mut accepted: PlayerStepV3 = serde_json::from_str(include_str!(
+        "../../../schemas/examples/player-step-v3-event-next-decision.json"
+    ))
+    .unwrap();
+    // The schema example predates semantic PlayerStep validation. Keep its
+    // valid information-state identity and align the request/event to it.
+    accepted.next_decision.as_mut().unwrap().state_revision = mtgml_model::StateRevision(0);
+    accepted.observed_events[0].sequence = VisibleSequence(4);
+    accepted.observed_events[0].state_revision = mtgml_model::StateRevision(0);
+    accepted.validate().unwrap();
+    assert!(accepted.next_decision.is_some());
+
+    let mut rejected: PlayerStepV3 = serde_json::from_str(include_str!(
+        "../../../schemas/examples/player-step-v3-rejected-no-events.json"
+    ))
+    .unwrap();
+    rejected.next_decision = accepted.next_decision.clone();
+    rejected.validate().unwrap();
+    assert!(rejected.observed_events.is_empty());
+}
+
+#[test]
+fn basic_land_observation_v1_accepts_closed_public_state_facts_only() {
+    let observation: MagicBasicLandObservationV1 = serde_json::from_str(include_str!(
+        "../../../schemas/examples/magic-basic-land-observation-v1-ordered.json"
+    ))
+    .unwrap();
+    observation.validate().unwrap();
+
+    let with_candidates =
+        include_str!("../../../schemas/examples/magic-basic-land-observation-v1.json").replace(
+            "\"schema_version\":",
+            "\"candidates\":[],\n  \"schema_version\":",
+        );
+    assert!(serde_json::from_str::<MagicBasicLandObservationV1>(&with_candidates).is_err());
+}
+
+#[test]
+fn v3_successor_examples_deserialize_under_the_rust_contracts() {
+    for fixture in [
+        include_str!("../../../schemas/examples/observed-event-v3-object-moved.json"),
+        include_str!("../../../schemas/examples/observed-event-v3-entry-back-tapped.json"),
+        include_str!("../../../schemas/examples/observed-event-v3-mana-pool-changed.json"),
+        include_str!("../../../schemas/examples/observed-event-v3-counters-changed.json"),
+        include_str!("../../../schemas/examples/observed-event-v3-attachment-changed.json"),
+        include_str!("../../../schemas/examples/observed-event-v3-face-changed.json"),
+    ] {
+        let event: ObservedEventEnvelopeV3 = serde_json::from_str(fixture).unwrap();
+        event.validate().unwrap();
+    }
+    let step: PlayerStepV3 = serde_json::from_str(include_str!(
+        "../../../schemas/examples/player-step-v3.json"
+    ))
+    .unwrap();
+    step.validate().unwrap();
+    let step_without_decision: PlayerStepV3 = serde_json::from_str(include_str!(
+        "../../../schemas/examples/player-step-v3-no-next-decision.json"
+    ))
+    .unwrap();
+    step_without_decision.validate().unwrap();
+    assert!(step_without_decision.next_decision.is_none());
+    let mut event_and_decision: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../schemas/examples/player-step-v3-event-next-decision.json"
+    ))
+    .unwrap();
+    event_and_decision["next_decision"]["state_revision"] = serde_json::json!("0");
+    event_and_decision["observed_events"][0]["sequence"] = serde_json::json!("4");
+    event_and_decision["observed_events"][0]["state_revision"] = serde_json::json!("0");
+    let step: PlayerStepV3 = serde_json::from_value(event_and_decision).unwrap();
+    step.validate().unwrap();
+    let mut rejected: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../schemas/examples/player-step-v3-rejected-no-events.json"
+    ))
+    .unwrap();
+    rejected["next_decision"] = serde_json::from_value::<serde_json::Value>(
+        serde_json::to_value(&step.next_decision).unwrap(),
+    )
+    .unwrap();
+    let rejected: PlayerStepV3 = serde_json::from_value(rejected).unwrap();
+    rejected.validate().unwrap();
+    for fixture in [
+        include_str!("../../../schemas/examples/magic-basic-land-observation-v1.json"),
+        include_str!("../../../schemas/examples/magic-basic-land-observation-v1-ordered.json"),
+    ] {
+        let observation: MagicBasicLandObservationV1 = serde_json::from_str(fixture).unwrap();
+        observation.validate().unwrap();
+    }
+}
+
+#[test]
+fn basic_land_observation_v1_rejects_duplicated_candidate_authority() {
+    let mut value: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../schemas/examples/magic-basic-land-observation-v1.json"
+    ))
+    .unwrap();
+    value["candidates"] = serde_json::json!([]);
+    assert!(serde_json::from_value::<MagicBasicLandObservationV1>(value).is_err());
+}
+
+#[test]
 fn information_state_input_excludes_trusted_fields() {
     let observation = observation(b"{}", b"{}");
     let input = InformationStateDigestInputV2 {

@@ -7,7 +7,7 @@
 //! [`PlayerEndpoint::submit`]. No transport decision is made; M2.H/M5 own
 //! that later.
 
-use mtgml_observation::{PlayerServiceErrorCodeV1, PlayerStepV2};
+use mtgml_observation::PlayerServiceErrorCodeV1;
 use mtgml_wire::PlayerWireErrorCodeV1;
 
 use crate::endpoint::{PlayerEndpoint, PlayerEndpointError};
@@ -42,7 +42,7 @@ impl PlayerBoundaryError {
 pub fn submit_response_bytes(
     endpoint: &dyn PlayerEndpoint,
     bytes: &[u8],
-) -> Result<PlayerStepV2, PlayerBoundaryError> {
+) -> Result<crate::CurrentPlayerStep, PlayerBoundaryError> {
     let response = mtgml_wire::decision_response_v2::decode_submission(bytes)
         .map_err(|_| PlayerBoundaryError::Wire(PlayerWireErrorCodeV1::MalformedResponse))?;
     Ok(endpoint.submit(response)?)

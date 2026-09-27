@@ -151,3 +151,21 @@ the combat-damage turn-based action completed. These facts are validated as
 part of `EngineState`, included in the current V5 full-state identity, and
 preserved by V6 checkpoints. A blocked attacker remains blocked when its live
 blocker reference is absent.
+
+## Accepted M4 state successor (not current runtime)
+
+The accepted M4 state-cut Semantic Spec defines the next current EngineState
+shape with exactly six additional closed authoritative families:
+`ManaState`, `TurnHistoryState`, `CounterState`, `AttachmentState`,
+`FaceState`, and `AbilityAuthorityState`. Their owners, invariants, lifecycle,
+cross-family validation, and external content-catalog joins are frozen in the
+[Semantic Spec](../superpowers/specs/2026-09-26-m4-unified-state-cut-semantic-spec.md).
+They are not current EngineState fields until the plan's final activation
+boundary.
+
+That state requires `FullStateDigestV6` and `StateDeltaV2` /
+`EngineStatePartsV2`; checkpoint, replay, decision, event and PlayerStep
+successors are coupled as specified there. FullStateDigestV5 and all current
+writers remain current while the successor is detached. No historical
+checkpoint or digest is reinterpreted and no partial successor is admitted as
+executable state.

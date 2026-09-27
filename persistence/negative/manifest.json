@@ -33,6 +33,10 @@
     {"contract": "digest-envelope.v1", "expected_error_code": "envelope_identity", "path": "identity-and-trailing.cbor"},
     {"contract": "digest-envelope.v1", "expected_error_code": "envelope_identity", "path": "wrong-algorithm-payload-too-large.cbor"},
     {"contract": "digest-envelope.v1", "expected_error_code": "envelope_identity", "path": "wrong-codec-truncated-payload.cbor"},
-    {"contract": "digest-envelope.v1", "expected_error_code": "envelope_identity", "path": "non-ascii-identity-truncated.cbor"}
+    {"contract": "digest-envelope.v1", "expected_error_code": "envelope_identity", "path": "non-ascii-identity-truncated.cbor"},
+    {"contract": "canonical-cbor.v1", "expected_error_code": "noncanonical_primitive", "path": "m4-v6-noncanonical-integer.cbor"},
+    {"contract": "canonical-cbor.v1", "expected_error_code": "disallowed_cbor_form", "path": "m4-v6-indefinite-array.cbor"},
+    {"contract": "canonical-cbor.v1", "expected_error_code": "disallowed_cbor_form", "path": "m4-v6-map-where-array-required.cbor"},
+    {"contract": "canonical-cbor.v1", "expected_error_code": "trailing_data", "path": "m4-v6-trailing-value.cbor"}
   ]
 }
