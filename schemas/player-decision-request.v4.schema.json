@@ -1456,6 +1456,756 @@
           "visibility"
         ]
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "properties": {
+              "kind": {
+                "const": "priority_action"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "candidates": {
+            "items": {
+              "properties": {
+                "intent": {
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "pass_priority",
+                        "play_land",
+                        "cast_spell",
+                        "activate_ability"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                }
+              },
+              "required": [
+                "intent"
+              ]
+            }
+          }
+        },
+        "required": [
+          "candidates"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "properties": {
+              "kind": {
+                "const": "attacker_declaration"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "candidates": {
+            "items": {
+              "properties": {
+                "intent": {
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "select_object"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                }
+              },
+              "required": [
+                "intent"
+              ]
+            }
+          }
+        },
+        "required": [
+          "candidates"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "properties": {
+              "kind": {
+                "const": "cast_cost_route"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "candidates": {
+            "items": {
+              "properties": {
+                "intent": {
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "select_cost_route"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                }
+              },
+              "required": [
+                "intent"
+              ]
+            }
+          }
+        },
+        "required": [
+          "candidates"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "properties": {
+              "kind": {
+                "const": "mode_selection"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "candidates": {
+            "items": {
+              "properties": {
+                "intent": {
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "select_mode"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                }
+              },
+              "required": [
+                "intent"
+              ]
+            }
+          }
+        },
+        "required": [
+          "candidates"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "properties": {
+              "kind": {
+                "const": "target_selection"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "candidates": {
+            "items": {
+              "properties": {
+                "intent": {
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "select_object",
+                        "select_player"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                }
+              },
+              "required": [
+                "intent"
+              ]
+            }
+          }
+        },
+        "required": [
+          "candidates"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "properties": {
+              "kind": {
+                "const": "cost_operand_selection"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "candidates": {
+            "items": {
+              "properties": {
+                "intent": {
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "select_object"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                }
+              },
+              "required": [
+                "intent"
+              ]
+            }
+          }
+        },
+        "required": [
+          "candidates"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "properties": {
+              "kind": {
+                "const": "mana_production_choice"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "candidates": {
+            "items": {
+              "properties": {
+                "intent": {
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "select_mana_source",
+                        "finalize_mana_production"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                }
+              },
+              "required": [
+                "intent"
+              ]
+            }
+          }
+        },
+        "required": [
+          "candidates"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "properties": {
+              "kind": {
+                "const": "mana_payment"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "candidates": {
+            "items": {
+              "properties": {
+                "intent": {
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "select_mana_payment"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                }
+              },
+              "required": [
+                "intent"
+              ]
+            }
+          }
+        },
+        "required": [
+          "candidates"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "properties": {
+              "kind": {
+                "const": "optional_cost_payment"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "candidates": {
+            "items": {
+              "properties": {
+                "intent": {
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "choose_boolean"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                }
+              },
+              "required": [
+                "intent"
+              ]
+            }
+          }
+        },
+        "required": [
+          "candidates"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "properties": {
+              "kind": {
+                "const": "ability_action"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "candidates": {
+            "items": {
+              "properties": {
+                "intent": {
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "activate_ability"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                }
+              },
+              "required": [
+                "intent"
+              ]
+            }
+          }
+        },
+        "required": [
+          "candidates"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "properties": {
+              "kind": {
+                "const": "trigger_order"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "candidates": {
+            "items": {
+              "properties": {
+                "intent": {
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "select_trigger"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                }
+              },
+              "required": [
+                "intent"
+              ]
+            }
+          }
+        },
+        "required": [
+          "candidates"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "properties": {
+              "kind": {
+                "const": "trigger_target"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "candidates": {
+            "items": {
+              "properties": {
+                "intent": {
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "select_object",
+                        "select_player"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                }
+              },
+              "required": [
+                "intent"
+              ]
+            }
+          }
+        },
+        "required": [
+          "candidates"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "properties": {
+              "kind": {
+                "const": "synthetic_assembly"
+              },
+              "stage": {
+                "const": "entry"
+              }
+            },
+            "required": [
+              "kind",
+              "stage"
+            ]
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "candidates": {
+            "items": {
+              "properties": {
+                "intent": {
+                  "properties": {
+                    "kind": {
+                      "const": "select_object"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                }
+              },
+              "required": [
+                "intent"
+              ]
+            }
+          }
+        },
+        "required": [
+          "candidates"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "properties": {
+              "kind": {
+                "const": "synthetic_assembly"
+              },
+              "stage": {
+                "const": "choose_members"
+              }
+            },
+            "required": [
+              "kind",
+              "stage"
+            ]
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "candidates": {
+            "items": {
+              "properties": {
+                "intent": {
+                  "properties": {
+                    "kind": {
+                      "const": "select_object"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                }
+              },
+              "required": [
+                "intent"
+              ]
+            }
+          }
+        },
+        "required": [
+          "candidates"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "properties": {
+              "kind": {
+                "const": "synthetic_assembly"
+              },
+              "stage": {
+                "const": "order_members"
+              }
+            },
+            "required": [
+              "kind",
+              "stage"
+            ]
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "candidates": {
+            "items": {
+              "properties": {
+                "intent": {
+                  "properties": {
+                    "kind": {
+                      "const": "select_object"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                }
+              },
+              "required": [
+                "intent"
+              ]
+            }
+          }
+        },
+        "required": [
+          "candidates"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "properties": {
+              "kind": {
+                "const": "synthetic_assembly"
+              },
+              "stage": {
+                "const": "choose_count"
+              }
+            },
+            "required": [
+              "kind",
+              "stage"
+            ]
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "candidates": {
+            "maxItems": 0
+          }
+        },
+        "required": [
+          "candidates"
+        ]
+      }
     }
   ],
   "properties": {

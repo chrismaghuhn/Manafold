@@ -139,6 +139,14 @@ SCHEMA_NEGATIVE_CASES = [
         "schemas/negative/player-decision-request-v4-synthetic-stage-domain-mismatch.json",
     ),
     (
+        "player-decision-request.v4.schema.json",
+        "schemas/negative/player-decision-request-v4-attacker-wrong-candidate-intent.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/negative/player-decision-request-v4-synthetic-wrong-candidate-intent.json",
+    ),
+    (
         "observed-event-envelope.v3.schema.json",
         "schemas/negative/observed-event-v3-object-moved-missing-entry-fields.json",
     ),

@@ -49,6 +49,25 @@ class PlayerDecisionRequestV4Tests(unittest.TestCase):
                 )
                 self.assertEqual(PlayerDecisionRequestV4.from_wire(raw).to_wire(), raw)
 
+    def test_rejects_candidate_intents_outside_attacker_and_synthetic_purposes(self) -> None:
+        attacker = json.loads(
+            (
+                ROOT / "schemas/examples/player-decision-request-v4-attacker-declaration.json"
+            ).read_text(encoding="utf-8")
+        )
+        attacker["candidates"][0]["intent"] = {"kind": "cast_spell", "object": "1"}
+        with self.assertRaises(WireError):
+            PlayerDecisionRequestV4.from_wire(attacker)
+
+        synthetic = json.loads(
+            (ROOT / "schemas/examples/player-decision-request-v4-synthetic-entry.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        synthetic["candidates"][0]["intent"] = {"kind": "cast_spell", "object": "1"}
+        with self.assertRaises(WireError):
+            PlayerDecisionRequestV4.from_wire(synthetic)
+
     def test_response_binds_only_request_and_view_identity(self) -> None:
         request = PlayerDecisionRequestV4.from_wire(request_fixture())
         response = DecisionResponseV3(
