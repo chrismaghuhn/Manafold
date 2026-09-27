@@ -7,7 +7,7 @@ use mtgml_model::{DecisionId, EpisodeStatus, PlayerDecisionIdV1, PlayerId, State
 use mtgml_state::{EngineState, EngineStateViolation, StateDelta};
 
 use crate::errors::KernelExecutionError;
-use crate::transition::TransitionResult;
+use crate::transition::PredecessorTransitionResult;
 use crate::validate_transition_contract;
 
 pub(crate) struct StageIdentity {
@@ -72,8 +72,10 @@ pub(crate) fn advance_player_allocator(
     Ok(())
 }
 
-pub(crate) fn rejected(state: &EngineState) -> Result<TransitionResult, KernelExecutionError> {
-    let result = TransitionResult {
+pub(crate) fn rejected(
+    state: &EngineState,
+) -> Result<PredecessorTransitionResult, KernelExecutionError> {
+    let result = PredecessorTransitionResult {
         accepted: false,
         next_state: state.clone(),
         delta: StateDelta::between(state, state, vec![]).map_err(KernelExecutionError::Delta)?,

@@ -29,6 +29,7 @@ pub use basic_land::{
     derive_basic_land_candidates, AuthoritativeRuleEventKindV2, AuthoritativeRuleEventV2,
     BasicLandCandidateError, BasicLandFaceV1, BasicLandTransitionError,
     BasicLandTransitionProductV1, MagicActionRequestV1, SelectedSuccessorDecisionV1,
+    SuccessorObservationPolicyV1,
 };
 pub use contract::validate_transition_contract;
 pub use errors::{KernelExecutionError, ZoneIncarnationError};
@@ -44,7 +45,7 @@ pub use semantic_execution_generated::execution_contract_supported;
 #[cfg(feature = "magic-conformance-testkit")]
 pub use state_based_actions::SbaContinuationValidationError;
 pub use synthetic::validate_synthetic_runtime_state;
-pub use transition::{RulesKernel, TransitionResult};
+pub use transition::{PredecessorTransitionResult, RulesKernel, TransitionResult};
 pub use turn_structure::{
     temporal_successor, unsupported_rules_boundary, validate_turn_structure_support,
     TurnStructureError, TurnStructureSupportProfile, UnsupportedRulesBoundary,

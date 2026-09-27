@@ -1,6 +1,6 @@
 # Replay and Determinism
 
-**Status:** Replay V6 current resumable identity; V1–V5 meanings retained historically
+**Status:** Replay V6 remains current on `master` until Phase 13; the Phase-10 integration branch uses executable Replay V7; V1–V6 historical meanings are retained
 **Stability:** provisional-public replay identity; historical versions never reinterpreted
 
 ## Replay identity
@@ -63,7 +63,7 @@ Detached `AuthoritativeReplayV5::validate()` verifies the three-way identity
 binding and the semantic/rules contract hashes. V5 is no longer a current
 writer or current-runtime execution path after S3.P0.
 
-### V6 replay (current)
+### V6 replay (predecessor current on master until Phase 13)
 
 S3.P0 introduces `ReplayManifestV6`, `ReplayStepV6`,
 `AuthoritativeReplayV6`, `ReplayRecorderV6`, `ReplaySchemaVersionsV6`, and
@@ -102,7 +102,7 @@ The `magic-m3-observation.v1` payload remains unchanged and contains no combat
 participation. The successor combat payload carries public combat state using
 perspective-local opaque object IDs.
 
-### V7 replay (accepted M4 successor design; not current runtime)
+### V7 replay (successor integration runtime)
 
 The accepted M4 Semantic Spec allocates Replay V7 and its complete typed
 manifest, step, recorder, schema-inventory, and initial-environment identity
@@ -119,14 +119,14 @@ identity. Exact shape, size bounds and mismatch rejection rules are in the
 [accepted M4 Semantic Spec](superpowers/specs/2026-09-26-m4-unified-state-cut-semantic-spec.md).
 
 Replay V6 retains its exact historical non-null-content rejection and all
-existing bytes; it is not expanded to carry content. The integration branch
-implements Replay V7 as a detached structural contract: canonical typed
-manifest/replay wire values, content-child verification, identity/link checks,
-and a recorder builder over supplied authoritative results. This is not a V7
-environment executor and does not claim response re-execution or semantic
-parity. Replay V6 remains the current runtime authority. The V7 execution seam
-belongs to the integrated successor runtime; full direct/restore/fork/replay
-parity remains an acceptance obligation for the later replay-closure phase.
+existing bytes; it is not expanded to carry content. The Phase-10 integration
+runtime executes Replay V7 by reapplying its external DecisionResponseV2
+sequence through the admitted successor RulesKernel and comparing the complete
+recorded step identities. Recorded observations and events are outputs, never
+control input. Full direct/restore/fork/replay parity across the complete
+conformance matrix remains an acceptance obligation for Phase 11. On `master`,
+Replay V6 remains current until Phase 13; on the successor integration branch,
+Replay V6 is historical verification only.
 
 `FullStateDigestV4`, Checkpoint V5 and Replay V5 retain their exact historical
 meaning and bytes. V4 digest and V5 checkpoint/replay artifacts are never

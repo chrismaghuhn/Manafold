@@ -67,10 +67,12 @@ pub enum SelectedSuccessorDecisionV1 {
 /// semantic delta independently.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BasicLandTransitionProductV1 {
+    pub accepted: bool,
     pub next_state: EngineStatePartsV2,
     pub delta: StateDeltaV2,
     pub events: Vec<AuthoritativeRuleEventV2>,
     pub next_decision: Option<AuthoritativeDecisionRequestV3>,
+    pub status: EpisodeStatus,
 }
 
 /// Authoritative public facts emitted by this bounded transition slice.
@@ -117,8 +119,34 @@ pub enum AuthoritativeRuleEventKindV2 {
         color: Option<mtgml_state::ManaColorV1>,
         amount: u32,
     },
-    PerspectiveOccurrence(Box<PerspectiveLifecycleAuditV1>),
+    PerspectiveOccurrence {
+        lifecycle: Box<PerspectiveLifecycleAuditV1>,
+        observation: SuccessorObservationPolicyV1,
+    },
     ZoneTransition(Box<mtgml_state::ZoneTransition>),
+}
+
+/// Rules-owned audience and public facts for one successor observation
+/// occurrence. Object identifiers remain trusted here and are replaced by the
+/// perspective-specific opaque mapping in the environment projector.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SuccessorObservationPolicyV1 {
+    MovedInSight {
+        from: ZoneKind,
+        to: ZoneKind,
+        old_object: mtgml_model::GameObjectId,
+        new_object: mtgml_model::GameObjectId,
+        reveals_old: bool,
+        entering_face: BasicLandFaceV1,
+        tapped: bool,
+    },
+    ObjectTapped {
+        object: mtgml_model::GameObjectId,
+        tapped: bool,
+    },
+    ManaPoolChanged {
+        player: PlayerId,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -161,6 +189,48 @@ fn push_successor_event(
         event,
     });
     Ok(())
+}
+
+fn push_visible_occurrence(
+    state: &mut EngineStatePartsV2,
+    events: &mut Vec<AuthoritativeRuleEventV2>,
+    operations: &mut Vec<SemanticDeltaOperationV2>,
+    perspective: PlayerId,
+    observation: SuccessorObservationPolicyV1,
+) -> Result<(), BasicLandTransitionError> {
+    let current = state
+        .predecessor_v5
+        .knowledge
+        .players
+        .get(&perspective)
+        .ok_or(BasicLandTransitionError::InvalidResult)?;
+    let audit = PerspectiveLifecycleAuditV1 {
+        perspective,
+        sequence: current.next_visible_sequence,
+        mutation: PerspectiveLifecycleMutationV1::default(),
+    };
+    let mut engine = state.materialize();
+    apply_perspective_lifecycle(&mut engine, &audit)
+        .map_err(|_| BasicLandTransitionError::InvalidResult)?;
+    operations.push(SemanticDeltaOperationV2::Existing {
+        operation: Box::new(mtgml_state::SemanticDeltaOperation::PerspectiveLifecycle {
+            lifecycle: audit.clone(),
+        }),
+    });
+    let card_rules_state = state.card_rules_state.clone();
+    let execution_v3 = state.execution_v3.clone();
+    let next_event_id = state.predecessor_v5.allocators.next_rule_event_id;
+    *state = EngineStatePartsV2::from_state(&engine, card_rules_state);
+    state.execution_v3 = execution_v3;
+    state.predecessor_v5.allocators.next_rule_event_id = next_event_id;
+    push_successor_event(
+        state,
+        events,
+        AuthoritativeRuleEventKindV2::PerspectiveOccurrence {
+            lifecycle: Box::new(audit),
+            observation,
+        },
+    )
 }
 
 /// Executes exactly the response selected by the digest-bound V3 request,
@@ -323,6 +393,22 @@ pub fn execute_basic_land_response(
                                     amount: 0,
                                 },
                             )?;
+                            for perspective in next
+                                .predecessor_v5
+                                .knowledge
+                                .players
+                                .keys()
+                                .copied()
+                                .collect::<Vec<_>>()
+                            {
+                                push_visible_occurrence(
+                                    &mut next,
+                                    &mut events,
+                                    &mut operations,
+                                    perspective,
+                                    SuccessorObservationPolicyV1::ManaPoolChanged { player },
+                                )?;
+                            }
                         }
                     }
                 }
@@ -336,10 +422,12 @@ pub fn execute_basic_land_response(
             let delta = StateDeltaV2::between(state, &next, operations)
                 .map_err(|_| BasicLandTransitionError::Delta)?;
             return Ok(BasicLandTransitionProductV1 {
+                accepted: true,
                 next_state: next,
                 delta,
                 events,
                 next_decision: next_request,
+                status: status.clone(),
             });
         }
         SelectedSuccessorDecisionV1::MagicAction(MagicActionRequestV1::PlayLand {
@@ -371,7 +459,9 @@ pub fn execute_basic_land_response(
             else {
                 return Err(BasicLandTransitionError::InvalidLand);
             };
-            if profile_id.as_str() != BASIC_LAND_PROFILE_ID_V1 {
+            if profile_id.as_str() != BASIC_LAND_PROFILE_ID_V1
+                || next.card_rules_state.faces.faces.get(&object) != Some(&0)
+            {
                 return Err(BasicLandTransitionError::InvalidLand);
             }
             let new_object = next
@@ -585,11 +675,24 @@ pub fn execute_basic_land_response(
                 push_successor_event(
                     &mut next,
                     &mut events,
-                    AuthoritativeRuleEventKindV2::PerspectiveOccurrence(Box::new(audit)),
+                    AuthoritativeRuleEventKindV2::PerspectiveOccurrence {
+                        lifecycle: Box::new(audit),
+                        observation: SuccessorObservationPolicyV1::MovedInSight {
+                            from: from.zone,
+                            to: to.zone,
+                            old_object: object,
+                            new_object,
+                            reveals_old: old_opaque.is_some(),
+                            entering_face: BasicLandFaceV1::Front,
+                            tapped: false,
+                        },
+                    },
                 )?;
             }
             let next_event_id = next.predecessor_v5.allocators.next_rule_event_id;
+            let successor_execution = next.execution_v3.clone();
             next = EngineStatePartsV2::from_state(&materialized, next.card_rules_state);
+            next.execution_v3 = successor_execution;
             next.predecessor_v5.allocators.next_rule_event_id = next_event_id;
             for (perspective, identity) in next
                 .predecessor_v5
@@ -733,12 +836,24 @@ pub fn execute_basic_land_response(
                 .verified_catalog()
                 .get(admission.content_contract_id(), object.card_definition)
                 .map_err(|_| BasicLandTransitionError::InvalidAbility)?;
+            let current_face = next
+                .card_rules_state
+                .faces
+                .faces
+                .get(&authority.source)
+                .copied()
+                .ok_or(BasicLandTransitionError::InvalidAbility)?;
             let CardSemanticBindingV1::ProfiledV1 { profile_id, body } =
                 &definition.semantic_binding
             else {
                 return Err(BasicLandTransitionError::InvalidAbility);
             };
-            if profile_id.as_str() != BASIC_LAND_PROFILE_ID_V1 {
+            if profile_id.as_str() != BASIC_LAND_PROFILE_ID_V1
+                || !definition.ability_identities.iter().any(|identity| {
+                    identity.face_key.0 == current_face
+                        && identity.ability_key.0 == authority.ability_key
+                })
+            {
                 return Err(BasicLandTransitionError::InvalidAbility);
             }
             let color = match body.subtype {
@@ -790,6 +905,25 @@ pub fn execute_basic_land_response(
                     to: true,
                 },
             )?;
+            for perspective in next
+                .predecessor_v5
+                .knowledge
+                .players
+                .keys()
+                .copied()
+                .collect::<Vec<_>>()
+            {
+                push_visible_occurrence(
+                    &mut next,
+                    &mut events,
+                    &mut operations,
+                    perspective,
+                    SuccessorObservationPolicyV1::ObjectTapped {
+                        object: authority.source,
+                        tapped: true,
+                    },
+                )?;
+            }
             push_successor_event(
                 &mut next,
                 &mut events,
@@ -801,6 +935,22 @@ pub fn execute_basic_land_response(
                     amount: 1,
                 },
             )?;
+            for perspective in next
+                .predecessor_v5
+                .knowledge
+                .players
+                .keys()
+                .copied()
+                .collect::<Vec<_>>()
+            {
+                push_visible_occurrence(
+                    &mut next,
+                    &mut events,
+                    &mut operations,
+                    perspective,
+                    SuccessorObservationPolicyV1::ManaPoolChanged { player: actor },
+                )?;
+            }
         }
     }
 
@@ -826,10 +976,12 @@ pub fn execute_basic_land_response(
     let delta = StateDeltaV2::between(state, &next, operations)
         .map_err(|_| BasicLandTransitionError::Delta)?;
     Ok(BasicLandTransitionProductV1 {
+        accepted: true,
         next_state: next,
         delta,
         events,
         next_decision: Some(next_request),
+        status: status.clone(),
     })
 }
 
@@ -908,6 +1060,31 @@ pub fn derive_basic_land_candidates(
             .verified_catalog()
             .get(admission.content_contract_id(), object.card_definition)
             .map_err(|_| BasicLandCandidateError::InvalidDefinition)?;
+        let face_key = *state
+            .card_rules_state
+            .faces
+            .faces
+            .get(object_id)
+            .ok_or(BasicLandCandidateError::InvalidDefinition)?;
+        if !definition
+            .faces
+            .iter()
+            .any(|face| face.face_key.0 == face_key)
+            || state
+                .card_rules_state
+                .abilities
+                .by_instance
+                .values()
+                .filter(|authority| authority.source == *object_id)
+                .any(|authority| {
+                    !definition.ability_identities.iter().any(|identity| {
+                        identity.face_key.0 == face_key
+                            && identity.ability_key.0 == authority.ability_key
+                    })
+                })
+        {
+            return Err(BasicLandCandidateError::InvalidDefinition);
+        }
         let CardSemanticBindingV1::ProfiledV1 { profile_id, body } = &definition.semantic_binding
         else {
             continue;
@@ -924,6 +1101,7 @@ pub fn derive_basic_land_candidates(
             && stack_empty
             && player_history.land_plays_used == 0
             && land_allowed
+            && face_key == 0
         {
             let opaque = public_object.ok_or(BasicLandCandidateError::InvalidState)?;
             raw.push((
@@ -936,11 +1114,16 @@ pub fn derive_basic_land_candidates(
             && !object.tapped
             && has_priority
             && mana_allowed
-            && state.card_rules_state.faces.faces.get(object_id) == Some(&0)
+            && face_key == 0
         {
             public_object.ok_or(BasicLandCandidateError::InvalidState)?;
             for (ability_id, authority) in &state.card_rules_state.abilities.by_instance {
                 if authority.source != *object_id || authority.ability_key != 0 {
+                    continue;
+                }
+                if !definition.ability_identities.iter().any(|ability| {
+                    ability.face_key.0 == face_key && ability.ability_key.0 == authority.ability_key
+                }) {
                     continue;
                 }
                 let opaque_ability = identity
@@ -1419,6 +1602,59 @@ mod tests {
                 .successor_candidates(&state, PlayerId(1), &EpisodeStatus::Running)
                 .is_err(),
             "a second active pending request cannot be synthesized"
+        );
+    }
+
+    #[test]
+    fn program_kernel_rules_trait_commits_v3_successor_product() {
+        let mut kernel = crate::ProgramKernelV1::for_executable_profile(admission()).unwrap();
+        let mut state = state_with_two_lands();
+        let request = kernel
+            .install_successor_request(&mut state, PlayerId(1), &EpisodeStatus::Running)
+            .unwrap();
+
+        let legacy_projection = state.materialize();
+        let before_legacy_call = legacy_projection.clone();
+        assert!(matches!(
+            kernel.apply_predecessor(
+                &legacy_projection,
+                PlayerId(1),
+                &select_response(&request, 1)
+            ),
+            Err(crate::KernelExecutionError::UnsupportedPlayerResponse)
+        ));
+        assert_eq!(legacy_projection, before_legacy_call);
+
+        let selected = request
+            .candidates
+            .iter()
+            .find(|candidate| {
+                matches!(candidate.visible_intent, CandidateIntentV3::PlayLand { .. })
+            })
+            .unwrap();
+        let response = select_response(&request, selected.candidate_id.0);
+
+        let product = crate::RulesKernel::apply(
+            &mut kernel,
+            &state,
+            PlayerId(1),
+            &response,
+            &EpisodeStatus::Running,
+        )
+        .unwrap();
+
+        assert!(product.accepted);
+        assert_eq!(product.delta.apply(&state).unwrap(), product.next_state);
+        assert!(product.next_state.execution_v3.pending_decision.is_some());
+        assert!(product
+            .next_state
+            .predecessor_v5
+            .execution
+            .pending_decision
+            .is_none());
+        assert_eq!(
+            product.next_decision,
+            product.next_state.execution_v3.pending_decision
         );
     }
 

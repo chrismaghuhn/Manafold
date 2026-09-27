@@ -4,6 +4,8 @@
 //! state snapshot and a bound perspective, then constructs only the public
 //! observation, information, decision, and step products.
 
+#![cfg_attr(not(test), allow(unused_imports))]
+
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use mtgml_decision::PlayerDecisionRequestV2;
 use mtgml_model::{
@@ -36,9 +38,9 @@ use mtgml_state::{
     KnowledgeInvalidationReason, PriorityState, TurnPosition,
 };
 
-/// Builds the detached M4 public-state observation from successor state and
-/// already verified content authority. It is intentionally not selected by
-/// any current runtime profile.
+/// Builds the successor public-state observation from successor state and
+/// already verified content authority. The admitted successor runtime selects
+/// this codec only through its exact executable profile.
 pub fn project_magic_basic_land_observation_v1(
     parts: &EngineStatePartsV2,
     perspective: PlayerId,
@@ -254,7 +256,9 @@ fn project_magic_basic_land_observation_from_verified_faces(
 }
 
 use crate::endpoint::PlayerEndpointError;
+#[cfg(any(test, feature = "historical-conformance-runtime"))]
 use crate::errors::{ControllerError, EnvironmentCommitError};
+#[cfg(any(test, feature = "historical-conformance-runtime"))]
 use crate::semantic_catalog_generated::{
     magic_bounded_turn_0_1_0_semantic_contract_id,
     magic_combat_attackers_0_1_0_semantic_contract_id,
@@ -266,9 +270,11 @@ use crate::semantic_catalog_generated::{
     magic_turn_structure_0_1_0_semantic_contract_id, synthetic_legacy_default_semantic_contract_id,
 };
 
+#[cfg(any(test, feature = "historical-conformance-runtime"))]
 const SYNTHETIC_OBSERVATION_CODEC: &str = SYNTHETIC_OBSERVATION_SCHEMA_V1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg(any(test, feature = "historical-conformance-runtime"))]
 pub(crate) enum ObservationProjectionProfile {
     Synthetic,
     Magic,
@@ -277,6 +283,7 @@ pub(crate) enum ObservationProjectionProfile {
     MagicCombatDamage,
 }
 
+#[cfg(any(test, feature = "historical-conformance-runtime"))]
 pub(crate) fn profile_for_execution_identity(
     identity: &ExecutionIdentityV1,
 ) -> Result<ObservationProjectionProfile, ControllerError> {
@@ -310,6 +317,7 @@ pub(crate) fn profile_for_execution_identity(
     }
 }
 
+#[cfg(any(test, feature = "historical-conformance-runtime"))]
 pub(crate) fn project_observation(
     state: &EngineState,
     perspective: PlayerId,
@@ -317,6 +325,7 @@ pub(crate) fn project_observation(
     project_observation_with_profile(state, perspective, ObservationProjectionProfile::Synthetic)
 }
 
+#[cfg(any(test, feature = "historical-conformance-runtime"))]
 pub(crate) fn project_observation_with_profile(
     state: &EngineState,
     perspective: PlayerId,
@@ -437,6 +446,7 @@ pub(crate) fn project_observation_with_profile(
     Ok(observation)
 }
 
+#[cfg(any(test, feature = "historical-conformance-runtime"))]
 fn project_combat(
     state: &EngineState,
     perspective: PlayerId,
@@ -491,6 +501,7 @@ fn project_combat(
     }))
 }
 
+#[cfg(any(test, feature = "historical-conformance-runtime"))]
 fn project_combat_v3(
     state: &EngineState,
     perspective: PlayerId,
@@ -545,6 +556,7 @@ fn project_combat_v3(
     }))
 }
 
+#[cfg(any(test, feature = "historical-conformance-runtime"))]
 fn project_combat_v4(
     state: &EngineState,
     perspective: PlayerId,
@@ -604,6 +616,7 @@ fn project_combat_v4(
     }))
 }
 
+#[cfg(any(test, feature = "historical-conformance-runtime"))]
 fn project_marked_damage_v4(
     state: &EngineState,
     perspective: PlayerId,
@@ -777,6 +790,7 @@ fn public_history(records: &[mtgml_state::KnownLocationFactV2]) -> Vec<PlayerKno
     records.iter().map(public_fact).collect()
 }
 
+#[cfg(any(test, feature = "historical-conformance-runtime"))]
 pub(crate) fn project_information_state(
     state: &EngineState,
     perspective: PlayerId,
@@ -788,6 +802,7 @@ pub(crate) fn project_information_state(
     )
 }
 
+#[cfg(any(test, feature = "historical-conformance-runtime"))]
 pub(crate) fn project_information_state_with_profile(
     state: &EngineState,
     perspective: PlayerId,
@@ -797,6 +812,37 @@ pub(crate) fn project_information_state_with_profile(
         return Err(PlayerEndpointError::ServiceUnavailable);
     }
     let current_observation = project_observation_with_profile(state, perspective, profile)?;
+    project_information_state_from_observation(state, perspective, current_observation)
+}
+
+pub fn project_successor_information_state(
+    parts: &EngineStatePartsV2,
+    perspective: PlayerId,
+    execution_identity: &ExecutionIdentityV1,
+    semantic_manifest: &SemanticContractManifestV1,
+    rules_manifest: &RulesContractManifestV1,
+    catalog: &mtgml_card_ir::VerifiedContentCatalogV1,
+) -> Result<PlayerInformationStateV2, PlayerEndpointError> {
+    let state = parts.materialize();
+    let observation = project_magic_basic_land_observation_v1(
+        parts,
+        perspective,
+        execution_identity,
+        semantic_manifest,
+        rules_manifest,
+        catalog,
+    )?;
+    project_information_state_from_observation(&state, perspective, observation)
+}
+
+fn project_information_state_from_observation(
+    state: &EngineState,
+    perspective: PlayerId,
+    current_observation: ObservationEnvelope,
+) -> Result<PlayerInformationStateV2, PlayerEndpointError> {
+    if !state.core.players.contains_key(&perspective) {
+        return Err(PlayerEndpointError::ServiceUnavailable);
+    }
     let knowledge = state
         .knowledge
         .players
@@ -897,6 +943,7 @@ fn public_priority(priority: PriorityState) -> SyntheticPriority {
     }
 }
 
+#[cfg(any(test, feature = "historical-conformance-runtime"))]
 pub(crate) fn project_visible_decision(
     state: &EngineState,
     perspective: PlayerId,
@@ -917,6 +964,7 @@ pub(crate) fn project_visible_decision(
         .map_err(|_| PlayerEndpointError::ServiceUnavailable)
 }
 
+#[cfg(any(test, feature = "historical-conformance-runtime"))]
 pub(crate) fn project_player_step(
     state: &EngineState,
     perspective: PlayerId,
@@ -932,6 +980,7 @@ pub(crate) fn project_player_step(
     )
 }
 
+#[cfg(any(test, feature = "historical-conformance-runtime"))]
 pub(crate) fn project_player_step_with_profile(
     state: &EngineState,
     perspective: PlayerId,
@@ -960,6 +1009,7 @@ pub(crate) fn project_player_step_with_profile(
     Ok(step)
 }
 
+#[cfg(any(test, feature = "historical-conformance-runtime"))]
 pub(crate) fn validate_candidate_projections_with_profile(
     state: &EngineState,
     profile: ObservationProjectionProfile,

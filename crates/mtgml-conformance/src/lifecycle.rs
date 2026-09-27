@@ -10,7 +10,7 @@ use mtgml_model::{
     PhysicalCardId, PlayerId, VisibleSequence, ZoneKind,
 };
 use mtgml_rules::fixture_support::{FixtureTransition, PlannedOccurrence};
-use mtgml_rules::{AuthoritativeRuleEvent, TransitionResult};
+use mtgml_rules::{AuthoritativeRuleEvent, PredecessorTransitionResult};
 use mtgml_state::{
     construct_synthetic_engine_state, EngineState, IdentityMutationV1, KnowledgeAcquisitionCause,
     KnowledgeAcquisitionReason, KnowledgeHistoryChannel, KnowledgeInvalidationReason,
@@ -127,7 +127,7 @@ fn occurrence(
 /// does not advance for the incarnation change.
 pub fn scenario_reveal_then_tracked_incarnation(
     before: &EngineState,
-) -> Result<TransitionResult, ConformanceFailure> {
+) -> Result<PredecessorTransitionResult, ConformanceFailure> {
     let mut transition = FixtureTransition::start(before).map_err(contract)?;
     let revealed = transition
         .move_object_incarnation(GameObjectId(3), battlefield())
@@ -190,7 +190,7 @@ pub fn scenario_reveal_then_tracked_incarnation(
 /// one occurrence. Deliberately public provenance (public/public_event).
 pub fn scenario_explicit_forget(
     before: &EngineState,
-) -> Result<TransitionResult, ConformanceFailure> {
+) -> Result<PredecessorTransitionResult, ConformanceFailure> {
     let mut transition = FixtureTransition::start(before).map_err(contract)?;
     transition
         .apply_occurrence(occurrence(
@@ -221,7 +221,7 @@ pub fn scenario_explicit_forget(
 pub fn scenario_indistinguishability(
     before: &EngineState,
     reason: KnowledgeInvalidationReason,
-) -> Result<TransitionResult, ConformanceFailure> {
+) -> Result<PredecessorTransitionResult, ConformanceFailure> {
     let mut transition = FixtureTransition::start(before).map_err(contract)?;
     // Hidden randomization consumes authoritative randomness before every
     // known correspondence is destroyed by the shared hidden-set move.
@@ -299,7 +299,7 @@ pub fn scenario_indistinguishability(
 /// physical/definition identity is carried through the same transition.
 pub fn scenario_reidentification(
     before: &EngineState,
-) -> Result<(TransitionResult, PhysicalCardId), ConformanceFailure> {
+) -> Result<(PredecessorTransitionResult, PhysicalCardId), ConformanceFailure> {
     let mut transition = FixtureTransition::start(before).map_err(contract)?;
     // Select the hidden target through P1's retired physical chain. This
     // keeps the reidentification claim tied to an actually retired card
@@ -386,7 +386,7 @@ pub fn scenario_reidentification(
 /// transitions and ordered multi-update history on one retained record.
 pub fn scenario_private_look_and_history(
     before: &EngineState,
-) -> Result<TransitionResult, ConformanceFailure> {
+) -> Result<PredecessorTransitionResult, ConformanceFailure> {
     use mtgml_state::KnownLocationFactV2;
     let mut transition = FixtureTransition::start(before).map_err(contract)?;
     let revealed = transition
@@ -504,7 +504,7 @@ pub fn scenario_private_look_and_history(
 /// perspective's own next visible sequences (N/N+1 style independence).
 pub fn scenario_public_fanout_two_reveals(
     before: &EngineState,
-) -> Result<TransitionResult, ConformanceFailure> {
+) -> Result<PredecessorTransitionResult, ConformanceFailure> {
     let mut transition = FixtureTransition::start(before).map_err(contract)?;
     let first = transition
         .move_object_incarnation(GameObjectId(3), battlefield())
@@ -553,7 +553,7 @@ pub fn scenario_public_fanout_two_reveals(
 /// own-private acquisition through the generic no-envelope policy.
 pub fn scenario_own_private_identity(
     before: &EngineState,
-) -> Result<TransitionResult, ConformanceFailure> {
+) -> Result<PredecessorTransitionResult, ConformanceFailure> {
     let mut transition = FixtureTransition::start(before).map_err(contract)?;
     let received = transition
         .move_object_incarnation(GameObjectId(3), hidden_hand(P1))
@@ -586,7 +586,7 @@ pub fn scenario_own_private_identity(
 /// publicly observed but correspondence becomes untrackable afterwards.
 pub fn scenario_conceal_untrackable(
     before: &EngineState,
-) -> Result<TransitionResult, ConformanceFailure> {
+) -> Result<PredecessorTransitionResult, ConformanceFailure> {
     let mut transition = FixtureTransition::start(before).map_err(contract)?;
     // Prepare: P1 knows GO3 as opaque 2 (public reveal, sequence 1).
     let revealed = transition
@@ -658,7 +658,7 @@ fn contract(error: mtgml_rules::KernelExecutionError) -> ConformanceFailure {
 /// Generic exact-product assertion: no decision response involved.
 pub fn assert_exact_transition_product(
     before: &EngineState,
-    result: &TransitionResult,
+    result: &PredecessorTransitionResult,
     expected_events: &[AuthoritativeRuleEvent],
     expected_digest: &FullStateDigestV5,
 ) -> Result<(), ConformanceFailure> {

@@ -231,7 +231,7 @@ fn first_private_library_case_state() -> EngineState {
     state
 }
 
-fn battlefield_request() -> Result<mtgml_rules::TransitionResult, KernelExecutionError> {
+fn battlefield_request() -> Result<mtgml_rules::PredecessorTransitionResult, KernelExecutionError> {
     execute_selected_zone_transition_for_conformance(
         &task2_battlefield_case_state(),
         OLD_BATTLEFIELD,
@@ -241,7 +241,7 @@ fn battlefield_request() -> Result<mtgml_rules::TransitionResult, KernelExecutio
     )
 }
 
-fn library_request() -> Result<mtgml_rules::TransitionResult, KernelExecutionError> {
+fn library_request() -> Result<mtgml_rules::PredecessorTransitionResult, KernelExecutionError> {
     execute_selected_zone_transition_for_conformance(
         &task2_library_case_state(),
         OLD_LIBRARY_TOP,
@@ -263,7 +263,7 @@ fn assert_unrelated_allocators_unchanged(
     assert_eq!(after.next_continuation_id, before.next_continuation_id);
 }
 
-fn assert_event_delta_mirror(result: &mtgml_rules::TransitionResult) {
+fn assert_event_delta_mirror(result: &mtgml_rules::PredecessorTransitionResult) {
     assert_eq!(
         result.delta.audit,
         result
@@ -310,7 +310,7 @@ fn assert_rejected_request_preserves_complete_state<T>(
     assert_eq!(before.format, before_state.format);
 }
 
-fn accepted_task2_battlefield_product() -> (EngineState, mtgml_rules::TransitionResult) {
+fn accepted_task2_battlefield_product() -> (EngineState, mtgml_rules::PredecessorTransitionResult) {
     let before = task2_battlefield_case_state();
     let result = execute_selected_zone_transition_for_conformance(
         &before,
@@ -323,8 +323,8 @@ fn accepted_task2_battlefield_product() -> (EngineState, mtgml_rules::Transition
     (before, result)
 }
 
-fn accepted_task2_library_product_with_three_cards() -> (EngineState, mtgml_rules::TransitionResult)
-{
+fn accepted_task2_library_product_with_three_cards(
+) -> (EngineState, mtgml_rules::PredecessorTransitionResult) {
     let mut before = task2_library_case_state();
     let third = GameObjectId(4);
     before.zones.objects.insert(
@@ -368,7 +368,7 @@ fn accepted_task2_library_product_with_three_cards() -> (EngineState, mtgml_rule
 }
 
 fn mutated_zone_transition(
-    result: &mut mtgml_rules::TransitionResult,
+    result: &mut mtgml_rules::PredecessorTransitionResult,
 ) -> &mut mtgml_state::ZoneTransition {
     match &mut result.events[0].event {
         mtgml_rules::AuthoritativeRuleEventKind::ZoneTransition { transition } => transition,
@@ -376,7 +376,10 @@ fn mutated_zone_transition(
     }
 }
 
-fn rebuild_candidate_delta(before: &EngineState, result: &mut mtgml_rules::TransitionResult) {
+fn rebuild_candidate_delta(
+    before: &EngineState,
+    result: &mut mtgml_rules::PredecessorTransitionResult,
+) {
     let audit = result
         .events
         .iter()
@@ -387,7 +390,7 @@ fn rebuild_candidate_delta(before: &EngineState, result: &mut mtgml_rules::Trans
 
 fn assert_transition_violation(
     before: &EngineState,
-    result: &mtgml_rules::TransitionResult,
+    result: &mtgml_rules::PredecessorTransitionResult,
     expected: impl FnOnce(&mtgml_rules::TransitionViolation) -> bool,
 ) {
     let violation = mtgml_rules::validate_transition_contract(before, result)
@@ -3355,7 +3358,7 @@ fn s2_scenario_request(
 fn execute_s2_scenario(
     before: &EngineState,
     scenario: ZoneIncarnationParityScenario,
-) -> mtgml_rules::TransitionResult {
+) -> mtgml_rules::PredecessorTransitionResult {
     let (object, from, to, kind) = s2_scenario_request(scenario, before);
     execute_selected_zone_transition_for_conformance(before, object, from, to, kind)
         .expect("selected S2 scenario is accepted by the production-owned executor")

@@ -1,8 +1,22 @@
+use mtgml_observation::PlayerServiceErrorCodeV1;
 use mtgml_replay::ReplayValidationError;
 use mtgml_rules::{KernelExecutionError, TransitionViolation};
 use thiserror::Error;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum PlayerEndpointError {
+    #[error("service unavailable")]
+    ServiceUnavailable,
+}
+
+impl From<PlayerServiceErrorCodeV1> for PlayerEndpointError {
+    fn from(_: PlayerServiceErrorCodeV1) -> Self {
+        Self::ServiceUnavailable
+    }
+}
+
 use crate::checkpoint::CheckpointValidationError;
+use crate::checkpoint_v7::CheckpointV7Error;
 use mtgml_state::SyntheticStateConstructionError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
@@ -39,6 +53,16 @@ pub enum ReplayExecutionError {
     CounterMismatch { step_index: u64 },
     #[error("replay final identity differs")]
     FinalIdentityMismatch,
+    #[error("Replay V7 execution identity differs from the admitted profile")]
+    ReplayV7Identity,
+    #[error("Replay V7 initial identity differs from the supplied checkpoint")]
+    ReplayV7BeforeIdentity,
+    #[error("Replay V7 step {step_index} does not begin at the actual checkpoint")]
+    ReplayV7BeforeStep { step_index: u64 },
+    #[error("Replay V7 step {step_index} differs from authoritative re-execution")]
+    ReplayV7StepMismatch { step_index: u64 },
+    #[error("Replay V7 final identity differs from authoritative re-execution")]
+    ReplayV7FinalIdentity,
 }
 
 #[derive(Debug, Error)]
@@ -51,6 +75,8 @@ pub enum ControllerError {
     InvalidCheckpoint(String),
     #[error("checkpoint validation failed: {0}")]
     CheckpointValidation(#[from] CheckpointValidationError),
+    #[error("successor checkpoint validation failed: {0}")]
+    CheckpointV7(#[from] CheckpointV7Error),
     #[error("kernel execution failed: {0}")]
     KernelExecution(#[from] KernelExecutionError),
     #[error("synthetic state construction failed: {0}")]

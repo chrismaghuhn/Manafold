@@ -10,7 +10,7 @@ use mtgml_state::{validate_engine_state, EngineState, ZoneLocation, ZonePosition
 use crate::errors::ZoneIncarnationError;
 use crate::events::{AuthoritativeRuleEvent, AuthoritativeRuleEventKind};
 use crate::product::build_accepted_product;
-use crate::{KernelExecutionError, TransitionResult};
+use crate::{KernelExecutionError, PredecessorTransitionResult};
 use mtgml_state::{
     IdentityMutationV1, KnowledgeAcquisitionCause, KnowledgeAcquisitionReason,
     KnowledgeHistoryChannel, KnowledgeMutationV1, KnownLocationFactV2, PerspectiveLifecycleAuditV1,
@@ -137,7 +137,7 @@ fn emit_perspective_occurrence(
 pub(crate) fn execute_selected_zone_transition(
     state: &EngineState,
     request: &SelectedZoneTransitionRequest,
-) -> Result<TransitionResult, KernelExecutionError> {
+) -> Result<PredecessorTransitionResult, KernelExecutionError> {
     validate_engine_state(state).map_err(KernelExecutionError::BeforeState)?;
     let revision = StateRevision(
         state
@@ -161,7 +161,7 @@ pub(crate) fn execute_selected_zone_transition(
 /// Apply one selected S2 move to a caller-owned scratch workspace.
 ///
 /// The candidate revision and outer event cursor belong to the coordinator.
-/// This primitive never creates a `TransitionResult`, increments revision, or
+/// This primitive never creates a `PredecessorTransitionResult`, increments revision, or
 /// validates a potentially incomplete intermediate workspace. It stages all
 /// work in a private clone so an error leaves both the candidate and its event
 /// vector untouched.
@@ -742,7 +742,7 @@ pub fn execute_selected_zone_transition_for_conformance(
     claimed_from: ZoneLocation,
     claimed_to: ZoneLocation,
     kind: ConformanceZoneTransitionKind,
-) -> Result<TransitionResult, KernelExecutionError> {
+) -> Result<PredecessorTransitionResult, KernelExecutionError> {
     let kind = match kind {
         ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard => {
             SelectedZoneTransitionKind::BattlefieldToOwnerGraveyard

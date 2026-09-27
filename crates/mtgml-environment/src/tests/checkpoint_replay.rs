@@ -753,7 +753,7 @@ fn unsupported_standalone_decisions_are_internal_kernel_failures() {
     )
     .expect("the synthetic program is supported by the current kernel boundary");
     assert!(matches!(
-        kernel.apply(
+        kernel.apply_predecessor(
             &state,
             PlayerId(1),
             &mtgml_decision::DecisionResponseV2 {

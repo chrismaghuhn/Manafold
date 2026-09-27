@@ -91,7 +91,7 @@ fn basic_priority_first_pass_transfers_and_second_advances_one_step() {
     let opened = kernel.advance_forced_progress(&before).unwrap();
     let first_response = pass_response(&opened.next_state);
     let first = kernel
-        .apply(&opened.next_state, PlayerId(7), &first_response)
+        .apply_legacy(&opened.next_state, PlayerId(7), &first_response)
         .unwrap();
     assert_eq!(first.next_state.revision, StateRevision(2));
     assert_eq!(
@@ -108,7 +108,7 @@ fn basic_priority_first_pass_transfers_and_second_advances_one_step() {
 
     let second_response = pass_response(&first.next_state);
     let second = kernel
-        .apply(&first.next_state, PlayerId(42), &second_response)
+        .apply_legacy(&first.next_state, PlayerId(42), &second_response)
         .unwrap();
     assert_eq!(second.next_state.revision, StateRevision(3));
     assert_eq!(second.next_state.core.priority, PriorityState::None);
@@ -133,19 +133,19 @@ fn basic_priority_rejects_wrong_actor_and_stale_response_without_mutation() {
     let opened = kernel.advance_forced_progress(&state).unwrap();
     let held = opened.next_state;
     let response = pass_response(&held);
-    let wrong_actor = kernel.apply(&held, PlayerId(42), &response).unwrap();
+    let wrong_actor = kernel.apply_legacy(&held, PlayerId(42), &response).unwrap();
     assert!(!wrong_actor.accepted);
     assert_eq!(wrong_actor.next_state, held);
     let mut stale = response;
     stale.state_revision.0 += 1;
-    let stale_result = kernel.apply(&held, PlayerId(7), &stale).unwrap();
+    let stale_result = kernel.apply_legacy(&held, PlayerId(7), &stale).unwrap();
     assert!(!stale_result.accepted);
     assert_eq!(stale_result.next_state, held);
     let mut wrong_family = pass_response(&held);
     wrong_family.answer = DecisionAnswerV2::Order {
         candidate_ids: vec![CandidateIdV1(0)],
     };
-    let wrong_family = kernel.apply(&held, PlayerId(7), &wrong_family).unwrap();
+    let wrong_family = kernel.apply_legacy(&held, PlayerId(7), &wrong_family).unwrap();
     assert!(!wrong_family.accepted);
     assert_eq!(wrong_family.next_state, held);
 }

@@ -44,7 +44,7 @@ use crate::semantic_execution_generated::MagicExecutionProfile;
 use crate::semantic_execution_generated::{
     magic_turn_structure_0_1_0_semantic_contract_id, test_only_magic_execution_profile,
 };
-use crate::transition::{RulesKernel, TransitionResult};
+use crate::transition::PredecessorTransitionResult;
 use crate::turn_structure::{
     derive_ordinary_untap_affected_objects, temporal_successor, unsupported_rules_boundary,
     validate_quiescent_cleanup_boundary, validate_turn_structure_support, TurnStructureError,
@@ -177,6 +177,14 @@ fn admission_has(admission: &ExecutableProfileAdmissionV1, key: &str) -> bool {
 }
 
 impl MagicRulesKernel {
+    pub(crate) fn executable_admission(&self) -> Option<&ExecutableProfileAdmissionV1> {
+        self.profile.executable_admission()
+    }
+
+    pub(crate) fn is_successor_profile(&self) -> bool {
+        self.executable_admission().is_some()
+    }
+
     /// Construct from an admitted execution profile.
     ///
     /// This is the production admission authority for Magic execution.
@@ -316,19 +324,17 @@ impl MagicRulesKernel {
     }
 }
 
-impl RulesKernel for MagicRulesKernel {
-    /// Trusted response execution entry point.
-    ///
-    /// Turn-structure-only admission has no player Decision surface and rejects every response
-    /// without inspecting or mutating it. The fixed non-production state-based-actions
-    /// candidate accepts only a nonfinal SBA Order stage; its final Order
-    /// remains unaccepted until the complete round can be applied atomically.
-    fn apply(
+impl MagicRulesKernel {
+    /// Historical V5 response transition used by the predecessor environment
+    /// while that environment is being migrated to the successor transaction
+    /// owner. New successor runtime calls go through the `RulesKernel` trait's
+    /// complete-state `apply` method below the program adapter.
+    pub(crate) fn apply_legacy(
         &mut self,
         state: &EngineState,
         trusted_actor: PlayerId,
         response: &DecisionResponseV2,
-    ) -> Result<TransitionResult, KernelExecutionError> {
+    ) -> Result<PredecessorTransitionResult, KernelExecutionError> {
         if self.profile.allows_state_based_actions() {
             if state
                 .execution
@@ -396,13 +402,11 @@ impl RulesKernel for MagicRulesKernel {
         let _ = (state, trusted_actor, response);
         Err(KernelExecutionError::UnsupportedPlayerResponse)
     }
-}
 
-impl MagicRulesKernel {
     pub(crate) fn authorize_response_progress(
         &self,
         before: &EngineState,
-        result: &TransitionResult,
+        result: &PredecessorTransitionResult,
     ) -> Result<(), crate::TransitionViolation> {
         if !self.profile.allows_cleanup_reset()
             && crate::contract::is_second_pass_priority_progress_composition(before, result)
@@ -950,7 +954,7 @@ impl MagicRulesKernel {
     fn create_attacker_decision(
         &mut self,
         state: &EngineState,
-    ) -> Result<TransitionResult, KernelExecutionError> {
+    ) -> Result<PredecessorTransitionResult, KernelExecutionError> {
         if state.execution.pending_decision.is_some() {
             return Err(KernelExecutionError::UnsupportedStagePath);
         }
@@ -1016,7 +1020,7 @@ impl MagicRulesKernel {
         &mut self,
         state: &EngineState,
         support: BlockerDeclarationSupport,
-    ) -> Result<TransitionResult, KernelExecutionError> {
+    ) -> Result<PredecessorTransitionResult, KernelExecutionError> {
         if support.blocker.is_none() || state.execution.pending_decision.is_some() {
             return Err(KernelExecutionError::UnsupportedStagePath);
         }
@@ -1068,7 +1072,7 @@ impl MagicRulesKernel {
         &mut self,
         state: &EngineState,
         support: BlockerDeclarationSupport,
-    ) -> Result<TransitionResult, KernelExecutionError> {
+    ) -> Result<PredecessorTransitionResult, KernelExecutionError> {
         if support.blocker.is_some() || state.execution.pending_decision.is_some() {
             return Err(KernelExecutionError::UnsupportedStagePath);
         }
@@ -1168,7 +1172,7 @@ impl MagicRulesKernel {
     fn advance_blocker_declaration(
         &mut self,
         state: &EngineState,
-    ) -> Result<TransitionResult, KernelExecutionError> {
+    ) -> Result<PredecessorTransitionResult, KernelExecutionError> {
         if state.core.priority != mtgml_state::PriorityState::None
             || state.execution.pending_decision.is_some()
         {
@@ -1187,7 +1191,7 @@ impl MagicRulesKernel {
         state: &EngineState,
         trusted_actor: PlayerId,
         response: &DecisionResponseV2,
-    ) -> Result<TransitionResult, KernelExecutionError> {
+    ) -> Result<PredecessorTransitionResult, KernelExecutionError> {
         validate_engine_state(state).map_err(KernelExecutionError::BeforeState)?;
         let Some(pending) = state.execution.pending_decision.as_ref() else {
             return crate::decision_stage::rejected(state);
@@ -1299,7 +1303,7 @@ impl MagicRulesKernel {
         state: &EngineState,
         trusted_actor: PlayerId,
         response: &DecisionResponseV2,
-    ) -> Result<TransitionResult, KernelExecutionError> {
+    ) -> Result<PredecessorTransitionResult, KernelExecutionError> {
         validate_engine_state(state).map_err(KernelExecutionError::BeforeState)?;
         let Some(pending) = state.execution.pending_decision.as_ref() else {
             return crate::decision_stage::rejected(state);
@@ -1462,7 +1466,7 @@ impl MagicRulesKernel {
     fn advance_combat_progress(
         &mut self,
         state: &EngineState,
-    ) -> Result<TransitionResult, KernelExecutionError> {
+    ) -> Result<PredecessorTransitionResult, KernelExecutionError> {
         if state.core.priority != mtgml_state::PriorityState::None
             || state.execution.pending_decision.is_some()
         {
@@ -1500,7 +1504,7 @@ impl MagicRulesKernel {
     fn advance_draw_step(
         &mut self,
         state: &EngineState,
-    ) -> Result<TransitionResult, KernelExecutionError> {
+    ) -> Result<PredecessorTransitionResult, KernelExecutionError> {
         let profile =
             validate_turn_structure_support(state).map_err(KernelExecutionError::TurnStructure)?;
         if profile.turn_number() < 2
@@ -1574,7 +1578,7 @@ impl MagicRulesKernel {
     fn advance_combat_damage(
         &mut self,
         state: &EngineState,
-    ) -> Result<TransitionResult, KernelExecutionError> {
+    ) -> Result<PredecessorTransitionResult, KernelExecutionError> {
         Self::validate_combat_damage_runtime_state(state, &EpisodeStatus::Running)?;
         let assignments =
             crate::combat_damage::derive_assignments(state).map_err(|error| match error {
@@ -1682,7 +1686,7 @@ impl MagicRulesKernel {
     fn advance_state_based_actions_fixed_point(
         &mut self,
         state: &EngineState,
-    ) -> Result<TransitionResult, KernelExecutionError> {
+    ) -> Result<PredecessorTransitionResult, KernelExecutionError> {
         validate_engine_state(state).map_err(KernelExecutionError::BeforeState)?;
         if state.execution.pending_decision.is_some() || !state.execution.continuations.is_empty() {
             return Err(KernelExecutionError::UnsupportedStagePath);
@@ -1843,7 +1847,7 @@ impl MagicRulesKernel {
         final_order: Option<(mtgml_model::ContinuationId, Vec<SbaGraveyardOwnerOrderV1>)>,
         selected_sba_actions: Vec<SbaSelectedActionV1>,
         open_priority_if_stable: bool,
-    ) -> Result<TransitionResult, KernelExecutionError> {
+    ) -> Result<PredecessorTransitionResult, KernelExecutionError> {
         validate_engine_state(state).map_err(KernelExecutionError::BeforeState)?;
         let plan = crate::state_based_actions::derive_bounded_sba_round_plan(state)
             .map_err(|_| KernelExecutionError::UnsupportedStagePath)?;
@@ -2199,7 +2203,7 @@ impl MagicRulesKernel {
         state: &EngineState,
         trusted_actor: PlayerId,
         response: &DecisionResponseV2,
-    ) -> Result<TransitionResult, KernelExecutionError> {
+    ) -> Result<PredecessorTransitionResult, KernelExecutionError> {
         validate_engine_state(state).map_err(KernelExecutionError::BeforeState)?;
         let Some(pending) = state.execution.pending_decision.as_ref() else {
             return crate::decision_stage::rejected(state);
@@ -2384,7 +2388,7 @@ impl MagicRulesKernel {
         state: &EngineState,
         trusted_actor: PlayerId,
         response: &DecisionResponseV2,
-    ) -> Result<TransitionResult, KernelExecutionError> {
+    ) -> Result<PredecessorTransitionResult, KernelExecutionError> {
         if state.execution.pending_decision.is_none() {
             return crate::decision_stage::rejected(state);
         }
@@ -2733,7 +2737,7 @@ impl MagicRulesKernel {
     pub(crate) fn advance_forced_progress(
         &mut self,
         state: &EngineState,
-    ) -> Result<TransitionResult, KernelExecutionError> {
+    ) -> Result<PredecessorTransitionResult, KernelExecutionError> {
         if self.profile.allows_combat_attackers()
             && matches!(state.core.position, TurnPosition::Combat { .. })
         {
@@ -2796,7 +2800,7 @@ impl MagicRulesKernel {
         &mut self,
         state: &EngineState,
         profile: &TurnStructureSupportProfile,
-    ) -> Result<TransitionResult, KernelExecutionError> {
+    ) -> Result<PredecessorTransitionResult, KernelExecutionError> {
         let active_player = profile.active_player();
         let from = profile.position();
         let to = temporal_successor(from);
@@ -2915,7 +2919,7 @@ impl MagicRulesKernel {
         &mut self,
         state: &EngineState,
         profile: &TurnStructureSupportProfile,
-    ) -> Result<TransitionResult, KernelExecutionError> {
+    ) -> Result<PredecessorTransitionResult, KernelExecutionError> {
         validate_quiescent_cleanup_boundary(state, profile.active_player()).map_err(|_| {
             KernelExecutionError::UnsupportedRulesBoundary(UnsupportedRulesBoundary::CleanupReset)
         })?;
@@ -3000,7 +3004,7 @@ impl MagicRulesKernel {
         &mut self,
         state: &EngineState,
         profile: &TurnStructureSupportProfile,
-    ) -> Result<TransitionResult, KernelExecutionError> {
+    ) -> Result<PredecessorTransitionResult, KernelExecutionError> {
         let affected = crate::turn_structure::derive_cleanup_damage_reset_objects(
             state,
             profile.active_player(),

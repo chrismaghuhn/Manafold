@@ -90,7 +90,7 @@ fn magic_turn_structure_kernel_shell_rejects_player_response() {
     let before = state.clone();
     let digest_before = state.digest().unwrap();
     let mut kernel = MagicRulesKernel::new();
-    let result = kernel.apply(&state, PlayerId(7), &response(0, 0));
+    let result = kernel.apply_legacy(&state, PlayerId(7), &response(0, 0));
     assert!(
         matches!(
             result,
@@ -109,7 +109,7 @@ fn magic_turn_structure_kernel_shell_preserves_state_on_response_rejection() {
     });
     let before = state.clone();
     let mut kernel = MagicRulesKernel::new();
-    let _ = kernel.apply(&state, PlayerId(7), &response(0, 0));
+    let _ = kernel.apply_legacy(&state, PlayerId(7), &response(0, 0));
     assert_eq!(
         state, before,
         "input state must remain unchanged after response rejection"

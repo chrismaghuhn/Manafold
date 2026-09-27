@@ -274,6 +274,9 @@ impl From<ProgramKernelConstructionErrorV1> for ControllerError {
             ProgramKernelConstructionErrorV1::UnsupportedProgram => {
                 ControllerError::SemanticContractUnsupported
             }
+            ProgramKernelConstructionErrorV1::InvalidExecutableAdmission => {
+                ControllerError::ProgramStateIncompatible
+            }
         }
     }
 }

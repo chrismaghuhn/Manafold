@@ -7,7 +7,9 @@
 use mtgml_decision::{AuthoritativeDecisionRequestV2, DecisionResponseV2};
 use mtgml_model::{EpisodeStatus, FullStateDigestV5, PlayerId};
 use mtgml_observation::PlayerStepV2;
-use mtgml_rules::{validate_transition_contract, AuthoritativeRuleEvent, TransitionResult};
+use mtgml_rules::{
+    validate_transition_contract, AuthoritativeRuleEvent, PredecessorTransitionResult,
+};
 use mtgml_state::{EngineState, SemanticDeltaOperation};
 use std::collections::BTreeMap;
 use thiserror::Error;
@@ -61,7 +63,7 @@ pub fn assert_exact_transition(
     before: &EngineState,
     actual_current_decision: Option<&AuthoritativeDecisionRequestV2>,
     actual_response: &DecisionResponseV2,
-    result: &TransitionResult,
+    result: &PredecessorTransitionResult,
     actual_player_steps: &BTreeMap<PlayerId, PlayerStepV2>,
     expected: &ConformanceStep,
 ) -> Result<(), ConformanceFailure> {
@@ -297,7 +299,7 @@ mod tests {
         }
     }
 
-    fn lifecycle_conformance_case() -> (EngineState, TransitionResult, ConformanceStep) {
+    fn lifecycle_conformance_case() -> (EngineState, PredecessorTransitionResult, ConformanceStep) {
         let before = lifecycle::lifecycle_fixture();
         let result = lifecycle::scenario_public_fanout_two_reveals(&before).unwrap();
         let submitted = response(1);
@@ -352,7 +354,7 @@ mod tests {
 
     fn lifecycle_product_case() -> (
         EngineState,
-        TransitionResult,
+        PredecessorTransitionResult,
         Vec<AuthoritativeRuleEvent>,
         FullStateDigestV5,
     ) {

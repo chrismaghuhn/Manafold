@@ -763,11 +763,16 @@ class ScopeScanTests(unittest.TestCase):
         for name, function in final.SCOPE_CHECKS:
             with self.subTest(check=name):
                 if name == "scope::rules_backend_inventory":
+                    # This is an immutable M2 scope gate, not the live M4
+                    # runtime inventory. Phase 10 intentionally replaces
+                    # direct synthetic-kernel execution with the single
+                    # ProgramKernelV1 successor adapter on this branch.
                     with self.assertRaises(final.ScopeCheckFailure) as caught:
                         function(ROOT)
                     message = str(caught.exception)
                     self.assertIn("pinned M2 inventory", message)
-                    self.assertIn("MagicRulesKernel", message)
+                    self.assertIn("ProgramKernelV1", message)
+                    self.assertIn("SyntheticLegacyRulesKernel", message)
                     continue
                 detail = function(ROOT)
                 self.assertIsInstance(detail, str)

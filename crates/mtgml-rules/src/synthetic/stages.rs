@@ -13,14 +13,14 @@ use super::helpers::{
 use super::SyntheticLegacyRulesKernel;
 use crate::errors::KernelExecutionError;
 use crate::product::build_accepted_product;
-use crate::transition::TransitionResult;
+use crate::transition::PredecessorTransitionResult;
 
 impl SyntheticLegacyRulesKernel {
     /// Stage 1: ChooseMembers fixes the unordered member set.
     pub(super) fn apply_members_stage(
         state: &EngineState,
         candidate_ids: &[CandidateIdV1],
-    ) -> Result<TransitionResult, KernelExecutionError> {
+    ) -> Result<PredecessorTransitionResult, KernelExecutionError> {
         let pending = state.execution.pending_decision.as_ref().expect("checked");
         let request = &pending.request;
         let actor = request.actor;
@@ -103,7 +103,7 @@ impl SyntheticLegacyRulesKernel {
     pub(super) fn apply_order_stage(
         state: &EngineState,
         candidate_ids: &[CandidateIdV1],
-    ) -> Result<TransitionResult, KernelExecutionError> {
+    ) -> Result<PredecessorTransitionResult, KernelExecutionError> {
         let pending = state.execution.pending_decision.as_ref().expect("checked");
         let request = &pending.request;
         let continuation_id = match request.continuation_id {

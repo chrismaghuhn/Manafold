@@ -26,7 +26,8 @@ use mtgml_model::{
 };
 use mtgml_random::RootSeed256;
 use mtgml_rules::{
-    AuthoritativeRuleEvent, AuthoritativeRuleEventKind, ProgramKernelV1, TransitionResult,
+    AuthoritativeRuleEvent, AuthoritativeRuleEventKind, PredecessorTransitionResult,
+    ProgramKernelV1,
 };
 use mtgml_state::{
     construct_synthetic_engine_state, validate_engine_state, BaseCharacteristics,
@@ -207,7 +208,7 @@ fn legacy_s1_semantic_contract_keeps_its_frozen_sba_and_response_boundaries() {
         ))
     ));
     assert!(matches!(
-        s1.apply(
+        s1.apply_predecessor(
             &state,
             P1,
             &order_response(DecisionAnswerV2::Order {
@@ -219,7 +220,7 @@ fn legacy_s1_semantic_contract_keeps_its_frozen_sba_and_response_boundaries() {
     assert_eq!(state, before);
 }
 
-fn advance_sba(state: &EngineState, witness: &str) -> TransitionResult {
+fn advance_sba(state: &EngineState, witness: &str) -> PredecessorTransitionResult {
     let mut kernel = magic_kernel();
     kernel.advance_forced_progress(state).unwrap_or_else(|error| {
         panic!(
@@ -237,7 +238,7 @@ fn object_action(object: u64, causes: Vec<SbaObjectCauseV1>) -> SbaSelectedActio
 
 fn assert_pending_order(
     before: &EngineState,
-    transition: &TransitionResult,
+    transition: &PredecessorTransitionResult,
     actor: PlayerId,
     owners: &[PlayerId],
     objects_for_actor: &[GameObjectId],
@@ -1120,7 +1121,7 @@ fn assert_order_rejection_without_mutation(answer: DecisionAnswerV2, witness: &s
         "{witness}: malformed fixture answer must be rejected by the closed Decision shape"
     );
     let mut kernel = magic_kernel();
-    let result = kernel.apply(&state, P1, &response);
+    let result = kernel.apply_predecessor(&state, P1, &response);
     assert_eq!(state, before, "{witness}: apply must not mutate its input");
     assert_eq!(state.digest().unwrap(), digest, "{witness}: digest changed");
     let transition = result.unwrap_or_else(|error| {
@@ -1182,7 +1183,7 @@ fn pending_order_rejection_preserves_the_entire_authoritative_world() {
     let before = state.clone();
     let digest = state.digest().unwrap();
     let mut kernel = magic_kernel();
-    let result = kernel.apply(
+    let result = kernel.apply_predecessor(
         &state,
         P1,
         &order_response(DecisionAnswerV2::Order {
@@ -1227,7 +1228,7 @@ fn first_owner_order_only_advances_the_same_round_to_the_next_apnap_owner() {
         .validate_for(&first_request.project_player_request().unwrap())
         .is_ok());
     let mut kernel = magic_kernel();
-    let result = kernel.apply(&state, P1, &response);
+    let result = kernel.apply_predecessor(&state, P1, &response);
     assert_eq!(state, before, "kernel input must remain immutable");
     let transition = result.unwrap_or_else(|error| {
         panic!("S3.A RED: a valid first-owner order has no staged APNAP response path: {error:?}")
@@ -1383,7 +1384,7 @@ fn task9b_one_owner_final_order_applies_in_one_rules_transition() {
         .is_ok());
     let mut kernel = magic_kernel();
     let transition = kernel
-        .apply(&state, P1, &response)
+        .apply_predecessor(&state, P1, &response)
         .expect("the final order and complete SBA batch share one transition");
     assert_eq!(state, before, "the rules input fixture remains immutable");
     assert!(transition.accepted);
@@ -1420,7 +1421,7 @@ fn task9b_second_owner_final_order_applies_in_one_rules_transition() {
         .is_ok());
     let mut kernel = magic_kernel();
     let transition = kernel
-        .apply(&state, P2, &response)
+        .apply_predecessor(&state, P2, &response)
         .expect("the final APNAP order and complete SBA batch share one transition");
     assert_eq!(state, before, "the rules input fixture remains immutable");
     assert!(transition.accepted);
@@ -1485,7 +1486,7 @@ fn assert_rejected_order_without_mutation(
     let before = state.clone();
     let digest = state.digest().unwrap();
     let mut kernel = magic_kernel();
-    let result = kernel.apply(state, trusted_actor, response);
+    let result = kernel.apply_predecessor(state, trusted_actor, response);
     assert_eq!(state, &before);
     assert_eq!(state.digest().unwrap(), digest);
     let transition = result.expect("player-caused Order error is a semantic rejection");
@@ -1537,7 +1538,7 @@ fn task7_order_revalidates_saved_plan_and_continuation_binding() {
     let digest = stale_plan.digest().unwrap();
     let mut kernel = magic_kernel();
     assert!(matches!(
-        kernel.apply(&stale_plan, P1, &response),
+        kernel.apply_predecessor(&stale_plan, P1, &response),
         Err(mtgml_rules::KernelExecutionError::UnsupportedStagePath)
     ));
     assert_eq!(stale_plan, before);
@@ -1554,7 +1555,7 @@ fn task7_order_revalidates_saved_plan_and_continuation_binding() {
     let before = wrong_continuation.clone();
     let mut kernel = magic_kernel();
     assert!(matches!(
-        kernel.apply(&wrong_continuation, P1, &response),
+        kernel.apply_predecessor(&wrong_continuation, P1, &response),
         Err(mtgml_rules::KernelExecutionError::BeforeState(_))
     ));
     assert_eq!(wrong_continuation, before);
@@ -1570,7 +1571,7 @@ fn task7_order_revalidates_saved_plan_and_continuation_binding() {
     let before = wrong_current_actor.clone();
     let mut kernel = magic_kernel();
     assert!(matches!(
-        kernel.apply(&wrong_current_actor, P1, &response),
+        kernel.apply_predecessor(&wrong_current_actor, P1, &response),
         Err(mtgml_rules::KernelExecutionError::BeforeState(_))
     ));
     assert_eq!(wrong_current_actor, before);
@@ -1660,7 +1661,7 @@ fn assert_order_exhaustion(
     let digest = state.digest().unwrap();
     let mut kernel = magic_kernel();
     let error = kernel
-        .apply(state, P1, response)
+        .apply_predecessor(state, P1, response)
         .expect_err("exhausted stage identity must fail before commit");
     assert!(expected(&error), "unexpected exhaustion surface: {error:?}");
     assert_eq!(state, &before);
@@ -1842,7 +1843,7 @@ fn final_order_event_without_the_sba_batch_is_rejected() {
         .map(|event| event.event.semantic_delta())
         .collect();
     let delta = mtgml_state::StateDelta::between(&before, &after, audit).unwrap();
-    let product = TransitionResult {
+    let product = PredecessorTransitionResult {
         accepted: true,
         next_decision: None,
         status: EpisodeStatus::Running,
@@ -1888,7 +1889,7 @@ fn combat_order_answer(state: &EngineState) -> DecisionResponseV2 {
 
 fn assert_atomic_sba_batch_shape(
     before: &EngineState,
-    transition: &TransitionResult,
+    transition: &PredecessorTransitionResult,
     expected_actions: &[SbaSelectedActionV1],
 ) {
     assert!(transition.accepted);
@@ -1940,7 +1941,7 @@ fn assert_atomic_sba_batch_shape(
 
 fn mutate_batch_actions_and_require_rejection(
     before: &EngineState,
-    accepted: &TransitionResult,
+    accepted: &PredecessorTransitionResult,
     mutate: impl FnOnce(&mut Vec<serde_json::Value>),
 ) {
     let mut product = accepted.clone();
@@ -1972,7 +1973,7 @@ fn mutate_batch_actions_and_require_rejection(
     );
 }
 
-fn rebind_test_transition_product(before: &EngineState, product: &mut TransitionResult) {
+fn rebind_test_transition_product(before: &EngineState, product: &mut PredecessorTransitionResult) {
     for (index, event) in product.events.iter_mut().enumerate() {
         event.event_id = RuleEventId(before.allocators.next_rule_event_id.0 + index as u64);
     }
@@ -2002,7 +2003,7 @@ fn task9b_final_one_owner_order_emits_batch_and_exact_s2_moves() {
     };
     let response = current_order_response(&before, vec![CandidateIdV1(1), CandidateIdV1(0)]);
     let transition = magic_kernel()
-        .apply(&before, P1, &response)
+        .apply_predecessor(&before, P1, &response)
         .expect("final Order response must atomically apply the whole SBA round");
     assert_atomic_sba_batch_shape(&before, &transition, &actions);
     for perspective in [P1, P2] {
@@ -2156,7 +2157,7 @@ fn task9b_late_s2_member_failure_discards_the_entire_scratch_batch() {
         .expect("near-exhausted object allocator remains a valid before-state");
     let fingerprint = before.clone();
     let response = current_order_response(&before, vec![CandidateIdV1(1), CandidateIdV1(0)]);
-    let result = magic_kernel().apply(&before, P1, &response);
+    let result = magic_kernel().apply_predecessor(&before, P1, &response);
     assert!(
         matches!(
             result,
@@ -2182,7 +2183,7 @@ fn task9b_final_second_owner_order_preserves_apnap_audit_and_applies_batch() {
     };
     let response = current_order_response(&before, vec![CandidateIdV1(1), CandidateIdV1(0)]);
     let transition = magic_kernel()
-        .apply(&before, P2, &response)
+        .apply_predecessor(&before, P2, &response)
         .expect("final APNAP Order response must atomically apply the whole round");
     assert_atomic_sba_batch_shape(&before, &transition, &actions);
     assert_eq!(
@@ -2371,7 +2372,7 @@ fn task9b_post_damage_dying_blocker_prunes_live_reference_to_none() {
     );
     let response = combat_order_answer(&before);
     let transition = magic_kernel()
-        .apply(&before, P1, &response)
+        .apply_predecessor(&before, P1, &response)
         .expect("post-damage selected deaths must close combat references atomically");
     let combat = transition.next_state.combat.as_ref().unwrap();
     assert_eq!(combat.attackers, vec![GameObjectId(1)]);
@@ -2408,7 +2409,7 @@ fn task9b_post_damage_dying_attacker_is_removed_with_its_blocker_key() {
         &[1, 2],
     );
     let transition = magic_kernel()
-        .apply(&before, P1, &combat_order_answer(&before))
+        .apply_predecessor(&before, P1, &combat_order_answer(&before))
         .expect("post-damage attacker deaths must atomically prune their combat entry");
     let combat = transition.next_state.combat.as_ref().unwrap();
     assert!(combat.attackers.is_empty());
@@ -2509,7 +2510,9 @@ fn task9b_unexplained_combat_state_mutation_remains_rejected() {
     });
     validate_engine_state(&before).unwrap();
     let response = current_order_response(&before, vec![CandidateIdV1(1), CandidateIdV1(0)]);
-    let mut transition = magic_kernel().apply(&before, P1, &response).unwrap();
+    let mut transition = magic_kernel()
+        .apply_predecessor(&before, P1, &response)
+        .unwrap();
     transition.next_state.combat = None;
     transition.delta = mtgml_state::StateDelta::between(
         &before,

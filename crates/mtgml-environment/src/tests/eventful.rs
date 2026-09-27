@@ -12,7 +12,9 @@ use mtgml_model::{
 use mtgml_random::RootSeed256;
 use mtgml_replay::ReplayRecorderV6;
 use mtgml_rules::fixture_support::{FixtureTransition, PlannedOccurrence};
-use mtgml_rules::{AuthoritativeRuleEvent, AuthoritativeRuleEventKind, TransitionResult};
+use mtgml_rules::{
+    AuthoritativeRuleEvent, AuthoritativeRuleEventKind, PredecessorTransitionResult,
+};
 use mtgml_state::{
     validate_engine_state, EngineState, GameObject, IdentityMutationV1, KnowledgeAcquisitionCause,
     KnowledgeAcquisitionReason, KnowledgeHistoryChannel, KnowledgeMutationV1,
@@ -85,10 +87,12 @@ pub(super) fn backend(
     Ok(backend)
 }
 
-fn rejected(before: &EngineState) -> Result<TransitionResult, mtgml_rules::KernelExecutionError> {
+fn rejected(
+    before: &EngineState,
+) -> Result<PredecessorTransitionResult, mtgml_rules::KernelExecutionError> {
     let delta = StateDelta::between(before, before, Vec::new())
         .map_err(mtgml_rules::KernelExecutionError::Delta)?;
-    Ok(TransitionResult {
+    Ok(PredecessorTransitionResult {
         accepted: false,
         next_decision: before
             .execution
@@ -106,7 +110,7 @@ pub(super) fn apply(
     before: &EngineState,
     actor: PlayerId,
     response: &DecisionResponseV2,
-) -> Result<TransitionResult, mtgml_rules::KernelExecutionError> {
+) -> Result<PredecessorTransitionResult, mtgml_rules::KernelExecutionError> {
     let Some(pending) = before.execution.pending_decision.as_ref() else {
         return rejected(before);
     };
@@ -184,7 +188,7 @@ pub(super) fn apply(
         .collect();
     let delta = StateDelta::between(before, &generated.next_state, audit)
         .map_err(mtgml_rules::KernelExecutionError::Delta)?;
-    let result = TransitionResult {
+    let result = PredecessorTransitionResult {
         accepted: true,
         next_decision: None,
         status: EpisodeStatus::Running,

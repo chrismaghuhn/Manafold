@@ -88,16 +88,22 @@ class PythonTestProfileTests(unittest.TestCase):
         gate = [sys.executable, "scripts/run_v5_execution_identity_gate.py"]
         self.assertIn(gate, run_checks.FAST)
 
-    def test_fast_profile_includes_current_v6_state_identity_gate(self) -> None:
+    def test_fast_profile_includes_migrated_state_identity_gate(self) -> None:
         gate = [sys.executable, "scripts/run_v6_state_identity_gate.py"]
         self.assertIn(gate, run_checks.FAST)
 
-    def test_justfile_contracts_includes_historical_v5_and_current_v6_gates(self) -> None:
+    def test_justfile_contracts_includes_historical_identity_gates(self) -> None:
         justfile = ROOT / "justfile"
         text = justfile.read_text(encoding="utf-8")
         self.assertIn("run_v5_execution_identity_gate.py", text)
         self.assertIn("run_v6_state_identity_gate.py", text)
         self.assertIn("generate_semantic_contract_catalog.py --check", text)
+
+    def test_integration_compiles_default_successor_environment_separately(self) -> None:
+        self.assertIn(
+            ["cargo", "check", "-p", "mtgml-environment", "--locked"],
+            run_checks.INTEGRATION_EXTRA,
+        )
 
     def test_python_tools_are_bound_to_the_selected_interpreter(self) -> None:
         self.assertIn(

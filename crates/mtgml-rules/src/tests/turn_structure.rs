@@ -922,7 +922,7 @@ fn cleanup_state_with_marked_damage() -> EngineState {
     state
 }
 
-fn cleanup_product_for_contract(before: &EngineState) -> TransitionResult {
+fn cleanup_product_for_contract(before: &EngineState) -> PredecessorTransitionResult {
     let mut after = before.clone();
     after.revision = StateRevision(before.revision.0 + 1);
     after.core.turn_number = before.core.turn_number + 1;

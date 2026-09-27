@@ -61,6 +61,10 @@ INTEGRATION_EXTRA = [
     [sys.executable, "-m", "ruff", "format", "--check", "python", "scripts"],
     [sys.executable, "-m", "ruff", "check", "python", "scripts"],
     [sys.executable, "-m", "mypy", "--config-file", "python/pyproject.toml"],
+    # The workspace-wide all-features build also enables the explicitly
+    # historical conformance adapter. Compile the product's default feature
+    # selection separately so the current environment API stays V7/V3.
+    ["cargo", "check", "-p", "mtgml-environment", "--locked"],
     ["cargo", "fmt", "--all", "--", "--check"],
     ["cargo", "check", "--workspace", "--all-targets", "--all-features", "--locked"],
     [

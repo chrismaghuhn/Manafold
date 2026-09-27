@@ -7,7 +7,7 @@ use mtgml_state::{validate_engine_state, EngineState, StateDelta};
 use crate::contract::validate_transition_contract;
 use crate::errors::KernelExecutionError;
 use crate::events::AuthoritativeRuleEvent;
-use crate::transition::TransitionResult;
+use crate::transition::PredecessorTransitionResult;
 
 /// Compose two already validated Rules products into one externally atomic
 /// product. The intermediate state remains kernel-local; the second product's
@@ -16,9 +16,9 @@ use crate::transition::TransitionResult;
 /// composed transition contract before returning it.
 pub(crate) fn compose_atomic_products(
     before: &EngineState,
-    first: TransitionResult,
-    second: TransitionResult,
-) -> Result<TransitionResult, KernelExecutionError> {
+    first: PredecessorTransitionResult,
+    second: PredecessorTransitionResult,
+) -> Result<PredecessorTransitionResult, KernelExecutionError> {
     if !first.accepted
         || !second.accepted
         || first.next_state.revision.0
@@ -75,7 +75,7 @@ pub(crate) fn compose_atomic_products(
         .pending_decision
         .as_ref()
         .map(|pending| pending.request.clone());
-    Ok(TransitionResult {
+    Ok(PredecessorTransitionResult {
         accepted: true,
         next_state,
         delta,
@@ -91,9 +91,9 @@ pub(crate) fn compose_atomic_products(
 /// round-start revision.
 pub(crate) fn compose_sequential_products(
     before: &EngineState,
-    first: TransitionResult,
-    second: TransitionResult,
-) -> Result<TransitionResult, KernelExecutionError> {
+    first: PredecessorTransitionResult,
+    second: PredecessorTransitionResult,
+) -> Result<PredecessorTransitionResult, KernelExecutionError> {
     if !first.accepted
         || !second.accepted
         || first.next_state.revision.0
@@ -134,7 +134,7 @@ pub(crate) fn compose_sequential_products(
         .pending_decision
         .as_ref()
         .map(|pending| pending.request.clone());
-    Ok(TransitionResult {
+    Ok(PredecessorTransitionResult {
         accepted: true,
         next_state: second.next_state,
         delta,
@@ -152,7 +152,7 @@ pub(crate) fn build_accepted_product(
     next: EngineState,
     events: Vec<AuthoritativeRuleEvent>,
     mutate: impl FnOnce(&mut EngineState) -> Result<(), KernelExecutionError>,
-) -> Result<TransitionResult, KernelExecutionError> {
+) -> Result<PredecessorTransitionResult, KernelExecutionError> {
     build_accepted_product_with_status(state, next, events, EpisodeStatus::Running, mutate)
 }
 
@@ -162,7 +162,7 @@ pub(crate) fn build_accepted_product_with_status(
     events: Vec<AuthoritativeRuleEvent>,
     status: EpisodeStatus,
     mutate: impl FnOnce(&mut EngineState) -> Result<(), KernelExecutionError>,
-) -> Result<TransitionResult, KernelExecutionError> {
+) -> Result<PredecessorTransitionResult, KernelExecutionError> {
     let event_count =
         u64::try_from(events.len()).map_err(|_| KernelExecutionError::RuleEventIdOverflow)?;
     let next_rule_event_id = state
@@ -179,7 +179,7 @@ pub(crate) fn build_accepted_product_with_status(
         .map(|event| event.event.semantic_delta())
         .collect();
     let delta = StateDelta::between(state, &next, audit).map_err(KernelExecutionError::Delta)?;
-    let result = TransitionResult {
+    let result = PredecessorTransitionResult {
         accepted: true,
         next_decision: next
             .execution

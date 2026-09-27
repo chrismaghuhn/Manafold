@@ -1,6 +1,8 @@
-//! Detached EnvironmentCheckpointV7 over the FullStateDigestV6 state DTO.
+//! EnvironmentCheckpointV7 over the authoritative FullStateDigestV6 state DTO.
 //!
-//! This type never enters the current environment/controller restore path.
+//! This is the executable checkpoint family for the successor integration
+//! runtime. Historical V6 checkpoint types remain available only through the
+//! explicitly selected conformance/migration testkit.
 
 use std::collections::BTreeSet;
 
@@ -108,17 +110,17 @@ impl EnvironmentCheckpointV7 {
         Ok(())
     }
 
-    /// Validates and returns the detached successor snapshot. This does not
-    /// admit or expose a current executable backend; catalog admission belongs
-    /// to the eventual atomic runtime activation boundary.
+    /// Validates and returns the structural successor snapshot without making
+    /// a content-admission claim. Executable Magic restore must use
+    /// `restore_with_verified_contracts` before constructing the runtime.
     pub fn restore_detached(&self) -> Result<EngineStatePartsV2, CheckpointV7Error> {
         self.validate()?;
         Ok(self.state.clone())
     }
 
-    /// Verifies the complete immutable contract identity chain needed before
-    /// a later runtime admission can consider this detached state executable.
-    /// This still does not construct or activate a backend.
+    /// Verifies the complete immutable contract identity chain required by
+    /// the executable successor runtime. The runtime calls this before
+    /// accepting a checkpoint for restore or fork.
     pub fn restore_with_verified_contracts(
         &self,
         semantic_manifest: &SemanticContractManifestV1,

@@ -10,7 +10,7 @@ use crate::errors::{ControllerError, ReplayExecutionError};
 pub struct ReplayExecutionTrace {
     pub step_index: u64,
     pub before: EnvironmentCheckpointV6,
-    pub transition: mtgml_rules::TransitionResult,
+    pub transition: mtgml_rules::PredecessorTransitionResult,
     pub after: EnvironmentCheckpointV6,
 }
 
@@ -35,7 +35,7 @@ fn checked_counter_add(
 
 fn deterministic_counters(
     before: &EnvironmentCheckpointV6,
-    transition: &mtgml_rules::TransitionResult,
+    transition: &mtgml_rules::PredecessorTransitionResult,
 ) -> Result<EnvironmentLimitCounters, ControllerError> {
     let event_count =
         u64::try_from(transition.events.len()).map_err(|_| ControllerError::CounterOverflow {
@@ -64,7 +64,7 @@ fn deterministic_counters(
 
 fn expected_counters(
     before: &EnvironmentCheckpointV6,
-    transition: &mtgml_rules::TransitionResult,
+    transition: &mtgml_rules::PredecessorTransitionResult,
     recorded: &EnvironmentLimitCounters,
     step_index: u64,
 ) -> Result<EnvironmentLimitCounters, ControllerError> {

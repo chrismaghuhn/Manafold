@@ -135,7 +135,7 @@ fn execution_authority(
     )
 }
 
-fn basic_land_parts(root_seed: mtgml_random::RootSeed256) -> EngineStatePartsV2 {
+pub(crate) fn basic_land_parts(root_seed: mtgml_random::RootSeed256) -> EngineStatePartsV2 {
     let mut state =
         mtgml_state::construct_synthetic_engine_state(mtgml_state::SyntheticResetInputs {
             players: [PlayerId(1), PlayerId(2)],
