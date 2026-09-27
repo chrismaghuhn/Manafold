@@ -159,7 +159,7 @@ The actual canonical fields are fixed only by the accepted identity decision. Du
 
 Target references are a closed trusted union (current object incarnation, player, and stack item where a triggered/counter rule needs it). Ability/card semantics resolve through the immutable content and semantic contract bound by `ExecutionIdentityV1`; no card-name switch or process-global catalog lookup. A stack payload is not Oracle text, arbitrary JSON, an opcode, a callback, a closure, or an untyped `EffectRecord` label. A profile that needs a new captured value must add a typed reviewed variant before its card can be admitted.
 
-The pending trigger record contains controller; immutable source/profile/ability identity; trigger-time event class and only the typed facts needed by its predicate/resolution; target timing; and any required intervening-if receipt. It cannot depend on a live source after departure. Triggers already detected survive source departure. The record is removed when the typed payload is transferred to the stack. APNAP placement order and each player's chosen order are explicit vectors, never BTreeMap/TriggerInstanceId order. Reflexive/delayed trigger frameworks are not added here; their exact profiles remain later Shared or deck-exclusive work.
+The pending trigger record contains controller; immutable source/profile/ability identity; the closed trigger-time `TriggerEventSnapshot`; and the exact `target_timing_tag`. It cannot depend on a live source after departure. Triggers already detected survive source departure. The record is removed when the typed payload is transferred to the stack. No intervening-if receipt is stored because no locked R1 × W1 witness requires one. APNAP placement order and each player's chosen order are explicit vectors, never BTreeMap/TriggerInstanceId order. Reflexive/delayed trigger frameworks are not added here; their exact profiles remain later Shared or deck-exclusive work.
 
 The trigger event context is a typed snapshot, never just `RuleEventId` or a lookup into an unpersisted event log. The G0 closed event facts cover only event families needed by the locked clauses, such as `SpellCast`, `AbilityActivated`, `TargetBecame`, `ObjectEntered`, `ObjectLeftOrDied`, `AttackDeclared`, `CardDrawn`, and post-replacement `DamageOrLifeChanged`. Each variant carries only the rule facts needed for its admitted predicates/effects (actor/controller, trusted source/subject references, relevant profile key, amount/type/zone snapshot). A new event fact or predicate shape outside those families requires G0 amendment; no arbitrary map or callback payload is admitted.
 
@@ -360,25 +360,31 @@ The G0 source capture is exactly `SourceContext { snapshot: ObjectSnapshot, face
 
 ```text
 TriggerEventSnapshot =
-  SpellCast { actor, stack_item, spell: ObjectSnapshot, face_key, semantic_profile_id,
-              is_creature_spell, cost_facts }
-| AbilityActivated { actor, stack_item, source: SourceContext, targets, cost_facts }
-| TargetBecame { actor, source_stack_item, target: TargetRef }
+  SpellCast { actor: PlayerId, stack_item: StackObjectId, spell: ObjectSnapshot,
+              face_key: FaceKey, semantic_profile_id: CardSemanticProfileId,
+              is_creature_spell: bool, cost_facts: CostFacts }
+| AbilityActivated { actor: PlayerId, stack_item: StackObjectId, source: SourceContext,
+                     targets: Vec<TargetBinding>, cost_facts: CostFacts }
+| TargetBecame { actor: PlayerId, source_stack_item: StackObjectId, target: TargetRef }
 | ObjectEntered { object: ObjectSnapshot }
 | ObjectLeftOrDied { last_known: ObjectSnapshot, destination: ZoneLocation }
-| AttackDeclared { controller, attackers: [AttackerFact { object, defending_player }] }
-| CardDrawn { player, count }
+| BeginningOfCombat { active_player: PlayerId, turn_number: u64 }
+| AttackDeclared { controller: PlayerId, attackers: Vec<AttackerFact> }
+| CardDrawn { player: PlayerId }
+| CounterChanged { object: GameObjectId, kind: CounterKindV1, before: u32, after: u32 }
 | DamageApplied { source: Option<SourceContext>, recipient: DamageRecipient,
-                  amount, damage_kind: DamageKind }
-| LifeChanged { player, before, after, cause: LifeChangeCause }
+                  amount: u32, damage_kind: DamageKind }
+| LifeChanged { player: PlayerId, before: i64, after: i64, cause: LifeChangeCause }
 
+CostFacts = { selected_route: Option<CostRoute>, paid_additional_cost_ids: Vec<u32> }
+AttackerFact = { object: GameObjectId, defending_player: PlayerId }
 TargetRef = Object(GameObjectId) | Player(PlayerId) | StackItem(StackObjectId)
 DamageRecipient = Object(GameObjectId) | Player(PlayerId)
 DamageKind = Combat | Noncombat
 LifeChangeCause = Damage | NonDamage
 ```
 
-All numeric values use bounded integer types: counts and damage amounts are `u32`, life totals are `i64`, and player/object/stack identities use their existing typed IDs. All vectors preserve semantic event order. `SpellCast.is_creature_spell` is the rules-derived value at the cast event, not a later live query. `AttackDeclared.attackers` records the declared attacker and defending player pairs; creature-type qualification is evaluated at the event and is not re-evaluated from later board state. `DamageApplied` carries the post-replacement amount and recipient. `LifeChanged` carries actual before/after totals so life loss is distinct from damage. `CardDrawn` never captures a hidden drawn-card identity. This union is closed for the accepted Shared foundation; adding another event family or fact requires a reviewed G0 amendment.
+All numeric values use these exact bounded types: damage amount and counter totals are `u32`; turn number is `u64`; life totals are `i64`; player/object/stack identities use existing typed IDs. All vectors preserve semantic event order. `SpellCast.is_creature_spell` is the rules-derived value at the cast event, not a later live query. `AttackDeclared.attackers` records the declared attacker and defending player pairs; creature-type qualification is evaluated at the event and is not re-evaluated from later board state. `BeginningOfCombat` records the active player and current turn before beginning-of-combat triggers are detected. `CounterChanged` records the exact existing `CounterKindV1` and before/after totals; this includes Lore-counter changes required by Saga chapter detection. `DamageApplied` carries the post-replacement amount and recipient. `LifeChanged` carries actual before/after totals so life loss is distinct from damage. `CardDrawn` represents one card-draw occurrence and never captures a hidden drawn-card identity. This union is closed for the accepted Shared foundation; adding another event family or fact requires a reviewed G0 amendment.
 
 `TriggerRecord` has no intervening-if receipt field: the locked R1 × W1 trigger witnesses contain no intervening-if clause. `target_timing_tag` has exactly three values: `no_targets` when the trigger has no targets, `captured_from_event` when the trigger itself is caused by an object becoming a target (the Ward path retains that exact target), and `choose_on_placement` when the rules require target selection as the trigger is put on the stack. Reflexive-trigger follow-up mechanics remain outside G0; if any accepted profile requires an intervening-if receipt or a fourth target-timing value, stop and amend G0 before admitting it.
 
