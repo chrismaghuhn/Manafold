@@ -169,6 +169,24 @@ pub enum BasicLandTransitionError {
     InvalidResult,
     #[error("the transition delta could not be constructed")]
     Delta,
+    #[error("the next turn boundary requires semantics outside this admitted profile")]
+    UnsupportedPriorityBoundary,
+}
+
+/// Resolve the second-pass boundary only when this profile can immediately
+/// expose a valid ordinary priority window. Other boundaries require a
+/// turn-based action or another rules-owned forced-progress producer (draw,
+/// combat declaration, cleanup, and similar work). They fail closed instead
+/// of manufacturing a priority decision at the temporal successor.
+fn priority_window_after_second_pass(
+    position: TurnPosition,
+) -> Result<TurnPosition, BasicLandTransitionError> {
+    match position {
+        TurnPosition::PrecombatMain => Ok(TurnPosition::Combat {
+            step: mtgml_state::CombatStep::BeginningOfCombat,
+        }),
+        _ => Err(BasicLandTransitionError::UnsupportedPriorityBoundary),
+    }
 }
 
 fn push_successor_event(
@@ -331,7 +349,7 @@ pub fn execute_basic_land_response(
                 } if player == actor && actor != core.active_player => {
                     let next_actor = core.active_player;
                     let old_position = core.position;
-                    let new_position = crate::turn_structure::temporal_successor(old_position);
+                    let new_position = priority_window_after_second_pass(old_position)?;
                     let to_priority = mtgml_state::PriorityState::HeldBy {
                         player: next_actor,
                         consecutive_passes: 0,
@@ -2243,6 +2261,38 @@ mod tests {
                 ..
             }
         )));
+    }
+
+    #[test]
+    fn unsupported_second_pass_boundaries_fail_closed() {
+        use mtgml_state::{BeginningStep, CombatStep, EndingStep};
+
+        assert_eq!(
+            priority_window_after_second_pass(TurnPosition::PrecombatMain),
+            Ok(TurnPosition::Combat {
+                step: CombatStep::BeginningOfCombat,
+            })
+        );
+        for position in [
+            TurnPosition::Beginning {
+                step: BeginningStep::Upkeep,
+            },
+            TurnPosition::Combat {
+                step: CombatStep::BeginningOfCombat,
+            },
+            TurnPosition::Ending {
+                step: EndingStep::EndStep,
+            },
+            TurnPosition::Ending {
+                step: EndingStep::Cleanup,
+            },
+        ] {
+            assert_eq!(
+                priority_window_after_second_pass(position),
+                Err(BasicLandTransitionError::UnsupportedPriorityBoundary),
+                "must not open ordinary priority after unsupported boundary {position:?}"
+            );
+        }
     }
 
     #[test]

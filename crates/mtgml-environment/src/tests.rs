@@ -547,6 +547,38 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
         &missing_pool_clear,
     )
     .is_err());
+
+    // Beginning of Combat flows to the attacker declaration boundary. This
+    // admitted profile has no attacker-declaration producer, so it must fail
+    // closed rather than fabricate another ordinary priority request.
+    let beginning_combat_request = runtime.visible_decision(actor).unwrap().unwrap();
+    let beginning_combat_first_pass = runtime
+        .submit(actor, make_pass_response(&beginning_combat_request))
+        .unwrap();
+    assert!(beginning_combat_first_pass.transition.accepted);
+    let next_actor = beginning_combat_first_pass
+        .transition
+        .next_decision
+        .as_ref()
+        .unwrap()
+        .actor;
+    let before_unsupported_boundary = runtime.checkpoint().unwrap();
+    let replay_before_unsupported_boundary = runtime.export_replay().unwrap();
+    let replay_bytes_before_unsupported_boundary =
+        serde_json::to_vec(&replay_before_unsupported_boundary).unwrap();
+    let next_request = runtime.visible_decision(next_actor).unwrap().unwrap();
+    assert!(runtime
+        .submit(next_actor, make_pass_response(&next_request))
+        .is_err());
+    assert_eq!(runtime.checkpoint().unwrap(), before_unsupported_boundary);
+    assert_eq!(
+        runtime.export_replay().unwrap(),
+        replay_before_unsupported_boundary
+    );
+    assert_eq!(
+        serde_json::to_vec(&runtime.export_replay().unwrap()).unwrap(),
+        replay_bytes_before_unsupported_boundary
+    );
 }
 
 fn config(players: [PlayerId; 2]) -> SyntheticRulesEnvironmentConfig {
