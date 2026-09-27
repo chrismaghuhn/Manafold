@@ -32,6 +32,23 @@ class PlayerDecisionRequestV4Tests(unittest.TestCase):
             decode_canonical("player-decision-request.v4", encode_canonical(request)), request
         )
 
+    def test_preserves_attacker_declaration_and_synthetic_assembly_domains(self) -> None:
+        names = (
+            "attacker-declaration",
+            "synthetic-entry",
+            "synthetic-count",
+            "synthetic-members",
+            "synthetic-order",
+        )
+        for name in names:
+            with self.subTest(name=name):
+                raw = json.loads(
+                    (
+                        ROOT / "schemas/examples" / f"player-decision-request-v4-{name}.json"
+                    ).read_text(encoding="utf-8")
+                )
+                self.assertEqual(PlayerDecisionRequestV4.from_wire(raw).to_wire(), raw)
+
     def test_response_binds_only_request_and_view_identity(self) -> None:
         request = PlayerDecisionRequestV4.from_wire(request_fixture())
         response = DecisionResponseV3(
@@ -77,6 +94,74 @@ class PlayerDecisionRequestV4Tests(unittest.TestCase):
         descriptor["source_ability"] = "3"
         with self.assertRaises(WireError):
             PlayerDecisionRequestV4.from_wire(conflicting)
+
+    def test_trigger_order_requires_order_domain_and_actor_only_visibility(self) -> None:
+        raw = request_fixture()
+        wrong_domain = copy.deepcopy(raw)
+        wrong_domain["decision_domain_v2"] = {"kind": "choose_one"}
+        with self.assertRaises(WireError):
+            PlayerDecisionRequestV4.from_wire(wrong_domain)
+        public = copy.deepcopy(raw)
+        public["visibility"] = "public"
+        with self.assertRaises(WireError):
+            PlayerDecisionRequestV4.from_wire(public)
+
+    def test_each_purpose_rejects_a_domain_outside_its_closed_relation(self) -> None:
+        cases = (
+            ({"kind": "priority_action"}, "choose_many"),
+            ({"kind": "attacker_declaration"}, "choose_one"),
+            ({"kind": "cast_cost_route"}, "choose_many"),
+            ({"kind": "mode_selection", "mode_slot": 0}, "choose_number"),
+            ({"kind": "target_selection", "target_slot": 0}, "choose_number"),
+            (
+                {
+                    "kind": "cost_operand_selection",
+                    "cost_slot": 0,
+                    "operation": "put_counters",
+                    "counter_kind": "minus_one_minus_one",
+                    "count": 2,
+                },
+                "choose_many",
+            ),
+            ({"kind": "mana_production_choice"}, "choose_many"),
+            ({"kind": "mana_payment"}, "choose_many"),
+            ({"kind": "optional_cost_payment", "profile_local_cost_id": 0}, "choose_many"),
+            ({"kind": "ability_action"}, "choose_many"),
+            ({"kind": "trigger_order"}, "choose_one"),
+            ({"kind": "trigger_target", "target_slot": 0}, "choose_number"),
+            (
+                {"kind": "synthetic_assembly", "stage": "choose_count"},
+                "choose_one",
+            ),
+        )
+        for purpose, wrong_domain in cases:
+            with self.subTest(purpose=purpose["kind"]):
+                raw = {
+                    "schema_version": "player-decision-request.v4",
+                    "player_decision_id": "1",
+                    "view_sequence": "0",
+                    "actor": "0",
+                    "visibility": "public",
+                    "decision_domain_v2": {
+                        "kind": wrong_domain,
+                        "minimum": 0,
+                        "maximum": 0,
+                    },
+                    "purpose": purpose,
+                    "parent_player_decision_id": None,
+                    "candidates": [],
+                }
+                with self.assertRaises(WireError):
+                    PlayerDecisionRequestV4.from_wire(raw)
+
+    def test_rejects_source_ability_without_visible_source_object(self) -> None:
+        raw = request_fixture()
+        unbound = copy.deepcopy(raw)
+        descriptor = unbound["candidates"][0]["intent"]["trigger"]
+        descriptor["source_object"] = None
+        descriptor["source_ability"] = "99"
+        with self.assertRaises(WireError):
+            PlayerDecisionRequestV4.from_wire(unbound)
 
 
 if __name__ == "__main__":

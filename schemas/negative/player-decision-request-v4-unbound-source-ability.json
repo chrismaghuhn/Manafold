@@ -1,0 +1,241 @@
+{
+  "actor": "0",
+  "candidates": [
+    {
+      "candidate_id": 0,
+      "intent": {
+        "kind": "select_trigger",
+        "trigger": {
+          "event_kind": "spell_cast",
+          "source_ability": "99",
+          "source_object": null,
+          "subject": {
+            "actor": "0",
+            "cost_facts": {
+              "paid_additional_cost_ids": [],
+              "selected_route": {
+                "kind": "normal"
+              }
+            },
+            "creature_spell": true,
+            "kind": "spell_cast",
+            "spell_source_object": null
+          }
+        }
+      }
+    },
+    {
+      "candidate_id": 1,
+      "intent": {
+        "kind": "select_trigger",
+        "trigger": {
+          "event_kind": "ability_activated",
+          "source_ability": "20",
+          "source_object": "20",
+          "subject": {
+            "activated_source_ability": "2",
+            "activated_source_object": "11",
+            "actor": "0",
+            "cost_facts": {
+              "paid_additional_cost_ids": [],
+              "selected_route": {
+                "kind": "normal"
+              }
+            },
+            "kind": "ability_activated",
+            "targets": [
+              {
+                "kind": "object",
+                "object": "17"
+              },
+              {
+                "kind": "player",
+                "player": "1"
+              },
+              {
+                "kind": "stack_item",
+                "stack_position_from_top": 0
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "candidate_id": 2,
+      "intent": {
+        "kind": "select_trigger",
+        "trigger": {
+          "event_kind": "target_became",
+          "source_ability": "3",
+          "source_object": "3",
+          "subject": {
+            "actor": "0",
+            "kind": "target_became",
+            "target": {
+              "kind": "stack_item",
+              "stack_position_from_top": 1
+            }
+          }
+        }
+      }
+    },
+    {
+      "candidate_id": 3,
+      "intent": {
+        "kind": "select_trigger",
+        "trigger": {
+          "event_kind": "object_entered",
+          "source_ability": "4",
+          "source_object": "4",
+          "subject": {
+            "kind": "object_entered",
+            "object": "18"
+          }
+        }
+      }
+    },
+    {
+      "candidate_id": 4,
+      "intent": {
+        "kind": "select_trigger",
+        "trigger": {
+          "event_kind": "object_left_or_died",
+          "source_ability": "5",
+          "source_object": "5",
+          "subject": {
+            "destination": "exile",
+            "kind": "object_left_or_died",
+            "last_known_object": null
+          }
+        }
+      }
+    },
+    {
+      "candidate_id": 5,
+      "intent": {
+        "kind": "select_trigger",
+        "trigger": {
+          "event_kind": "beginning_of_combat",
+          "source_ability": "6",
+          "source_object": "6",
+          "subject": {
+            "active_player": "0",
+            "kind": "beginning_of_combat",
+            "turn_number": "3"
+          }
+        }
+      }
+    },
+    {
+      "candidate_id": 6,
+      "intent": {
+        "kind": "select_trigger",
+        "trigger": {
+          "event_kind": "attack_declared",
+          "source_ability": "7",
+          "source_object": "7",
+          "subject": {
+            "attackers": [
+              {
+                "attacker": "3",
+                "defending_player": "1"
+              },
+              {
+                "attacker": "9",
+                "defending_player": "0"
+              }
+            ],
+            "controller": "0",
+            "kind": "attack_declared"
+          }
+        }
+      }
+    },
+    {
+      "candidate_id": 7,
+      "intent": {
+        "kind": "select_trigger",
+        "trigger": {
+          "event_kind": "card_drawn",
+          "source_ability": "8",
+          "source_object": "8",
+          "subject": {
+            "kind": "card_drawn",
+            "player": "1"
+          }
+        }
+      }
+    },
+    {
+      "candidate_id": 8,
+      "intent": {
+        "kind": "select_trigger",
+        "trigger": {
+          "event_kind": "counter_changed",
+          "source_ability": "9",
+          "source_object": "9",
+          "subject": {
+            "after": 2,
+            "before": 0,
+            "counter_kind": "minus_one_minus_one",
+            "kind": "counter_changed",
+            "object": "4"
+          }
+        }
+      }
+    },
+    {
+      "candidate_id": 9,
+      "intent": {
+        "kind": "select_trigger",
+        "trigger": {
+          "event_kind": "damage_applied",
+          "source_ability": "10",
+          "source_object": "10",
+          "subject": {
+            "amount": 3,
+            "damage_kind": "noncombat",
+            "kind": "damage_applied",
+            "recipient": {
+              "kind": "player",
+              "player": "1"
+            },
+            "source_object": null
+          }
+        }
+      }
+    },
+    {
+      "candidate_id": 10,
+      "intent": {
+        "kind": "select_trigger",
+        "trigger": {
+          "event_kind": "life_changed",
+          "source_ability": "11",
+          "source_object": "11",
+          "subject": {
+            "after": 17,
+            "before": 20,
+            "cause": "damage",
+            "kind": "life_changed",
+            "player": "1"
+          }
+        }
+      }
+    }
+  ],
+  "decision_domain_v2": {
+    "kind": "order",
+    "maximum": 11,
+    "minimum": 11
+  },
+  "parent_player_decision_id": null,
+  "player_decision_id": "10",
+  "purpose": {
+    "kind": "trigger_order"
+  },
+  "schema_version": "player-decision-request.v4",
+  "view_sequence": "8",
+  "visibility": "acting_player_only"
+}

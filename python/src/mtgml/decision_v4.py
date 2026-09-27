@@ -57,6 +57,7 @@ _CANDIDATE_RANK = {
 }
 _PURPOSE_CANDIDATES = {
     "priority_action": {"pass_priority", "play_land", "cast_spell", "activate_ability"},
+    "attacker_declaration": {"select_object"},
     "cast_cost_route": {"select_cost_route"},
     "mode_selection": {"select_mode"},
     "target_selection": {"select_object", "select_player"},
@@ -67,6 +68,22 @@ _PURPOSE_CANDIDATES = {
     "ability_action": {"activate_ability"},
     "trigger_order": {"select_trigger"},
     "trigger_target": {"select_object", "select_player"},
+    "synthetic_assembly": {"select_object"},
+}
+_PURPOSE_DOMAINS = {
+    "priority_action": {"choose_one"},
+    "attacker_declaration": {"choose_many"},
+    "cast_cost_route": {"choose_one"},
+    "mode_selection": {"choose_one", "choose_many"},
+    "target_selection": {"choose_one", "choose_many"},
+    "cost_operand_selection": {"choose_one"},
+    "mana_production_choice": {"choose_one"},
+    "mana_payment": {"choose_one"},
+    "optional_cost_payment": {"choose_one"},
+    "ability_action": {"choose_one"},
+    "trigger_order": {"order"},
+    "trigger_target": {"choose_one", "choose_many"},
+    "synthetic_assembly": {"choose_one", "choose_number", "choose_many", "order"},
 }
 
 
@@ -694,6 +711,11 @@ class SafeTriggerDescriptorV1:
         )
         if self.event_kind not in _EVENT_RANK or subject_kind != self.event_kind:
             raise WireError("semantic.decision", "trigger event and subject tags differ")
+        if self.source_ability is not None and self.source_object is None:
+            raise WireError(
+                "semantic.decision",
+                "visible source ability requires its visible source object",
+            )
         if isinstance(self.subject, AttackDeclaredSubjectV1):
             self.subject.validate()
 
@@ -904,6 +926,7 @@ class DecisionPurposeV4:
     counter_kind: str | None = None
     count: int | None = None
     profile_local_cost_id: int | None = None
+    stage: str | None = None
 
     @classmethod
     def from_wire(cls, value: object) -> DecisionPurposeV4:
@@ -912,6 +935,7 @@ class DecisionPurposeV4:
         kind = value.get("kind")
         fields: dict[str, set[str]] = {
             "priority_action": set(),
+            "attacker_declaration": set(),
             "cast_cost_route": set(),
             "mode_selection": {"mode_slot"},
             "target_selection": {"target_slot"},
@@ -922,6 +946,7 @@ class DecisionPurposeV4:
             "ability_action": set(),
             "trigger_order": set(),
             "trigger_target": {"target_slot"},
+            "synthetic_assembly": {"stage"},
         }
         if kind not in fields:
             raise WireError("decode.invalid_json", "unknown DecisionPurposeV4")
@@ -930,7 +955,7 @@ class DecisionPurposeV4:
         for field in ("mode_slot", "target_slot", "cost_slot", "count", "profile_local_cost_id"):
             if field in obj:
                 kwargs[field] = _u32(obj[field], field)
-        for field in ("operation", "counter_kind"):
+        for field in ("operation", "counter_kind", "stage"):
             if field in obj:
                 kwargs[field] = obj[field]
         result = cls(**kwargs)
@@ -962,6 +987,13 @@ class DecisionPurposeV4:
                 raise WireError("semantic.decision", "decision slot is absent")
         if self.kind == "optional_cost_payment" and self.profile_local_cost_id is None:
             raise WireError("semantic.decision", "optional cost ID is absent")
+        if self.kind == "synthetic_assembly" and self.stage not in {
+            "entry",
+            "choose_count",
+            "choose_members",
+            "order_members",
+        }:
+            raise WireError("semantic.decision", "unknown synthetic assembly stage")
 
     def to_wire(self) -> dict[str, object]:
         self.validate()
@@ -973,10 +1005,12 @@ class DecisionPurposeV4:
             "counter_kind",
             "count",
             "profile_local_cost_id",
+            "stage",
         }
         present_fields = {field for field in all_payload_fields if getattr(self, field) is not None}
         allowed_fields = {
             "priority_action": set(),
+            "attacker_declaration": set(),
             "cast_cost_route": set(),
             "mode_selection": {"mode_slot"},
             "target_selection": {"target_slot"},
@@ -992,6 +1026,7 @@ class DecisionPurposeV4:
             "ability_action": set(),
             "trigger_order": set(),
             "trigger_target": {"target_slot"},
+            "synthetic_assembly": {"stage"},
         }[self.kind]
         if present_fields != allowed_fields:
             raise WireError("encode.serialization", "decision purpose has missing or extra fields")
@@ -1004,6 +1039,7 @@ class DecisionPurposeV4:
             "counter_kind",
             "count",
             "profile_local_cost_id",
+            "stage",
         ):
             value = getattr(self, field)
             if value is not None:
@@ -1072,6 +1108,34 @@ class PlayerDecisionRequestV4:
         uint_wire(self.actor)
         _nullable_wire(self.parent_player_decision_id)
         self.purpose.validate()
+        if self.decision_domain_v2.kind not in _PURPOSE_DOMAINS[self.purpose.kind]:
+            raise WireError("semantic.decision", "decision domain is incompatible with purpose")
+        if self.purpose.kind == "trigger_order" and self.visibility != "acting_player_only":
+            raise WireError("semantic.decision", "trigger-order request is not actor-only")
+        if self.purpose.kind == "attacker_declaration" and self.visibility != "acting_player_only":
+            raise WireError("semantic.decision", "attacker declaration request is not actor-only")
+        if self.purpose.kind == "synthetic_assembly":
+            if self.visibility != "public":
+                raise WireError("semantic.decision", "synthetic assembly request is not public")
+            stage_domain = {
+                "entry": "choose_one",
+                "choose_count": "choose_number",
+                "choose_members": "choose_many",
+                "order_members": "order",
+            }[self.purpose.stage]
+            if self.decision_domain_v2.kind != stage_domain:
+                raise WireError("semantic.decision", "synthetic assembly stage/domain mismatch")
+            if stage_domain == "choose_number" and self.candidates:
+                raise WireError(
+                    "semantic.decision", "synthetic count decision cannot have candidates"
+                )
+            if stage_domain != "choose_number" and any(
+                candidate.intent.kind != "select_object" for candidate in self.candidates
+            ):
+                raise WireError(
+                    "semantic.decision",
+                    "synthetic assembly candidate must select an object",
+                )
         self.decision_domain_v2.validate(len(self.candidates))
         if self.decision_domain_v2.kind == "choose_number" and self.candidates:
             raise WireError("semantic.decision", "choose_number cannot contain candidates")

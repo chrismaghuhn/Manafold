@@ -485,6 +485,27 @@
       "unevaluatedProperties": false
     },
     "safe_trigger_descriptor": {
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "source_ability": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "source_ability"
+            ]
+          },
+          "then": {
+            "properties": {
+              "source_object": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ],
       "oneOf": [
         {
           "$ref": "#/$defs/safe_trigger_spell_cast"
@@ -780,6 +801,663 @@
   "$id": "player-decision-request.v4.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "properties": {
+              "kind": {
+                "const": "priority_action"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "decision_domain_v2": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "choose_one"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        "required": [
+          "decision_domain_v2"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "properties": {
+              "kind": {
+                "const": "attacker_declaration"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "decision_domain_v2": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "choose_many"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "visibility": {
+            "const": "acting_player_only"
+          }
+        },
+        "required": [
+          "decision_domain_v2",
+          "visibility"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "properties": {
+              "kind": {
+                "const": "cast_cost_route"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "decision_domain_v2": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "choose_one"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        "required": [
+          "decision_domain_v2"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "properties": {
+              "kind": {
+                "const": "mode_selection"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "decision_domain_v2": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "choose_one",
+                  "choose_many"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        "required": [
+          "decision_domain_v2"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "properties": {
+              "kind": {
+                "const": "target_selection"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "decision_domain_v2": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "choose_one",
+                  "choose_many"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        "required": [
+          "decision_domain_v2"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "properties": {
+              "kind": {
+                "const": "cost_operand_selection"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "decision_domain_v2": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "choose_one"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        "required": [
+          "decision_domain_v2"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "properties": {
+              "kind": {
+                "const": "mana_production_choice"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "decision_domain_v2": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "choose_one"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        "required": [
+          "decision_domain_v2"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "properties": {
+              "kind": {
+                "const": "mana_payment"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "decision_domain_v2": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "choose_one"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        "required": [
+          "decision_domain_v2"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "properties": {
+              "kind": {
+                "const": "optional_cost_payment"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "decision_domain_v2": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "choose_one"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        "required": [
+          "decision_domain_v2"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "properties": {
+              "kind": {
+                "const": "ability_action"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "decision_domain_v2": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "choose_one"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        "required": [
+          "decision_domain_v2"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "properties": {
+              "kind": {
+                "const": "trigger_order"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "decision_domain_v2": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "order"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "visibility": {
+            "const": "acting_player_only"
+          }
+        },
+        "required": [
+          "decision_domain_v2",
+          "visibility"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "properties": {
+              "kind": {
+                "const": "trigger_target"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "decision_domain_v2": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "choose_one",
+                  "choose_many"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        "required": [
+          "decision_domain_v2"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "properties": {
+              "kind": {
+                "const": "synthetic_assembly"
+              },
+              "stage": {
+                "const": "entry"
+              }
+            },
+            "required": [
+              "kind",
+              "stage"
+            ]
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "decision_domain_v2": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "choose_one"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "visibility": {
+            "const": "public"
+          }
+        },
+        "required": [
+          "decision_domain_v2",
+          "visibility"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "properties": {
+              "kind": {
+                "const": "synthetic_assembly"
+              },
+              "stage": {
+                "const": "choose_count"
+              }
+            },
+            "required": [
+              "kind",
+              "stage"
+            ]
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "candidates": {
+            "maxItems": 0
+          },
+          "decision_domain_v2": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "choose_number"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "visibility": {
+            "const": "public"
+          }
+        },
+        "required": [
+          "decision_domain_v2",
+          "visibility",
+          "candidates"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "properties": {
+              "kind": {
+                "const": "synthetic_assembly"
+              },
+              "stage": {
+                "const": "choose_members"
+              }
+            },
+            "required": [
+              "kind",
+              "stage"
+            ]
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "decision_domain_v2": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "choose_many"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "visibility": {
+            "const": "public"
+          }
+        },
+        "required": [
+          "decision_domain_v2",
+          "visibility"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "properties": {
+              "kind": {
+                "const": "synthetic_assembly"
+              },
+              "stage": {
+                "const": "order_members"
+              }
+            },
+            "required": [
+              "kind",
+              "stage"
+            ]
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "decision_domain_v2": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "order"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "visibility": {
+            "const": "public"
+          }
+        },
+        "required": [
+          "decision_domain_v2",
+          "visibility"
+        ]
+      }
+    }
+  ],
   "properties": {
     "actor": {
       "$ref": "#/$defs/u64"
@@ -1296,6 +1974,39 @@
           "required": [
             "kind",
             "target_slot"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "attacker_declaration"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "synthetic_assembly"
+            },
+            "stage": {
+              "enum": [
+                "entry",
+                "choose_count",
+                "choose_members",
+                "order_members"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "stage"
           ],
           "type": "object"
         }

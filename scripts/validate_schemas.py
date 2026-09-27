@@ -123,6 +123,22 @@ SCHEMA_NEGATIVE_CASES = [
         "schemas/negative/player-decision-request-v4-trusted-trigger-instance-id.json",
     ),
     (
+        "player-decision-request.v4.schema.json",
+        "schemas/negative/player-decision-request-v4-purpose-domain-mismatch.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/negative/player-decision-request-v4-trigger-order-public.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/negative/player-decision-request-v4-unbound-source-ability.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/negative/player-decision-request-v4-synthetic-stage-domain-mismatch.json",
+    ),
+    (
         "observed-event-envelope.v3.schema.json",
         "schemas/negative/observed-event-v3-object-moved-missing-entry-fields.json",
     ),
@@ -176,6 +192,26 @@ SCHEMA_POSITIVE_CASES = [
     (
         "player-decision-request.v4.schema.json",
         "schemas/examples/player-decision-request-v4-trigger-order.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/examples/player-decision-request-v4-attacker-declaration.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/examples/player-decision-request-v4-synthetic-entry.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/examples/player-decision-request-v4-synthetic-count.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/examples/player-decision-request-v4-synthetic-members.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/examples/player-decision-request-v4-synthetic-order.json",
     ),
     (
         "player-decision-request.v3.schema.json",
