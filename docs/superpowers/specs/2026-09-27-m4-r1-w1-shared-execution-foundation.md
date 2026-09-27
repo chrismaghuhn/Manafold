@@ -2,7 +2,7 @@
 
 **Task:** `M4_R1_W1_SHARED_EXECUTION_FOUNDATION_SPEC_AND_IMPLEMENTATION_PLAN`
 **Status:** ACCEPTED — Shared semantic foundation; NO IMPLEMENTATION AUTHORITY
-**Acceptance record:** The current G0 task's maintainer authority treats the final Shared Spec/Plan tree (`2c36ccacf1513bc70cb15055a28c197f4feb0ca6`, merged by PR #249) as the accepted G0 design basis. This status sync records that authority; it does not authorize implementation.
+**Acceptance record:** Independent exact-head review passed at `2c36ccacf1513bc70cb15055a28c197f4feb0ca6`; that tree was merged tree-identically by PR #249 at `85f967f641528e43772c63be14679af398dcac86`. This status sync records the accepted review provenance; it does not authorize implementation.
 **Verified master:** `6c6ee4c9b237696c50e944cae998f85c2d358e1c`
 **Date:** 2026-09-27
 **Production implementation authorized:** NO
