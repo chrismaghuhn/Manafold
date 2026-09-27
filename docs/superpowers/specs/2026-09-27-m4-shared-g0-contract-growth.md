@@ -1,7 +1,7 @@
 # M4 Shared G0 — Contract-Growth Boundary
 
 **Task:** `M4_SHARED_G0_CONTRACT_GROWTH_SPEC_AND_IMPLEMENTATION_PLAN`
-**Status:** G0B ACCEPTED; source/event payload amendment Exact-Head PASS at `bb516517e8709a38932a34eb7eea95cf8750621d`; temporary-operation amendment PASS at `f75c4a8bd7583e8168478babadcca821c1466e96`; StackResolution stage-ownership amendment PASS at `12d8b9844c785484834ef3dd2bfdc5a0030036fc`; detached implementation baseline remains `f5c1ed2aa0719edaebd95f80f7c1c5c38b3dea3d`; current-writer authority remains gated on G0j
+**Status:** G0B, payload, temporary-operation, and StackResolution stage-ownership amendments ACCEPTED at `12d8b9844c785484834ef3dd2bfdc5a0030036fc`; Cast/Activation continuation-stage amendment PROPOSED for independent review; detached implementation baseline remains `f5c1ed2aa0719edaebd95f80f7c1c5c38b3dea3d`; current-writer authority remains gated on G0j
 **G0a acceptance record:** Independent exact-head G0 Spec/Plan review PASS at `308e465669f66ad63b01d5fb381214c08ce413bc`; PR #250 required CI PASS; merged at `8642db7a389d5363d52224bd040082811f626084` with tree identical to the reviewed head. This accepts the G0a design boundary for G0b only. It does not accept G0b or authorize G0 implementation.
 **Verified `origin/master`:** `85f967f641528e43772c63be14679af398dcac86`
 **Date:** 2026-09-27
@@ -316,10 +316,14 @@ cast_continuation = ["cast", continuation_id, actor_player_id,
   spell_object_id, card_definition_id, face_key_u32, semantic_profile_id,
   stage_tag, selected_route_or_null, modes[], targets[], paid_cost_choices[],
   action_cost_facts, mana_payment_staging_or_null]
+cast_stage_tag = "selecting_cost_route" | "selecting_modes" | "selecting_targets"
+              | "selecting_additional_costs" | "selecting_cost_operands" | "paying_mana"
 nonmana_activation_continuation = ["nonmana_activation", continuation_id,
   actor_player_id, source_object_id, source_ability_instance_id, ability_key_u32,
   semantic_profile_id, stage_tag, modes[], targets[], action_cost_facts,
   mana_payment_staging_or_null]
+nonmana_activation_stage_tag = "selecting_modes" | "selecting_targets"
+                             | "selecting_cost_operands" | "paying_mana"
 action_cost_facts = [mana_cost_or_null, reserved_nonmana_costs[], selected_cost_operands[]]
 mana_cost = [colored_wubrg_counts_u32[5], colorless_count_u32, generic_count_u32]
 reserved_nonmana_cost = ["tap_source"] | ["sacrifice_source"]  // only locked witnesses

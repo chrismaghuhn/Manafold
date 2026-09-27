@@ -452,14 +452,12 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             ROOT / "docs" / "adr" / "0056-g0-successor-version-identities-and-compatibility.md"
         ).read_text(encoding="utf-8")
 
-        self.assertIn(
-            "**Status:** G0B ACCEPTED; source/event payload amendment Exact-Head PASS", spec
-        )
-        self.assertIn("bb516517e8709a38932a34eb7eea95cf8750621d", spec)
-        self.assertIn("f75c4a8bd7583e8168478babadcca821c1466e96", spec)
+        self.assertIn("Cast/Activation continuation-stage amendment PROPOSED", spec)
+        self.assertIn("StackResolution stage-ownership amendments ACCEPTED", spec)
+        self.assertIn("12d8b9844c785484834ef3dd2bfdc5a0030036fc", spec)
         self.assertIn("f5c1ed2aa0719edaebd95f80f7c1c5c38b3dea3d", spec)
         self.assertIn("G0A_ACCEPTANCE = PASS", spec)
-        self.assertIn("**Status:** G0B and bounded payload amendments ACCEPTED", plan)
+        self.assertIn("Cast/Activation stage amendment requires independent review", plan)
         self.assertIn("**Implementation authorized:** YES", plan)
         self.assertIn("**Status:** accepted by PR #251", adr)
         self.assertIn("G0_IMPLEMENTATION_AUTHORIZED = YES", adr)
