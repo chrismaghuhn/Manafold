@@ -257,6 +257,19 @@ pub fn validate_successor_transition_contract(
                 _ => return Err(TransitionViolation::SuccessorProduct),
             },
             SemanticDeltaOperationV2::LandPlayCountChanged { player, from, to } => {
+                if !product.delta.operations.iter().any(|operation| {
+                    matches!(
+                        operation,
+                        SemanticDeltaOperationV2::ObjectEntered {
+                            old_object: Some(_),
+                            from_zone: mtgml_model::ZoneKind::Hand,
+                            to_zone: mtgml_model::ZoneKind::Battlefield,
+                            ..
+                        }
+                    )
+                }) {
+                    invalid!();
+                }
                 let history = reconstructed
                     .card_rules_state
                     .turn_history
@@ -467,6 +480,26 @@ pub fn validate_successor_transition_contract(
                 expected_event_kinds.push(AuthoritativeRuleEventKindV2::ZoneTransition(Box::new(
                     transition.clone(),
                 )));
+                let land_play_count = product
+                    .delta
+                    .operations
+                    .iter()
+                    .filter_map(|operation| match operation {
+                        SemanticDeltaOperationV2::LandPlayCountChanged { player, from, to } => {
+                            Some((*player, *from, *to))
+                        }
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+                if land_play_count.as_slice() != [(before_request.actor, 0, 1)] {
+                    invalid!();
+                }
+                expected_event_kinds.push(AuthoritativeRuleEventKindV2::LandPlayed {
+                    old_object: old_object.unwrap_or(*new_object),
+                    new_object: *new_object,
+                    actor: before_request.actor,
+                    land_plays_used: 1,
+                });
                 let move_event = product
                     .events
                     .iter()

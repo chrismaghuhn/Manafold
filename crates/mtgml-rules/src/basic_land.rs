@@ -107,6 +107,12 @@ pub enum AuthoritativeRuleEventKindV2 {
         entering_face: Option<BasicLandFaceV1>,
         tapped: bool,
     },
+    LandPlayed {
+        old_object: mtgml_model::GameObjectId,
+        new_object: mtgml_model::GameObjectId,
+        actor: PlayerId,
+        land_plays_used: u8,
+    },
     ObjectTapped {
         object: mtgml_model::GameObjectId,
         from: bool,
@@ -831,6 +837,16 @@ pub fn execute_basic_land_response(
             push_successor_event(
                 &mut next,
                 &mut events,
+                AuthoritativeRuleEventKindV2::LandPlayed {
+                    old_object: object,
+                    new_object,
+                    actor,
+                    land_plays_used: 1,
+                },
+            )?;
+            push_successor_event(
+                &mut next,
+                &mut events,
                 AuthoritativeRuleEventKindV2::ObjectMoved {
                     old_object: object,
                     new_object,
@@ -1207,6 +1223,50 @@ pub fn derive_basic_land_candidates(
         return Err(BasicLandCandidateError::InvalidState);
     }
     Ok(candidates)
+}
+
+/// Validate the stored authoritative request against the complete rules-owned
+/// candidate surface without replacing or reconstructing that request.
+/// Executable admission calls this before exposing a restored decision.
+pub fn validate_basic_land_pending_request(
+    admission: &ExecutableProfileAdmissionV1,
+    state: &EngineStatePartsV2,
+    status: &EpisodeStatus,
+) -> Result<(), BasicLandCandidateError> {
+    state
+        .validate()
+        .map_err(|_| BasicLandCandidateError::InvalidState)?;
+    match status {
+        EpisodeStatus::Running => {
+            let request = state
+                .execution_v3
+                .pending_decision
+                .as_ref()
+                .ok_or(BasicLandCandidateError::PendingCandidateSetMismatch)?;
+            request
+                .validate()
+                .map_err(|_| BasicLandCandidateError::PendingCandidateSetMismatch)?;
+            let mut candidate_state = state.clone();
+            candidate_state.execution_v3.pending_decision = None;
+            let expected =
+                derive_basic_land_candidates(admission, &candidate_state, request.actor, status)?;
+            if request.state_revision != state.predecessor_v5.revision
+                || request.visibility != DecisionVisibility::Public
+                || request.decision != DecisionDomainV2::ChooseOne
+                || request.continuation_id.is_some()
+                || request.candidates != expected
+            {
+                return Err(BasicLandCandidateError::PendingCandidateSetMismatch);
+            }
+            Ok(())
+        }
+        EpisodeStatus::Terminal { .. } | EpisodeStatus::Truncated { .. } => {
+            if state.execution_v3.pending_decision.is_some() {
+                return Err(BasicLandCandidateError::PendingCandidateSetMismatch);
+            }
+            Ok(())
+        }
+    }
 }
 
 /// Installs the next authoritative V3 request into an already revisioned
@@ -1950,6 +2010,39 @@ mod tests {
             &missing_move_event
         )
         .is_err());
+        let mut missing_land_played = successor_product.clone();
+        let index = missing_land_played
+            .events
+            .iter()
+            .position(|event| {
+                matches!(event.event, AuthoritativeRuleEventKindV2::LandPlayed { .. })
+            })
+            .unwrap();
+        missing_land_played.events.remove(index);
+        assert!(crate::validate_successor_transition_contract(
+            &admission,
+            &before,
+            &missing_land_played
+        )
+        .is_err());
+        let mut wrong_land_played = successor_product.clone();
+        let land_played = wrong_land_played
+            .events
+            .iter_mut()
+            .find_map(|event| match &mut event.event {
+                AuthoritativeRuleEventKindV2::LandPlayed {
+                    land_plays_used, ..
+                } => Some(land_plays_used),
+                _ => None,
+            })
+            .unwrap();
+        *land_played = 0;
+        assert!(crate::validate_successor_transition_contract(
+            &admission,
+            &before,
+            &wrong_land_played
+        )
+        .is_err());
         let new_object = product
             .next_state
             .predecessor_v5
@@ -1983,6 +2076,18 @@ mod tests {
                 entering_face: Some(BasicLandFaceV1::Front),
                 tapped: false,
             }, .. } if *old_object == old_hand_object && *moved == new_object
+        )));
+        assert!(product.events.iter().any(|event| matches!(
+            event,
+            AuthoritativeRuleEventV2 {
+                event: AuthoritativeRuleEventKindV2::LandPlayed {
+                    old_object,
+                    new_object: played,
+                    actor: PlayerId(1),
+                    land_plays_used: 1,
+                },
+                ..
+            } if *old_object == old_hand_object && *played == new_object
         )));
         assert_eq!(product.delta.apply(&before).unwrap(), product.next_state);
         assert_eq!(

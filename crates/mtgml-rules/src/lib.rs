@@ -27,10 +27,10 @@ mod zone_incarnation;
 mod tests;
 
 pub use basic_land::{
-    derive_basic_land_candidates, AuthoritativeRuleEventKindV2, AuthoritativeRuleEventV2,
-    BasicLandCandidateError, BasicLandFaceV1, BasicLandTransitionError,
-    BasicLandTransitionProductV1, MagicActionRequestV1, SelectedSuccessorDecisionV1,
-    SuccessorObservationPolicyV1,
+    derive_basic_land_candidates, validate_basic_land_pending_request,
+    AuthoritativeRuleEventKindV2, AuthoritativeRuleEventV2, BasicLandCandidateError,
+    BasicLandFaceV1, BasicLandTransitionError, BasicLandTransitionProductV1, MagicActionRequestV1,
+    SelectedSuccessorDecisionV1, SuccessorObservationPolicyV1,
 };
 pub use contract::validate_transition_contract;
 pub use errors::{KernelExecutionError, ZoneIncarnationError};

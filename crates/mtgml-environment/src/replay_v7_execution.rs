@@ -56,6 +56,11 @@ pub fn execute_authoritative_replay_v7(
         admission.rules_contract_manifest(),
         Some(admission.verified_catalog()),
     )?;
+    crate::successor_runtime::validate_executable_candidate_set(
+        &admission,
+        &initial_checkpoint.state,
+        &initial_checkpoint.status,
+    )?;
 
     let mut state = initial_checkpoint.state.clone();
     let mut status = initial_checkpoint.status.clone();

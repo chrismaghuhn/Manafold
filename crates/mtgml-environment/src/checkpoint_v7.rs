@@ -314,6 +314,8 @@ pub enum CheckpointV7Error {
     Identity,
     #[error("checkpoint successor state is structurally invalid")]
     State,
+    #[error("checkpoint pending request is not the complete legal candidate set")]
+    CandidateSet,
     #[error("checkpoint successor state digest does not match")]
     StateDigest,
     #[error("checkpoint digest does not match status, limits, codec, and execution identity")]

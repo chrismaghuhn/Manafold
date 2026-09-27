@@ -51,6 +51,7 @@ impl SuccessorEnvironmentRuntime {
             admission.rules_contract_manifest(),
             Some(admission.verified_catalog()),
         )?;
+        validate_executable_candidate_set(&admission, &state, &status)?;
         Ok(Self {
             kernel: ProgramKernelV1::for_executable_profile(admission.clone())
                 .map_err(|_| ControllerError::SemanticContractUnsupported)?,
@@ -106,6 +107,7 @@ impl SuccessorEnvironmentRuntime {
             self.admission.rules_contract_manifest(),
             Some(self.admission.verified_catalog()),
         )?;
+        validate_executable_candidate_set(&self.admission, &checkpoint.state, &checkpoint.status)?;
         let mut manifest = self.replay.manifest().clone();
         manifest.initial_identity = identity(&checkpoint);
         manifest.validate()?;
@@ -213,6 +215,15 @@ impl SuccessorEnvironmentRuntime {
     pub fn state(&self) -> &EngineStatePartsV2 {
         &self.state
     }
+}
+
+pub(crate) fn validate_executable_candidate_set(
+    admission: &ExecutableProfileAdmissionV1,
+    state: &EngineStatePartsV2,
+    status: &EpisodeStatus,
+) -> Result<(), ControllerError> {
+    mtgml_rules::validate_basic_land_pending_request(admission, state, status)
+        .map_err(|_| crate::CheckpointV7Error::CandidateSet.into())
 }
 
 fn identity(checkpoint: &EnvironmentCheckpointV7) -> InitialEnvironmentIdentityV7 {

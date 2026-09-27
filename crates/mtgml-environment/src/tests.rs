@@ -268,6 +268,68 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
         checkpoint_digest: before_checkpoint.checkpoint_digest.clone(),
         execution_identity: admission.execution_identity().clone(),
     };
+
+    // A structurally valid, self-consistent checkpoint must still prove that
+    // its stored request contains the complete RulesKernel candidate surface.
+    let mut incomplete_state = before_checkpoint.state.clone();
+    let incomplete_request = incomplete_state
+        .execution_v3
+        .pending_decision
+        .as_mut()
+        .unwrap();
+    let removed_candidate = incomplete_request
+        .candidates
+        .iter()
+        .position(|candidate| {
+            matches!(
+                candidate.visible_intent,
+                mtgml_decision::CandidateIntentV3::PlayLand { .. }
+            )
+        })
+        .expect("fixture has a legal PlayLand candidate");
+    incomplete_request.candidates.remove(removed_candidate);
+    for (index, candidate) in incomplete_request.candidates.iter_mut().enumerate() {
+        candidate.candidate_id = CandidateIdV1(index as u32);
+    }
+    let incomplete_checkpoint = EnvironmentCheckpointV7::new(
+        incomplete_state.clone(),
+        EpisodeStatus::Running,
+        EnvironmentLimitCounters::default(),
+        admission.execution_identity().clone(),
+    )
+    .unwrap();
+    let incomplete_manifest = {
+        let mut manifest = manifest.clone();
+        manifest.initial_identity = mtgml_replay::InitialEnvironmentIdentityV7 {
+            state_revision: incomplete_checkpoint.state.predecessor_v5.revision,
+            full_state_digest: incomplete_checkpoint.state_digest.clone(),
+            episode_status: incomplete_checkpoint.status.clone(),
+            environment_limit_counters: incomplete_checkpoint.limit_counters.clone(),
+            checkpoint_codec_identity: incomplete_checkpoint.codec.clone(),
+            checkpoint_digest: incomplete_checkpoint.checkpoint_digest.clone(),
+            execution_identity: admission.execution_identity().clone(),
+        };
+        manifest
+    };
+    assert!(crate::SuccessorEnvironmentRuntime::new(
+        admission.clone(),
+        incomplete_state,
+        EpisodeStatus::Running,
+        EnvironmentLimitCounters::default(),
+        incomplete_manifest.clone(),
+    )
+    .is_err());
+    let empty_incomplete_replay = mtgml_replay::ReplayRecorderV7::new(incomplete_manifest)
+        .unwrap()
+        .export()
+        .unwrap();
+    assert!(crate::replay_v7_execution::execute_authoritative_replay_v7(
+        admission.clone(),
+        incomplete_checkpoint.clone(),
+        empty_incomplete_replay,
+    )
+    .is_err());
+
     let mut runtime = crate::SuccessorEnvironmentRuntime::new(
         admission.clone(),
         state,
@@ -276,6 +338,11 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
         manifest,
     )
     .unwrap();
+    let runtime_before_bad_restore = runtime.checkpoint().unwrap();
+    let replay_before_bad_restore = runtime.export_replay().unwrap();
+    assert!(runtime.restore(incomplete_checkpoint).is_err());
+    assert_eq!(runtime.checkpoint().unwrap(), runtime_before_bad_restore);
+    assert_eq!(runtime.export_replay().unwrap(), replay_before_bad_restore);
     runtime.restore(before_checkpoint.clone()).unwrap();
     assert_eq!(runtime.checkpoint().unwrap(), before_checkpoint);
     assert_eq!(
