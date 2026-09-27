@@ -1,7 +1,7 @@
 # M4 Shared G0 — Contract-Growth Implementation Plan
 
 **Task:** `M4_SHARED_G0_CONTRACT_GROWTH_SPEC_AND_IMPLEMENTATION_PLAN`
-**Status:** G0B and prior payload/stage amendments ACCEPTED; continuation identity/actor-owner amendment requires independent review; detached implementation baseline remains `f5c1ed2aa0719edaebd95f80f7c1c5c38b3dea3d`; current-writer activation remains gated on G0j
+**Status:** G0B and all bounded payload/stage amendments ACCEPTED at Exact-Head `f0a493c740f9002e5551d317a1411c11067a7bb3`; detached implementation baseline remains `f5c1ed2aa0719edaebd95f80f7c1c5c38b3dea3d`; current-writer activation remains gated on G0j
 **Derived from:** [`2026-09-27-m4-shared-g0-contract-growth.md`](../specs/2026-09-27-m4-shared-g0-contract-growth.md)
 **Exact design baseline:** `85f967f641528e43772c63be14679af398dcac86`
 **Implementation authorized:** YES — detached G0c–G0i work only; G0j is the single activation cut
@@ -53,7 +53,7 @@ All batches run sequentially on one G0 integration lineage. Splitting PRs by sem
 
 ## 3. Contract-growth sequence and file ownership
 
-1. G0b, the trigger/source payload, temporary-operation, StackResolution, and Cast/Activation stage amendments are accepted. The proposed continuation amendment makes the wrapper own only ID/revision, removes repeated child IDs, assigns actor ownership by payload, and enumerates all V3 tags while preserving synthetic and Magic SBA variants. Independently review this Spec/Plan amendment before implementing the wrapper. Origin of Spider-Man's permanent chapter II type addition is W1-exclusive and needs a separate persistent-effect contract characterization before W1 implementation; it does not expand G0. G0c DTO work must match accepted exact source/event shapes, the final accepted temporary operation set, and must not add a generic `resolution_context` map or field.
+1. G0b and the trigger/source payload, temporary-operation, StackResolution, Cast/Activation, and continuation-wrapper amendments are accepted. ContinuationRecordV3 owns only ID/revision; actors are payload-owned or derived; the V3 union retains the synthetic assembly and Magic SBA variants. Exact review head: `f0a493c740f9002e5551d317a1411c11067a7bb3`. Origin of Spider-Man's permanent chapter II type addition is W1-exclusive and needs a separate persistent-effect contract characterization before W1 implementation; it does not expand G0. G0c DTO work must match accepted exact source/event shapes, the final accepted temporary operation set, and must not add a generic `resolution_context` map or field.
 2. Add detached Rust DTOs, semantic validators, canonical encoding, and golden/negative fixtures; keep current runtime aliases unchanged.
 3. Add successor Decision request/context/binding and response schemas plus Rust/Python codecs from the same source vocabulary. The answer union remains unchanged, while the player response omits global StateRevision and binds PlayerDecisionIdV1/view-sequence.
 4. Add state/delta/authoritative-event producers and semantic cursor validation against the detached successor state.
