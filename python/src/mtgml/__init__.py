@@ -45,6 +45,7 @@ from .decision import (
     VisibleCandidateV2,
 )
 from .decision_v3 import CandidateIntentV3, PlayerDecisionRequestV3, VisibleCandidateV3
+from .decision_v4 import CandidateIntentV4, PlayerDecisionRequestV4, VisibleCandidateV4
 from .episode import (
     EpisodeStatus,
     PlayerOutcome,
@@ -139,6 +140,7 @@ __all__ = [
     "CandidateAssignment",
     "CandidateIntent",
     "CandidateIntentV3",
+    "CandidateIntentV4",
     "CheckpointCodecIdentityV3",
     "CheckpointCodecIdentityV4",
     "ContentContractMaterialV1",
@@ -188,6 +190,7 @@ __all__ = [
     "PlayerDecisionRequest",
     "PlayerDecisionRequestV2",
     "PlayerDecisionRequestV3",
+    "PlayerDecisionRequestV4",
     "PlayerInformationStateV2",
     "PlayerOutcome",
     "PlayerResult",
@@ -220,6 +223,7 @@ __all__ = [
     "TruncationReason",
     "VisibleCandidateV2",
     "VisibleCandidateV3",
+    "VisibleCandidateV4",
     "calculate_checkpoint_digest_v5",
     "calculate_checkpoint_digest_v6",
     "calculate_checkpoint_digest_v7",
