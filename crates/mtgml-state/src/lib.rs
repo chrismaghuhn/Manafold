@@ -23,6 +23,7 @@ mod knowledge;
 mod lifecycle;
 mod persisted_v6;
 mod semantic_mutations;
+mod shared_execution;
 mod validation;
 mod zones;
 
@@ -79,6 +80,15 @@ pub use persisted_v6::{
 pub use semantic_mutations::{
     AttachmentChangeV1, CounterAnnihilationChangeV1, RoleAttachmentRetirementV1,
     StateFamilyMutationError,
+};
+pub use shared_execution::{
+    AbilitySourceContext, ActionCostFacts, AttackerFact, CostFacts, CostRoute, DamageKind,
+    DamageRecipient, EffectExpiry, EffectTimestamp, LifeChangeCause, ManaCost, ManaPaymentStage,
+    ManaPaymentStaging, ManaSourceActivation, ManaSourceActivationCost, ModeBinding,
+    PendingTriggerRecord, ReservedNonManaCost, SelectedCostOperand, SourceContext,
+    StackItemPayload, StackResolutionContinuation, StackResolutionStage, TargetBinding, TargetRef,
+    TemporaryEffectRecord, TemporaryKeyword, TemporaryOperation, TriggerEventSnapshot,
+    TriggerTargetTiming,
 };
 pub use validation::{validate_engine_state, EngineStateViolation};
 pub use zones::{

@@ -283,6 +283,7 @@ dependencies = [
 name = "mtgml-state"
 version = "0.2.2"
 dependencies = [
+ "mtgml-card-ir",
  "mtgml-decision",
  "mtgml-model",
  "mtgml-persistence",
