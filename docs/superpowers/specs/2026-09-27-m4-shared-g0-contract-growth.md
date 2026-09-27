@@ -1,7 +1,7 @@
 # M4 Shared G0 — Contract-Growth Boundary
 
 **Task:** `M4_SHARED_G0_CONTRACT_GROWTH_SPEC_AND_IMPLEMENTATION_PLAN`
-**Status:** G0B, trigger/source payload (`bb516517e8709a38932a34eb7eea95cf8750621d`), and bounded temporary-operation (`f75c4a8bd7583e8168478babadcca821c1466e96`) amendments ACCEPTED; StackResolution stage-ownership amendment PROPOSED for independent review; detached implementation baseline remains `f5c1ed2aa0719edaebd95f80f7c1c5c38b3dea3d`; current-writer authority remains gated on G0j
+**Status:** G0B ACCEPTED; source/event payload amendment Exact-Head PASS at `bb516517e8709a38932a34eb7eea95cf8750621d`; temporary-operation amendment PASS at `f75c4a8bd7583e8168478babadcca821c1466e96`; StackResolution stage-ownership amendment PASS at `12d8b9844c785484834ef3dd2bfdc5a0030036fc`; detached implementation baseline remains `f5c1ed2aa0719edaebd95f80f7c1c5c38b3dea3d`; current-writer authority remains gated on G0j
 **G0a acceptance record:** Independent exact-head G0 Spec/Plan review PASS at `308e465669f66ad63b01d5fb381214c08ce413bc`; PR #250 required CI PASS; merged at `8642db7a389d5363d52224bd040082811f626084` with tree identical to the reviewed head. This accepts the G0a design boundary for G0b only. It does not accept G0b or authorize G0 implementation.
 **Verified `origin/master`:** `85f967f641528e43772c63be14679af398dcac86`
 **Date:** 2026-09-27

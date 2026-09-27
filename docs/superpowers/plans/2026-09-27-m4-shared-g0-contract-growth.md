@@ -1,7 +1,7 @@
 # M4 Shared G0 — Contract-Growth Implementation Plan
 
 **Task:** `M4_SHARED_G0_CONTRACT_GROWTH_SPEC_AND_IMPLEMENTATION_PLAN`
-**Status:** G0B, trigger/source payload, and bounded temporary-operation amendments ACCEPTED through Exact-Head `f75c4a8bd7583e8168478babadcca821c1466e96`; StackResolution stage-ownership amendment requires independent review; detached implementation baseline remains `f5c1ed2aa0719edaebd95f80f7c1c5c38b3dea3d`; current-writer activation remains gated on G0j
+**Status:** G0B and bounded payload amendments ACCEPTED; latest Exact-Head `12d8b9844c785484834ef3dd2bfdc5a0030036fc`; detached implementation baseline remains `f5c1ed2aa0719edaebd95f80f7c1c5c38b3dea3d`; current-writer activation remains gated on G0j
 **Derived from:** [`2026-09-27-m4-shared-g0-contract-growth.md`](../specs/2026-09-27-m4-shared-g0-contract-growth.md)
 **Exact design baseline:** `85f967f641528e43772c63be14679af398dcac86`
 **Implementation authorized:** YES — detached G0c–G0i work only; G0j is the single activation cut
@@ -53,7 +53,7 @@ All batches run sequentially on one G0 integration lineage. Splitting PRs by sem
 
 ## 3. Contract-growth sequence and file ownership
 
-1. G0b, the trigger/source payload amendment, and the temporary-operation vocabulary amendment are accepted. The StackResolution parent/inner-stage ownership amendment remains proposed until independent Exact-Head review; do not encode two persistent owners for mana-payment progress. Origin of Spider-Man's permanent chapter II type addition is W1-exclusive and needs a separate persistent-effect contract characterization before W1 implementation; it does not expand G0. G0c DTO work must match accepted exact source/event shapes, the final accepted temporary operation set, and must not add a generic `resolution_context` map or field.
+1. G0b, the trigger/source payload, temporary-operation, and StackResolution stage-ownership amendments are accepted; the exact StackResolution review head is `12d8b9844c785484834ef3dd2bfdc5a0030036fc`. Origin of Spider-Man's permanent chapter II type addition is W1-exclusive and needs a separate persistent-effect contract characterization before W1 implementation; it does not expand G0. G0c DTO work must match accepted exact source/event shapes, the final accepted temporary operation set, and must not add a generic `resolution_context` map or field.
 2. Add detached Rust DTOs, semantic validators, canonical encoding, and golden/negative fixtures; keep current runtime aliases unchanged.
 3. Add successor Decision request/context/binding and response schemas plus Rust/Python codecs from the same source vocabulary. The answer union remains unchanged, while the player response omits global StateRevision and binds PlayerDecisionIdV1/view-sequence.
 4. Add state/delta/authoritative-event producers and semantic cursor validation against the detached successor state.
