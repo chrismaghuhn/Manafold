@@ -328,6 +328,34 @@ fn trigger_placement_value_keeps_apnap_and_selected_order_vectors() {
 
 #[test]
 fn cast_and_activation_continuations_use_closed_stage_tags() {
+    let cast_stages = [
+        CastContinuationStage::SelectingCostRoute,
+        CastContinuationStage::SelectingModes,
+        CastContinuationStage::SelectingTargets,
+        CastContinuationStage::SelectingAdditionalCosts,
+        CastContinuationStage::SelectingCostOperands,
+        CastContinuationStage::PayingMana,
+    ];
+    assert_eq!(cast_stages.len(), 6);
+    assert!(cast_stages.contains(&CastContinuationStage::SelectingCostRoute));
+    assert!(cast_stages.contains(&CastContinuationStage::SelectingModes));
+    assert!(cast_stages.contains(&CastContinuationStage::SelectingTargets));
+    assert!(cast_stages.contains(&CastContinuationStage::SelectingAdditionalCosts));
+    assert!(cast_stages.contains(&CastContinuationStage::SelectingCostOperands));
+    assert!(cast_stages.contains(&CastContinuationStage::PayingMana));
+
+    let activation_stages = [
+        NonManaActivationStage::SelectingModes,
+        NonManaActivationStage::SelectingTargets,
+        NonManaActivationStage::SelectingCostOperands,
+        NonManaActivationStage::PayingMana,
+    ];
+    assert_eq!(activation_stages.len(), 4);
+    assert!(activation_stages.contains(&NonManaActivationStage::SelectingModes));
+    assert!(activation_stages.contains(&NonManaActivationStage::SelectingTargets));
+    assert!(activation_stages.contains(&NonManaActivationStage::SelectingCostOperands));
+    assert!(activation_stages.contains(&NonManaActivationStage::PayingMana));
+
     let cast = CastContinuation {
         id: mtgml_model::ContinuationId(1),
         actor: PlayerId(0),
@@ -340,7 +368,14 @@ fn cast_and_activation_continuations_use_closed_stage_tags() {
         modes: vec![],
         targets: vec![],
         paid_cost_choices: vec![],
-        action_cost_facts: ActionCostFacts::default(),
+        action_cost_facts: ActionCostFacts {
+            mana_cost: Some(ManaCost {
+                colored_wubrg_counts: [1, 0, 0, 0, 0],
+                colorless_count: 0,
+                generic_count: 1,
+            }),
+            ..ActionCostFacts::default()
+        },
         mana_payment_staging: Some(ManaPaymentStaging {
             stage: ManaPaymentStage::AwaitingFinalAllocation,
             mana_source_activations: vec![],
