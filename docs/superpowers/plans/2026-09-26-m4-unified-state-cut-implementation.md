@@ -441,12 +441,12 @@ predecessor runtime until Phase 13.
 
 - integrate `ManaState`, `TurnHistoryState`, `CounterState`, `AttachmentState`, `FaceState`, `AbilityAuthorityState` into successor EngineState on the integration branch;
 - bind the immutable content catalog through SemanticContractManifestV1 and verify its Replay V7 child; do not duplicate ContentContractId in EngineState or per-ability rows;
-- keep current master/runtime aliases on predecessor identities until the separate Phase 13 merge boundary;
+- leave `master` unchanged because Phase-10 PRs target only the integration branch; on the integration branch, migrate the executable runtime aliases atomically to the successor family so no predecessor gameplay alias remains current there;
 - route the validated PlayLand and ActivateAbility bindings through the closed internal request and MagicRulesKernel;
 - derive intrinsic mana ability from subtype/profile, never name;
 - keep mana payment/casting and non-basic abilities fail-closed;
 - build full transition product and validate all per-player projections before atomic commit.
-- add the successor-only authoritative Replay V7 execution seam only after the integrated successor state, decision, projection and RulesKernel path can execute the recorded DecisionResponseV2 sequence. This seam must re-execute responses and compare complete V7 checkpoint/state identity and successor products; it must not alter current V6 runtime aliases.
+- add the authoritative Replay V7 execution seam after the integrated successor path can execute the recorded DecisionResponseV2 sequence. Re-execute responses and compare complete V7 checkpoint/state identity and successor products. Preserve historical Replay V6 DTO/codec/verifier identities and bytes; do not retain Replay V6 as an executable gameplay path on the successor integration branch.
 
 **Focused tests:** `cargo test -p mtgml-rules --all-features --locked`; `cargo test -p mtgml-state --all-features --locked`; `cargo test -p mtgml-environment --all-features --locked`; then `just check-fast` and `just check`.
 
@@ -523,7 +523,7 @@ behavior migration is performed in this phase.
 1. Confirm the accepted integration head already runs exactly one successor path for EngineState, FullStateDigestV6, StateDeltaV2, Checkpoint V7/digest V7, executable Replay V7, Decision request V3, ObservedEvent V3, PlayerStep V3, the Magic observation codec, and admission for only `basic-land@1.0.0`; predecessor V5/V6 artifacts remain historical readers/verifiers only.
 2. Require exact-head hosted CI and independent code review after Phases 1–12 are accepted. Submit the complete integrated successor branch to `master` without additional runtime changes. This is the only master activation boundary.
 3. Merge only through accepted repository process; fetch origin and verify the actual post-merge exact master, run required post-merge verification and record final acceptance evidence.
-4. Update #225 without closing it. M4.2 remains PAUSED until independent implementation acceptance explicitly resumes the card slice. Implementing the substrate does not establish M4.2 completion or broader card support.
+4. After exact post-merge master verification and `FINAL_ACCEPTANCE_PASS`, update and close #225 if its accepted scope remains this bounded Mountain/Plains slice; then M4.2 may be marked `COMPLETE` for that slice. Until those post-merge conditions pass, M4.2 remains `IN_PROGRESS`. This does not establish broader card support.
 
 **RED first:** an activation contract gate asserts all successor schema identities agree and no old writer/type is current for new state; old-family reader/disposition matrix remains exact.
 
