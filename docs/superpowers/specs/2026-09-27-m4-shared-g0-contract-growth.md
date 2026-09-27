@@ -138,30 +138,26 @@ SpellStackItem {
 }
 
 ActivatedAbilityStackItem {
-  source_object: GameObjectId,
-  source_ability: AbilityInstanceId,   // trusted historical origin only
-  ability_key: AbilityKey,
-  semantic_profile_id: CardSemanticProfileId,
-  source_context: optional SourceContext,
+  source_context: AbilitySourceContext,
   targets: ordered typed target bindings,
   cost_facts: typed selected route + paid additional-cost keys
 }
 
 TriggeredAbilityStackItem {
   originating_trigger: TriggerInstanceId,
+  source_context: AbilitySourceContext,
   captured_trigger_context: TriggerEventSnapshot,
   targets: ordered typed target bindings,
-  // no separate resolution_context: profile identity + captured choices are authoritative
 }
 ```
 
-The actual canonical fields are fixed only by the accepted identity decision. Duplicate controller/source fields are removed during that design review; the pseudocode shows ownership, not a second copy of `source_object` in `StackRecord`. Spell card objects in Stack Zone and `stack_records` must validate bidirectionally. A triggered/activated ability can have no stack-zone card object. Payload origin/profile/source identities join only under the immutable execution content contract.
+When a pending trigger is placed on the stack, its `AbilitySourceContext`, controller, captured event facts, and chosen targets transfer into the triggered stack item before the pending record is removed. `AbilitySourceContext` carries the exact `ability_key` and `semantic_profile_id`; `originating_trigger` remains as trusted provenance only. Duplicate controller/source fields are removed; controller belongs to `StackRecord`, and source identity belongs to the typed payload. Spell card objects in Stack Zone and `stack_records` must validate bidirectionally. A triggered/activated ability can have no stack-zone card object. Payload origin/profile/source identities join only under the immutable execution content contract.
 
 Target references are a closed trusted union (current object incarnation, player, and stack item where a triggered/counter rule needs it). Ability/card semantics resolve through the immutable content and semantic contract bound by `ExecutionIdentityV1`; no card-name switch or process-global catalog lookup. A stack payload is not Oracle text, arbitrary JSON, an opcode, a callback, a closure, or an untyped `EffectRecord` label. A profile that needs a new captured value must add a typed reviewed variant before its card can be admitted.
 
 The pending trigger record contains controller; immutable source/profile/ability identity; the closed trigger-time `TriggerEventSnapshot`; and the exact `target_timing_tag`. It cannot depend on a live source after departure. Triggers already detected survive source departure. The record is removed when the typed payload is transferred to the stack. No intervening-if receipt is stored because no locked R1 × W1 witness requires one. APNAP placement order and each player's chosen order are explicit vectors, never BTreeMap/TriggerInstanceId order. Reflexive/delayed trigger frameworks are not added here; their exact profiles remain later Shared or deck-exclusive work.
 
-The trigger event context is a typed snapshot, never just `RuleEventId` or a lookup into an unpersisted event log. The G0 closed event facts cover only event families needed by the locked clauses, such as `SpellCast`, `AbilityActivated`, `TargetBecame`, `ObjectEntered`, `ObjectLeftOrDied`, `AttackDeclared`, `CardDrawn`, and post-replacement `DamageOrLifeChanged`. Each variant carries only the rule facts needed for its admitted predicates/effects (actor/controller, trusted source/subject references, relevant profile key, amount/type/zone snapshot). A new event fact or predicate shape outside those families requires G0 amendment; no arbitrary map or callback payload is admitted.
+The trigger event context is a typed snapshot, never just `RuleEventId` or a lookup into an unpersisted event log. Its closed event facts are exactly the `SpellCast`, `AbilityActivated`, `TargetBecame`, `ObjectEntered`, `ObjectLeftOrDied`, `BeginningOfCombat`, `AttackDeclared`, `CardDrawn`, `CounterChanged`, `DamageApplied`, and `LifeChanged` variants defined below. Each carries only the rule facts needed for its admitted predicates/effects. A new event fact or predicate shape outside those families requires G0 amendment; no arbitrary map or callback payload is admitted.
 
 The initial typed temporary-operation vocabulary is bounded to additive P/T, selected keyword grants, type additions, and only conditional/protection operations with an accepted locked witness. Duration initially represents `UntilEndOfTurn { turn_number }`; duration semantics outside that witness remain unsupported. The effect record stores a trusted `EffectInstanceId`, target incarnation(s), closed operation, expiry, and a rule timestamp only where the admitted operation's order can affect a query. Source dependence is not added absent a selected profile witness. Static Aura/Role contributions stay live-source/AttachmentState-derived and never produce a temporary record. `delayed_effects` remain outside Shared G0 unless a separate Shared witness is accepted.
 
@@ -288,13 +284,10 @@ stack_record = [stack_object_id_u64, controller_player_id_u64, stack_item]
 
 stack_item =
   ["spell", stack_card_object_id, card_definition_id, face_key_u32,
-   semantic_profile_id, modes[], targets[], cost_facts, resolution_context]
-| ["activated_ability", source_object_id, source_ability_instance_id,
-   ability_key_u32, semantic_profile_id, source_context_or_null,
-   modes[], targets[], cost_facts, resolution_context]
-| ["triggered_ability", originating_trigger_id, source_context_or_null,
-   ability_key_u32, semantic_profile_id, trigger_context,
-   modes[], targets[], resolution_context]
+   semantic_profile_id, modes[], targets[], cost_facts]
+| ["activated_ability", ability_source_context, modes[], targets[], cost_facts]
+| ["triggered_ability", originating_trigger_id, ability_source_context,
+   trigger_event_snapshot, targets[]]
 
 mode_binding = [mode_slot_u32, selected_mode_u32]
 target_binding = [target_slot_u32, target_ref]
@@ -310,8 +303,8 @@ execution_successor = [
   continuations[], temporary_effects[], waiting_triggers[], delayed_effects[]
 ]
 
-trigger_record = [trigger_id, controller, source_context_or_null,
-  semantic_profile_id, ability_key_u32, trigger_context,
+trigger_record = [trigger_id, controller, ability_source_context,
+  trigger_context,
   target_timing_tag]
 target_timing_tag = "no_targets" | "captured_from_event" | "choose_on_placement"
 
@@ -354,16 +347,24 @@ expiry = ["until_end_of_turn", turn_number_u64]
 timestamp = [creation_state_revision_u64, operation_ordinal_u32]
 ```
 
-The G0 source capture is exactly `SourceContext { snapshot: ObjectSnapshot, face_key: FaceKey, semantic_profile_id: CardSemanticProfileId, ability_key: Option<AbilityKey> }`. `ObjectSnapshot` binds the old incarnation and printed definition/owner/controller/location facts; the other fields bind the immutable face/profile/ability semantics. It contains no derived-characteristic cache, physical-card lookup, arbitrary fact map, or second live-object record. This is sufficient for the locked source-departure cases: an activated ability continues from its captured immutable origin while any effect that refers to the original object checks that exact incarnation. If a selected profile requires an additional last-known derived fact, stop and amend G0 before admitting it.
+The G0 source capture uses these closed records:
+
+```text
+SourceContext = { snapshot: ObjectSnapshot, face_key: FaceKey,
+                  semantic_profile_id: CardSemanticProfileId }
+AbilitySourceContext = { source: SourceContext,
+                         ability_instance_id: AbilityInstanceId, ability_key: AbilityKey }
+```
+
+`ObjectSnapshot` binds the old incarnation and printed definition/owner/controller/location facts; the other fields bind the immutable face/profile/ability semantics. The source zone remains the captured `ObjectSnapshot.location`; no permanent/spell/source-kind tag duplicates it. `ActivatedAbilityStackItem`, `TriggeredAbilityStackItem`, `TriggerRecord`, and `TriggerEventSnapshot.AbilityActivated` use `AbilitySourceContext` directly, so source object/profile/ability facts have one owner. `DamageApplied.source` may use `SourceContext` because a damage source may be an object in any zone. It contains no derived-characteristic cache, physical-card lookup, arbitrary fact map, or second live-object record. This is sufficient for the locked source-departure cases: an activated ability continues from its captured immutable origin while any effect that refers to the original object checks that exact incarnation. If a selected profile requires an additional last-known derived fact, stop and amend G0 before admitting it.
 
 `TriggerEventSnapshot` is the following closed event-fact union. It is captured when the trigger is created, never reconstructed later from `RuleEventId` or live source state:
 
 ```text
 TriggerEventSnapshot =
-  SpellCast { actor: PlayerId, stack_item: StackObjectId, spell: ObjectSnapshot,
-              face_key: FaceKey, semantic_profile_id: CardSemanticProfileId,
+  SpellCast { actor: PlayerId, stack_item: StackObjectId, spell: SourceContext,
               is_creature_spell: bool, cost_facts: CostFacts }
-| AbilityActivated { actor: PlayerId, stack_item: StackObjectId, source: SourceContext,
+| AbilityActivated { actor: PlayerId, stack_item: StackObjectId, source: AbilitySourceContext,
                      targets: Vec<TargetBinding>, cost_facts: CostFacts }
 | TargetBecame { actor: PlayerId, source_stack_item: StackObjectId, target: TargetRef }
 | ObjectEntered { object: ObjectSnapshot }
