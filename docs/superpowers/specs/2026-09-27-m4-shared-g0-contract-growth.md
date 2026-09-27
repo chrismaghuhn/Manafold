@@ -225,19 +225,21 @@ The player request/response must not contain `StateRevision`. `view_sequence` is
 
 The trigger descriptor is a closed `SafeTriggerDescriptorV1` value. It contains nullable authorized opaque source-object and source-ability identities, a `TriggerEventKindV1`, and one `SafeTriggerSubjectV1` whose tag must match that event kind. It never contains `TriggerInstanceId`, `StackObjectId`, `GameObjectId`, allocator-derived occurrence, or hidden card identity. The subject union mirrors the accepted `TriggerEventSnapshot` event union and projects only facts visible to the ordering actor:
 
-| Event tag | Safe subject fields |
-|---|---|
-| `spell_cast` | actor opaque player identity; spell source object opaque identity only when the spell is publicly identifiable; creature-spell boolean; public typed paid-cost facts. |
-| `ability_activated` | actor opaque player identity; source object/ability opaque identities; public target descriptors; public typed paid-cost facts. |
-| `target_became` | actor opaque player identity; public target descriptor. The source stack identity is omitted. |
-| `object_entered` | object opaque identity only when the entering object is public to the ordering actor. |
-| `object_left_or_died` | last-known object opaque identity only when public to the ordering actor; public destination-zone tag. |
-| `beginning_of_combat` | active-player opaque identity; public turn number. |
-| `attack_declared` | controller opaque identity; attacker/defending-player pairs sorted by attacker opaque identity. This is a descriptor-only canonical projection; it does not change the event snapshot or combat semantics. |
-| `card_drawn` | drawing-player opaque identity. The drawn card identity is never included unless a separate public rule event has revealed it. |
-| `counter_changed` | object opaque identity only when public; closed counter-kind tag; public before/after counts. |
-| `damage_applied` | optional source object opaque identity only when public; public recipient descriptor; amount; closed damage-kind tag. |
-| `life_changed` | player opaque identity; public before/after life totals; closed cause tag. |
+| Rank | Event tag | Safe subject fields |
+|---:|---|---|
+| 0 | `spell_cast` | actor opaque player identity; spell source object opaque identity only when the spell is publicly identifiable; creature-spell boolean; public typed paid-cost facts. |
+| 1 | `ability_activated` | actor opaque player identity; source object/ability opaque identities; public target descriptors; public typed paid-cost facts. |
+| 2 | `target_became` | actor opaque player identity; public target descriptor. The source stack identity is omitted. |
+| 3 | `object_entered` | object opaque identity only when the entering object is public to the ordering actor. |
+| 4 | `object_left_or_died` | last-known object opaque identity only when public to the ordering actor; public destination-zone tag. |
+| 5 | `beginning_of_combat` | active-player opaque identity; public turn number. |
+| 6 | `attack_declared` | controller opaque identity; attacker/defending-player pairs sorted by attacker opaque identity. This is a descriptor-only canonical projection; it does not change the event snapshot or combat semantics. |
+| 7 | `card_drawn` | drawing-player opaque identity. The drawn card identity is never included unless a separate public rule event has revealed it. |
+| 8 | `counter_changed` | object opaque identity only when public; closed counter-kind tag; public before/after counts. |
+| 9 | `damage_applied` | optional source object opaque identity only when public; public recipient descriptor; amount; closed damage-kind tag. |
+| 10 | `life_changed` | player opaque identity; public before/after life totals; closed cause tag. |
+
+These ranks are the exact `TriggerEventKindV1` wire/order discriminants for `SafeTriggerDescriptorV1`; declaration order, Rust enum layout, and lexical string order are not substitutes. They are used before the event-specific safe subject tuple in `CandidateOrderingV3`.
 
 The `public target descriptor` fields in the `ability_activated` and `target_became` subjects use this closed `SafeTargetDescriptorV1` union:
 

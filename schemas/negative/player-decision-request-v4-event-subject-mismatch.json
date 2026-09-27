@@ -18,7 +18,7 @@
               }
             },
             "creature_spell": true,
-            "kind": "spell_cast",
+            "kind": "card_drawn",
             "spell_source_object": null
           }
         }

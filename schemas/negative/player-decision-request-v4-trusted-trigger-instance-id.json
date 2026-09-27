@@ -74,9 +74,11 @@
             "kind": "target_became",
             "target": {
               "kind": "stack_item",
+              "stack_object_id": "77",
               "stack_position_from_top": 1
             }
-          }
+          },
+          "trigger_instance_id": "77"
         }
       }
     },

@@ -37,6 +37,25 @@ class SuccessorDecisionSchemaTests(unittest.TestCase):
             ).read_text(encoding="utf-8")
         )
         jsonschema.Draft202012Validator(schema).validate(fixture)
+        descriptors = [candidate["intent"]["trigger"] for candidate in fixture["candidates"]]
+        self.assertEqual(
+            [item["event_kind"] for item in descriptors],
+            [
+                "spell_cast",
+                "ability_activated",
+                "target_became",
+                "object_entered",
+                "object_left_or_died",
+                "beginning_of_combat",
+                "attack_declared",
+                "card_drawn",
+                "counter_changed",
+                "damage_applied",
+                "life_changed",
+            ],
+        )
+        targets = descriptors[1]["subject"]["targets"] + [descriptors[2]["subject"]["target"]]
+        self.assertEqual({target["kind"] for target in targets}, {"object", "player", "stack_item"})
         bad = dict(fixture)
         bad["state_revision"] = "18"
         with self.assertRaises(jsonschema.ValidationError):

@@ -115,6 +115,14 @@ SCHEMA_NEGATIVE_CASES = [
         "schemas/negative/player-decision-request-v4-trusted-trigger-id.json",
     ),
     (
+        "player-decision-request.v4.schema.json",
+        "schemas/negative/player-decision-request-v4-event-subject-mismatch.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/negative/player-decision-request-v4-trusted-trigger-instance-id.json",
+    ),
+    (
         "observed-event-envelope.v3.schema.json",
         "schemas/negative/observed-event-v3-object-moved-missing-entry-fields.json",
     ),
