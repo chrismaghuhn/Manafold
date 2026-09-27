@@ -1,9 +1,9 @@
 use crate::{
     AbilityAuthorityStateV1, AbilityAuthorityV1, AttachmentStateV1, AttachmentTimestampV1,
-    AttachmentV1, CounterKindV1, CounterStateV1, FaceStateV1, ManaColorV1, ManaPoolV1,
+    AttachmentV1, CounterKindV1, CounterStateV1, EngineState, FaceStateV1, ManaColorV1, ManaPoolV1,
     ManaRestrictionV1, ManaStateV1, PlayerTurnHistoryV1, TurnHistoryStateV1,
 };
-use mtgml_model::{AbilityInstanceId, GameObjectId, PlayerId, StateRevision};
+use mtgml_model::{AbilityInstanceId, GameObjectId, PlayerId, StateRevision, ZoneKind};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// One attachment relation change in an accepted state transition. The
@@ -59,6 +59,8 @@ pub enum StateFamilyMutationError {
     DuplicateTimestamp,
     #[error("state family timestamp does not follow the prior occurrence")]
     InvalidTimestamp,
+    #[error("simultaneous Role attachments have no defined ordering")]
+    UnsupportedOrder,
     #[error("state family turn number is not the next turn")]
     InvalidTurn,
 }
@@ -371,6 +373,25 @@ impl TurnHistoryStateV1 {
 }
 
 impl CounterStateV1 {
+    /// Rejects a decision boundary that still contains annihilating +1/+1
+    /// and -1/-1 counters. This is separate from structural validation so a
+    /// transition workspace can stage the counter change and stabilize it
+    /// before publishing its next decision.
+    pub fn validate_decision_boundary(&self) -> Result<(), StateFamilyMutationError> {
+        self.validate_semantics()?;
+        if self.counters.values().any(|counters| {
+            counters
+                .get(&CounterKindV1::PlusOnePlusOne)
+                .is_some_and(|count| *count > 0)
+                && counters
+                    .get(&CounterKindV1::MinusOneMinusOne)
+                    .is_some_and(|count| *count > 0)
+        }) {
+            return Err(StateFamilyMutationError::InvalidValue);
+        }
+        Ok(())
+    }
+
     /// Performs the CR 704.5q annihilation step as one atomic state-family
     /// operation. The caller places the returned ordered facts in the same
     /// transition product as the counter-causing operation, before opening
@@ -531,10 +552,11 @@ impl AttachmentStateV1 {
     /// the same rules product before exposing the next decision.
     pub fn enforce_role_uniqueness(
         &mut self,
-        role_owners_controllers: &BTreeMap<GameObjectId, (PlayerId, PlayerId)>,
+        state: &EngineState,
+        role_sources: &BTreeSet<GameObjectId>,
     ) -> Result<Vec<RoleAttachmentRetirementV1>, StateFamilyMutationError> {
         let mut candidate = self.clone();
-        let retirements = candidate.role_uniqueness_retirements(role_owners_controllers)?;
+        let retirements = candidate.role_uniqueness_retirements(state, role_sources)?;
         for retirement in &retirements {
             candidate.by_source.remove(&retirement.source);
         }
@@ -550,31 +572,67 @@ impl AttachmentStateV1 {
     /// rules transition can move each source to its owner's graveyard.
     pub fn role_uniqueness_retirements(
         &self,
-        role_owners_controllers: &BTreeMap<GameObjectId, (PlayerId, PlayerId)>,
+        state: &EngineState,
+        role_sources: &BTreeSet<GameObjectId>,
     ) -> Result<Vec<RoleAttachmentRetirementV1>, StateFamilyMutationError> {
         self.validate_semantics()?;
-        let mut newest: BTreeMap<(PlayerId, GameObjectId), (AttachmentTimestampV1, GameObjectId)> =
-            BTreeMap::new();
-        for (source, (_, controller)) in role_owners_controllers {
+        let battlefield: BTreeSet<_> = state
+            .zones
+            .locations
+            .iter()
+            .filter(|(_, location)| location.zone == ZoneKind::Battlefield)
+            .map(|(object, _)| *object)
+            .collect();
+        self.validate_battlefield(&battlefield)?;
+        let mut newest: BTreeMap<
+            (PlayerId, GameObjectId),
+            Vec<(AttachmentTimestampV1, GameObjectId)>,
+        > = BTreeMap::new();
+        for source in role_sources {
+            let object = state
+                .zones
+                .objects
+                .get(source)
+                .ok_or(StateFamilyMutationError::UnknownObject)?;
+            if !battlefield.contains(source) {
+                return Err(StateFamilyMutationError::WrongZone);
+            }
             let Some(edge) = self.by_source.get(source) else {
                 continue;
             };
-            let key = (*controller, edge.target);
-            let current = (edge.timestamp, *source);
-            if newest.get(&key).is_none_or(|previous| previous < &current) {
-                newest.insert(key, current);
+            newest
+                .entry((object.controller, edge.target))
+                .or_default()
+                .push((edge.timestamp, *source));
+        }
+        for attachments in newest.values_mut() {
+            attachments.sort();
+            if attachments
+                .windows(2)
+                .any(|pair| pair[0].0.revision == pair[1].0.revision)
+            {
+                return Err(StateFamilyMutationError::UnsupportedOrder);
             }
         }
 
         let mut retirements = Vec::new();
-        for (source, (owner, controller)) in role_owners_controllers {
+        for source in role_sources {
             let Some(edge) = self.by_source.get(source) else {
                 continue;
             };
-            if newest[&(*controller, edge.target)].1 != *source {
+            let object = state
+                .zones
+                .objects
+                .get(source)
+                .ok_or(StateFamilyMutationError::UnknownObject)?;
+            let latest_source = newest[&(object.controller, edge.target)]
+                .last()
+                .map(|(_, source)| *source)
+                .ok_or(StateFamilyMutationError::InvalidValue)?;
+            if latest_source != *source {
                 retirements.push(RoleAttachmentRetirementV1 {
                     source: *source,
-                    owner: *owner,
+                    owner: object.owner,
                     target: edge.target,
                     timestamp: edge.timestamp,
                 });
@@ -722,12 +780,13 @@ impl FaceStateV1 {
         &self,
         live_objects: &BTreeSet<GameObjectId>,
     ) -> Result<(), StateFamilyMutationError> {
-        if self
-            .faces
-            .keys()
-            .any(|object| !live_objects.contains(object))
-        {
-            return Err(StateFamilyMutationError::UnknownObject);
+        let face_objects: BTreeSet<_> = self.faces.keys().copied().collect();
+        if face_objects != *live_objects {
+            return Err(if face_objects.is_subset(live_objects) {
+                StateFamilyMutationError::Missing
+            } else {
+                StateFamilyMutationError::UnknownObject
+            });
         }
         Ok(())
     }
@@ -741,8 +800,11 @@ impl FaceStateV1 {
         if !live_objects.contains(&object) {
             return Err(StateFamilyMutationError::UnknownObject);
         }
-        self.validate_live_objects(live_objects)?;
-        Ok(self.faces.insert(object, face_key))
+        let mut candidate = self.clone();
+        let previous = candidate.faces.insert(object, face_key);
+        candidate.validate_live_objects(live_objects)?;
+        *self = candidate;
+        Ok(previous)
     }
 
     pub fn prune_departed_objects(&mut self, live_objects: &BTreeSet<GameObjectId>) {
@@ -1045,6 +1107,10 @@ mod tests {
         counters
             .add(object, CounterKindV1::MinusOneMinusOne, 2, &battlefield)
             .unwrap();
+        assert_eq!(
+            counters.validate_decision_boundary(),
+            Err(StateFamilyMutationError::InvalidValue)
+        );
 
         let facts = counters.annihilate_opposites(object, &battlefield).unwrap();
         assert_eq!(
@@ -1068,6 +1134,7 @@ mod tests {
             counters.counters[&object],
             BTreeMap::from([(CounterKindV1::PlusOnePlusOne, 1)])
         );
+        counters.validate_decision_boundary().unwrap();
         assert!(counters
             .annihilate_opposites(object, &battlefield)
             .unwrap()
@@ -1175,11 +1242,48 @@ mod tests {
     }
 
     #[test]
-    fn role_uniqueness_uses_controller_target_and_newest_timestamp() {
+    fn role_uniqueness_uses_authoritative_controller_and_rejects_same_transition_order() {
         let target = GameObjectId(10);
         let old_role = GameObjectId(1);
         let new_role = GameObjectId(2);
         let other_controller_role = GameObjectId(3);
+        let mut state = crate::construct_synthetic_engine_state(crate::SyntheticResetInputs {
+            players: [PlayerId(1), PlayerId(2)],
+            root_seed: mtgml_random::RootSeed256::from_lower_hex(&"36".repeat(32)).unwrap(),
+            setup: crate::SyntheticV4Setup::synthetic_compatibility(),
+        })
+        .unwrap();
+        for (id, owner, controller) in [
+            (old_role, PlayerId(2), PlayerId(1)),
+            (new_role, PlayerId(2), PlayerId(1)),
+            (other_controller_role, PlayerId(1), PlayerId(2)),
+            (target, PlayerId(1), PlayerId(1)),
+        ] {
+            state.zones.objects.insert(
+                id,
+                crate::GameObject {
+                    id,
+                    physical_card: Some(mtgml_model::PhysicalCardId(id.0)),
+                    card_definition: mtgml_model::CardDefinitionId(id.0),
+                    owner,
+                    controller,
+                    tapped: false,
+                    face_down: false,
+                },
+            );
+            state.zones.locations.insert(
+                id,
+                crate::ZoneLocation {
+                    zone: ZoneKind::Battlefield,
+                    player: None,
+                    position: crate::ZonePosition::Unordered,
+                    visibility: crate::VisibilityPartition::Public,
+                    partition: None,
+                },
+            );
+        }
+        state.allocators.next_object_id = GameObjectId(11);
+        let role_sources = BTreeSet::from([old_role, new_role, other_controller_role]);
         let mut attachments = AttachmentStateV1 {
             by_source: BTreeMap::from([
                 (
@@ -1214,24 +1318,28 @@ mod tests {
                 ),
             ]),
         };
-        let roles = BTreeMap::from([
-            (old_role, (PlayerId(2), PlayerId(1))),
-            (new_role, (PlayerId(2), PlayerId(1))),
-            (other_controller_role, (PlayerId(1), PlayerId(2))),
-        ]);
+        let original = attachments.clone();
         let old_timestamp = attachments.by_source[&old_role].timestamp;
-        let mut simultaneous = attachments.clone();
-        simultaneous.by_source.get_mut(&new_role).unwrap().timestamp = old_timestamp;
+
+        // Distinct ordinals in the same resulting revision still describe
+        // simultaneous Role attachments; this locked profile has no ordering
+        // rule for them, so state-family handling must reject atomically.
+        let mut simultaneous = original.clone();
+        simultaneous.by_source.get_mut(&new_role).unwrap().timestamp = AttachmentTimestampV1 {
+            revision: old_timestamp.revision,
+            operation_ordinal: 1,
+        };
         let before_simultaneous = simultaneous.clone();
         assert_eq!(
-            simultaneous.enforce_role_uniqueness(&roles),
-            Err(StateFamilyMutationError::DuplicateTimestamp),
-            "same-transition Role order is rejected when timestamps do not define one"
+            simultaneous.enforce_role_uniqueness(&state, &role_sources),
+            Err(StateFamilyMutationError::UnsupportedOrder)
         );
         assert_eq!(simultaneous, before_simultaneous);
 
         assert_eq!(
-            attachments.enforce_role_uniqueness(&roles).unwrap(),
+            attachments
+                .enforce_role_uniqueness(&state, &role_sources)
+                .unwrap(),
             vec![RoleAttachmentRetirementV1 {
                 source: old_role,
                 owner: PlayerId(2),
@@ -1239,14 +1347,31 @@ mod tests {
                 timestamp: old_timestamp,
             }]
         );
-        assert_eq!(
-            attachments.by_source.len(),
-            2,
-            "the newer same-controller Role and different-controller Role survive"
-        );
+        assert_eq!(attachments.by_source.len(), 2);
         assert!(!attachments.by_source.contains_key(&old_role));
         assert!(attachments.by_source.contains_key(&new_role));
         assert!(attachments.by_source.contains_key(&other_controller_role));
+
+        // Changing only the authoritative source object's controller changes
+        // the uniqueness grouping; no caller-supplied controller tuple exists.
+        let mut changed_controller = state.clone();
+        changed_controller
+            .zones
+            .objects
+            .get_mut(&old_role)
+            .unwrap()
+            .controller = PlayerId(2);
+        assert_eq!(
+            original
+                .role_uniqueness_retirements(&changed_controller, &role_sources)
+                .unwrap(),
+            vec![RoleAttachmentRetirementV1 {
+                source: other_controller_role,
+                owner: PlayerId(1),
+                target,
+                timestamp: original.by_source[&other_controller_role].timestamp,
+            }]
+        );
     }
 
     #[test]
@@ -1255,12 +1380,29 @@ mod tests {
         let live = BTreeSet::from([object]);
         let mut faces = FaceStateV1::default();
         faces.set(object, 1, &live).unwrap();
+        faces.validate_live_objects(&live).unwrap();
         let before = faces.clone();
         assert_eq!(
             faces.set(GameObjectId(2), 0, &live),
             Err(StateFamilyMutationError::UnknownObject)
         );
         assert_eq!(faces, before);
+
+        let two_live = BTreeSet::from([object, GameObjectId(2)]);
+        let one_face = FaceStateV1::for_objects(&live, 0);
+        assert_eq!(
+            one_face.validate_live_objects(&two_live),
+            Err(StateFamilyMutationError::Missing),
+            "an active FaceState must have one entry for every live incarnation"
+        );
+        let complete = FaceStateV1::for_objects(&two_live, 0);
+        complete.validate_live_objects(&two_live).unwrap();
+        let mut stale = complete.clone();
+        stale.faces.insert(GameObjectId(3), 0);
+        assert_eq!(
+            stale.validate_live_objects(&two_live),
+            Err(StateFamilyMutationError::UnknownObject)
+        );
 
         let mut abilities = AbilityAuthorityStateV1::default();
         let mut next_ability_id = AbilityInstanceId(1);
@@ -1483,8 +1625,8 @@ mod tests {
     fn engine_parts_registers_authorities_with_existing_allocator_atomically() {
         use crate::{
             construct_synthetic_engine_state, CardRulesAuthoritativeStateV1, EngineStatePartsV2,
-            ManaPoolV1, ManaStateV1, PlayerTurnHistoryV1, SyntheticResetInputs, SyntheticV4Setup,
-            TurnHistoryStateV1,
+            FaceStateV1, ManaPoolV1, ManaStateV1, PlayerTurnHistoryV1, SyntheticResetInputs,
+            SyntheticV4Setup, TurnHistoryStateV1,
         };
         use mtgml_random::RootSeed256;
 
@@ -1512,6 +1654,8 @@ mod tests {
                 ..CardRulesAuthoritativeStateV1::default()
             },
         );
+        let live: BTreeSet<_> = engine.zones.objects.keys().copied().collect();
+        parts.card_rules_state.faces = FaceStateV1::for_objects(&live, 0);
         let source = *engine
             .zones
             .objects

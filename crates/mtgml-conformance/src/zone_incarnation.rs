@@ -412,6 +412,89 @@ fn generic_ojer_like_return_is_a_new_tapped_back_face_incarnation_without_transf
     );
 }
 
+#[test]
+fn role_uniqueness_retirement_moves_old_role_incarnation_to_its_owner_graveyard() {
+    use mtgml_state::{AttachmentStateV1, AttachmentTimestampV1, AttachmentV1};
+
+    let mut state = base_state();
+    let target = OLD_BATTLEFIELD;
+    let older_role = GameObjectId(3);
+    let newer_role = GameObjectId(4);
+    for (id, owner, controller) in [(older_role, P2, P1), (newer_role, P2, P1)] {
+        state.zones.objects.insert(
+            id,
+            GameObject {
+                id,
+                physical_card: Some(PhysicalCardId(id.0)),
+                card_definition: CardDefinitionId(id.0),
+                owner,
+                controller,
+                tapped: false,
+                face_down: false,
+            },
+        );
+        state.zones.locations.insert(id, battlefield_from());
+    }
+    state.allocators.next_object_id = GameObjectId(5);
+    let roles = std::collections::BTreeSet::from([older_role, newer_role]);
+    let mut attachments = AttachmentStateV1 {
+        by_source: BTreeMap::from([
+            (
+                older_role,
+                AttachmentV1 {
+                    target,
+                    timestamp: AttachmentTimestampV1 {
+                        revision: mtgml_model::StateRevision(4),
+                        operation_ordinal: 0,
+                    },
+                },
+            ),
+            (
+                newer_role,
+                AttachmentV1 {
+                    target,
+                    timestamp: AttachmentTimestampV1 {
+                        revision: mtgml_model::StateRevision(5),
+                        operation_ordinal: 0,
+                    },
+                },
+            ),
+        ]),
+    };
+
+    let retirements = attachments.enforce_role_uniqueness(&state, &roles).unwrap();
+    assert_eq!(retirements.len(), 1);
+    assert_eq!(retirements[0].source, older_role);
+    assert_eq!(retirements[0].owner, P2);
+    assert!(!attachments.by_source.contains_key(&older_role));
+    assert!(attachments.by_source.contains_key(&newer_role));
+
+    let retirement = retirements[0];
+    let result = execute_selected_zone_transition_for_conformance(
+        &state,
+        retirement.source,
+        battlefield_from(),
+        owner_graveyard_top(retirement.owner),
+        ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+    )
+    .unwrap();
+    assert_event_delta_mirror(&result);
+    let transition = match &result.events[0].event {
+        mtgml_rules::AuthoritativeRuleEventKind::ZoneTransition { transition } => transition,
+        other => panic!("Role retirement emits a zone transition, got {other:?}"),
+    };
+    assert_eq!(transition.from.zone, ZoneKind::Battlefield);
+    assert_eq!(transition.to.zone, ZoneKind::Graveyard);
+    assert_eq!(transition.to.player, Some(retirement.owner));
+    assert_eq!(transition.new_snapshot.owner, retirement.owner);
+    assert_eq!(
+        result.next_state.zones.locations[&transition.new_object],
+        owner_graveyard_top(P2)
+    );
+    assert!(!result.next_state.zones.objects.contains_key(&older_role));
+    assert!(result.next_state.zones.objects.contains_key(&newer_role));
+}
+
 /// Task-2-only positive fixture: source objects are intentionally untracked
 /// and carry no FoundationSource so that Task-3 lifecycle/closure semantics
 /// are not smuggled into this slice.

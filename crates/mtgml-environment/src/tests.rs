@@ -562,6 +562,121 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
         execution_identity: admission.execution_identity().clone(),
     };
 
+    let mut missing_face_state = before_checkpoint.state.clone();
+    let live_face = *missing_face_state
+        .card_rules_state
+        .faces
+        .faces
+        .keys()
+        .next()
+        .expect("admitted basic-land state carries live FaceState rows");
+    missing_face_state
+        .card_rules_state
+        .faces
+        .faces
+        .remove(&live_face);
+    assert!(missing_face_state.validate().is_err());
+    assert!(EnvironmentCheckpointV7::new(
+        missing_face_state,
+        EpisodeStatus::Running,
+        EnvironmentLimitCounters::default(),
+        admission.execution_identity().clone(),
+    )
+    .is_err());
+
+    let mut no_face_rows = before_checkpoint.state.clone();
+    no_face_rows.card_rules_state.faces.faces.clear();
+    assert!(no_face_rows.validate().is_err());
+
+    let mut extra_face_state = before_checkpoint.state.clone();
+    let stale_face = extra_face_state.predecessor_v5.allocators.next_object_id;
+    extra_face_state
+        .card_rules_state
+        .faces
+        .faces
+        .insert(stale_face, 0);
+    assert!(extra_face_state.validate().is_err());
+
+    // A self-consistent pending V3 checkpoint may remain structurally valid,
+    // but executable admission must reject a decision boundary before CR
+    // 704.5q counter annihilation has stabilized the object.
+    let battlefield_counter_object = state
+        .predecessor_v5
+        .zones
+        .locations
+        .iter()
+        .find_map(|(object, location)| {
+            (location.zone == mtgml_model::ZoneKind::Battlefield).then_some(*object)
+        })
+        .expect("fixture contains a battlefield object");
+    let mut unresolved_counter_state = state.clone();
+    unresolved_counter_state
+        .card_rules_state
+        .counters
+        .counters
+        .insert(
+            battlefield_counter_object,
+            BTreeMap::from([
+                (mtgml_state::CounterKindV1::PlusOnePlusOne, 1),
+                (mtgml_state::CounterKindV1::MinusOneMinusOne, 1),
+            ]),
+        );
+    unresolved_counter_state.validate().unwrap();
+    assert!(unresolved_counter_state
+        .execution_v3
+        .pending_decision
+        .is_some());
+    assert!(unresolved_counter_state
+        .card_rules_state
+        .counters
+        .validate_decision_boundary()
+        .is_err());
+    let unresolved_counter_checkpoint = EnvironmentCheckpointV7::new(
+        unresolved_counter_state.clone(),
+        EpisodeStatus::Running,
+        EnvironmentLimitCounters::default(),
+        admission.execution_identity().clone(),
+    )
+    .unwrap();
+    unresolved_counter_checkpoint.validate().unwrap();
+    unresolved_counter_checkpoint.restore_detached().unwrap();
+    assert!(mtgml_rules::validate_basic_land_pending_request(
+        &admission,
+        &unresolved_counter_state,
+        &EpisodeStatus::Running,
+    )
+    .is_err());
+    let mut unresolved_counter_manifest = manifest.clone();
+    unresolved_counter_manifest.initial_identity = mtgml_replay::InitialEnvironmentIdentityV7 {
+        state_revision: unresolved_counter_checkpoint.state.predecessor_v5.revision,
+        full_state_digest: unresolved_counter_checkpoint.state_digest.clone(),
+        episode_status: unresolved_counter_checkpoint.status.clone(),
+        environment_limit_counters: unresolved_counter_checkpoint.limit_counters.clone(),
+        checkpoint_codec_identity: unresolved_counter_checkpoint.codec.clone(),
+        checkpoint_digest: unresolved_counter_checkpoint.checkpoint_digest.clone(),
+        execution_identity: unresolved_counter_checkpoint.execution_identity.clone(),
+    };
+    assert!(crate::SuccessorEnvironmentRuntime::new(
+        admission.clone(),
+        unresolved_counter_state,
+        EpisodeStatus::Running,
+        EnvironmentLimitCounters::default(),
+        unresolved_counter_manifest.clone(),
+    )
+    .is_err());
+    let unresolved_counter_replay =
+        mtgml_replay::ReplayRecorderV7::new(unresolved_counter_manifest)
+            .unwrap()
+            .export()
+            .unwrap();
+    unresolved_counter_replay.validate().unwrap();
+    assert!(crate::replay_v7_execution::execute_authoritative_replay_v7(
+        admission.clone(),
+        unresolved_counter_checkpoint.clone(),
+        unresolved_counter_replay,
+    )
+    .is_err());
+
     // Paired successor worlds differ only in opponent-hidden library
     // definitions/order. Player 2's public decision and observation products
     // must remain equal; authoritative checkpoint identity may differ.
@@ -792,6 +907,16 @@ fn successor_runtime_commits_v3_steps_checkpoint_and_replay_atomically() {
     let replay_before_bad_restore = runtime.export_replay().unwrap();
     let replay_bytes_before_bad_restore =
         mtgml_wire::encode_canonical(&replay_before_bad_restore).unwrap();
+    assert!(runtime
+        .restore(unresolved_counter_checkpoint.clone())
+        .is_err());
+    assert_eq!(runtime.checkpoint().unwrap(), runtime_before_bad_restore);
+    assert_eq!(runtime.export_replay().unwrap(), replay_before_bad_restore);
+    assert_eq!(
+        mtgml_wire::encode_canonical(&runtime.export_replay().unwrap()).unwrap(),
+        replay_bytes_before_bad_restore,
+        "counter-boundary restore rejection is completely nonmutating"
+    );
     assert!(runtime.restore(incomplete_checkpoint).is_err());
     assert_eq!(runtime.checkpoint().unwrap(), runtime_before_bad_restore);
     assert_eq!(runtime.export_replay().unwrap(), replay_before_bad_restore);

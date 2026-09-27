@@ -173,6 +173,24 @@ impl EngineStatePartsV2 {
 
         let live: BTreeSet<GameObjectId> = state.zones.objects.keys().copied().collect();
         let abilities = &self.card_rules_state.abilities.by_instance;
+        // An empty FaceState plus no live ability authority is the explicit
+        // synthetic-compatibility shape. Once Magic face/ability authority is
+        // present, the closed FaceState map must cover every live incarnation.
+        let has_content_authority = !self.card_rules_state.faces.faces.is_empty()
+            || !abilities.is_empty()
+            || self
+                .execution_v3
+                .pending_decision
+                .as_ref()
+                .is_some_and(|request| {
+                    request.candidates.iter().any(|candidate| {
+                        matches!(
+                            &candidate.visible_intent,
+                            mtgml_decision::CandidateIntentV3::PlayLand { .. }
+                                | mtgml_decision::CandidateIntentV3::ActivateAbility { .. }
+                        )
+                    })
+                });
         if self
             .execution_v3
             .pending_decision
@@ -243,11 +261,12 @@ impl EngineStatePartsV2 {
             .counters
             .validate_battlefield(&battlefield)
             .is_err()
-            || self
-                .card_rules_state
-                .faces
-                .validate_live_objects(&live)
-                .is_err()
+            || (has_content_authority
+                && self
+                    .card_rules_state
+                    .faces
+                    .validate_live_objects(&live)
+                    .is_err())
             || self
                 .card_rules_state
                 .abilities
@@ -363,6 +382,17 @@ mod tests {
         )
     }
 
+    fn install_closed_face_rows(state: &mut EngineStatePartsV2) {
+        let live = state
+            .predecessor_v5
+            .zones
+            .objects
+            .keys()
+            .copied()
+            .collect::<BTreeSet<_>>();
+        state.card_rules_state.faces = crate::FaceStateV1::for_objects(&live, 0);
+    }
+
     #[test]
     fn cross_state_authority_and_history_references_fail_closed() {
         let mut allocator = parts();
@@ -433,6 +463,7 @@ mod tests {
     #[test]
     fn cross_state_live_ability_authority_relationships_validate() {
         let mut state = parts();
+        install_closed_face_rows(&mut state);
         state.card_rules_state.abilities.by_instance.insert(
             AbilityInstanceId(1),
             AbilityAuthorityV1 {
@@ -645,6 +676,7 @@ mod tests {
         use mtgml_model::{CandidateIdV1, DecisionId, PlayerDecisionIdV1};
 
         let mut state = parts();
+        install_closed_face_rows(&mut state);
         let actor = PlayerId(1);
         let identities = &state.predecessor_v5.perspective_identities.players[&actor];
         let (object, opaque) = identities
