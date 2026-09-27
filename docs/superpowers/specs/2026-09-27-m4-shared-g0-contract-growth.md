@@ -223,7 +223,25 @@ The player request/response must not contain `StateRevision`. `view_sequence` is
 * `SelectManaPayment { spent_buckets_u32[12] }` ↔ the same typed bucket vector, validated against the derived provisional pool/cost;
 * `SelectTrigger { safe_trigger_descriptor }` ↔ `SelectTrigger { trigger_instance_id }`;
 
-The trigger descriptor contains only authorized source object/ability opaque IDs, a closed trigger-event tag and visible event subject facts. It carries no TriggerInstanceId or allocator-derived occurrence. If two non-equivalent trigger instances remain indistinguishable to their ordering actor, the candidate domain rejects/blocks pending a typed safe distinguisher; it may not silently select one. Mana-source descriptors similarly expose only authorized opaque source/ability IDs and the typed produced-mana vector; source activations and the optional finalize candidate share one `ManaProductionChoice` request purpose; their binding carries current trusted incarnations and profile authority. New tags are appended under a newly reviewed candidate-order identity; V3 rank/payload keys and duplicate rejection remain exact.
+The trigger descriptor is a closed `SafeTriggerDescriptorV1` value. It contains nullable authorized opaque source-object and source-ability identities, a `TriggerEventKindV1`, and one `SafeTriggerSubjectV1` whose tag must match that event kind. It never contains `TriggerInstanceId`, `StackObjectId`, `GameObjectId`, allocator-derived occurrence, or hidden card identity. The subject union mirrors the accepted `TriggerEventSnapshot` event union and projects only facts visible to the ordering actor:
+
+| Event tag | Safe subject fields |
+|---|---|
+| `spell_cast` | actor opaque player identity; spell source object opaque identity only when the spell is publicly identifiable; creature-spell boolean; public typed paid-cost facts. |
+| `ability_activated` | actor opaque player identity; source object/ability opaque identities; public target descriptors; public typed paid-cost facts. |
+| `target_became` | actor opaque player identity; public target descriptor. The source stack identity is omitted. |
+| `object_entered` | object opaque identity only when the entering object is public to the ordering actor. |
+| `object_left_or_died` | last-known object opaque identity only when public to the ordering actor; public destination-zone tag. |
+| `beginning_of_combat` | active-player opaque identity; public turn number. |
+| `attack_declared` | controller opaque identity; attacker opaque identities in the event's semantic order, each paired with its defending-player opaque identity. |
+| `card_drawn` | drawing-player opaque identity. The drawn card identity is never included unless a separate public rule event has revealed it. |
+| `counter_changed` | object opaque identity only when public; closed counter-kind tag; public before/after counts. |
+| `damage_applied` | optional source object opaque identity only when public; public recipient descriptor; amount; closed damage-kind tag. |
+| `life_changed` | player opaque identity; public before/after life totals; closed cause tag. |
+
+An opaque object/player/ability value is admitted only when that identity is already visible to the ordering actor under the Information Model; a hidden-zone object maps to `null` or is omitted by its event-specific subject variant. Subject variants use fixed fields and closed enums, never extension maps, rendered text, or trusted IDs. The request candidate comparator orders by event tag, then the event-specific safe subject tuple, then safe source opaque identities; semantic vectors such as attacker order remain order-sensitive. Candidate construction rejects duplicate descriptors that refer to non-equivalent trigger instances. If the rules require the actor to distinguish such instances but these safe facts do not distinguish them, candidate construction fails closed and G0 must be amended with an explicitly safe distinguisher before implementation; allocator or trusted identity is never a fallback.
+
+Mana-source descriptors similarly expose only authorized opaque source/ability IDs and the typed produced-mana vector; source activations and the optional finalize candidate share one `ManaProductionChoice` request purpose; their binding carries current trusted incarnations and profile authority. New tags are appended under a newly reviewed candidate-order identity; V3 rank/payload keys and duplicate rejection remain exact.
 
 The payment candidate is a complete allocation over the six existing mana colors and two existing restriction buckets (fixed W/U/B/R/G/C order for each). It has no physical mana-unit IDs. Source activations are selected one at a time and append typed outputs in semantic order to the cast continuation; the provisional pool is derived from that sequence without mutating ManaState. All and only legal next source activations/finalization choices are enumerated, then all and only legal allocations from the resulting pool are enumerated; a complete allocation is selected in one ChooseOne step. The cost-route choice is separately explicit when the profile offers real alternatives. The final stack payload preserves the selected route and paid-cost facts; the exact post-commit mana vector and payment event preserve relevant resource consequences.
 
