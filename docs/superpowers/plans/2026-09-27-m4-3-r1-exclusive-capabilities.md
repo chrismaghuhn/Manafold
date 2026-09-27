@@ -79,7 +79,7 @@ Shared dependencies do not block design work in isolation, but they block integr
 **Direct witnesses:** Hired Claw, Emberheart Challenger.
 **Dependencies:** E1 turn reset; Shared ability authority/activation and target announcement/change/copy events; Shared trigger/decision/stack owner.
 **State:** reuse M4.2 `once_ability_used` and `target_occurrences`; no additional state.
-**Decisions:** activate/decline via ordinary priority; Valiant trigger's may-play choice explicitly represented by R1-E6 permission/cast path.
+**Decisions:** Hired Claw activation appears among ordinary legal priority actions; there is no separate activation-decline Decision. Successful Valiant trigger resolution automatically grants the play permission; any later cast is an ordinary legal action for its authorized player, not a permission accept/decline Decision.
 **RED sequence:** used ability excluded and forged activation rejected; successful commit records one use; rejected activation records none; target paired by target incarnation and targeting controller; opponent first then owner; owner repeated target; target change/copy; control changes; target incarnation departure and turn reset. For Valiant, library identity stays hidden before resolution, then its face-up exiled card becomes public to both players.
 **Main conformance:** exact occurrence/trigger count and first-time target event; no targeter/source identity used as a surrogate; checkpoint/fork/replay preserve markers.
 **Unblocks:** Valiant trigger resolution and Hired Claw activation closure.
@@ -164,7 +164,7 @@ Shared dependencies do not block design work in isolation, but they block integr
 **Direct witnesses:** Emberheart Challenger; Nova Hellkite later via Warp.
 **Dependencies:** Shared exile/zone incarnation, casting/payment, permission validation, player knowledge/projection, E2 Valiant trigger.
 **State:** new typed permission family likely requires contract growth and exact expiry semantics.
-**Decisions:** play/decline explicitly; ordinary timing, costs, entitlement and target decisions remain available.
+**Decisions:** permission is granted automatically on successful effect resolution. The exact card appears as an ordinary legal cast/play action only for its authorized player while the permission and normal timing/cost/entitlement rules allow it; not playing it is represented by choosing another legal action or passing, with no separate decline-permission Decision.
 **RED sequence:** only exact card/player/action authorized; Emberheart permission ends at turn end; Warp permission begins only after the Warp-cast turn ends and has no turn-based expiry while the exact exile relation remains; card leaves exile; both players see face-up exile identity but only the authorized player sees the playable candidate; hidden library identity is noninterfering before public exile; permission present in checkpoint/fork/replay; fabricated/stale use rejected.
 **Main conformance:** Emberheart exiles the top card face up; both perspectives observe the same public card identity after resolution, while only the authorized player's complete decision domain offers to play it. Before resolution, paired hidden library identities remain noninterfering.
 **Unblocks:** Emberheart permission closure and Warp's permission half.
@@ -175,7 +175,7 @@ Shared dependencies do not block design work in isolation, but they block integr
 **Direct witness:** Nova Hellkite.
 **Dependencies:** E6b permission; E6a cast/payment; Shared turn/end-step scheduler, exile incarnation, trigger/effect and replay.
 **State:** typed due-turn/step payload and exact card reference, contract growth required if absent from the accepted execution closure. Source departure must not erase it.
-**Decisions:** Warp vs ordinary cast route, complete payment route, later permission play/decline.
+**Decisions:** Warp vs ordinary cast route and complete payment route are explicit at casting. Warp permission is granted automatically when its delayed effect resolves; a later cast is an ordinary legal action while the exact permission is valid, with no separate permission accept/decline Decision.
 **RED sequence:** Warp unavailable/unaffordable; source permanent leaves before the due trigger; no fallback to a later incarnation; next end step only; permission unavailable until the Warp-cast turn ends; permission remains available across later turns only while the exact exile incarnation remains exiled; exact incarnation/face/zone; restore/fork/replay across pre-due and post-due boundaries.
 **Main conformance:** cast via Warp, resolve, original permanent leaves before due and produces no exile/permission; in the positive case, next-end-step exile and later permission bind to exact incarnations, remain valid while exiled, and cease when that card leaves exile. Each boundary has exact event/state identity.
 **Unblocks:** Nova Hellkite's full Warp definition.
