@@ -11,7 +11,7 @@
 
 ## 1. Context and authority
 
-G0a is accepted for G0b only. The independent Exact-Head review passed on G0a head `308e465669f66ad63b01d5fb381214c08ce413bc`; PR #250's required CI passed; PR #250 merged as `8642db7a389d5363d52224bd040082811f626084`; and the merged tree is identical to the reviewed head. The fetched G0b baseline already records G0a acceptance in the G0 Spec and Plan headers; no G0a status edit is needed in this task. G0a acceptance does not accept this ADR or authorize implementation.
+G0a is accepted for G0b only. The independent Exact-Head review passed on G0a head `308e465669f66ad63b01d5fb381214c08ce413bc`; PR #250's required CI passed; PR #250 merged as `8642db7a389d5363d52224bd040082811f626084`; and the merged tree is identical to the reviewed head. At the fetched G0b baseline, the G0 Spec and Plan headers still said `PROPOSED / NOT ACCEPTED`. This branch synchronizes them to `ACCEPTED FOR G0B` based on that completed review, CI, merge, and post-merge evidence. G0a acceptance does not accept this ADR or authorize implementation.
 
 The verified G0b baseline is `origin/master@8642db7a389d5363d52224bd040082811f626084`. The current source confirms the inventory in the G0 Spec: `EngineStatePartsV2`, `ExecutionStateV3`, `PersistedExecutionV3`, `zones_v1`, `ContinuationPayloadV2`, `StateDeltaV2`, `SemanticDeltaOperationV2`, `AuthoritativeRuleEventV2`, `FullStateDigestV6`, checkpoint/digest V7, Replay V7, Decision request V3, response V2, ObservedEvent V3, PlayerStep V3, observation envelope V1, information state/digest V2, and the M4.2 named payload `magic-basic-land-observation.v1`.
 
