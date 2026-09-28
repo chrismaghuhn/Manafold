@@ -501,11 +501,11 @@ The successor digest uses the accepted independent envelope and codec unchanged 
 ]
 ```
 
-This is a proposed preimage layout, not an allocated V7 identity. The nested Zone and Execution encodings are new closed schemas with fixed array lengths, explicit tags, numeric IDs sorted ascending, semantically ordered vectors preserved, and nullable fields encoded as CBOR `null`.
+At G0a this was a proposed preimage layout with no allocated V7 identity. G0b subsequently accepted ADR 0056, which assigns `FullStateDigestV7`, `FullStateDigestInputV7`, `full-state-digest-input.v7`, and `mtgml.full-state-digest.v7`; ADR 0056 is the canonical source for those exact names. The layout here remains the proposed fixed 14-element preimage. The nested Zone and Execution encodings are new closed schemas with fixed array lengths, explicit tags, numeric IDs sorted ascending, semantically ordered vectors preserved, and nullable fields encoded as CBOR `null`.
 
 Canonical primitive rules remain the accepted restricted CBOR rules: definite-length arrays/strings/bytes, shortest integer representation, signed/unsigned ranges fixed by each typed field, no maps/floats/tags/bignums/indefinite values, strict UTF-8, bounded payload/depth/item counts, and byte-identical canonical re-encoding. There is no host endianness: CBOR's network-order integer/length representation is used. Enum discriminants are exact closed tags in fixed schema order; Rust enum declaration order and Serde output are never hashed. Digest values nested in other preimages remain 32-byte byte strings. Per-item counts and encoded records remain subject to existing 64 MiB/resource bounds unless an accepted contract explicitly lowers them.
 
-The successor semantic input must include stack payload, trigger payload, temporary records, pending continuation partial choices, relevant identity allocators, stack/trigger/effect ordering, and all existing M4 state. Every field mutation must change the successor digest; trusted identity renaming must not alter safe player bytes. No current digest domain/schema name is assigned in this proposal.
+The successor semantic input must include stack payload, trigger payload, temporary records, pending continuation partial choices, relevant identity allocators, stack/trigger/effect ordering, and all existing M4 state. Every field mutation must change the successor digest; trusted identity renaming must not alter safe player bytes. G0a left the digest domain/schema names unassigned; accepted ADR 0056 now assigns them, and the exact V7 input shape and writer/verifier evidence remain owned by G0c/G0e.
 
 ## 8. Checkpoint, fork, and replay
 
