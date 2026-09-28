@@ -695,6 +695,18 @@
       "expected_error_code": "semantic.decision",
       "expected_reject_layer": "rust-python-semantic-or-decode",
       "path": "player-decision-request-v4-cost-route-alternative-without-ordinal.json"
+    },
+    {
+      "contract": "player-decision-request.v4",
+      "expected_error_code": "semantic.decision",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "player-decision-request-v4-sba-graveyard-order-public.json"
+    },
+    {
+      "contract": "player-decision-request.v4",
+      "expected_error_code": "semantic.decision",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "player-decision-request-v4-sba-graveyard-order-wrong-candidate.json"
     }
   ]
 }

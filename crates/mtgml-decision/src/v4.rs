@@ -66,6 +66,7 @@ pub enum SyntheticAssemblyStageV1 {
 pub enum DecisionPurposeV4 {
     PriorityAction,
     AttackerDeclaration,
+    SbaGraveyardOrder,
     CastCostRoute,
     ModeSelection {
         mode_slot: u32,
@@ -110,12 +111,14 @@ impl DecisionPurposeV4 {
             ) | (
                 Self::AttackerDeclaration,
                 DecisionDomainV2::ChooseMany { .. }
-            ) | (
-                Self::ModeSelection { .. }
-                    | Self::TargetSelection { .. }
-                    | Self::TriggerTarget { .. },
-                DecisionDomainV2::ChooseOne | DecisionDomainV2::ChooseMany { .. }
-            ) | (Self::TriggerOrder, DecisionDomainV2::Order { .. })
+            ) | (Self::SbaGraveyardOrder, DecisionDomainV2::Order { .. })
+                | (
+                    Self::ModeSelection { .. }
+                        | Self::TargetSelection { .. }
+                        | Self::TriggerTarget { .. },
+                    DecisionDomainV2::ChooseOne | DecisionDomainV2::ChooseMany { .. }
+                )
+                | (Self::TriggerOrder, DecisionDomainV2::Order { .. })
         ) || matches!(
             (self, domain),
             (
@@ -153,6 +156,9 @@ impl DecisionPurposeV4 {
                     | CandidateIntentV4::ActivateAbility { .. }
             ) | (
                 Self::AttackerDeclaration,
+                CandidateIntentV4::SelectObject { .. }
+            ) | (
+                Self::SbaGraveyardOrder,
                 CandidateIntentV4::SelectObject { .. }
             ) | (
                 Self::CastCostRoute,
@@ -193,9 +199,10 @@ impl DecisionPurposeV4 {
 
     fn visibility_is_valid(&self, visibility: DecisionVisibility) -> bool {
         match self {
-            Self::AttackerDeclaration | Self::CastCostRoute | Self::TriggerOrder => {
-                visibility == DecisionVisibility::ActingPlayerOnly
-            }
+            Self::AttackerDeclaration
+            | Self::CastCostRoute
+            | Self::SbaGraveyardOrder
+            | Self::TriggerOrder => visibility == DecisionVisibility::ActingPlayerOnly,
             Self::SyntheticAssembly { .. } => visibility == DecisionVisibility::Public,
             _ => true,
         }
@@ -1272,6 +1279,9 @@ mod tests {
 
     const TRIGGERS: &str =
         include_str!("../../../schemas/examples/player-decision-request-v4-trigger-order.json");
+    const SBA_GRAVEYARD_ORDER: &str = include_str!(
+        "../../../schemas/examples/player-decision-request-v4-sba-graveyard-order.json"
+    );
     const COST_ROUTE_PUBLIC: &str =
         include_str!("../../../schemas/negative/player-decision-request-v4-cost-route-public.json");
     const ATTACKERS: &str = include_str!(
@@ -1304,6 +1314,17 @@ mod tests {
         assert!(parse_fixture(SYNTHETIC_COUNT).candidates.is_empty());
         assert_eq!(parse_fixture(SYNTHETIC_MEMBERS).candidates.len(), 2);
         assert_eq!(parse_fixture(SYNTHETIC_ORDER).candidates.len(), 2);
+    }
+
+    #[test]
+    fn rust_dto_preserves_sba_graveyard_order_decision() {
+        let request = parse_fixture(SBA_GRAVEYARD_ORDER);
+        assert_eq!(request.purpose, DecisionPurposeV4::SbaGraveyardOrder);
+        assert!(matches!(
+            request.decision_domain_v2,
+            DecisionDomainV2::Order { .. }
+        ));
+        assert_eq!(request.candidates.len(), 2);
     }
 
     #[test]

@@ -206,6 +206,14 @@ SCHEMA_NEGATIVE_CASES = [
     ),
     (
         "player-decision-request.v4.schema.json",
+        "schemas/negative/player-decision-request-v4-sba-graveyard-order-public.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/negative/player-decision-request-v4-sba-graveyard-order-wrong-candidate.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
         "schemas/negative/player-decision-request-v4-unbound-source-ability.json",
     ),
     (
@@ -273,6 +281,10 @@ SCHEMA_POSITIVE_CASES = [
     (
         "player-decision-request.v4.schema.json",
         "schemas/examples/player-decision-request-v4-cost-route.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/examples/player-decision-request-v4-sba-graveyard-order.json",
     ),
     ("replay-manifest.v8.schema.json", "schemas/examples/replay-manifest-v8.json"),
     ("replay-step.v8.schema.json", "schemas/examples/replay-step-v8.json"),

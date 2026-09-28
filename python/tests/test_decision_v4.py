@@ -59,6 +59,33 @@ class PlayerDecisionRequestV4Tests(unittest.TestCase):
         with self.assertRaises(WireError):
             PlayerDecisionRequestV4.from_wire(raw)
 
+    def test_sba_graveyard_order_uses_order_domain_and_safe_object_candidates(self) -> None:
+        raw = json.loads(
+            (
+                ROOT / "schemas/examples/player-decision-request-v4-sba-graveyard-order.json"
+            ).read_text(encoding="utf-8")
+        )
+        request = PlayerDecisionRequestV4.from_wire(raw)
+        self.assertEqual(request.purpose.kind, "sba_graveyard_order")
+        self.assertEqual(request.decision_domain_v2.kind, "order")
+        self.assertEqual([item.intent.kind for item in request.candidates], ["select_object"] * 2)
+
+    def test_sba_graveyard_order_rejects_public_visibility_and_wrong_candidate(self) -> None:
+        raw = json.loads(
+            (
+                ROOT / "schemas/examples/player-decision-request-v4-sba-graveyard-order.json"
+            ).read_text(encoding="utf-8")
+        )
+        public = copy.deepcopy(raw)
+        public["visibility"] = "public"
+        with self.assertRaises(WireError):
+            PlayerDecisionRequestV4.from_wire(public)
+
+        wrong_candidate = copy.deepcopy(raw)
+        wrong_candidate["candidates"][0]["intent"] = {"kind": "select_player", "player": "1"}
+        with self.assertRaises(WireError):
+            PlayerDecisionRequestV4.from_wire(wrong_candidate)
+
     def test_rejects_candidate_intents_outside_attacker_and_synthetic_purposes(self) -> None:
         attacker = json.loads(
             (

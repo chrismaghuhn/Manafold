@@ -1,0 +1,32 @@
+{
+  "actor": "0",
+  "candidates": [
+    {
+      "candidate_id": 0,
+      "intent": {
+        "kind": "select_object",
+        "object": "3"
+      }
+    },
+    {
+      "candidate_id": 1,
+      "intent": {
+        "kind": "select_object",
+        "object": "7"
+      }
+    }
+  ],
+  "decision_domain_v2": {
+    "kind": "order",
+    "minimum": 2,
+    "maximum": 2
+  },
+  "parent_player_decision_id": null,
+  "player_decision_id": "5",
+  "purpose": {
+    "kind": "sba_graveyard_order"
+  },
+  "schema_version": "player-decision-request.v4",
+  "view_sequence": "8",
+  "visibility": "acting_player_only"
+}

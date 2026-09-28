@@ -2287,6 +2287,95 @@
           "candidates"
         ]
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "properties": {
+              "kind": {
+                "const": "sba_graveyard_order"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "decision_domain_v2": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "order"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "visibility": {
+            "const": "acting_player_only"
+          }
+        },
+        "required": [
+          "decision_domain_v2",
+          "visibility"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "properties": {
+              "kind": {
+                "const": "sba_graveyard_order"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "candidates": {
+            "items": {
+              "properties": {
+                "intent": {
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "select_object"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                }
+              },
+              "required": [
+                "intent"
+              ]
+            }
+          }
+        },
+        "required": [
+          "candidates"
+        ]
+      }
     }
   ],
   "properties": {
@@ -2805,6 +2894,18 @@
           "required": [
             "kind",
             "target_slot"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "sba_graveyard_order"
+            }
+          },
+          "required": [
+            "kind"
           ],
           "type": "object"
         },

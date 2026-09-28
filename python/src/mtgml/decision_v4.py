@@ -58,6 +58,7 @@ _CANDIDATE_RANK = {
 _PURPOSE_CANDIDATES = {
     "priority_action": {"pass_priority", "play_land", "cast_spell", "activate_ability"},
     "attacker_declaration": {"select_object"},
+    "sba_graveyard_order": {"select_object"},
     "cast_cost_route": {"select_cost_route"},
     "mode_selection": {"select_mode"},
     "target_selection": {"select_object", "select_player"},
@@ -73,6 +74,7 @@ _PURPOSE_CANDIDATES = {
 _PURPOSE_DOMAINS = {
     "priority_action": {"choose_one"},
     "attacker_declaration": {"choose_many"},
+    "sba_graveyard_order": {"order"},
     "cast_cost_route": {"choose_one"},
     "mode_selection": {"choose_one", "choose_many"},
     "target_selection": {"choose_one", "choose_many"},
@@ -1045,6 +1047,7 @@ class DecisionPurposeV4:
         fields: dict[str, set[str]] = {
             "priority_action": set(),
             "attacker_declaration": set(),
+            "sba_graveyard_order": set(),
             "cast_cost_route": set(),
             "mode_selection": {"mode_slot"},
             "target_selection": {"target_slot"},
@@ -1120,6 +1123,7 @@ class DecisionPurposeV4:
         allowed_fields = {
             "priority_action": set(),
             "attacker_declaration": set(),
+            "sba_graveyard_order": set(),
             "cast_cost_route": set(),
             "mode_selection": {"mode_slot"},
             "target_selection": {"target_slot"},
@@ -1219,9 +1223,12 @@ class PlayerDecisionRequestV4:
         self.purpose.validate()
         if self.decision_domain_v2.kind not in _PURPOSE_DOMAINS[self.purpose.kind]:
             raise WireError("semantic.decision", "decision domain is incompatible with purpose")
-        if self.purpose.kind in {"trigger_order", "attacker_declaration", "cast_cost_route"} and (
-            self.visibility != "acting_player_only"
-        ):
+        if self.purpose.kind in {
+            "trigger_order",
+            "attacker_declaration",
+            "sba_graveyard_order",
+            "cast_cost_route",
+        } and self.visibility != "acting_player_only":
             raise WireError("semantic.decision", "private decision request is not actor-only")
         if self.purpose.kind == "synthetic_assembly":
             if self.visibility != "public":

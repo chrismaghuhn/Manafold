@@ -315,6 +315,10 @@
     {
       "contract": "player-decision-request.v4",
       "path": "player-decision-request-v4-cost-route.json"
+    },
+    {
+      "contract": "player-decision-request.v4",
+      "path": "player-decision-request-v4-sba-graveyard-order.json"
     }
   ]
 }
