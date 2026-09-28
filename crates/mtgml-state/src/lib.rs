@@ -27,6 +27,11 @@ mod shared_execution;
 mod validation;
 mod zones;
 
+/// Detached G0 successor digest identities. G0c freezes their names; G0e
+/// owns canonical input validation and digest production.
+pub const FULL_STATE_DIGEST_DOMAIN_V7: &str = "mtgml.full-state-digest.v7";
+pub const FULL_STATE_DIGEST_INPUT_SCHEMA_V7: &str = "full-state-digest-input.v7";
+
 pub use construction::{
     construct_synthetic_engine_state, SyntheticResetInputs, SyntheticStateConstructionError,
     SyntheticV4Setup,

@@ -809,3 +809,48 @@ fn hex(bytes: &[u8]) -> String {
         },
     )
 }
+
+#[test]
+fn g0c_successor_digest_vectors_bind_v7_state_and_v8_checkpoint_identities() {
+    let cases = [
+        (
+            include_str!("../../../persistence/golden/full-state-digest-v7-kat.v1.json"),
+            "full-state-digest-input.v7",
+            "mtgml.full-state-digest.v7",
+        ),
+        (
+            include_str!("../../../persistence/golden/checkpoint-digest-v8-kat.v1.json"),
+            "environment-checkpoint-digest-input.v8",
+            "mtgml.checkpoint-digest.v8",
+        ),
+    ];
+    for (fixture, expected_schema, expected_domain) in cases {
+        let value: serde_json::Value = serde_json::from_str(fixture).unwrap();
+        let payload_hex = value["canonical_payload_hex"].as_str().unwrap();
+        let payload = decode_hex(payload_hex);
+        let decoded = cbor::decode_canonical(&payload).unwrap();
+        let cbor::Value::Array(fields) = decoded else {
+            panic!("digest fixture input must be a fixed CBOR array");
+        };
+        assert_eq!(fields[0], cbor::Value::Text(expected_schema.to_owned()));
+        assert_eq!(fields[1], cbor::Value::Text(expected_domain.to_owned()));
+        let encoded =
+            envelope::encode_envelope(expected_domain, expected_schema, &payload).unwrap();
+        assert_eq!(
+            hex(&envelope::hash_envelope(&encoded)),
+            value["expected_digest"]
+        );
+    }
+}
+
+fn decode_hex(value: &str) -> Vec<u8> {
+    assert_eq!(value.len() % 2, 0, "hex input has an odd number of digits");
+    value
+        .as_bytes()
+        .chunks_exact(2)
+        .map(|pair| {
+            let text = std::str::from_utf8(pair).unwrap();
+            u8::from_str_radix(text, 16).unwrap()
+        })
+        .collect()
+}

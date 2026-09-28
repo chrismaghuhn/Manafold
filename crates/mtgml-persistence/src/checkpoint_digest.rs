@@ -17,6 +17,8 @@ pub const CHECKPOINT_DOMAIN_V6: &str = "mtgml.checkpoint-digest.v6";
 pub const CHECKPOINT_INPUT_SCHEMA_V6: &str = "environment-checkpoint-digest-input.v6";
 pub const CHECKPOINT_DOMAIN_V7: &str = "mtgml.checkpoint-digest.v7";
 pub const CHECKPOINT_INPUT_SCHEMA_V7: &str = "environment-checkpoint-digest-input.v7";
+pub const CHECKPOINT_DOMAIN_V8: &str = "mtgml.checkpoint-digest.v8";
+pub const CHECKPOINT_INPUT_SCHEMA_V8: &str = "environment-checkpoint-digest-input.v8";
 
 /// FROZEN V5 checkpoint codec identity (spec §9 element 6).
 pub const CHECKPOINT_CODEC_ID_V5: &str = "in-memory-reference";
@@ -25,6 +27,8 @@ pub const CHECKPOINT_CODEC_ID_V6: &str = "in-memory-reference";
 pub const CHECKPOINT_CODEC_SEMANTIC_VERSION_V6: &str = "6";
 pub const CHECKPOINT_CODEC_ID_V7: &str = "in-memory-reference";
 pub const CHECKPOINT_CODEC_SEMANTIC_VERSION_V7: &str = "7";
+pub const CHECKPOINT_CODEC_ID_V8: &str = "in-memory-reference";
+pub const CHECKPOINT_CODEC_SEMANTIC_VERSION_V8: &str = "8";
 
 fn validate_full_state_reference(
     reference: &DigestReferenceV1,
