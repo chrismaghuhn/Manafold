@@ -10,7 +10,7 @@ use crate::{
     calculate_full_state_digest_v7, ContinuationPayloadV3, DamageKind, DamageRecipient,
     EngineStatePartsV3, EngineStatePartsV3Error, ManaCost, ManaPoolV1, PendingTriggerRecord,
     ReservedNonManaCost, SelectedCostOperand, SemanticDeltaOperationV2, SourceContext,
-    StackItemPayload, TemporaryEffectRecord,
+    StackItemPayload, TargetRef, TemporaryEffectRecord,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -298,6 +298,14 @@ fn validate_delta_operation_coverage(
         {
             return uncovered();
         }
+    }
+    if old_before
+        .core
+        .players
+        .keys()
+        .ne(old_after.core.players.keys())
+    {
+        return uncovered();
     }
     if old_before.combat != old_after.combat
         && !has_legacy(&|operation| {
@@ -674,20 +682,7 @@ fn validate_delta_operation_coverage(
     {
         return uncovered();
     }
-    if old_rules.turn_history != new_rules.turn_history
-        && !has_v3(&|operation| {
-            matches!(
-                operation,
-                V3::SpellCast { .. } | V3::AbilityActivated { .. }
-            )
-        })
-        && !has_v2(&|operation| {
-            matches!(
-                operation,
-                SemanticDeltaOperationV2::LandPlayCountChanged { .. }
-            )
-        })
-    {
+    if !validate_turn_history_delta(before, after, operations) {
         return uncovered();
     }
 
@@ -781,6 +776,221 @@ fn validate_delta_operation_coverage(
         return uncovered();
     }
     Ok(())
+}
+
+fn validate_turn_history_delta(
+    before: &EngineStatePartsV3,
+    after: &EngineStatePartsV3,
+    operations: &[SemanticDeltaOperationV3],
+) -> bool {
+    use crate::SemanticDeltaOperation as Legacy;
+    use SemanticDeltaOperationV3 as V3;
+    let old = &before.card_rules_state.turn_history;
+    let new = &after.card_rules_state.turn_history;
+    let has_land_count = |player, from, to| {
+        operations.iter().any(|operation| match operation {
+            V3::Existing { operation } => matches!(
+                operation.as_ref(),
+                SemanticDeltaOperationV2::LandPlayCountChanged {
+                    player: op_player,
+                    from: op_from,
+                    to: op_to
+                } if *op_player == player && *op_from == from && *op_to == to
+            ),
+            _ => false,
+        })
+    };
+    let has_life_loss = |player| {
+        let Some(old_player) = before.predecessor_v5.core.players.get(&player) else {
+            return false;
+        };
+        let Some(new_player) = after.predecessor_v5.core.players.get(&player) else {
+            return false;
+        };
+        operations.iter().any(|operation| match operation {
+            V3::Existing { operation } => match operation.as_ref() {
+                SemanticDeltaOperationV2::Existing { operation } => matches!(operation.as_ref(),
+                    Legacy::LifeChanged { player: op_player, from, to }
+                        if *op_player == player && *from == old_player.life && *to == new_player.life && from > to),
+                _ => false,
+            },
+            V3::DamageApplied {
+                recipient: DamageRecipient::Player(op_player),
+                post_replacement_amount,
+                ..
+            } => *op_player == player
+                && old_player.life.checked_sub(i64::from(*post_replacement_amount))
+                    == Some(new_player.life),
+            _ => false,
+        })
+    };
+
+    if old.turn_number != before.predecessor_v5.core.turn_number
+        || new.turn_number != after.predecessor_v5.core.turn_number
+    {
+        return false;
+    }
+    if old.turn_number != new.turn_number {
+        let exact_turn_change = operations.iter().any(|operation| match operation {
+            V3::Existing { operation } => match operation.as_ref() {
+                SemanticDeltaOperationV2::Existing { operation } => matches!(
+                    operation.as_ref(),
+                    Legacy::TurnNumberChanged { from, to }
+                        if *from == old.turn_number && *to == new.turn_number
+                ),
+                _ => false,
+            },
+            _ => false,
+        });
+        if !exact_turn_change
+            || new
+                .players
+                .values()
+                .any(|history| *history != Default::default())
+            || !new.target_occurrences.is_empty()
+            || !new.once_ability_used.is_empty()
+        {
+            return false;
+        }
+        return true;
+    }
+    if old.players.keys().ne(new.players.keys()) {
+        return false;
+    }
+    for (player, old_history) in &old.players {
+        let Some(new_history) = new.players.get(player) else {
+            return false;
+        };
+        let casts = operations
+            .iter()
+            .filter(|operation| match operation {
+                V3::SpellCast { stack_object, .. } => after
+                    .predecessor_v5
+                    .zones
+                    .stack_records
+                    .get(stack_object)
+                    .is_some_and(|record| record.controller == *player),
+                _ => false,
+            })
+            .count();
+        let noncreature_casts = operations
+            .iter()
+            .filter(|operation| match operation {
+                V3::SpellCast {
+                    stack_object,
+                    is_creature_spell: false,
+                    ..
+                } => after
+                    .predecessor_v5
+                    .zones
+                    .stack_records
+                    .get(stack_object)
+                    .is_some_and(|record| record.controller == *player),
+                _ => false,
+            })
+            .count();
+        if u32::try_from(casts)
+            .ok()
+            .and_then(|count| old_history.spells_cast_total.checked_add(count))
+            != Some(new_history.spells_cast_total)
+            || u32::try_from(noncreature_casts)
+                .ok()
+                .and_then(|count| old_history.noncreature_spells_cast.checked_add(count))
+                != Some(new_history.noncreature_spells_cast)
+        {
+            return false;
+        }
+        if old_history.land_plays_used != new_history.land_plays_used
+            && !has_land_count(
+                *player,
+                old_history.land_plays_used,
+                new_history.land_plays_used,
+            )
+        {
+            return false;
+        }
+        if old_history.lost_life_this_turn != new_history.lost_life_this_turn
+            && !(!old_history.lost_life_this_turn
+                && new_history.lost_life_this_turn
+                && has_life_loss(*player))
+        {
+            return false;
+        }
+        // G0e operation vocabulary has no typed red-source or permanent-card
+        // graveyard fact; fail closed until a sufficient operation exists.
+        if old_history.red_noncombat_damage_dealt != new_history.red_noncombat_damage_dealt
+            || old_history.permanent_card_to_graveyard != new_history.permanent_card_to_graveyard
+        {
+            return false;
+        }
+    }
+
+    let mut expected_target_additions = std::collections::BTreeSet::new();
+    let mut expected_once_additions = std::collections::BTreeSet::new();
+    for operation in operations {
+        match operation {
+            V3::TargetDeclared {
+                source_stack_item,
+                targets,
+            } => {
+                let Some(actor) = after
+                    .predecessor_v5
+                    .zones
+                    .stack_records
+                    .get(source_stack_item)
+                    .map(|record| record.controller)
+                else {
+                    return false;
+                };
+                expected_target_additions.extend(targets.iter().filter_map(|binding| {
+                    match binding.target {
+                        TargetRef::Object(object) => Some((object, actor)),
+                        _ => None,
+                    }
+                }));
+            }
+            V3::AbilityActivated {
+                source, targets, ..
+            } => {
+                expected_once_additions
+                    .insert((source.source.snapshot.object, source.ability_key.0));
+                expected_target_additions.extend(targets.iter().filter_map(|binding| {
+                    match binding.target {
+                        TargetRef::Object(object) => {
+                            Some((object, source.source.snapshot.controller))
+                        }
+                        _ => None,
+                    }
+                }));
+            }
+            _ => {}
+        }
+    }
+    let target_additions = new
+        .target_occurrences
+        .difference(&old.target_occurrences)
+        .copied()
+        .collect::<std::collections::BTreeSet<_>>();
+    let expected_target_additions = expected_target_additions
+        .difference(&old.target_occurrences)
+        .copied()
+        .collect::<std::collections::BTreeSet<_>>();
+    if !old.target_occurrences.is_subset(&new.target_occurrences)
+        || target_additions != expected_target_additions
+    {
+        return false;
+    }
+    let once_additions = new
+        .once_ability_used
+        .difference(&old.once_ability_used)
+        .copied()
+        .collect::<std::collections::BTreeSet<_>>();
+    if !old.once_ability_used.is_subset(&new.once_ability_used)
+        || !once_additions.is_subset(&expected_once_additions)
+    {
+        return false;
+    }
+    true
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]

@@ -2282,4 +2282,64 @@ mod g0_validation_tests {
         assert!(validate_candidate_binding(&binding(u64::from(u32::MAX))).is_ok());
         assert!(validate_candidate_binding(&binding(u64::from(u32::MAX) + 1)).is_err());
     }
+
+    #[test]
+    fn v7_activation_continuation_rejects_unknown_stage_and_short_mana_buckets() {
+        let source = array([
+            u(1),
+            u(1),
+            u(1),
+            text("test/mana-source@1.0.0"),
+            array([text("tap_source")]),
+            array((0..12).map(|_| u(0))),
+        ]);
+        let continuation = || {
+            array([
+                text("nonmana_activation"),
+                u(1),
+                u(1),
+                u(1),
+                u(1),
+                text("test/ability@1.0.0"),
+                text("paying_mana"),
+                array([]),
+                array([]),
+                array([Value::Null, array([]), array([])]),
+                array([
+                    text("mana_payment_staging"),
+                    text("selecting_sources"),
+                    array([source.clone()]),
+                ]),
+            ])
+        };
+
+        let valid = continuation();
+        assert!(validate_continuation_payload(&valid).is_ok());
+
+        let mut unknown_stage = continuation();
+        let Value::Array(fields) = &mut unknown_stage else {
+            unreachable!()
+        };
+        fields[6] = text("unknown_stage");
+        assert!(validate_continuation_payload(&unknown_stage).is_err());
+
+        let mut short_buckets = continuation();
+        let Value::Array(fields) = &mut short_buckets else {
+            unreachable!()
+        };
+        let Value::Array(staging) = &mut fields[10] else {
+            unreachable!()
+        };
+        let Value::Array(sources) = &mut staging[2] else {
+            unreachable!()
+        };
+        let Value::Array(source) = &mut sources[0] else {
+            unreachable!()
+        };
+        let Value::Array(buckets) = &mut source[5] else {
+            unreachable!()
+        };
+        buckets.pop();
+        assert!(validate_continuation_payload(&short_buckets).is_err());
+    }
 }

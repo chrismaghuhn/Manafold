@@ -732,3 +732,32 @@ fn state_delta_v3_requires_exact_revision_step_and_covers_life_mutation() {
         Err(mtgml_state::DeltaApplicationV3Error::UncoveredMutation)
     );
 }
+
+#[test]
+fn state_delta_v3_rejects_unrelated_turn_history_mutation_even_with_cast_operation() {
+    let before = state();
+    let mut after = before.clone();
+    after.predecessor_v5.revision =
+        mtgml_model::StateRevision(before.predecessor_v5.revision.0.checked_add(1).unwrap());
+    let object = *after.predecessor_v5.zones.objects.keys().next().unwrap();
+    after
+        .card_rules_state
+        .turn_history
+        .target_occurrences
+        .insert((object, PlayerId(1)));
+    after.validate().unwrap();
+
+    let unrelated_cast = mtgml_state::SemanticDeltaOperationV3::SpellCast {
+        stack_object: StackObjectId(1),
+        spell_object: object,
+        card_definition: CardDefinitionId(1),
+        face_key: FaceKey(0),
+        semantic_profile_id: CardSemanticProfileId::parse("test/spell@1.0.0").unwrap(),
+        is_creature_spell: false,
+        cost_facts: Default::default(),
+    };
+    assert_eq!(
+        StateDeltaV3::between(&before, &after, vec![unrelated_cast]),
+        Err(mtgml_state::DeltaApplicationV3Error::UncoveredMutation)
+    );
+}
