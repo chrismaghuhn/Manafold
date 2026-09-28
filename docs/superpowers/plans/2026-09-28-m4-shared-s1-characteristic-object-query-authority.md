@@ -38,7 +38,7 @@ Actual owner paths inspected at the design base:
 
 Likely new module: `crates/mtgml-rules/src/characteristic_query.rs` (or the repository's existing canonical rules-query module if one exists at implementation-base review). Keep errors and result types near this owner. Extend `crates/mtgml-rules/src/lib.rs` only as needed for crate-internal routing. Avoid production changes in `mtgml-state`, `mtgml-card-ir`, Python, wire schemas, registry, digest, checkpoint, replay, observation, and deck artifacts unless source review proves an invariant gap; any such required contract change stops implementation for G0/design amendment.
 
-Test locations should follow current test ownership: unit tests beside the new rules module; semantic red/positive cases in `crates/mtgml-conformance`; integration/noninterference and checkpoint/fork/replay equivalence in existing environment test modules. Use test-only Card IR manifests and provenance fixtures with fixed content identities; they do not become admitted production cards.
+Test locations should follow current test ownership: pure derivation tests beside the new Rules module; independent semantic expected-value cases in `crates/mtgml-conformance`; production-admission integration/noninterference and checkpoint/fork/replay equivalence in existing environment test modules. For creature/Ojer/Aura/Equipment fixtures that are not executable profiles, a `#[cfg(test)]` Rules-module test may call the private pure derivation helper with a structurally valid state and a canonical, provenance-verified `UnprofiledV1` catalog. It must not invoke the production query-authority constructor, `admit_executable_profile_v1()`, or `RulesKernel::apply`. Do not expose that fixture builder/helper through a public or alternate production API. The current production path remains restricted to genuinely admitted profiles (currently the exact M4.2 Basic Land profile). These detached tests prove derivation logic only; they do not prove card execution or support.
 
 ### Files to keep unchanged
 
@@ -72,14 +72,14 @@ Every expected output is hand-authored independently from the pinned 2026-09-25 
 | Area | RED case / expected independent witness | Negative / invariant |
 |---|---|---|
 | A. Content identity | Build a verified catalog from canonical manifest/provenance; query exact definition/face and compare hand-authored name-independent characteristic vector | Wrong content contract, recomputed-ID mismatch, absent definition, broken provenance join → typed error, no partial/default result |
-| A. Face authority | Mountain/Plains FaceKey 0; detached two-face fixture with explicit current face; expected type/color/base values recorded literally | Missing face-state entry, ordinal not in definition, definition with no matching face, unsupported face/profile → error, never first-face fallback |
+| A. Face authority | Mountain/Plains FaceKey 0; detached two-face fixture with explicit current face; expected type/color/base values recorded literally. Mountain and Plains both have `colors = ∅`; their separate M4.2 intrinsic abilities produce red and white mana, respectively. | Missing face-state entry, ordinal not in definition, definition with no matching face, unsupported face/profile → error, never first-face fallback |
 | A. Card IR source | Validate each selected `FaceDefinitionV1` value against Card IR facts | Malformed/unsupported characteristic source or invalid type/color vocabulary → reject during catalog validation or typed query error; never infer from name |
 | B. Live object | Query exact current ID; expected owner/controller/zone/definition from an independently assembled fixture | Unknown ID, mismatched map key vs object.id, missing location/player/content join → typed error |
 | B. Stale incarnation | Apply a zone transition in a conformance fixture; query old and new IDs separately | Old ID is `StaleObjectIncarnation`, even if physical card identity matches; no PhysicalCardId search |
 | B. Controller / owner | Change controller while retaining owner; expected owner unchanged/controller changed | Missing player or an ID from another current object is invalid |
 | B. Snapshot | Capture `ObjectSnapshot`, mutate live object's control/zone/face/counters afterward; snapshot query returns only captured fields | Snapshot must not be silently enriched with current counters/face or treated as a complete characteristics snapshot |
 | C. Base/face | Exact type-line vectors, color set, optional base P/T from fixture | Absent P/T remains `None`; name/mana cost does not default absent power/toughness |
-| C. Counter-derived P/T | Base 2/3 + one +1/+1 → 3/4; base 2/3 + one -1/-1 → 1/2; both → 2/3; lore unchanged | u32 maximum values checked after promotion; corrupted maps, stale counter key, no object, invalid state → error; query does not mutate or perform counter annihilation |
+| C. Counter-derived P/T | Base 2/3 + one +1/+1 → 3/4; base 2/3 + one -1/-1 → 1/2; both → 2/3; lore unchanged | Test exact `i64` results for `i32` base bounds and `u32::MAX` counter values; all valid results are below 6.5 billion in magnitude, so valid-input i64 overflow is unreachable. Corrupted maps, stale counter key, no object, invalid state → error; query does not mutate or perform counter annihilation |
 | C. Type/color predicates | Exact membership over normalized supertype/type/subtype vectors; hybrid mana symbol contributes both colors; generic/colorless contributes none | Absent component is false; unverified face or malformed symbol is error, not false |
 | C. Modified | Creature with a counter; creature equipped by Equipment; creature enchanted by a same-controller Aura; Aura controlled by another player does not satisfy Aura branch | Noncreature false; stale attachment endpoint, unknown attached face or unsupported source class → error |
 | D. Attachment relation | Query source→target and target→sources from independent relation table; expected sort by timestamp | Duplicate timestamp/inconsistent state is rejected by validation; don't sort by GameObjectId or map insertion order |
@@ -157,12 +157,14 @@ EXACT_SCOPE = +1/+1 and -1/-1 P/T adjustment; lore no-op; bounded modified predi
 FILES_TO_MODIFY = same Rules query module; rules/conformance tests
 FILES_NOT_TO_MODIFY = counter mutation/SBA RulesKernel owners; CardRules state encoding;
                       S2b effect application; S6a effect records
-RED_TESTS = positive/negative +1/+1 and -1/-1 cases; both kinds; lore; modified by counter,
-            Aura controller condition, Equipment; stale source/target
+RED_TESTS = positive/negative +1/+1 and -1/-1 cases; both kinds; lore; `u32::MAX`
+            counter values with `i32` base bounds and hand-computed `i64` expected values;
+            modified by counter, Aura controller condition, Equipment; stale source/target
 IMPLEMENTATION_STEPS = checked integer promotion/arithmetic; no counter mutation;
                        modified uses only the exact pinned CR predicate and represented facts
-NEGATIVE_TESTS = invalid counter refs/maps, unknown attachment profile/type, overflow,
-                 request against face-down/unsupported profile
+NEGATIVE_TESTS = invalid counter refs/maps, unknown attachment profile/type, invalid
+                 state, request against face-down/unsupported profile; retain
+                 ArithmeticOverflow as defensive error without an impossible valid-input RED case
 CONFORMANCE_WITNESSES = detached hand-authored creature/counter/Aura/Equipment fixtures
                         grounded in the pinned CR and locked C40/C41/C76 witnesses
 COMPATIBILITY_IMPACT = none; no digest/schema change
