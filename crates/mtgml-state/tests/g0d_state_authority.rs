@@ -725,7 +725,7 @@ fn trigger_order_request_is_bound_to_the_current_apnap_group_not_trigger_ids() {
                     trigger: card_drawn(PlayerId(1)),
                 },
                 trusted_binding: mtgml_decision::EngineCandidateBindingV4::SelectTrigger {
-                    trigger: mtgml_model::TriggerInstanceId(2),
+                    trigger: mtgml_model::TriggerInstanceId(1),
                 },
             },
             mtgml_decision::AuthoritativeCandidateV4 {
@@ -734,7 +734,7 @@ fn trigger_order_request_is_bound_to_the_current_apnap_group_not_trigger_ids() {
                     trigger: card_drawn(PlayerId(2)),
                 },
                 trusted_binding: mtgml_decision::EngineCandidateBindingV4::SelectTrigger {
-                    trigger: mtgml_model::TriggerInstanceId(1),
+                    trigger: mtgml_model::TriggerInstanceId(2),
                 },
             },
         ],
