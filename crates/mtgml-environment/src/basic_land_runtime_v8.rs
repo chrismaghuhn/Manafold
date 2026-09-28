@@ -4,7 +4,7 @@
 //! asks the Basic Land RulesKernel to derive the exact V4 domain, and commits
 //! the returned state/delta/event product atomically.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use mtgml_card_ir::ExecutableProfileAdmissionV1;
 use mtgml_decision::{DecisionResponseV3, PlayerDecisionRequestV4};
@@ -54,6 +54,7 @@ impl BasicLandEnvironmentRuntimeV8 {
     ) -> Result<Self, ControllerError> {
         let root_seed = state.predecessor_v5.random.root_seed.to_lower_hex();
         verify_manifest_admission(&admission, &manifest, &root_seed)?;
+        verify_manifest_player_set(&manifest, &state)?;
         let checkpoint = EnvironmentCheckpointV8::new_for_basic_land_profile(
             &admission,
             state,
@@ -367,6 +368,7 @@ impl BasicLandEnvironmentRuntimeV8 {
             .root_seed
             .to_lower_hex();
         verify_manifest_admission(&self.admission, &replay.manifest, &root_seed)?;
+        verify_manifest_player_set(&replay.manifest, &self.replay_origin.state)?;
         if replay.manifest.initial_identity != identity(&self.replay_origin) {
             return Err(crate::ReplayExecutionError::ManifestMismatch.into());
         }
@@ -493,6 +495,28 @@ fn verify_manifest_admission(
             .as_ref()
             .is_none_or(|content| content.content_contract_id != *admission.content_contract_id())
     {
+        return Err(crate::ReplayExecutionError::ManifestMismatch.into());
+    }
+    Ok(())
+}
+
+fn verify_manifest_player_set(
+    manifest: &ReplayManifestV8,
+    state: &EngineStatePartsV3,
+) -> Result<(), ControllerError> {
+    let state_players = state
+        .predecessor_v5
+        .core
+        .players
+        .keys()
+        .copied()
+        .collect::<BTreeSet<_>>();
+    let manifest_players = manifest
+        .decks
+        .iter()
+        .map(|deck| deck.player)
+        .collect::<BTreeSet<_>>();
+    if state_players != manifest_players {
         return Err(crate::ReplayExecutionError::ManifestMismatch.into());
     }
     Ok(())
@@ -1886,6 +1910,110 @@ mod tests {
                 },
                 ..
             }
+        ));
+    }
+
+    #[test]
+    fn basic_land_checkpoint_constructor_rejects_foreign_execution_identity() {
+        let admission = admission();
+        let foreign_identity = ExecutionIdentityV1 {
+            program_kind: admission.execution_identity().program_kind,
+            semantic_contract_id: mtgml_model::SemanticContractIdV1::from_digest_bytes([0xA5; 32]),
+        };
+        let state = state_with_two_lands();
+        let status = EpisodeStatus::Truncated {
+            reason: mtgml_model::TruncationReason::ExternalStop,
+            players: [PlayerId(1), PlayerId(2)]
+                .into_iter()
+                .map(|player| mtgml_model::PlayerOutcome {
+                    player,
+                    result: mtgml_model::PlayerResult::Unresolved,
+                })
+                .collect(),
+        };
+
+        let result = EnvironmentCheckpointV8::new_for_basic_land_profile(
+            &admission,
+            state,
+            status,
+            EnvironmentLimitCounters::default(),
+            foreign_identity,
+        );
+        assert!(matches!(
+            result,
+            Err(crate::CheckpointV8Error::ContractBinding)
+        ));
+    }
+
+    #[test]
+    fn basic_land_checkpoint_validation_rejects_foreign_execution_identity() {
+        let admission = admission();
+        let status = EpisodeStatus::Truncated {
+            reason: mtgml_model::TruncationReason::ExternalStop,
+            players: [PlayerId(1), PlayerId(2)]
+                .into_iter()
+                .map(|player| mtgml_model::PlayerOutcome {
+                    player,
+                    result: mtgml_model::PlayerResult::Unresolved,
+                })
+                .collect(),
+        };
+        let mut checkpoint = EnvironmentCheckpointV8::new(
+            state_with_two_lands(),
+            status.clone(),
+            EnvironmentLimitCounters::default(),
+            admission.execution_identity().clone(),
+        )
+        .unwrap();
+        checkpoint.execution_identity.semantic_contract_id =
+            mtgml_model::SemanticContractIdV1::from_digest_bytes([0xA5; 32]);
+        checkpoint.checkpoint_digest =
+            mtgml_persistence::checkpoint_digest::calculate_checkpoint_digest_v8(
+                &checkpoint.state_digest.as_digest_reference(),
+                &checkpoint.status,
+                &checkpoint.limit_counters,
+                &checkpoint.codec,
+                &checkpoint.execution_identity,
+            )
+            .unwrap();
+
+        assert_eq!(
+            checkpoint.validate_for_basic_land_profile(&admission),
+            Err(crate::CheckpointV8Error::ContractBinding)
+        );
+    }
+
+    #[test]
+    fn runtime_rejects_manifest_missing_an_authoritative_player() {
+        let admission = admission();
+        let mut state = state_with_two_lands();
+        let status = EpisodeStatus::Running;
+        mtgml_rules::install_basic_land_request_v4(&admission, &mut state, PlayerId(1), &status)
+            .unwrap();
+        let checkpoint = EnvironmentCheckpointV8::new_for_basic_land_profile(
+            &admission,
+            state.clone(),
+            status.clone(),
+            EnvironmentLimitCounters::default(),
+            admission.execution_identity().clone(),
+        )
+        .unwrap();
+        let mut manifest = v8_manifest(&admission, &checkpoint);
+        manifest.decks.pop();
+        manifest.validate().unwrap();
+
+        let result = BasicLandEnvironmentRuntimeV8::new(
+            admission,
+            state,
+            status,
+            EnvironmentLimitCounters::default(),
+            manifest,
+        );
+        assert!(matches!(
+            result,
+            Err(crate::ControllerError::ReplayExecution(
+                crate::ReplayExecutionError::ManifestMismatch
+            ))
         ));
     }
 
