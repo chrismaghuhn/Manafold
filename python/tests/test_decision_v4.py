@@ -51,9 +51,9 @@ class PlayerDecisionRequestV4Tests(unittest.TestCase):
 
     def test_cost_route_request_must_be_actor_only(self) -> None:
         raw = json.loads(
-            (
-                ROOT / "schemas/examples/player-decision-request-v4-cost-route.json"
-            ).read_text(encoding="utf-8")
+            (ROOT / "schemas/examples/player-decision-request-v4-cost-route.json").read_text(
+                encoding="utf-8"
+            )
         )
         raw["visibility"] = "public"
         with self.assertRaises(WireError):

@@ -150,7 +150,7 @@ class InitialEnvironmentIdentityV8:
         expected = calculate_checkpoint_digest_v8(
             self.full_state_digest,
             self.episode_status,
-            self.environment_limit_counters.to_wire(),
+            self.environment_limit_counters.as_dict(),
             self.checkpoint_codec_identity.codec_id,
             self.checkpoint_codec_identity.semantic_version,
             self.execution_identity.program_kind,
@@ -208,9 +208,7 @@ class ReplayManifestV8:
                 "semantic_contract",
             },
         )
-        if obj["schema_version"] != REPLAY_MANIFEST_SCHEMA_V8 or not isinstance(
-            obj["decks"], list
-        ):
+        if obj["schema_version"] != REPLAY_MANIFEST_SCHEMA_V8 or not isinstance(obj["decks"], list):
             raise WireError("decode.invalid_json", "unsupported ReplayManifestV8")
         from ._replay_common import DeckIdentityV1, KernelIdentityV1
 

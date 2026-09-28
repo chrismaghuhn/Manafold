@@ -551,6 +551,20 @@ COMMON_NAMED_CONTRACTS = frozenset(
         "authoritative-replay.v6",
         "replay-manifest.v7",
         "authoritative-replay.v7",
+        "magic-basic-land-observation.v1",
+        "observed-event-envelope.v3",
+        "player-step.v3",
+        # Accepted G0b identities; G0 DTOs are detached until G0j activation.
+        "observation-envelope.v2",
+        "information-state-envelope.v3",
+        "decision-response.v3",
+        "player-decision-request.v4",
+        "observed-event-envelope.v4",
+        "player-step.v4",
+        "magic-shared-execution-observation.v1",
+        "replay-manifest.v8",
+        "replay-step.v8",
+        "authoritative-replay.v8",
     }
 )
 
@@ -560,18 +574,12 @@ PYTHON_MECHANICAL_ONLY = frozenset({"information-state-digest-input.v2"})
 PYTHON_TYPED_SUCCESSORS = frozenset(
     {
         "player-decision-request.v3",
-        "observed-event-envelope.v3",
-        "player-step.v3",
-        "magic-basic-land-observation.v1",
     }
 )
 
 SCHEMA_ONLY_SUCCESSORS = frozenset(
     {
         "player-decision-request.v3",
-        "observed-event-envelope.v3",
-        "player-step.v3",
-        "magic-basic-land-observation.v1",
     }
 )
 

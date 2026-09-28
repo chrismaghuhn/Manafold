@@ -65,14 +65,11 @@ class ObservedEventV4:
             item = public_stack_item_from_wire(obj["item"])
             item_wire = item.to_wire()
             if kind == "stack_item_removed" and (
-                not isinstance(obj["cause"], str)
-                or obj["cause"] not in {"resolved", "countered"}
+                not isinstance(obj["cause"], str) or obj["cause"] not in {"resolved", "countered"}
             ):
                 raise WireError("decode.invalid_json", "unknown stack removal cause")
             fields = {
-                "stack_position_from_top": _u32(
-                    obj["stack_position_from_top"], "stack position"
-                ),
+                "stack_position_from_top": _u32(obj["stack_position_from_top"], "stack position"),
                 "item": item_wire,
             }
             if kind == "stack_item_removed":

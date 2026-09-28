@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from itertools import pairwise
+from typing import Any
 
 from .canonical import parse_uint, require_exact_keys, uint_wire
 from .decision import DecisionResponseV3, DecisionSpec
@@ -280,7 +282,7 @@ class PrintedManaSymbolsV1:
                 "decode.invalid_json", "colored W/U/B/R/G counts must have five entries"
             )
         return cls(
-            colors,  # type: ignore[arg-type]
+            colors,
             _u32(obj["colorless_count"], "colorless_count"),
             _u32(obj["generic_count"], "generic_count"),
         )
@@ -747,7 +749,7 @@ SafeTriggerSubjectV1 = (
     | DamageAppliedSubjectV1
     | LifeChangedSubjectV1
 )
-_SUBJECT_DECODERS = {
+_SUBJECT_DECODERS: dict[str, Callable[[object], SafeTriggerSubjectV1]] = {
     "spell_cast": SpellCastSubjectV1.from_wire,
     "ability_activated": AbilityActivatedSubjectV1.from_wire,
     "target_became": TargetBecameSubjectV1.from_wire,
@@ -1063,7 +1065,7 @@ class DecisionPurposeV4:
         if kind not in fields:
             raise WireError("decode.invalid_json", "unknown DecisionPurposeV4")
         obj = require_exact_keys(value, {"kind", *fields[kind]})
-        kwargs: dict[str, object] = {"kind": kind}
+        kwargs: dict[str, Any] = {"kind": kind}
         for field in ("mode_slot", "target_slot", "cost_slot", "count", "profile_local_cost_id"):
             if field in obj:
                 kwargs[field] = _u32(obj[field], field)
@@ -1223,22 +1225,29 @@ class PlayerDecisionRequestV4:
         self.purpose.validate()
         if self.decision_domain_v2.kind not in _PURPOSE_DOMAINS[self.purpose.kind]:
             raise WireError("semantic.decision", "decision domain is incompatible with purpose")
-        if self.purpose.kind in {
-            "trigger_order",
-            "attacker_declaration",
-            "sba_graveyard_order",
-            "cast_cost_route",
-        } and self.visibility != "acting_player_only":
+        if (
+            self.purpose.kind
+            in {
+                "trigger_order",
+                "attacker_declaration",
+                "sba_graveyard_order",
+                "cast_cost_route",
+            }
+            and self.visibility != "acting_player_only"
+        ):
             raise WireError("semantic.decision", "private decision request is not actor-only")
         if self.purpose.kind == "synthetic_assembly":
             if self.visibility != "public":
                 raise WireError("semantic.decision", "synthetic assembly request is not public")
+            stage = self.purpose.stage
+            if stage is None:
+                raise WireError("semantic.decision", "synthetic assembly stage is absent")
             stage_domain = {
                 "entry": "choose_one",
                 "choose_count": "choose_number",
                 "choose_members": "choose_many",
                 "order_members": "order",
-            }[self.purpose.stage]
+            }[stage]
             if self.decision_domain_v2.kind != stage_domain:
                 raise WireError("semantic.decision", "synthetic assembly stage/domain mismatch")
             if stage_domain == "choose_number" and self.candidates:
@@ -1328,13 +1337,13 @@ class PlayerDecisionRequestV4:
             if maximum is not None and not minimum <= len(selected) <= maximum:
                 raise WireError("semantic.decision_response", "answer cardinality is out of bounds")
         if answer.kind == "choose_number":
-            minimum = self.decision_domain_v2.minimum
-            maximum = self.decision_domain_v2.maximum
+            number_minimum = self.decision_domain_v2.minimum
+            number_maximum = self.decision_domain_v2.maximum
             if (
-                minimum is None
-                or maximum is None
+                number_minimum is None
+                or number_maximum is None
                 or answer.value is None
-                or not minimum <= answer.value <= maximum
+                or not number_minimum <= answer.value <= number_maximum
             ):
                 raise WireError("semantic.decision_response", "numeric answer is out of bounds")
 

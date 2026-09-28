@@ -22,9 +22,7 @@ class G0CDigestIdentityFixtureTests(unittest.TestCase):
     def _check_enveloped_fixture(
         self, name: str, schema_id: str, domain: str, header_index: int = 0
     ) -> list[object]:
-        fixture = json.loads(
-            (ROOT / "persistence/golden" / name).read_text(encoding="utf-8")
-        )
+        fixture = json.loads((ROOT / "persistence/golden" / name).read_text(encoding="utf-8"))
         payload = bytes.fromhex(fixture["canonical_payload_hex"])
         value = decode_canonical(payload)
         self.assertEqual(encode_canonical(value), payload)

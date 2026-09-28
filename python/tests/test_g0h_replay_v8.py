@@ -4,8 +4,8 @@ import json
 import unittest
 from pathlib import Path
 
-from mtgml.errors import WireError
 from mtgml.episode import EpisodeStatus
+from mtgml.errors import WireError
 from mtgml.replay import AuthoritativeReplayV8, calculate_checkpoint_digest_v8
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -37,9 +37,7 @@ class G0HReplayV8Tests(unittest.TestCase):
 
     def test_authoritative_replay_v8_fixture_validates_digest_identity(self) -> None:
         fixture = json.loads(
-            (ROOT / "schemas/examples/authoritative-replay-v8.json").read_text(
-                encoding="utf-8"
-            )
+            (ROOT / "schemas/examples/authoritative-replay-v8.json").read_text(encoding="utf-8")
         )
         replay = AuthoritativeReplayV8.from_wire(fixture)
         self.assertEqual(replay.to_wire(), fixture)

@@ -88,13 +88,11 @@ ARTIFACT_CASES = [
 SCHEMA_NEGATIVE_CASES = [
     (
         "player-decision-request.v4.schema.json",
-        "schemas/negative/"
-        "player-decision-request-v4-cost-route-normal-with-ordinal.json",
+        "schemas/negative/player-decision-request-v4-cost-route-normal-with-ordinal.json",
     ),
     (
         "player-decision-request.v4.schema.json",
-        "schemas/negative/"
-        "player-decision-request-v4-cost-route-alternative-without-ordinal.json",
+        "schemas/negative/player-decision-request-v4-cost-route-alternative-without-ordinal.json",
     ),
     (
         "replay-manifest.v8.schema.json",

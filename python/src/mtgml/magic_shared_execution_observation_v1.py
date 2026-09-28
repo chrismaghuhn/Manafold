@@ -307,6 +307,7 @@ class PublicTemporaryEffectV1:
 
     def ordering_key(self) -> tuple[object, ...]:
         self.validate()
+        operation_key: tuple[int, ...]
         if isinstance(self.operation, PowerToughnessDeltaV1):
             operation_key = (0, self.operation.power, self.operation.toughness)
         else:

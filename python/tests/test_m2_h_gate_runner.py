@@ -839,15 +839,12 @@ class RegistryRelationTests(unittest.TestCase):
             <= runner.COMMON_NAMED_CONTRACTS
         )
 
-    def test_schema_only_successors_exclude_typed_replay_v7_owners(self) -> None:
+    def test_schema_only_successors_exclude_rust_owned_m4_and_g0_contracts(self) -> None:
         self.assertEqual(
             runner.SCHEMA_ONLY_SUCCESSORS,
             frozenset(
                 {
                     "player-decision-request.v3",
-                    "observed-event-envelope.v3",
-                    "player-step.v3",
-                    "magic-basic-land-observation.v1",
                 }
             ),
         )
@@ -855,6 +852,22 @@ class RegistryRelationTests(unittest.TestCase):
             {
                 "replay-manifest.v7",
                 "authoritative-replay.v7",
+            }
+            <= runner.COMMON_NAMED_CONTRACTS
+        )
+        self.assertTrue(
+            {
+                "magic-basic-land-observation.v1",
+                "observation-envelope.v2",
+                "information-state-envelope.v3",
+                "decision-response.v3",
+                "player-decision-request.v4",
+                "observed-event-envelope.v4",
+                "player-step.v4",
+                "magic-shared-execution-observation.v1",
+                "replay-manifest.v8",
+                "replay-step.v8",
+                "authoritative-replay.v8",
             }
             <= runner.COMMON_NAMED_CONTRACTS
         )

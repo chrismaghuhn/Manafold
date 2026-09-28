@@ -734,6 +734,97 @@ SCOPE_MAGIC_CLOSED_VOCAB_EXCEPTIONS: dict[tuple[str, str, str], int] = {
         "crates/mtgml-rules/src/magic.rs",
         "let mutations = crate::combat_damage::derive_mutations(state, &assignments).map_err(",
     ): 1,
+    # G0 typed mana-cost records, canonical encoders, and fixtures describe
+    # generic payment authority; they do not execute card/rules semantics.
+    (
+        r"\bManaCost\b",
+        "crates/mtgml-rules/src/events_v3.rs",
+        "ManaCost, ManaPoolV1, ManaSourceActivation, ManaSourceActivationCost,",
+    ): 1,
+    (r"\bManaCost\b", "crates/mtgml-rules/src/events_v3.rs", "mana_cost: Some(ManaCost {"): 1,
+    (
+        r"\bManaCost\b",
+        "crates/mtgml-state/src/delta_v3.rs",
+        "EngineStatePartsV3, EngineStatePartsV3Error, ManaCost, ManaPoolV1, PendingTriggerRecord,",
+    ): 1,
+    (r"\bManaCost\b", "crates/mtgml-state/src/delta_v3.rs", "mana_cost: Option<ManaCost>,"): 1,
+    (
+        r"\bManaCost\b",
+        "crates/mtgml-state/src/lib.rs",
+        "DamageKind, DamageRecipient, EffectExpiry, EffectTimestamp, LifeChangeCause, ManaCost,",
+    ): 1,
+    (
+        r"\bManaCost\b",
+        "crates/mtgml-state/src/persisted_v7.rs",
+        "EngineStatePartsV3, ExecutionStateV3, ExecutionStateV4, LifeChangeCause, ManaCost,",
+    ): 1,
+    (
+        r"\bManaCost\b",
+        "crates/mtgml-state/src/persisted_v7.rs",
+        "fn mana_cost_value(value: ManaCost) -> Value {",
+    ): 1,
+    (r"\bManaCost\b", "crates/mtgml-state/src/shared_execution.rs", "pub struct ManaCost {"): 1,
+    (
+        r"\bManaCost\b",
+        "crates/mtgml-state/src/shared_execution.rs",
+        "pub mana_cost: Option<ManaCost>,",
+    ): 1,
+    (
+        r"\bManaCost\b",
+        "crates/mtgml-state/tests/g0c_record_vocabulary.rs",
+        "DamageKind, DamageRecipient, EffectExpiry, LifeChangeCause, ManaCost, ManaPaymentStage,",
+    ): 1,
+    (
+        r"\bManaCost\b",
+        "crates/mtgml-state/tests/g0c_record_vocabulary.rs",
+        "mana_cost: Some(ManaCost {",
+    ): 3,
+    (
+        r"\bManaCost\b",
+        "crates/mtgml-state/tests/g0d_state_authority.rs",
+        "EngineStatePartsV2, EngineStatePartsV3, ExecutionStateV4, ManaCost, ManaPaymentStage,",
+    ): 1,
+    (
+        r"\bManaCost\b",
+        "crates/mtgml-state/tests/g0d_state_authority.rs",
+        "mana_cost: Some(ManaCost {",
+    ): 1,
+    (
+        r"\bManaCost\b",
+        "crates/mtgml-state/tests/g0e_digest.rs",
+        (
+            "CardRulesAuthoritativeStateV1, EffectExpiry, EngineStatePartsV3, "
+            "ExecutionStateV4, ManaCost,"
+        ),
+    ): 1,
+    (r"\bManaCost\b", "crates/mtgml-state/tests/g0e_digest.rs", "mana_cost: Some(ManaCost {"): 1,
+    # G0's closed public stack DTO has a triggered-ability tag. These exact
+    # projection/codec vocabulary lines are not trigger detection or execution.
+    (
+        r"\btriggered_ability\b",
+        "python/src/mtgml/magic_shared_execution_observation_v1.py",
+        'if obj["kind"] != "triggered_ability" or not isinstance(obj["targets"], list):',
+    ): 1,
+    (
+        r"\btriggered_ability\b",
+        "python/src/mtgml/magic_shared_execution_observation_v1.py",
+        '"kind": "triggered_ability",',
+    ): 1,
+    (
+        r"\btriggered_ability\b",
+        "python/src/mtgml/magic_shared_execution_observation_v1.py",
+        'if kind == "triggered_ability":',
+    ): 1,
+    (
+        r"\btriggered_ability\b",
+        "crates/mtgml-state/src/persisted_v7.rs",
+        '"triggered_ability" if fields.len() == 5 => {',
+    ): 1,
+    (
+        r"\btriggered_ability\b",
+        "crates/mtgml-state/src/persisted_v7.rs",
+        'text("triggered_ability"),',
+    ): 2,
 }
 
 WORKSPACE_MEMBERS_ALLOWED: tuple[str, ...] = (
@@ -766,6 +857,9 @@ SCHEMA_INVENTORY_ALLOWED: frozenset[str] = frozenset(
         "authoritative-replay.v5.schema.json",
         "authoritative-replay.v6.schema.json",
         "authoritative-replay.v7.schema.json",
+        # Successor identities authorized by accepted ADR 0056; still
+        # detached from the current writer until G0j.
+        "authoritative-replay.v8.schema.json",
         "bundle-certification.v1.schema.json",
         "bundle-manifest.v1.schema.json",
         "capability-registry.v1.schema.json",
@@ -773,13 +867,16 @@ SCHEMA_INVENTORY_ALLOWED: frozenset[str] = frozenset(
         "contract-vocabulary-catalog.v1.schema.json",
         "decision-response.v1.schema.json",
         "decision-response.v2.schema.json",
+        "decision-response.v3.schema.json",
         "episode-status.v1.schema.json",
         "golden-path-index.v1.schema.json",
         "information-state-envelope.v1.schema.json",
         "information-state-envelope.v2.schema.json",
+        "information-state-envelope.v3.schema.json",
         "magic-m3-observation.v1.schema.json",
         # M4 Phase 1 successor schema declaration; runtime codec is detached.
         "magic-basic-land-observation.v1.schema.json",
+        "magic-shared-execution-observation.v1.schema.json",
         # Explicit Block 4 observation successor; V1 remains byte-frozen.
         "magic-combat-observation.v2.schema.json",
         # Explicit Block 5 successor; V1/V2 remain byte-frozen.
@@ -788,15 +885,19 @@ SCHEMA_INVENTORY_ALLOWED: frozenset[str] = frozenset(
         "magic-combat-observation.v4.schema.json",
         "normative-document-register.v1.schema.json",
         "observation-envelope.v1.schema.json",
+        "observation-envelope.v2.schema.json",
         "observed-event-envelope.v1.schema.json",
         "observed-event-envelope.v2.schema.json",
         "observed-event-envelope.v3.schema.json",
+        "observed-event-envelope.v4.schema.json",
         "player-decision-request.v1.schema.json",
         "player-decision-request.v2.schema.json",
         "player-decision-request.v3.schema.json",
+        "player-decision-request.v4.schema.json",
         "player-step.v1.schema.json",
         "player-step.v2.schema.json",
         "player-step.v3.schema.json",
+        "player-step.v4.schema.json",
         "replay-manifest.v1.schema.json",
         "replay-manifest.v2.schema.json",
         "replay-manifest.v3.schema.json",
@@ -804,6 +905,8 @@ SCHEMA_INVENTORY_ALLOWED: frozenset[str] = frozenset(
         "replay-manifest.v5.schema.json",
         "replay-manifest.v6.schema.json",
         "replay-manifest.v7.schema.json",
+        "replay-manifest.v8.schema.json",
+        "replay-step.v8.schema.json",
         "synthetic-m3-observation.v1.schema.json",
         "scope-impact-report.v1.schema.json",
     }

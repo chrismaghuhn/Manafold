@@ -18,8 +18,7 @@ class CostRouteDescriptorV1Tests(unittest.TestCase):
             )
         )
         intents = [
-            CandidateIntentV4.from_wire(candidate["intent"])
-            for candidate in request["candidates"]
+            CandidateIntentV4.from_wire(candidate["intent"]) for candidate in request["candidates"]
         ]
         self.assertEqual(
             [intent.to_wire() for intent in intents],
