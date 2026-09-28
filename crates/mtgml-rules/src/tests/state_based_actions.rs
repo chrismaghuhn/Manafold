@@ -390,6 +390,7 @@ fn task6_sba_profile_rejects_both_stack_representations() {
             controller: PlayerId(1),
             source_object: None,
             source_ability: None,
+            payload: None,
         },
     );
     stack.zones.stack_order.push(StackObjectId(1));

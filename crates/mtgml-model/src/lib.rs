@@ -237,6 +237,10 @@ domain_digest!(
     InformationStateDigestV2,
     "mtgml.information-state-digest.v2"
 );
+domain_digest!(
+    InformationStateDigestV3,
+    "mtgml.information-state-digest.v3"
+);
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
@@ -339,6 +343,7 @@ raw_digest!(FullStateDigestV4, "mtgml.full-state-digest.v4");
 raw_digest!(CheckpointDigestV4, "mtgml.checkpoint-digest.v4");
 raw_digest!(FullStateDigestV5, "mtgml.full-state-digest.v5");
 raw_digest!(FullStateDigestV6, "mtgml.full-state-digest.v6");
+raw_digest!(FullStateDigestV7, "mtgml.full-state-digest.v7");
 
 // === V5 contract identity and digest domains (spec §5) ===
 raw_digest!(RulesContractIdV1, "mtgml.rules-contract.v1");
@@ -346,6 +351,7 @@ raw_digest!(SemanticContractIdV1, "mtgml.semantic-contract.v1");
 raw_digest!(CheckpointDigestV5, "mtgml.checkpoint-digest.v5");
 raw_digest!(CheckpointDigestV6, "mtgml.checkpoint-digest.v6");
 raw_digest!(CheckpointDigestV7, "mtgml.checkpoint-digest.v7");
+raw_digest!(CheckpointDigestV8, "mtgml.checkpoint-digest.v8");
 
 /// Reserved digest identity newtype: DOMAIN + canonical hex parse/serde only.
 ///
@@ -464,6 +470,19 @@ impl FullStateDigestV6 {
     }
 }
 
+impl FullStateDigestV7 {
+    pub fn as_digest_reference(&self) -> DigestReferenceV1 {
+        DigestReferenceV1 {
+            envelope_version: "mtgml.digest-envelope.v1".to_owned(),
+            algorithm_id: "sha-256".to_owned(),
+            semantic_domain: Self::DOMAIN.to_owned(),
+            payload_codec_id: "mtgml.canonical-cbor.v1".to_owned(),
+            input_schema_id: "full-state-digest-input.v7".to_owned(),
+            digest_bytes: self.raw_bytes(),
+        }
+    }
+}
+
 impl CheckpointDigestV7 {
     pub fn as_digest_reference(&self) -> DigestReferenceV1 {
         DigestReferenceV1 {
@@ -472,6 +491,19 @@ impl CheckpointDigestV7 {
             semantic_domain: Self::DOMAIN.to_owned(),
             payload_codec_id: "mtgml.canonical-cbor.v1".to_owned(),
             input_schema_id: "environment-checkpoint-digest-input.v7".to_owned(),
+            digest_bytes: self.raw_bytes(),
+        }
+    }
+}
+
+impl CheckpointDigestV8 {
+    pub fn as_digest_reference(&self) -> DigestReferenceV1 {
+        DigestReferenceV1 {
+            envelope_version: "mtgml.digest-envelope.v1".to_owned(),
+            algorithm_id: "sha-256".to_owned(),
+            semantic_domain: Self::DOMAIN.to_owned(),
+            payload_codec_id: "mtgml.canonical-cbor.v1".to_owned(),
+            input_schema_id: "environment-checkpoint-digest-input.v8".to_owned(),
             digest_bytes: self.raw_bytes(),
         }
     }
@@ -638,6 +670,10 @@ mod tests {
             CheckpointDigestV2::from_canonical_bytes(bytes).as_str(),
             "373265db972e21d967a41932938aeedbdb5f5782b41951904f6b2ecae28a1f08"
         );
+        assert_eq!(
+            InformationStateDigestV3::from_canonical_bytes(bytes).as_str(),
+            "334e1a727bd9db7f920f6cf9c4e1a31e0c389fddc1b15e113d10bccd7bc626db"
+        );
     }
 
     #[test]
@@ -687,6 +723,26 @@ mod tests {
         assert_eq!(reference.semantic_domain, FullStateDigestV6::DOMAIN);
         assert_eq!(reference.input_schema_id, "full-state-digest-input.v6");
         assert_eq!(reference.digest_bytes, [0x6a; 32]);
+    }
+
+    #[test]
+    fn g0_digest_values_bind_the_allocated_v7_and_v8_domains() {
+        let full = FullStateDigestV7::from_digest_bytes([0x71; 32]);
+        let checkpoint = CheckpointDigestV8::from_digest_bytes([0x82; 32]);
+        let full_reference = full.as_digest_reference();
+        let checkpoint_reference = checkpoint.as_digest_reference();
+        assert_eq!(full_reference.semantic_domain, "mtgml.full-state-digest.v7");
+        assert_eq!(full_reference.input_schema_id, "full-state-digest-input.v7");
+        assert_eq!(full_reference.digest_bytes, [0x71; 32]);
+        assert_eq!(
+            checkpoint_reference.semantic_domain,
+            "mtgml.checkpoint-digest.v8"
+        );
+        assert_eq!(
+            checkpoint_reference.input_schema_id,
+            "environment-checkpoint-digest-input.v8"
+        );
+        assert_eq!(checkpoint_reference.digest_bytes, [0x82; 32]);
     }
 
     #[test]

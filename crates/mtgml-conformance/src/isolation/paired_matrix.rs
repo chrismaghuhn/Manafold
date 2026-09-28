@@ -471,6 +471,7 @@ fn add_stack_ability(
             controller: P1,
             source_object: None,
             source_ability: Some(ability),
+            payload: None,
         },
     );
     state.zones.stack_order.push(stack_id);

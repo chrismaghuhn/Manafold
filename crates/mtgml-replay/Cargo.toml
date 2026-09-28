@@ -16,3 +16,7 @@ thiserror.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true
+
+[[bench]]
+name = "replay_v8_append"
+harness = false

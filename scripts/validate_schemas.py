@@ -14,10 +14,13 @@ WIRE_MAPPING = {
     "decision-response.v1": "decision-response.v1.schema.json",
     "player-decision-request.v2": "player-decision-request.v2.schema.json",
     "player-decision-request.v3": "player-decision-request.v3.schema.json",
+    "player-decision-request.v4": "player-decision-request.v4.schema.json",
     "decision-response.v2": "decision-response.v2.schema.json",
+    "decision-response.v3": "decision-response.v3.schema.json",
     "episode-status.v1": "episode-status.v1.schema.json",
     "observed-event-envelope.v1": "observed-event-envelope.v1.schema.json",
     "observation-envelope.v1": "observation-envelope.v1.schema.json",
+    "observation-envelope.v2": "observation-envelope.v2.schema.json",
     "information-state-envelope.v1": "information-state-envelope.v1.schema.json",
     "player-step.v1": "player-step.v1.schema.json",
     "replay-manifest.v1": "replay-manifest.v1.schema.json",
@@ -25,10 +28,13 @@ WIRE_MAPPING = {
     "replay-manifest.v2": "replay-manifest.v2.schema.json",
     "authoritative-replay.v2": "authoritative-replay.v2.schema.json",
     "information-state-envelope.v2": "information-state-envelope.v2.schema.json",
+    "information-state-envelope.v3": "information-state-envelope.v3.schema.json",
     "observed-event-envelope.v2": "observed-event-envelope.v2.schema.json",
     "observed-event-envelope.v3": "observed-event-envelope.v3.schema.json",
+    "observed-event-envelope.v4": "observed-event-envelope.v4.schema.json",
     "player-step.v2": "player-step.v2.schema.json",
     "player-step.v3": "player-step.v3.schema.json",
+    "player-step.v4": "player-step.v4.schema.json",
     "replay-manifest.v3": "replay-manifest.v3.schema.json",
     "authoritative-replay.v3": "authoritative-replay.v3.schema.json",
     "magic-m3-observation.v1": "magic-m3-observation.v1.schema.json",
@@ -37,6 +43,7 @@ WIRE_MAPPING = {
     "magic-combat-observation.v4": "magic-combat-observation.v4.schema.json",
     "synthetic-m3-observation.v1": "synthetic-m3-observation.v1.schema.json",
     "magic-basic-land-observation.v1": "magic-basic-land-observation.v1.schema.json",
+    "magic-shared-execution-observation.v1": "magic-shared-execution-observation.v1.schema.json",
     "replay-manifest.v4": "replay-manifest.v4.schema.json",
     "authoritative-replay.v4": "authoritative-replay.v4.schema.json",
     "replay-manifest.v5": "replay-manifest.v5.schema.json",
@@ -44,7 +51,10 @@ WIRE_MAPPING = {
     "replay-manifest.v6": "replay-manifest.v6.schema.json",
     "authoritative-replay.v6": "authoritative-replay.v6.schema.json",
     "replay-manifest.v7": "replay-manifest.v7.schema.json",
+    "replay-manifest.v8": "replay-manifest.v8.schema.json",
     "authoritative-replay.v7": "authoritative-replay.v7.schema.json",
+    "authoritative-replay.v8": "authoritative-replay.v8.schema.json",
+    "replay-step.v8": "replay-step.v8.schema.json",
 }
 ARTIFACT_CASES = [
     ("capability-registry.v1.schema.json", "cards/capabilities/registry.json"),
@@ -77,6 +87,50 @@ ARTIFACT_CASES = [
 ]
 SCHEMA_NEGATIVE_CASES = [
     (
+        "player-decision-request.v4.schema.json",
+        "schemas/negative/player-decision-request-v4-cost-route-normal-with-ordinal.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/negative/player-decision-request-v4-cost-route-alternative-without-ordinal.json",
+    ),
+    (
+        "replay-manifest.v8.schema.json",
+        "schemas/negative/replay-manifest-v8-program-authority-mismatch.json",
+    ),
+    (
+        "authoritative-replay.v8.schema.json",
+        "schemas/negative/authoritative-replay-v8-program-authority-mismatch.json",
+    ),
+    (
+        "replay-manifest.v8.schema.json",
+        "schemas/negative/replay-manifest-v8-old-response-identity.json",
+    ),
+    (
+        "authoritative-replay.v8.schema.json",
+        "schemas/negative/authoritative-replay-v8-wrong-version.json",
+    ),
+    (
+        "observed-event-envelope.v4.schema.json",
+        "schemas/negative/observed-event-v4-global-revision.json",
+    ),
+    (
+        "observed-event-envelope.v4.schema.json",
+        "schemas/negative/observed-event-v4-trusted-stack-id.json",
+    ),
+    (
+        "player-step.v4.schema.json",
+        "schemas/negative/player-step-v4-global-revision.json",
+    ),
+    (
+        "observation-envelope.v2.schema.json",
+        "schemas/negative/observation-envelope-v2-global-state-revision.json",
+    ),
+    (
+        "information-state-envelope.v3.schema.json",
+        "schemas/negative/information-state-envelope-v3-global-state-revision.json",
+    ),
+    (
         "magic-basic-land-observation.v1.schema.json",
         "schemas/negative/magic-basic-land-observation-v1-candidates.json",
     ),
@@ -99,6 +153,82 @@ SCHEMA_NEGATIVE_CASES = [
     (
         "player-decision-request.v3.schema.json",
         "schemas/negative/player-decision-request-v3-trusted-game-object-id.json",
+    ),
+    (
+        "magic-shared-execution-observation.v1.schema.json",
+        "schemas/negative/magic-shared-execution-observation-v1-global-state-revision.json",
+    ),
+    (
+        "magic-shared-execution-observation.v1.schema.json",
+        "schemas/negative/magic-shared-execution-observation-v1-trusted-stack-id.json",
+    ),
+    (
+        "magic-shared-execution-observation.v1.schema.json",
+        "schemas/negative/magic-shared-execution-observation-v1-unknown-effect-keyword.json",
+    ),
+    (
+        "magic-shared-execution-observation.v1.schema.json",
+        "schemas/negative/magic-shared-execution-observation-v1-unbound-ability.json",
+    ),
+    (
+        "magic-shared-execution-observation.v1.schema.json",
+        "schemas/negative/magic-shared-execution-observation-v1-activated-modes-missing.json",
+    ),
+    (
+        "decision-response.v3.schema.json",
+        "schemas/negative/decision-response-v3-global-state-revision.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/negative/player-decision-request-v4-global-state-revision.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/negative/player-decision-request-v4-trusted-trigger-id.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/negative/player-decision-request-v4-event-subject-mismatch.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/negative/player-decision-request-v4-trusted-trigger-instance-id.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/negative/player-decision-request-v4-purpose-domain-mismatch.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/negative/player-decision-request-v4-trigger-order-public.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/negative/player-decision-request-v4-cost-route-public.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/negative/player-decision-request-v4-sba-graveyard-order-public.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/negative/player-decision-request-v4-sba-graveyard-order-wrong-candidate.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/negative/player-decision-request-v4-unbound-source-ability.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/negative/player-decision-request-v4-synthetic-stage-domain-mismatch.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/negative/player-decision-request-v4-attacker-wrong-candidate-intent.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/negative/player-decision-request-v4-synthetic-wrong-candidate-intent.json",
     ),
     (
         "observed-event-envelope.v3.schema.json",
@@ -150,6 +280,51 @@ SCHEMA_NEGATIVE_CASES = [
     ),
 ]
 SCHEMA_POSITIVE_CASES = [
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/examples/player-decision-request-v4-cost-route.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/examples/player-decision-request-v4-sba-graveyard-order.json",
+    ),
+    ("replay-manifest.v8.schema.json", "schemas/examples/replay-manifest-v8.json"),
+    ("replay-step.v8.schema.json", "schemas/examples/replay-step-v8.json"),
+    ("authoritative-replay.v8.schema.json", "schemas/examples/authoritative-replay-v8.json"),
+    (
+        "magic-shared-execution-observation.v1.schema.json",
+        "schemas/examples/magic-shared-execution-observation-v1.json",
+    ),
+    ("observation-envelope.v2.schema.json", "schemas/examples/observation-envelope-v2.json"),
+    (
+        "information-state-envelope.v3.schema.json",
+        "schemas/examples/information-state-envelope-v3.json",
+    ),
+    ("decision-response.v3.schema.json", "schemas/examples/decision-response-v3.json"),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/examples/player-decision-request-v4-trigger-order.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/examples/player-decision-request-v4-attacker-declaration.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/examples/player-decision-request-v4-synthetic-entry.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/examples/player-decision-request-v4-synthetic-count.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/examples/player-decision-request-v4-synthetic-members.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/examples/player-decision-request-v4-synthetic-order.json",
+    ),
     (
         "player-decision-request.v3.schema.json",
         "schemas/examples/player-decision-request-v3-play-land.json",

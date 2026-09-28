@@ -1,0 +1,25 @@
+{
+  "event": {
+    "item": {
+      "controller": "1",
+      "cost_facts": {
+        "paid_additional_cost_ids": [],
+        "selected_route": null
+      },
+      "kind": "activated_ability",
+      "modes": [
+        {
+          "mode_slot": 0,
+          "selected_mode": 1
+        }
+      ],
+      "source_ability": "8",
+      "source_object": "5",
+      "targets": []
+    },
+    "kind": "stack_item_added",
+    "stack_position_from_top": 0
+  },
+  "schema_version": "observed-event-envelope.v4",
+  "sequence": "3"
+}

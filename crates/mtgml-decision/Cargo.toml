@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+mtgml-card-ir = { path = "../mtgml-card-ir" }
 mtgml-model = { path = "../mtgml-model" }
 serde.workspace = true
 thiserror.workspace = true

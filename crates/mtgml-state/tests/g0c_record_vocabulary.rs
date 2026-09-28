@@ -1,0 +1,471 @@
+use mtgml_card_ir::{AbilityKey, CardSemanticProfileId, FaceKey};
+use mtgml_model::{
+    AbilityInstanceId, CardDefinitionId, GameObjectId, PlayerId, StackObjectId, TriggerInstanceId,
+};
+use mtgml_state::{
+    AbilitySourceContext, ActionCostFacts, AssemblyStageV2, CastContinuation,
+    CastContinuationStage, ContinuationPayloadV3, ContinuationRecordV3, CostFacts, CostRoute,
+    DamageKind, DamageRecipient, EffectExpiry, LifeChangeCause, ManaCost, ManaPaymentStage,
+    ManaPaymentStaging, ManaSourceActivation, ManaSourceActivationCost, ModeBinding,
+    NonManaActivationContinuation, NonManaActivationStage, ReservedNonManaCost,
+    SbaSelectedActionV1, SelectedCostOperand, SelectedTriggerTarget, SourceContext,
+    StackItemPayload, StackResolutionContinuation, StackResolutionStage, TargetBinding, TargetRef,
+    TemporaryEffectRecord, TemporaryKeyword, TemporaryOperation, TriggerActorRequestRoot,
+    TriggerEventSnapshot, TriggerPlacementContinuation,
+};
+
+fn snapshot(zone: mtgml_model::ZoneKind) -> mtgml_state::ObjectSnapshot {
+    mtgml_state::ObjectSnapshot {
+        object: GameObjectId(10),
+        physical_card: None,
+        card_definition: CardDefinitionId(4),
+        owner: PlayerId(0),
+        controller: PlayerId(0),
+        tapped: false,
+        face_down: false,
+        location: mtgml_state::ZoneLocation {
+            zone,
+            player: Some(PlayerId(0)),
+            position: mtgml_state::ZonePosition::Unordered,
+            visibility: mtgml_state::VisibilityPartition::Public,
+            partition: None,
+        },
+    }
+}
+
+fn profile() -> CardSemanticProfileId {
+    CardSemanticProfileId::parse("test/profile@1.0.0").unwrap()
+}
+
+fn ability_source() -> AbilitySourceContext {
+    AbilitySourceContext {
+        source: SourceContext {
+            snapshot: snapshot(mtgml_model::ZoneKind::Battlefield),
+            face_key: FaceKey(0),
+            semantic_profile_id: profile(),
+        },
+        ability_instance_id: AbilityInstanceId(1),
+        ability_key: AbilityKey(0),
+    }
+}
+
+#[test]
+fn typed_stack_payload_keeps_source_context_without_generic_resolution_blob() {
+    let payload = StackItemPayload::TriggeredAbility {
+        originating_trigger: TriggerInstanceId(1),
+        source_context: ability_source(),
+        captured_trigger_context: Box::new(TriggerEventSnapshot::TargetBecame {
+            actor: PlayerId(1),
+            source_stack_item: StackObjectId(3),
+            target: TargetRef::Object(GameObjectId(10)),
+        }),
+        targets: vec![TargetBinding {
+            target_slot: 0,
+            target: TargetRef::StackItem(StackObjectId(3)),
+        }],
+    };
+
+    assert!(matches!(payload, StackItemPayload::TriggeredAbility { .. }));
+
+    let activated = StackItemPayload::ActivatedAbility {
+        source_context: ability_source(),
+        modes: vec![],
+        targets: vec![],
+        cost_facts: CostFacts {
+            selected_route: Some(CostRoute::Alternative {
+                profile_local_route_id: 1,
+            }),
+            paid_additional_cost_ids: vec![2],
+        },
+    };
+    assert!(matches!(
+        activated,
+        StackItemPayload::ActivatedAbility { .. }
+    ));
+
+    let spell = StackItemPayload::Spell {
+        stack_card_object: GameObjectId(11),
+        card_definition_id: CardDefinitionId(5),
+        face_key: FaceKey(0),
+        semantic_profile_id: profile(),
+        modes: vec![ModeBinding {
+            mode_slot: 0,
+            selected_mode: 1,
+        }],
+        targets: vec![],
+        cost_facts: CostFacts::default(),
+    };
+    assert!(matches!(spell, StackItemPayload::Spell { .. }));
+}
+
+#[test]
+fn trigger_event_vocabulary_captures_cast_combat_saga_damage_and_life_facts() {
+    let facts = [
+        TriggerEventSnapshot::SpellCast {
+            actor: PlayerId(0),
+            stack_item: StackObjectId(2),
+            spell: SourceContext {
+                snapshot: snapshot(mtgml_model::ZoneKind::Stack),
+                face_key: FaceKey(0),
+                semantic_profile_id: profile(),
+            },
+            is_creature_spell: false,
+            cost_facts: CostFacts {
+                selected_route: Some(CostRoute::Normal),
+                paid_additional_cost_ids: vec![],
+            },
+        },
+        TriggerEventSnapshot::AbilityActivated {
+            actor: PlayerId(0),
+            stack_item: StackObjectId(4),
+            source: ability_source(),
+            targets: vec![],
+            cost_facts: CostFacts::default(),
+        },
+        TriggerEventSnapshot::TargetBecame {
+            actor: PlayerId(0),
+            source_stack_item: StackObjectId(5),
+            target: TargetRef::Object(GameObjectId(10)),
+        },
+        TriggerEventSnapshot::ObjectEntered {
+            object: snapshot(mtgml_model::ZoneKind::Battlefield),
+        },
+        TriggerEventSnapshot::ObjectLeftOrDied {
+            last_known: snapshot(mtgml_model::ZoneKind::Battlefield),
+            destination: mtgml_state::ZoneLocation {
+                zone: mtgml_model::ZoneKind::Graveyard,
+                player: Some(PlayerId(0)),
+                position: mtgml_state::ZonePosition::Unordered,
+                visibility: mtgml_state::VisibilityPartition::Public,
+                partition: None,
+            },
+        },
+        TriggerEventSnapshot::BeginningOfCombat {
+            active_player: PlayerId(0),
+            turn_number: 1,
+        },
+        TriggerEventSnapshot::AttackDeclared {
+            controller: PlayerId(0),
+            attackers: vec![],
+        },
+        TriggerEventSnapshot::CardDrawn {
+            player: PlayerId(0),
+        },
+        TriggerEventSnapshot::CounterChanged {
+            object: GameObjectId(10),
+            kind: mtgml_state::CounterKindV1::Lore,
+            before: 0,
+            after: 1,
+        },
+        TriggerEventSnapshot::DamageApplied {
+            source: Some(SourceContext {
+                snapshot: snapshot(mtgml_model::ZoneKind::Stack),
+                face_key: FaceKey(0),
+                semantic_profile_id: profile(),
+            }),
+            recipient: DamageRecipient::Player(PlayerId(1)),
+            amount: 3,
+            damage_kind: DamageKind::Noncombat,
+        },
+        TriggerEventSnapshot::LifeChanged {
+            player: PlayerId(1),
+            before: 20,
+            after: 17,
+            cause: LifeChangeCause::Damage,
+        },
+    ];
+
+    assert_eq!(facts.len(), 11);
+    assert!(facts
+        .iter()
+        .any(|fact| matches!(fact, TriggerEventSnapshot::BeginningOfCombat { .. })));
+    assert!(facts
+        .iter()
+        .any(|fact| matches!(fact, TriggerEventSnapshot::CounterChanged { .. })));
+    let _mode = ModeBinding {
+        mode_slot: 0,
+        selected_mode: 0,
+    };
+}
+
+#[test]
+fn temporary_operation_vocabulary_is_bounded_to_locked_operations() {
+    let effects = [
+        TemporaryEffectRecord {
+            id: mtgml_model::EffectInstanceId(1),
+            affected_objects: vec![GameObjectId(10)],
+            operation: TemporaryOperation::PowerToughnessDelta {
+                power: 1,
+                toughness: 1,
+            },
+            expiry: EffectExpiry::UntilEndOfTurn { turn_number: 1 },
+            timestamp: None,
+        },
+        TemporaryEffectRecord {
+            id: mtgml_model::EffectInstanceId(2),
+            affected_objects: vec![GameObjectId(10)],
+            operation: TemporaryOperation::GrantKeyword {
+                keyword: TemporaryKeyword::Haste,
+            },
+            expiry: EffectExpiry::UntilEndOfTurn { turn_number: 1 },
+            timestamp: None,
+        },
+        TemporaryEffectRecord {
+            id: mtgml_model::EffectInstanceId(3),
+            affected_objects: vec![GameObjectId(10)],
+            operation: TemporaryOperation::GrantKeyword {
+                keyword: TemporaryKeyword::DoubleStrike,
+            },
+            expiry: EffectExpiry::UntilEndOfTurn { turn_number: 1 },
+            timestamp: None,
+        },
+    ];
+
+    assert_eq!(effects.len(), 3);
+}
+
+#[test]
+fn cost_facts_and_source_payment_staging_have_one_typed_owner() {
+    let facts = ActionCostFacts {
+        mana_cost: Some(ManaCost {
+            colored_wubrg_counts: [0, 0, 0, 1, 0],
+            colorless_count: 0,
+            generic_count: 0,
+        }),
+        reserved_nonmana_costs: vec![ReservedNonManaCost::TapSource],
+        selected_cost_operands: vec![SelectedCostOperand::PutCounters {
+            object: GameObjectId(11),
+            counter_kind: mtgml_state::CounterKindV1::MinusOneMinusOne,
+            count: 2,
+        }],
+    };
+    let staging = ManaPaymentStaging {
+        stage: ManaPaymentStage::SelectingSources,
+        mana_source_activations: vec![ManaSourceActivation {
+            source_object: GameObjectId(12),
+            source_ability_instance: AbilityInstanceId(3),
+            ability_key: AbilityKey(1),
+            semantic_profile_id: profile(),
+            activation_cost_receipt: ManaSourceActivationCost::TapSource,
+            produced_buckets: [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+        }],
+    };
+
+    assert_eq!(facts.mana_cost.unwrap().colored_wubrg_counts[3], 1);
+    assert_eq!(facts.selected_cost_operands.len(), 1);
+    assert_eq!(staging.mana_source_activations.len(), 1);
+    assert_eq!(staging.mana_source_activations[0].produced_buckets[3], 1);
+}
+
+#[test]
+fn paused_stack_payment_has_one_authoritative_stage_owner() {
+    let waiting_for_ward_choice = StackResolutionContinuation {
+        resolving_stack_object: StackObjectId(3),
+        stage: StackResolutionStage::AwaitingOptionalPayment,
+        action_cost_facts: None,
+        mana_payment_staging: None,
+    };
+    assert!(matches!(
+        waiting_for_ward_choice.stage,
+        StackResolutionStage::AwaitingOptionalPayment
+    ));
+
+    let paying_ward_cost = StackResolutionContinuation {
+        resolving_stack_object: StackObjectId(3),
+        stage: StackResolutionStage::PayingMana,
+        action_cost_facts: Some(ActionCostFacts {
+            mana_cost: Some(ManaCost {
+                colored_wubrg_counts: [0; 5],
+                colorless_count: 0,
+                generic_count: 2,
+            }),
+            ..ActionCostFacts::default()
+        }),
+        mana_payment_staging: Some(ManaPaymentStaging {
+            stage: ManaPaymentStage::SelectingSources,
+            mana_source_activations: vec![],
+        }),
+    };
+    assert!(matches!(
+        paying_ward_cost.stage,
+        StackResolutionStage::PayingMana
+    ));
+    assert!(matches!(
+        paying_ward_cost.mana_payment_staging.unwrap().stage,
+        ManaPaymentStage::SelectingSources
+    ));
+}
+
+#[test]
+fn trigger_placement_value_keeps_apnap_and_selected_order_vectors() {
+    let continuation = TriggerPlacementContinuation {
+        apnap_actors: vec![PlayerId(0), PlayerId(1)],
+        current_actor_index: 0,
+        pending_trigger_ids: vec![TriggerInstanceId(7), TriggerInstanceId(8)],
+        completed_orders: vec![mtgml_state::CompletedTriggerOrder {
+            actor: PlayerId(0),
+            ordered_trigger_ids: vec![TriggerInstanceId(8), TriggerInstanceId(7)],
+        }],
+        selected_trigger_targets: vec![SelectedTriggerTarget {
+            trigger_id: TriggerInstanceId(8),
+            target: TargetBinding {
+                target_slot: 0,
+                target: TargetRef::Object(GameObjectId(10)),
+            },
+        }],
+        actor_request_roots: vec![TriggerActorRequestRoot {
+            actor: PlayerId(0),
+            first_decision_id: mtgml_model::PlayerDecisionIdV1(3),
+        }],
+    };
+
+    assert_eq!(continuation.apnap_actors, vec![PlayerId(0), PlayerId(1)]);
+    assert_eq!(
+        continuation.completed_orders[0].ordered_trigger_ids,
+        vec![TriggerInstanceId(8), TriggerInstanceId(7)]
+    );
+}
+
+#[test]
+fn cast_and_activation_continuations_use_closed_stage_tags() {
+    let cast_stages = [
+        CastContinuationStage::SelectingCostRoute,
+        CastContinuationStage::SelectingModes,
+        CastContinuationStage::SelectingTargets,
+        CastContinuationStage::SelectingAdditionalCosts,
+        CastContinuationStage::SelectingCostOperands,
+        CastContinuationStage::PayingMana,
+    ];
+    assert_eq!(cast_stages.len(), 6);
+    assert!(cast_stages.contains(&CastContinuationStage::SelectingCostRoute));
+    assert!(cast_stages.contains(&CastContinuationStage::SelectingModes));
+    assert!(cast_stages.contains(&CastContinuationStage::SelectingTargets));
+    assert!(cast_stages.contains(&CastContinuationStage::SelectingAdditionalCosts));
+    assert!(cast_stages.contains(&CastContinuationStage::SelectingCostOperands));
+    assert!(cast_stages.contains(&CastContinuationStage::PayingMana));
+
+    let activation_stages = [
+        NonManaActivationStage::SelectingModes,
+        NonManaActivationStage::SelectingTargets,
+        NonManaActivationStage::SelectingCostOperands,
+        NonManaActivationStage::PayingMana,
+    ];
+    assert_eq!(activation_stages.len(), 4);
+    assert!(activation_stages.contains(&NonManaActivationStage::SelectingModes));
+    assert!(activation_stages.contains(&NonManaActivationStage::SelectingTargets));
+    assert!(activation_stages.contains(&NonManaActivationStage::SelectingCostOperands));
+    assert!(activation_stages.contains(&NonManaActivationStage::PayingMana));
+
+    let cast = CastContinuation {
+        actor: PlayerId(0),
+        spell_object: GameObjectId(20),
+        card_definition_id: CardDefinitionId(9),
+        face_key: FaceKey(0),
+        semantic_profile_id: profile(),
+        stage: CastContinuationStage::PayingMana,
+        selected_route: Some(CostRoute::Normal),
+        modes: vec![],
+        targets: vec![],
+        paid_cost_choices: vec![],
+        action_cost_facts: ActionCostFacts {
+            mana_cost: Some(ManaCost {
+                colored_wubrg_counts: [1, 0, 0, 0, 0],
+                colorless_count: 0,
+                generic_count: 1,
+            }),
+            ..ActionCostFacts::default()
+        },
+        mana_payment_staging: Some(ManaPaymentStaging {
+            stage: ManaPaymentStage::AwaitingFinalAllocation,
+            mana_source_activations: vec![],
+        }),
+    };
+    assert!(matches!(cast.stage, CastContinuationStage::PayingMana));
+
+    let activation = NonManaActivationContinuation {
+        actor: PlayerId(0),
+        source_object: GameObjectId(21),
+        source_ability_instance: AbilityInstanceId(4),
+        ability_key: AbilityKey(2),
+        semantic_profile_id: profile(),
+        stage: NonManaActivationStage::SelectingCostOperands,
+        modes: vec![],
+        targets: vec![],
+        action_cost_facts: ActionCostFacts::default(),
+        mana_payment_staging: None,
+    };
+    assert!(matches!(
+        activation.stage,
+        NonManaActivationStage::SelectingCostOperands
+    ));
+}
+
+#[test]
+fn continuation_v3_wrapper_owns_only_identity_and_creation_revision() {
+    let payloads = [
+        ContinuationPayloadV3::SyntheticAssembly {
+            actor: PlayerId(0),
+            stage: AssemblyStageV2::ChooseCount,
+            selected_count: None,
+            selected_piece_keys: vec![],
+            ordered_piece_keys: vec![],
+        },
+        ContinuationPayloadV3::MagicSbaGraveyardOrderV1 {
+            round_start_revision: mtgml_model::StateRevision(2),
+            selected_sba_actions: vec![SbaSelectedActionV1::PlayerLoses {
+                player: PlayerId(1),
+            }],
+            apnap_owners: vec![PlayerId(0), PlayerId(1)],
+            next_owner_index: 0,
+            completed_owner_orders: vec![],
+        },
+        ContinuationPayloadV3::Cast(CastContinuation {
+            actor: PlayerId(0),
+            spell_object: GameObjectId(30),
+            card_definition_id: CardDefinitionId(4),
+            face_key: FaceKey(0),
+            semantic_profile_id: profile(),
+            stage: CastContinuationStage::SelectingTargets,
+            selected_route: None,
+            modes: vec![],
+            targets: vec![],
+            paid_cost_choices: vec![],
+            action_cost_facts: ActionCostFacts::default(),
+            mana_payment_staging: None,
+        }),
+        ContinuationPayloadV3::NonManaActivation(NonManaActivationContinuation {
+            actor: PlayerId(0),
+            source_object: GameObjectId(31),
+            source_ability_instance: AbilityInstanceId(2),
+            ability_key: AbilityKey(1),
+            semantic_profile_id: profile(),
+            stage: NonManaActivationStage::SelectingTargets,
+            modes: vec![],
+            targets: vec![],
+            action_cost_facts: ActionCostFacts::default(),
+            mana_payment_staging: None,
+        }),
+        ContinuationPayloadV3::TriggerPlacement(TriggerPlacementContinuation {
+            apnap_actors: vec![PlayerId(0)],
+            current_actor_index: 0,
+            pending_trigger_ids: vec![TriggerInstanceId(1)],
+            completed_orders: vec![],
+            selected_trigger_targets: vec![],
+            actor_request_roots: vec![],
+        }),
+        ContinuationPayloadV3::StackResolution(StackResolutionContinuation {
+            resolving_stack_object: StackObjectId(4),
+            stage: StackResolutionStage::AwaitingOptionalPayment,
+            action_cost_facts: None,
+            mana_payment_staging: None,
+        }),
+    ];
+
+    let continuation = ContinuationRecordV3 {
+        id: mtgml_model::ContinuationId(9),
+        created_at_revision: mtgml_model::StateRevision(2),
+        payload: payloads[2].clone(),
+    };
+    assert_eq!(payloads.len(), 6);
+    assert_eq!(continuation.id, mtgml_model::ContinuationId(9));
+}

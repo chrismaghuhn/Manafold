@@ -3,17 +3,25 @@
 //! Ownership façade: each DTO family lives in its own responsibility module;
 //! every public path remains at this crate root exactly as before the split.
 
+mod detached_v2;
 mod error;
 mod information;
 mod knowledge;
 mod magic_observation;
+mod magic_shared_execution_observation_v1;
 mod observation;
 mod observed_event;
 mod observed_event_v3;
+mod observed_event_v4;
 mod player_step;
 mod player_step_v3;
+mod player_step_v4;
 mod synthetic_observation;
 
+pub use detached_v2::{
+    InformationStateDigestInputV3, ObservationEnvelopeV2, PlayerInformationStateV3,
+    INFORMATION_STATE_DIGEST_INPUT_SCHEMA_V3, INFORMATION_STATE_SCHEMA_V3, OBSERVATION_SCHEMA_V2,
+};
 pub use error::ObservationValidationError;
 pub use information::{
     InformationStateDigestInputV2, InformationStateEnvelope, PlayerInformationStateV2,
@@ -33,6 +41,11 @@ pub use magic_observation::{
     MAGIC_OBSERVATION_SCHEMA_V1, MAGIC_OBSERVATION_SCHEMA_V2, MAGIC_OBSERVATION_SCHEMA_V3,
     MAGIC_OBSERVATION_SCHEMA_V4,
 };
+pub use magic_shared_execution_observation_v1::{
+    MagicSharedExecutionObservationV1, PublicEffectExpiryV1, PublicEffectKeywordV1, PublicModeV1,
+    PublicStackItemV1, PublicTemporaryEffectV1, PublicTemporaryOperationV1,
+    MAGIC_SHARED_EXECUTION_OBSERVATION_SCHEMA_V1,
+};
 pub use observation::ObservationEnvelope;
 pub use observed_event::{
     ObservedEventEnvelope, ObservedEventEnvelopeV2, ObservedEventKind, ObservedEventKindV2,
@@ -41,11 +54,15 @@ pub use observed_event_v3::{
     ManaPoolAfterV1, ManaPoolChangeCauseV1, ObservedCounterKindV3, ObservedEventEnvelopeV3,
     ObservedEventKindV3, ObservedFaceV1,
 };
+pub use observed_event_v4::{
+    ManaPoolChangeCauseV2, ObservedEventEnvelopeV4, ObservedEventKindV4, StackItemRemovalCauseV1,
+};
 pub use player_step::{
     PlayerServiceErrorCodeV1, PlayerStep, PlayerStepSubmissionV1, PlayerStepV2,
     PlayerSubmissionCodeV1,
 };
 pub use player_step_v3::PlayerStepV3;
+pub use player_step_v4::PlayerStepV4;
 pub use synthetic_observation::{
     SyntheticBeginningStep, SyntheticCombatStep, SyntheticEndingStep, SyntheticObservation,
     SyntheticPriority, SyntheticTurnPosition, SYNTHETIC_OBSERVATION_SCHEMA_V1,
@@ -60,6 +77,8 @@ pub const OBSERVED_EVENT_SCHEMA_V2: &str = "observed-event-envelope.v2";
 pub const PLAYER_STEP_SCHEMA_V2: &str = "player-step.v2";
 pub const OBSERVED_EVENT_SCHEMA_V3: &str = "observed-event-envelope.v3";
 pub const PLAYER_STEP_SCHEMA_V3: &str = "player-step.v3";
+pub const OBSERVED_EVENT_SCHEMA_V4: &str = "observed-event-envelope.v4";
+pub const PLAYER_STEP_SCHEMA_V4: &str = "player-step.v4";
 pub const MAGIC_BASIC_LAND_OBSERVATION_SCHEMA_V1: &str = "magic-basic-land-observation.v1";
 
 #[cfg(test)]

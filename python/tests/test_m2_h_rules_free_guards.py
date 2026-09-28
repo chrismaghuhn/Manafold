@@ -340,12 +340,21 @@ class RulesFreeStaticGuardsTests(unittest.TestCase):
             node
             for node in protocol_tree.body
             if isinstance(node, ast.ClassDef)
-            and node.name in {PROTOCOL_CLASS_NAME, "HistoricalPlayerClientV2"}
+            and node.name
+            in {
+                PROTOCOL_CLASS_NAME,
+                "HistoricalPlayerClientV3",
+                "HistoricalPlayerClientV2",
+            }
         ]
         self.assertEqual(
             {node.name for node in protocol_classes},
-            {PROTOCOL_CLASS_NAME, "HistoricalPlayerClientV2"},
-            "expected current V3 and explicit historical V2 protocols",
+            {
+                PROTOCOL_CLASS_NAME,
+                "HistoricalPlayerClientV3",
+                "HistoricalPlayerClientV2",
+            },
+            "expected current V4 and explicit historical V3/V2 protocols",
         )
         current_protocol = next(
             node for node in protocol_classes if node.name == PROTOCOL_CLASS_NAME

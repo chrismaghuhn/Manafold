@@ -1,0 +1,11 @@
+{
+  "actor": "1",
+  "candidates": [],
+  "decision_domain_v2": {"kind": "choose_one"},
+  "parent_player_decision_id": null,
+  "player_decision_id": "30",
+  "purpose": {"kind": "synthetic_assembly", "stage": "choose_count"},
+  "schema_version": "player-decision-request.v4",
+  "view_sequence": "0",
+  "visibility": "public"
+}

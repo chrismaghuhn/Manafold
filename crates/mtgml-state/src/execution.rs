@@ -92,6 +92,19 @@ impl ExecutionStateV3 {
     }
 }
 
+/// Detached G0 execution owner. It is not connected to current producers;
+/// G0j is the only writer-activation boundary. Legacy V3 remains unchanged.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ExecutionStateV4 {
+    pub pending_decision: Option<mtgml_decision::AuthoritativeDecisionRequestV4>,
+    pub continuations: BTreeMap<mtgml_model::ContinuationId, crate::ContinuationRecordV3>,
+    pub effects: BTreeMap<EffectInstanceId, crate::TemporaryEffectRecord>,
+    pub waiting_triggers: BTreeMap<TriggerInstanceId, crate::PendingTriggerRecord>,
+    /// Retained as a closed empty compatibility slot. Shared G0 has no
+    /// delayed-effect witness and does not admit non-empty records here.
+    pub delayed_effects: BTreeMap<EffectInstanceId, EffectRecord>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum SuccessorDecisionError {
     #[error("successor state has no pending authoritative request")]

@@ -1,0 +1,16 @@
+{
+  "schema_version": "m4-g0c-digest-identity-fixtures.v1",
+  "status": "detached canonical identity vectors; not runtime-writer evidence",
+  "fixtures": [
+    {
+      "path": "full-state-digest-v7-kat.v1.json",
+      "owner": "G0c identity/codec fixture vocabulary; G0e writer/verifier",
+      "state_validity_claim": false
+    },
+    {
+      "path": "checkpoint-digest-v8-kat.v1.json",
+      "owner": "G0c identity/codec fixture vocabulary; G0h writer/verifier",
+      "state_validity_claim": false
+    }
+  ]
+}

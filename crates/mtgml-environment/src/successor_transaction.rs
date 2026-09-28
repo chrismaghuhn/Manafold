@@ -126,6 +126,7 @@ pub fn execute_successor_response_transaction(
             semantic_manifest: admission.semantic_contract_manifest(),
             rules_manifest: admission.rules_contract_manifest(),
             catalog: admission.verified_catalog(),
+            basic_land_admission: None,
         },
         actor,
         mtgml_observation::PlayerSubmissionCodeV1::InvalidCandidate,

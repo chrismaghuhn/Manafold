@@ -9,6 +9,11 @@ from ._events_v2 import (
     ObservedEventV2,
 )
 from ._events_v3 import ObservedEventEnvelopeV3, ObservedEventV3
+from ._events_v4 import (
+    OBSERVED_EVENT_SCHEMA_V4,
+    ObservedEventEnvelopeV4,
+    ObservedEventV4,
+)
 from ._generated_contract_vocab import OBSERVED_EVENT_KINDS, ZONE_KINDS
 from ._information_v2 import (
     INFORMATION_STATE_SCHEMA_V2,
@@ -73,6 +78,7 @@ from ._player_step_v2 import (
     PlayerStepV2,
 )
 from ._player_step_v3 import PLAYER_STEP_SCHEMA_V3, PlayerStepV3
+from ._player_step_v4 import PLAYER_STEP_SCHEMA_V4, PlayerStepV4
 from ._synthetic_observation import (
     SYNTHETIC_BEGINNING_STEPS,
     SYNTHETIC_COMBAT_STEPS,
@@ -97,21 +103,48 @@ from .decision import PlayerDecisionRequest, PlayerDecisionRequestV2
 from .episode import EpisodeStatus
 from .errors import WireError
 from .events import ObservedEventEnvelope
+from .magic_shared_execution_observation_v1 import (
+    MAGIC_SHARED_EXECUTION_OBSERVATION_SCHEMA_V1,
+    ActivatedAbilityStackItemV1,
+    GrantKeywordV1,
+    MagicSharedExecutionObservationV1,
+    PowerToughnessDeltaV1,
+    PublicModeV1,
+    PublicTemporaryEffectV1,
+    SpellStackItemV1,
+    TriggeredAbilityStackItemV1,
+    UntilEndOfTurnV1,
+)
+from .observation_v3 import (
+    INFORMATION_STATE_DIGEST_INPUT_SCHEMA_V3,
+    INFORMATION_STATE_SCHEMA_V3,
+    OBSERVATION_SCHEMA_V2,
+    InformationStateDigestInputV3,
+    ObservationEnvelopeV2,
+    PlayerInformationStateV3,
+    compute_information_state_digest_v3,
+)
 
 __all__ = [
+    "INFORMATION_STATE_DIGEST_INPUT_SCHEMA_V3",
     "INFORMATION_STATE_SCHEMA",
     "INFORMATION_STATE_SCHEMA_V2",
+    "INFORMATION_STATE_SCHEMA_V3",
     "MAGIC_BASIC_LAND_OBSERVATION_SCHEMA_V1",
     "MAGIC_OBSERVATION_SCHEMA_V1",
     "MAGIC_OBSERVATION_SCHEMA_V2",
     "MAGIC_OBSERVATION_SCHEMA_V3",
     "MAGIC_OBSERVATION_SCHEMA_V4",
+    "MAGIC_SHARED_EXECUTION_OBSERVATION_SCHEMA_V1",
     "OBSERVATION_SCHEMA",
+    "OBSERVATION_SCHEMA_V2",
     "OBSERVED_EVENT_KINDS",
     "OBSERVED_EVENT_SCHEMA_V2",
+    "OBSERVED_EVENT_SCHEMA_V4",
     "PLAYER_STEP_SCHEMA",
     "PLAYER_STEP_SCHEMA_V2",
     "PLAYER_STEP_SCHEMA_V3",
+    "PLAYER_STEP_SCHEMA_V4",
     "PLAYER_SUBMISSION_CODES",
     "SYNTHETIC_BEGINNING_STEPS",
     "SYNTHETIC_COMBAT_STEPS",
@@ -120,11 +153,14 @@ __all__ = [
     "SYNTHETIC_PRIORITY_KINDS",
     "SYNTHETIC_TURN_KINDS",
     "ZONE_KINDS",
+    "ActivatedAbilityStackItemV1",
     "AttachmentObservationV1",
     "CounterObservationV1",
     "EpisodeStatus",
     "FaceObservationV1",
+    "GrantKeywordV1",
     "InformationStateDigestInputV2",
+    "InformationStateDigestInputV3",
     "InformationStateEnvelope",
     "MagicBasicLandObservationV1",
     "MagicBlockedStatusV4",
@@ -142,16 +178,21 @@ __all__ = [
     "MagicObservationV4",
     "MagicPendingSbaOrdering",
     "MagicPlayerLifeV4",
+    "MagicSharedExecutionObservationV1",
     "ManaPoolObservationV1",
     "ObservationEnvelope",
+    "ObservationEnvelopeV2",
     "ObservedEventEnvelope",
     "ObservedEventEnvelopeV2",
     "ObservedEventEnvelopeV3",
+    "ObservedEventEnvelopeV4",
     "ObservedEventV2",
     "ObservedEventV3",
+    "ObservedEventV4",
     "PlayerDecisionRequest",
     "PlayerDecisionRequestV2",
     "PlayerInformationStateV2",
+    "PlayerInformationStateV3",
     "PlayerKnowledgeInvalidationV1",
     "PlayerKnowledgeProvenanceV1",
     "PlayerKnownLocationFactV1",
@@ -161,11 +202,19 @@ __all__ = [
     "PlayerStepSubmissionV1",
     "PlayerStepV2",
     "PlayerStepV3",
+    "PlayerStepV4",
+    "PowerToughnessDeltaV1",
+    "PublicModeV1",
+    "PublicTemporaryEffectV1",
+    "SpellStackItemV1",
     "SyntheticObservation",
     "SyntheticPriority",
     "SyntheticTurnPosition",
+    "TriggeredAbilityStackItemV1",
+    "UntilEndOfTurnV1",
     "WireError",
     "base64",
+    "compute_information_state_digest_v3",
     "dataclass",
     "hashlib",
     "observation_digest_from_payload",

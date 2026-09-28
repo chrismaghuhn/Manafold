@@ -154,6 +154,7 @@ class SchemaParityTests(unittest.TestCase):
             "decision-response.v1": "decision-response.v1.schema.json",
             "player-decision-request.v2": "player-decision-request.v2.schema.json",
             "decision-response.v2": "decision-response.v2.schema.json",
+            "player-decision-request.v4": "player-decision-request.v4.schema.json",
             "episode-status.v1": "episode-status.v1.schema.json",
             "observed-event-envelope.v1": "observed-event-envelope.v1.schema.json",
             "observation-envelope.v1": "observation-envelope.v1.schema.json",
@@ -164,14 +165,21 @@ class SchemaParityTests(unittest.TestCase):
             "replay-manifest.v2": "replay-manifest.v2.schema.json",
             "authoritative-replay.v2": "authoritative-replay.v2.schema.json",
             "information-state-envelope.v2": "information-state-envelope.v2.schema.json",
+            "information-state-envelope.v3": "information-state-envelope.v3.schema.json",
+            "observation-envelope.v2": "observation-envelope.v2.schema.json",
             "observed-event-envelope.v2": "observed-event-envelope.v2.schema.json",
+            "observed-event-envelope.v4": "observed-event-envelope.v4.schema.json",
             "player-step.v2": "player-step.v2.schema.json",
+            "player-step.v4": "player-step.v4.schema.json",
             "replay-manifest.v3": "replay-manifest.v3.schema.json",
             "authoritative-replay.v3": "authoritative-replay.v3.schema.json",
             "magic-m3-observation.v1": "magic-m3-observation.v1.schema.json",
             "magic-combat-observation.v2": "magic-combat-observation.v2.schema.json",
             "magic-combat-observation.v3": "magic-combat-observation.v3.schema.json",
             "magic-combat-observation.v4": "magic-combat-observation.v4.schema.json",
+            "magic-shared-execution-observation.v1": (
+                "magic-shared-execution-observation.v1.schema.json"
+            ),
             "synthetic-m3-observation.v1": "synthetic-m3-observation.v1.schema.json",
             "replay-manifest.v4": "replay-manifest.v4.schema.json",
             "authoritative-replay.v4": "authoritative-replay.v4.schema.json",
@@ -179,6 +187,9 @@ class SchemaParityTests(unittest.TestCase):
             "authoritative-replay.v5": "authoritative-replay.v5.schema.json",
             "replay-manifest.v6": "replay-manifest.v6.schema.json",
             "authoritative-replay.v6": "authoritative-replay.v6.schema.json",
+            "replay-manifest.v8": "replay-manifest.v8.schema.json",
+            "replay-step.v8": "replay-step.v8.schema.json",
+            "authoritative-replay.v8": "authoritative-replay.v8.schema.json",
         }
         directory = ROOT / "wire" / "golden"
         manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))

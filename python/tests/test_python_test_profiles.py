@@ -89,14 +89,14 @@ class PythonTestProfileTests(unittest.TestCase):
         self.assertIn(gate, run_checks.FAST)
 
     def test_fast_profile_includes_migrated_state_identity_gate(self) -> None:
-        gate = [sys.executable, "scripts/run_v6_state_identity_gate.py"]
+        gate = [sys.executable, "scripts/run_v8_state_identity_gate.py"]
         self.assertIn(gate, run_checks.FAST)
 
     def test_justfile_contracts_includes_historical_identity_gates(self) -> None:
         justfile = ROOT / "justfile"
         text = justfile.read_text(encoding="utf-8")
         self.assertIn("run_v5_execution_identity_gate.py", text)
-        self.assertIn("run_v6_state_identity_gate.py", text)
+        self.assertIn("run_v8_state_identity_gate.py", text)
         self.assertIn("generate_semantic_contract_catalog.py --check", text)
 
     def test_integration_compiles_default_successor_environment_separately(self) -> None:
@@ -116,6 +116,12 @@ class PythonTestProfileTests(unittest.TestCase):
                 "current_successor_api",
                 "--locked",
             ],
+            run_checks.INTEGRATION_EXTRA,
+        )
+
+    def test_integration_runs_default_successor_environment_test_suite(self) -> None:
+        self.assertIn(
+            ["cargo", "test", "-p", "mtgml-environment", "--locked"],
             run_checks.INTEGRATION_EXTRA,
         )
 
@@ -286,11 +292,14 @@ class PythonTestProfileTests(unittest.TestCase):
             result = run_checks.run(commands, allow_missing=False)
 
         self.assertEqual(result, 7)
-        run.assert_called_once_with(
-            commands[0],
-            cwd=run_checks.ROOT,
-            timeout=run_checks.MAX_SINGLE_GATE_SUBPROCESS_RUNTIME_SECONDS,
+        run.assert_called_once()
+        self.assertEqual(run.call_args.args[0], commands[0])
+        self.assertEqual(run.call_args.kwargs["cwd"], run_checks.ROOT)
+        self.assertEqual(
+            run.call_args.kwargs["timeout"],
+            run_checks.MAX_SINGLE_GATE_SUBPROCESS_RUNTIME_SECONDS,
         )
+        self.assertEqual(run.call_args.kwargs["env"]["PYTHONDONTWRITEBYTECODE"], "1")
 
     def test_timed_out_subprocess_fails_closed_with_rerun_diagnostic(self) -> None:
         command = ["tool-a", "--flag"]
@@ -322,20 +331,20 @@ class PythonTestProfileTests(unittest.TestCase):
     def test_successful_subprocess_reports_duration_and_command(self) -> None:
         command = ["tool-a", "--flag"]
         output = StringIO()
-
         with (
             mock.patch.object(run_checks, "command_available", return_value=True),
             mock.patch.object(
                 run_checks.subprocess,
                 "run",
                 return_value=subprocess.CompletedProcess(command, 0),
-            ),
+            ) as run_mock,
             mock.patch("time.perf_counter", side_effect=[2.0, 2.125]),
             redirect_stdout(output),
         ):
             result = run_checks.run([command], allow_missing=False)
 
         self.assertEqual(result, 0)
+        self.assertEqual(run_mock.call_args.kwargs["env"]["PYTHONDONTWRITEBYTECODE"], "1")
         self.assertEqual(
             output.getvalue(),
             "RUN tool-a --flag\nPASS 0.125s tool-a --flag\n",

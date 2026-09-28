@@ -476,6 +476,23 @@ RUST_PLAYER_ENDPOINT_METHODS_V3: dict[str, dict[str, object]] = {
     },
 }
 
+RUST_PLAYER_ENDPOINT_METHODS_V4: dict[str, dict[str, object]] = {
+    "perspective": {"params": {}, "returns": "PlayerId"},
+    "observation": {"params": {}, "returns": "Result<ObservationEnvelopeV2, PlayerEndpointError>"},
+    "information_state": {
+        "params": {},
+        "returns": "Result<PlayerInformationStateV3, PlayerEndpointError>",
+    },
+    "visible_decision": {
+        "params": {},
+        "returns": "Result<Option<PlayerDecisionRequestV4>, PlayerEndpointError>",
+    },
+    "submit": {
+        "params": {"response": "DecisionResponseV3"},
+        "returns": "Result<PlayerStepV4, PlayerEndpointError>",
+    },
+}
+
 RUST_PLAYER_BOUNDARY_VARIANTS = frozenset(
     {
         "Wire(PlayerWireErrorCodeV1)",
@@ -498,7 +515,14 @@ PYTHON_PROTOCOL_METHODS_V3: dict[str, dict[str, object]] = {
     "visible_decision": {"params": {}, "returns": "PlayerDecisionRequestV3 | None"},
     "submit": {"params": {"response": "DecisionResponseV2"}, "returns": "PlayerStepV3"},
 }
+PYTHON_PROTOCOL_METHODS_V4: dict[str, dict[str, object]] = {
+    "observation": {"params": {}, "returns": "ObservationEnvelopeV2"},
+    "information_state": {"params": {}, "returns": "PlayerInformationStateV3"},
+    "visible_decision": {"params": {}, "returns": "PlayerDecisionRequestV4 | None"},
+    "submit": {"params": {"response": "DecisionResponseV3"}, "returns": "PlayerStepV4"},
+}
 PYTHON_HISTORICAL_PROTOCOL_CLASS = "HistoricalPlayerClientV2"
+PYTHON_HISTORICAL_PROTOCOL_V3_CLASS = "HistoricalPlayerClientV3"
 
 ADAPTER_PUBLIC_METHODS = frozenset(
     {"observation", "information_state", "visible_decision", "submit"}
@@ -551,6 +575,20 @@ COMMON_NAMED_CONTRACTS = frozenset(
         "authoritative-replay.v6",
         "replay-manifest.v7",
         "authoritative-replay.v7",
+        "magic-basic-land-observation.v1",
+        "observed-event-envelope.v3",
+        "player-step.v3",
+        # Accepted G0b identities; G0 DTOs are detached until G0j activation.
+        "observation-envelope.v2",
+        "information-state-envelope.v3",
+        "decision-response.v3",
+        "player-decision-request.v4",
+        "observed-event-envelope.v4",
+        "player-step.v4",
+        "magic-shared-execution-observation.v1",
+        "replay-manifest.v8",
+        "replay-step.v8",
+        "authoritative-replay.v8",
     }
 )
 
@@ -560,18 +598,12 @@ PYTHON_MECHANICAL_ONLY = frozenset({"information-state-digest-input.v2"})
 PYTHON_TYPED_SUCCESSORS = frozenset(
     {
         "player-decision-request.v3",
-        "observed-event-envelope.v3",
-        "player-step.v3",
-        "magic-basic-land-observation.v1",
     }
 )
 
 SCHEMA_ONLY_SUCCESSORS = frozenset(
     {
         "player-decision-request.v3",
-        "observed-event-envelope.v3",
-        "player-step.v3",
-        "magic-basic-land-observation.v1",
     }
 )
 
@@ -1011,7 +1043,7 @@ def verify_player_surface_closure() -> str:
             (
                 "successor PlayerEndpoint",
                 extract_rust_trait_methods(origin, ENDPOINT_SUCCESSOR_RS),
-                RUST_PLAYER_ENDPOINT_METHODS_V3,
+                RUST_PLAYER_ENDPOINT_METHODS_V4,
             ),
             (
                 "historical PlayerEndpoint V2",
@@ -1019,7 +1051,7 @@ def verify_player_surface_closure() -> str:
                 RUST_PLAYER_ENDPOINT_METHODS_V2,
             ),
         )
-        python_pin = PYTHON_PROTOCOL_METHODS_V3
+        python_pin = PYTHON_PROTOCOL_METHODS_V4
     else:
         rust_contracts = (
             (
@@ -1067,6 +1099,21 @@ def verify_player_surface_closure() -> str:
             f"extracted={extracted_protocol} pinned={expected_protocol}"
         )
     if successor_facade:
+        extracted_historical_v3 = extract_python_protocol_methods(
+            origin, PYTHON_HISTORICAL_PROTOCOL_V3_CLASS
+        )
+        expected_historical_v3 = {
+            name: {
+                "params": dict(signature["params"]),  # type: ignore[arg-type]
+                "returns": str(signature["returns"]),
+            }
+            for name, signature in PYTHON_PROTOCOL_METHODS_V3.items()
+        }
+        if extracted_historical_v3 != expected_historical_v3:
+            raise GateConfigurationError(
+                f"{origin}: historical Python V3 protocol drift: "
+                f"extracted={extracted_historical_v3} pinned={expected_historical_v3}"
+            )
         extracted_historical = extract_python_protocol_methods(
             origin, PYTHON_HISTORICAL_PROTOCOL_CLASS
         )

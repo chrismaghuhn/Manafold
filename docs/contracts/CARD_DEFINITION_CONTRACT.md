@@ -300,8 +300,10 @@ and no player-visible information. `FullStateDigestV5`,
 `EnvironmentCheckpointV6`, `CheckpointDigestV6`, Replay V6, current M3
 semantic identities, and the existing execution catalog were the unchanged
 M4.1 design baseline. PR #248 later activated FullStateDigestV6, Checkpoint V7,
-and Replay V7 for the bounded M4.2 slice; this historical M4.1 contract does
-not claim or authorize broader support.
+and Replay V7 for the bounded M4.2 slice; G0j supersedes those current-writer
+identities with the V7/V8 family while retaining the bounded profile and its
+exact existing support. This historical M4.1 contract does not claim or
+authorize broader support.
 `ContentContractIdV1` is external immutable content identity and is not
 inserted into state or checkpoint identity.
 

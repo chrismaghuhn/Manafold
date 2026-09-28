@@ -10,14 +10,23 @@ from typing import ClassVar, get_type_hints
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "python" / "src"))
 
+from mtgml.decision import DecisionResponseV3
 from mtgml.decision_v3 import PlayerDecisionRequestV3
+from mtgml.decision_v4 import PlayerDecisionRequestV4
 from mtgml.observation import (
+    ObservationEnvelopeV2,
     PlayerInformationStateV2,
+    PlayerInformationStateV3,
     PlayerKnownObjectV1,
     PlayerStepV2,
     PlayerStepV3,
+    PlayerStepV4,
 )
-from mtgml.player_client import HistoricalPlayerClientV2, PlayerClient
+from mtgml.player_client import (
+    HistoricalPlayerClientV2,
+    HistoricalPlayerClientV3,
+    PlayerClient,
+)
 
 
 class PlayerApiTests(unittest.TestCase):
@@ -31,11 +40,28 @@ class PlayerApiTests(unittest.TestCase):
             {"observation", "information_state", "visible_decision", "submit"},
         )
         hints = get_type_hints(PlayerClient.submit)
-        self.assertIs(hints["return"], PlayerStepV3)
+        self.assertIs(hints["return"], PlayerStepV4)
         self.assertEqual(
             get_type_hints(PlayerClient.visible_decision)["return"],
+            PlayerDecisionRequestV4 | None,
+        )
+        self.assertIs(get_type_hints(PlayerClient.observation)["return"], ObservationEnvelopeV2)
+        self.assertIs(
+            get_type_hints(PlayerClient.information_state)["return"], PlayerInformationStateV3
+        )
+        self.assertEqual(get_type_hints(PlayerClient.submit)["response"], DecisionResponseV3)
+
+    def test_v7_v3_protocol_remains_historical(self) -> None:
+        from mtgml.decision import DecisionResponseV2
+
+        self.assertEqual(
+            get_type_hints(HistoricalPlayerClientV3.visible_decision)["return"],
             PlayerDecisionRequestV3 | None,
         )
+        self.assertEqual(
+            get_type_hints(HistoricalPlayerClientV3.submit)["response"], DecisionResponseV2
+        )
+        self.assertIs(get_type_hints(HistoricalPlayerClientV3.submit)["return"], PlayerStepV3)
 
     def test_historical_m2_protocol_remains_explicitly_v2(self) -> None:
         from mtgml.decision import PlayerDecisionRequestV2

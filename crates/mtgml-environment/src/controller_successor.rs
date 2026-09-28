@@ -1,108 +1,105 @@
-//! Current successor environment/controller boundary.
+//! Current V8 environment/controller boundary.
 
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use mtgml_decision::DecisionResponseV2;
 use mtgml_model::PlayerId;
-use mtgml_observation::{ObservationEnvelope, PlayerInformationStateV2, PlayerStepV3};
-use mtgml_replay::AuthoritativeReplayV7;
+use mtgml_replay::AuthoritativeReplayV8;
 
-use crate::replay_v7_execution::ReplayV7ExecutionReport;
-use crate::successor_transaction::SuccessorTransactionOutput;
 use crate::{
-    ControllerError, EnvironmentCheckpointV7, PlayerEndpointError, SuccessorEnvironmentRuntime,
+    BasicLandEnvironmentRuntimeV8, BasicLandReplayV8ExecutionReport, BasicLandRuntimeOutputV8,
+    ControllerError, EnvironmentCheckpointV8, PlayerEndpointError,
 };
 
 pub trait EnvironmentBackend: Send {
     fn players(&self) -> Vec<PlayerId>;
-    fn checkpoint(&self) -> Result<EnvironmentCheckpointV7, ControllerError>;
-    fn restore(&mut self, checkpoint: EnvironmentCheckpointV7) -> Result<(), ControllerError>;
+    fn checkpoint(&self) -> Result<EnvironmentCheckpointV8, ControllerError>;
+    fn restore(&mut self, checkpoint: EnvironmentCheckpointV8) -> Result<(), ControllerError>;
     fn fork_boxed(&self) -> Result<Box<dyn EnvironmentBackend>, ControllerError>;
-    fn export_replay(&self) -> Result<AuthoritativeReplayV7, ControllerError>;
+    fn export_replay(&self) -> Result<AuthoritativeReplayV8, ControllerError>;
     fn execute_replay(
         &self,
-        replay: AuthoritativeReplayV7,
-    ) -> Result<ReplayV7ExecutionReport, ControllerError>;
+        replay: AuthoritativeReplayV8,
+    ) -> Result<BasicLandReplayV8ExecutionReport, ControllerError>;
     fn player_observation(
         &self,
         perspective: PlayerId,
-    ) -> Result<ObservationEnvelope, PlayerEndpointError>;
+    ) -> Result<mtgml_observation::ObservationEnvelopeV2, PlayerEndpointError>;
     fn player_information_state(
         &self,
         perspective: PlayerId,
-    ) -> Result<PlayerInformationStateV2, PlayerEndpointError>;
+    ) -> Result<mtgml_observation::PlayerInformationStateV3, PlayerEndpointError>;
     fn player_visible_decision(
         &self,
         perspective: PlayerId,
-    ) -> Result<Option<mtgml_decision::PlayerDecisionRequestV3>, PlayerEndpointError>;
+    ) -> Result<Option<mtgml_decision::PlayerDecisionRequestV4>, PlayerEndpointError>;
     fn submit_player_response(
         &mut self,
         perspective: PlayerId,
-        response: DecisionResponseV2,
-    ) -> Result<PlayerStepV3, PlayerEndpointError>;
+        response: mtgml_decision::DecisionResponseV3,
+    ) -> Result<mtgml_observation::PlayerStepV4, PlayerEndpointError>;
     fn execute_transition(
         &mut self,
         actor: PlayerId,
-        response: DecisionResponseV2,
-    ) -> Result<SuccessorTransactionOutput, PlayerEndpointError>;
+        response: mtgml_decision::DecisionResponseV3,
+    ) -> Result<BasicLandRuntimeOutputV8, PlayerEndpointError>;
 }
 
-impl EnvironmentBackend for SuccessorEnvironmentRuntime {
+impl EnvironmentBackend for BasicLandEnvironmentRuntimeV8 {
     fn players(&self) -> Vec<PlayerId> {
-        SuccessorEnvironmentRuntime::players(self)
+        BasicLandEnvironmentRuntimeV8::players(self)
     }
 
-    fn checkpoint(&self) -> Result<EnvironmentCheckpointV7, ControllerError> {
-        SuccessorEnvironmentRuntime::checkpoint(self)
+    fn checkpoint(&self) -> Result<EnvironmentCheckpointV8, ControllerError> {
+        BasicLandEnvironmentRuntimeV8::checkpoint(self)
     }
 
-    fn restore(&mut self, checkpoint: EnvironmentCheckpointV7) -> Result<(), ControllerError> {
-        SuccessorEnvironmentRuntime::restore(self, checkpoint)
+    fn restore(&mut self, checkpoint: EnvironmentCheckpointV8) -> Result<(), ControllerError> {
+        BasicLandEnvironmentRuntimeV8::restore(self, checkpoint)
     }
 
     fn fork_boxed(&self) -> Result<Box<dyn EnvironmentBackend>, ControllerError> {
-        Ok(Box::new(SuccessorEnvironmentRuntime::fork(self)?))
+        Ok(Box::new(BasicLandEnvironmentRuntimeV8::fork(self)?))
     }
 
-    fn export_replay(&self) -> Result<AuthoritativeReplayV7, ControllerError> {
-        SuccessorEnvironmentRuntime::export_replay(self)
+    fn export_replay(&self) -> Result<AuthoritativeReplayV8, ControllerError> {
+        BasicLandEnvironmentRuntimeV8::export_replay(self)
     }
 
     fn execute_replay(
         &self,
-        replay: AuthoritativeReplayV7,
-    ) -> Result<ReplayV7ExecutionReport, ControllerError> {
-        SuccessorEnvironmentRuntime::execute_replay(self, replay)
+        replay: AuthoritativeReplayV8,
+    ) -> Result<BasicLandReplayV8ExecutionReport, ControllerError> {
+        BasicLandEnvironmentRuntimeV8::execute_replay(self, replay)
     }
 
     fn player_observation(
         &self,
         perspective: PlayerId,
-    ) -> Result<ObservationEnvelope, PlayerEndpointError> {
-        SuccessorEnvironmentRuntime::observation(self, perspective)
+    ) -> Result<mtgml_observation::ObservationEnvelopeV2, PlayerEndpointError> {
+        BasicLandEnvironmentRuntimeV8::information_state(self, perspective)
+            .map(|state| state.current_observation)
     }
 
     fn player_information_state(
         &self,
         perspective: PlayerId,
-    ) -> Result<PlayerInformationStateV2, PlayerEndpointError> {
-        SuccessorEnvironmentRuntime::information_state(self, perspective)
+    ) -> Result<mtgml_observation::PlayerInformationStateV3, PlayerEndpointError> {
+        BasicLandEnvironmentRuntimeV8::information_state(self, perspective)
     }
 
     fn player_visible_decision(
         &self,
         perspective: PlayerId,
-    ) -> Result<Option<mtgml_decision::PlayerDecisionRequestV3>, PlayerEndpointError> {
-        SuccessorEnvironmentRuntime::visible_decision(self, perspective)
+    ) -> Result<Option<mtgml_decision::PlayerDecisionRequestV4>, PlayerEndpointError> {
+        BasicLandEnvironmentRuntimeV8::visible_decision(self, perspective)
     }
 
     fn submit_player_response(
         &mut self,
         perspective: PlayerId,
-        response: DecisionResponseV2,
-    ) -> Result<PlayerStepV3, PlayerEndpointError> {
-        let output = SuccessorEnvironmentRuntime::submit(self, perspective, response)?;
-        output
+        response: mtgml_decision::DecisionResponseV3,
+    ) -> Result<mtgml_observation::PlayerStepV4, PlayerEndpointError> {
+        BasicLandEnvironmentRuntimeV8::submit(self, perspective, response)?
             .player_steps
             .get(&perspective)
             .cloned()
@@ -112,9 +109,9 @@ impl EnvironmentBackend for SuccessorEnvironmentRuntime {
     fn execute_transition(
         &mut self,
         actor: PlayerId,
-        response: DecisionResponseV2,
-    ) -> Result<SuccessorTransactionOutput, PlayerEndpointError> {
-        SuccessorEnvironmentRuntime::submit(self, actor, response)
+        response: mtgml_decision::DecisionResponseV3,
+    ) -> Result<BasicLandRuntimeOutputV8, PlayerEndpointError> {
+        BasicLandEnvironmentRuntimeV8::submit(self, actor, response)
     }
 }
 
@@ -145,11 +142,11 @@ impl TrustedEnvironmentController {
         })
     }
 
-    pub fn checkpoint(&self) -> Result<EnvironmentCheckpointV7, ControllerError> {
+    pub fn checkpoint(&self) -> Result<EnvironmentCheckpointV8, ControllerError> {
         self.lock()?.checkpoint()
     }
 
-    pub fn restore(&self, checkpoint: EnvironmentCheckpointV7) -> Result<(), ControllerError> {
+    pub fn restore(&self, checkpoint: EnvironmentCheckpointV8) -> Result<(), ControllerError> {
         self.lock()?.restore(checkpoint)
     }
 
@@ -159,14 +156,14 @@ impl TrustedEnvironmentController {
         })
     }
 
-    pub fn export_replay(&self) -> Result<AuthoritativeReplayV7, ControllerError> {
+    pub fn export_replay(&self) -> Result<AuthoritativeReplayV8, ControllerError> {
         self.lock()?.export_replay()
     }
 
     pub fn execute_replay(
         &self,
-        replay: AuthoritativeReplayV7,
-    ) -> Result<ReplayV7ExecutionReport, ControllerError> {
+        replay: AuthoritativeReplayV8,
+    ) -> Result<BasicLandReplayV8ExecutionReport, ControllerError> {
         self.lock()?.execute_replay(replay)
     }
 

@@ -1,19 +1,22 @@
 use crate::canonical_json::decode_canonical;
 use crate::error::WireError;
 use mtgml_decision::{
-    DecisionResponse, DecisionResponseV2, PlayerDecisionRequest, PlayerDecisionRequestV2,
+    DecisionResponse, DecisionResponseV2, DecisionResponseV3, PlayerDecisionRequest,
+    PlayerDecisionRequestV2, PlayerDecisionRequestV4,
 };
 use mtgml_model::EpisodeStatus;
 use mtgml_observation::{
-    InformationStateEnvelope, MagicObservation, MagicObservationV2, MagicObservationV3,
-    MagicObservationV4, ObservationEnvelope, ObservedEventEnvelope, ObservedEventEnvelopeV2,
-    PlayerInformationStateV2, PlayerStep, PlayerStepV2, SyntheticObservation,
+    InformationStateEnvelope, MagicBasicLandObservationV1, MagicObservation, MagicObservationV2,
+    MagicObservationV3, MagicObservationV4, MagicSharedExecutionObservationV1, ObservationEnvelope,
+    ObservationEnvelopeV2, ObservedEventEnvelope, ObservedEventEnvelopeV2, ObservedEventEnvelopeV3,
+    ObservedEventEnvelopeV4, PlayerInformationStateV2, PlayerInformationStateV3, PlayerStep,
+    PlayerStepV2, PlayerStepV3, PlayerStepV4, SyntheticObservation,
 };
 use mtgml_replay::{
     AuthoritativeReplayV1, AuthoritativeReplayV2, AuthoritativeReplayV3, AuthoritativeReplayV4,
-    AuthoritativeReplayV5, AuthoritativeReplayV6, AuthoritativeReplayV7, ReplayManifestV1,
-    ReplayManifestV2, ReplayManifestV3, ReplayManifestV4, ReplayManifestV5, ReplayManifestV6,
-    ReplayManifestV7,
+    AuthoritativeReplayV5, AuthoritativeReplayV6, AuthoritativeReplayV7, AuthoritativeReplayV8,
+    ReplayManifestV1, ReplayManifestV2, ReplayManifestV3, ReplayManifestV4, ReplayManifestV5,
+    ReplayManifestV6, ReplayManifestV7, ReplayManifestV8, ReplayStepV8,
 };
 use serde::Deserialize;
 use std::{fs, path::Path};
@@ -102,7 +105,12 @@ fn decode_named(contract: &str, bytes: &[u8]) -> Result<(), WireError> {
             decode_canonical::<PlayerDecisionRequestV2>(bytes).map(drop)
         }
         "decision-response.v2" => decode_canonical::<DecisionResponseV2>(bytes).map(drop),
+        "player-decision-request.v4" => {
+            decode_canonical::<PlayerDecisionRequestV4>(bytes).map(drop)
+        }
+        "decision-response.v3" => decode_canonical::<DecisionResponseV3>(bytes).map(drop),
         "observation-envelope.v1" => decode_canonical::<ObservationEnvelope>(bytes).map(drop),
+        "observation-envelope.v2" => decode_canonical::<ObservationEnvelopeV2>(bytes).map(drop),
         "information-state-envelope.v1" => {
             decode_canonical::<InformationStateEnvelope>(bytes).map(drop)
         }
@@ -111,10 +119,21 @@ fn decode_named(contract: &str, bytes: &[u8]) -> Result<(), WireError> {
         "information-state-envelope.v2" => {
             decode_canonical::<PlayerInformationStateV2>(bytes).map(drop)
         }
+        "information-state-envelope.v3" => {
+            decode_canonical::<PlayerInformationStateV3>(bytes).map(drop)
+        }
         "observed-event-envelope.v2" => {
             decode_canonical::<ObservedEventEnvelopeV2>(bytes).map(drop)
         }
+        "observed-event-envelope.v4" => {
+            decode_canonical::<ObservedEventEnvelopeV4>(bytes).map(drop)
+        }
         "player-step.v2" => decode_canonical::<PlayerStepV2>(bytes).map(drop),
+        "observed-event-envelope.v3" => {
+            decode_canonical::<ObservedEventEnvelopeV3>(bytes).map(drop)
+        }
+        "player-step.v3" => decode_canonical::<PlayerStepV3>(bytes).map(drop),
+        "player-step.v4" => decode_canonical::<PlayerStepV4>(bytes).map(drop),
         "episode-status.v1" => decode_canonical::<EpisodeStatus>(bytes).map(drop),
         "replay-manifest.v1" => decode_canonical::<ReplayManifestV1>(bytes).map(drop),
         "authoritative-replay.v1" => decode_canonical::<AuthoritativeReplayV1>(bytes).map(drop),
@@ -130,11 +149,20 @@ fn decode_named(contract: &str, bytes: &[u8]) -> Result<(), WireError> {
         "authoritative-replay.v6" => decode_canonical::<AuthoritativeReplayV6>(bytes).map(drop),
         "replay-manifest.v7" => decode_canonical::<ReplayManifestV7>(bytes).map(drop),
         "authoritative-replay.v7" => decode_canonical::<AuthoritativeReplayV7>(bytes).map(drop),
+        "replay-manifest.v8" => decode_canonical::<ReplayManifestV8>(bytes).map(drop),
+        "replay-step.v8" => decode_canonical::<ReplayStepV8>(bytes).map(drop),
+        "authoritative-replay.v8" => decode_canonical::<AuthoritativeReplayV8>(bytes).map(drop),
         "synthetic-m3-observation.v1" => decode_canonical::<SyntheticObservation>(bytes).map(drop),
         "magic-m3-observation.v1" => decode_canonical::<MagicObservation>(bytes).map(drop),
         "magic-combat-observation.v2" => decode_canonical::<MagicObservationV2>(bytes).map(drop),
         "magic-combat-observation.v3" => decode_canonical::<MagicObservationV3>(bytes).map(drop),
         "magic-combat-observation.v4" => decode_canonical::<MagicObservationV4>(bytes).map(drop),
+        "magic-basic-land-observation.v1" => {
+            decode_canonical::<MagicBasicLandObservationV1>(bytes).map(drop)
+        }
+        "magic-shared-execution-observation.v1" => {
+            decode_canonical::<MagicSharedExecutionObservationV1>(bytes).map(drop)
+        }
         _ => Err(WireError::new(
             "fixture.unknown_contract",
             format!("unknown fixture contract {contract}"),

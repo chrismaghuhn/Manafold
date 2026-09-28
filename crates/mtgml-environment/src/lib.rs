@@ -4,22 +4,30 @@
 //! `PlayerEndpointHandle` is permanently perspective-bound and exposes only
 //! projected information. Multiple player handles may coexist.
 
+pub mod basic_land_runtime_v8;
 mod boundary;
 pub mod checkpoint;
 pub mod checkpoint_v7;
+pub mod checkpoint_v8;
 #[cfg(any(test, feature = "historical-conformance-runtime"))]
 #[path = "controller_predecessor.rs"]
 mod controller;
 #[cfg(not(any(test, feature = "historical-conformance-runtime")))]
 mod controller;
-#[cfg(any(test, not(feature = "historical-conformance-runtime")))]
+#[cfg(any(test, feature = "historical-conformance-runtime"))]
+#[path = "controller_successor_v7.rs"]
+pub mod controller_successor;
+#[cfg(not(any(test, feature = "historical-conformance-runtime")))]
 pub mod controller_successor;
 #[cfg(any(test, feature = "historical-conformance-runtime"))]
 #[path = "endpoint_predecessor.rs"]
 mod endpoint;
 #[cfg(not(any(test, feature = "historical-conformance-runtime")))]
 mod endpoint;
-#[cfg(any(test, not(feature = "historical-conformance-runtime")))]
+#[cfg(any(test, feature = "historical-conformance-runtime"))]
+#[path = "endpoint_successor_v7.rs"]
+pub mod endpoint_successor;
+#[cfg(not(any(test, feature = "historical-conformance-runtime")))]
 pub mod endpoint_successor;
 mod errors;
 pub mod lifecycle_projection;
@@ -28,6 +36,7 @@ mod player_projection;
 mod reference;
 #[cfg(any(test, feature = "historical-conformance-runtime"))]
 mod replay;
+#[cfg(any(test, feature = "historical-conformance-runtime"))]
 pub mod replay_v7_execution;
 #[cfg(any(test, feature = "historical-conformance-runtime"))]
 mod response_transaction;
@@ -36,7 +45,9 @@ mod semantic_catalog;
 #[cfg(test)]
 mod semantic_catalog_kat;
 pub mod successor_projection;
+#[cfg(any(test, feature = "historical-conformance-runtime"))]
 pub mod successor_runtime;
+#[cfg(any(test, feature = "historical-conformance-runtime"))]
 pub mod successor_transaction;
 #[cfg(any(test, feature = "historical-conformance-runtime"))]
 mod synthetic;
@@ -54,21 +65,31 @@ pub use checkpoint_v7::{
     CheckpointV7Error, EnvironmentCheckpointV7, CHECKPOINT_CODEC_ID_V7,
     CHECKPOINT_CODEC_SEMANTIC_VERSION_V7, ENVIRONMENT_CHECKPOINT_SCHEMA_V7,
 };
+pub use checkpoint_v8::{
+    CheckpointV8Error, EnvironmentCheckpointV8, CHECKPOINT_CODEC_ID_V8,
+    CHECKPOINT_CODEC_SEMANTIC_VERSION_V8, ENVIRONMENT_CHECKPOINT_SCHEMA_V8,
+};
 pub use controller::{EnvironmentBackend, TrustedEnvironmentController};
 pub use endpoint::{PlayerEndpoint, PlayerEndpointError, PlayerEndpointHandle};
 #[cfg(any(test, feature = "historical-conformance-runtime"))]
 pub type CurrentPlayerStep = mtgml_observation::PlayerStepV2;
 #[cfg(not(any(test, feature = "historical-conformance-runtime")))]
-pub type CurrentPlayerStep = mtgml_observation::PlayerStepV3;
+pub type CurrentPlayerStep = mtgml_observation::PlayerStepV4;
 pub use errors::ControllerError;
 pub use errors::ReplayExecutionError;
 pub use mtgml_model::{CheckpointCodecIdentity, EnvironmentLimitCounters};
 pub use player_projection::{
     project_magic_basic_land_observation_v1, project_successor_information_state,
+    project_successor_information_state_v3,
 };
 // Task 3 generated catalog module: unconditional compile surface — it is the
 // production input Task 8 consumes. Only the KAT is test-only.
 mod semantic_catalog_generated;
+#[cfg(not(any(test, feature = "historical-conformance-runtime")))]
+pub use basic_land_runtime_v8::{
+    BasicLandEnvironmentRuntimeV8, BasicLandEnvironmentRuntimeV8 as SuccessorEnvironmentRuntime,
+    BasicLandReplayV8ExecutionReport, BasicLandRuntimeOutputV8,
+};
 #[cfg(any(test, feature = "historical-conformance-runtime"))]
 pub use reference::{
     ReferenceEnvironmentBackend, ReferenceEnvironmentConfig, ReferenceEnvironmentReplayConfig,
@@ -97,6 +118,7 @@ pub use semantic_catalog_generated::magic_turn_structure_0_1_0_semantic_manifest
 pub use semantic_catalog_generated::synthetic_legacy_default_rules_manifest;
 pub use semantic_catalog_generated::synthetic_legacy_default_semantic_contract_id;
 pub use semantic_catalog_generated::synthetic_legacy_default_semantic_manifest;
+#[cfg(any(test, feature = "historical-conformance-runtime"))]
 pub use successor_runtime::SuccessorEnvironmentRuntime;
 #[cfg(any(test, feature = "historical-conformance-runtime"))]
 pub use synthetic::{

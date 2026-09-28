@@ -40,18 +40,21 @@
 - **Real Magic semantics:** accepted evidence covers the eleven bounded Foundation V2 capabilities. This does not claim arbitrary Magic support, cards, decks, formats, or playability.
 - **Bounded executable real-card support:** Mountain + Plains under `basic-land@1.0.0`; no broader card/deck support is claimed.
 
-**Current resumable execution contract on `master`:** V7. The production
-runtime uses `EngineStatePartsV2`, `FullStateDigestV6`, `StateDeltaV2`,
-`EnvironmentCheckpointV7` / `CheckpointDigestV7`, Replay V7, Decision V3,
-ObservedEvent V3, PlayerStep V3, and the Magic observation projection. Its
-executable admission is bounded to Mountain and Plains under
-`basic-land@1.0.0`. V5/V6 predecessor artifacts, including
-`FullStateDigestV5`, `EnvironmentCheckpointV6`, `CheckpointDigestV6`, and
-Replay V6, remain historical read/verification only (reader/verifier only).
-No predecessor gameplay writer is current, and no historical identity is
-reinterpreted or automatically migrated; V4/V5 artifacts retain their
-historical meanings. M4.2 is `COMPLETE` only for the bounded Mountain/Plains
-slice; this does not claim broader card, deck, format, or playability support.
+**Current resumable execution contract after the G0j activation cut:** V8.
+The production runtime uses `EngineStatePartsV3`, `StateDeltaV3`,
+`FullStateDigestV7`, `EnvironmentCheckpointV8` / `CheckpointDigestV8`, Replay V8,
+Decision request V4 / response V3, ObservedEvent V4, PlayerStep V4,
+ObservationEnvelope V2, PlayerInformationState V3 / InformationStateDigest
+V3, and `magic-shared-execution-observation.v1`. Its executable admission
+remains bounded to Mountain and Plains under `basic-land@1.0.0`; G0j preserves
+that M4.2 slice and adds no spell or deck support. V6/V7 predecessor artifacts
+(`FullStateDigestV6`, `EnvironmentCheckpointV7` / `CheckpointDigestV7`, and
+Replay V7) remain historical read/verification only, and V3 player products
+retain their exact historical meanings under ADR 0056. They have no current
+writers or automatic migration. No predecessor gameplay writer is current.
+No historical identity is reinterpreted. M4.2 is
+`COMPLETE` only for the bounded Mountain/Plains slice; this does not claim
+broader card, deck, format, or playability support.
 
 Manafold prioritizes:
 

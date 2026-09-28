@@ -1,7 +1,7 @@
 # M4 Shared G0 — Contract-Growth Boundary
 
 **Task:** `M4_SHARED_G0_CONTRACT_GROWTH_SPEC_AND_IMPLEMENTATION_PLAN`
-**Status:** ACCEPTED FOR G0B — NO IMPLEMENTATION AUTHORITY
+**Status:** Base G0B and bounded payload/stage amendments ACCEPTED. **M4.2 preservation clarification ACCEPTED FOR G0j by PR #252** (reviewed head `aa4a93e5c9da54c7391f9d405ad2a3970dd653db`, integration merge commit `4d3b82d9517f08fef4b6a2126cb8409049e714ca`); current-writer authority remains gated on G0j. ContinuationRecordV3 ownership and payload inventory Exact-Head PASS at `f0a493c740f9002e5551d317a1411c11067a7bb3`; CostRoute V4 descriptor reconciliation ACCEPTED at independent Exact-Head PASS `69cb222dcb8d9e50861322e2536a7e12103bf014`; actor-only route visibility and immutable-profile symbol binding reconciliation ACCEPTED at independent Exact-Head PASS `3bfbb2d5bdbfc2eb31f85b1c14b47d2dcccb4bba`; preservation of the existing Magic SBA graveyard-order Decision ACCEPTED at independent Exact-Head PASS `d6ba1c00a955792bbf96c1067f5fca3b08ccb650`; exact safe trigger descriptor-to-record binding rule ACCEPTED at independent Exact-Head PASS `e883162e1bfdce1df1c8fb24e603738da54e6441`; activated-ability public-mode projection amendment REVIEWED PASS at independent Exact-Head `2764eadf51fbc09271122a37995160f60f929460` (integration branch, pending G0 activation); cast/activation stack-creation and once-per-turn history receipt amendment independently reviewed PASS at `1da3e963f07bdf79ba397bbe99f2e087202fd5ba` (integration branch, pending G0 activation); the `ProfileDecisionDomainContextV1` proposal was rejected for forgeable Rules provenance at exact-head review `5ddd7d5a54afe670366db60d9bb0711c88c35aff`; revised fail-closed G0 admission boundary independently reviewed PASS at `e012913d7f2fa55823bcc4c95f46a0460517f21b`; detached implementation baseline remains `f5c1ed2aa0719edaebd95f80f7c1c5c38b3dea3d`
 **G0a acceptance record:** Independent exact-head G0 Spec/Plan review PASS at `308e465669f66ad63b01d5fb381214c08ce413bc`; PR #250 required CI PASS; merged at `8642db7a389d5363d52224bd040082811f626084` with tree identical to the reviewed head. This accepts the G0a design boundary for G0b only. It does not accept G0b or authorize G0 implementation.
 **Verified `origin/master`:** `85f967f641528e43772c63be14679af398dcac86`
 **Date:** 2026-09-27
@@ -75,7 +75,7 @@ The current source and exact closed meanings above are the baseline. A convenien
 | Resolving stack item identity and paused resolution stage | `PERSISTENT_AUTHORITATIVE` while a player choice pauses resolution | Ward pay/decline and optional mana sourcing interrupt trigger resolution; the exact resolving stack object and stage must resume after the choice. | `StackResolutionContinuation` references the still-present resolving stack record and embeds `ManaPaymentStaging` only on the payment path; digest/checkpoint/fork/replay bind both. |
 | Pending trigger record and trigger-time event/source facts | `PERSISTENT_AUTHORITATIVE` | Trigger waits for APNAP/order/target choices and may resolve after the source departs. Its event facts may not be reconstructed from current board state or an event log. | Typed `TriggerRecord` payload in `ExecutionState`; explicit pending-order continuation; digest/checkpoint/replay. `TriggerInstanceId` remains trusted. |
 | Trigger ordering after a player chooses | `PERSISTENT_AUTHORITATIVE` | The chosen semantic order determines stack order. It cannot be recovered from TriggerInstanceId, BTreeMap order, or allocation sequence. | Store the selected per-player order in typed continuation/placement data and final `stack_order`; preserve APNAP group ordering. |
-| Temporary P/T/keyword/type/protection operation and expiry | `PERSISTENT_AUTHORITATIVE` | A changing temporary effect must affect future legality/characteristics until its exact expiry, across intervening decisions. | Typed effect record in existing effects owner; initially end-of-turn expiry keyed to the existing turn number. Existing EffectInstanceId reused. Only operations named in accepted Shared scope; no label, callback, or arbitrary map. |
+| Temporary P/T/keyword operation and expiry | `PERSISTENT_AUTHORITATIVE` | A changing temporary effect must affect future legality/characteristics until its exact expiry, across intervening decisions. | Typed effect record in existing effects owner; initially end-of-turn expiry keyed to the existing turn number. Existing EffectInstanceId reused. Only additive P/T, Haste, and Double strike are admitted by G0; no label, callback, or arbitrary map. |
 | Aura/Role static characteristic contribution | `DERIVED_AUTHORITATIVE` | It follows live source profile + current AttachmentState and ceases when that relation/source ceases. It is not an until-EOT effect. | Derived through the single Characteristic Derivation path; no temporary-effect record or second state family. |
 | Current characteristic query / replacement eligibility set | `DERIVED_AUTHORITATIVE` | Recomputed from content identity and current state at the semantic query/event boundary. | No persisted query cache or ReplacementState. |
 | Eligible candidate/domain relation | `DERIVED_AUTHORITATIVE` | Rules generate all-and-only legal options from current state and typed continuation. | Exact authoritative pending Decision (with candidate bindings) persists while waiting; no separately cached environment candidate set. |
@@ -134,38 +134,34 @@ SpellStackItem {
   cast_modes: ordered typed mode selections,
   targets: ordered typed target bindings,
   cost_facts: typed selected route + paid additional-cost keys,
-  resolution_context: closed profile-owned typed values
+  // no separate resolution_context: see the closed capture rule below
 }
 
 ActivatedAbilityStackItem {
-  source_object: GameObjectId,
-  source_ability: AbilityInstanceId,   // trusted historical origin only
-  ability_key: AbilityKey,
-  semantic_profile_id: CardSemanticProfileId,
-  source_context: optional bounded LKI/profile facts,
+  source_context: AbilitySourceContext,
   targets: ordered typed target bindings,
-  cost_facts: typed selected route + paid additional-cost keys,
-  resolution_context: closed profile-owned typed values
+  cost_facts: typed selected route + paid additional-cost keys
 }
 
 TriggeredAbilityStackItem {
   originating_trigger: TriggerInstanceId,
-  controller: PlayerId,
-  captured_trigger_context: closed typed trigger facts,
+  source_context: AbilitySourceContext,
+  captured_trigger_context: TriggerEventSnapshot,
   targets: ordered typed target bindings,
-  resolution_context: closed profile-owned typed values
 }
 ```
 
-The actual canonical fields are fixed only by the accepted identity decision. Duplicate controller/source fields are removed during that design review; the pseudocode shows ownership, not a second copy of `source_object` in `StackRecord`. Spell card objects in Stack Zone and `stack_records` must validate bidirectionally. A triggered/activated ability can have no stack-zone card object. Payload origin/profile/source identities join only under the immutable execution content contract.
+`CostFactsV1.paid_additional_cost_ids` is a set-valued paid-status fact represented as a sorted, duplicate-free vector of profile-local `u32` IDs. It does not encode player selection order. `selected_route` remains a single typed route value or `null`.
+
+When a pending trigger is placed on the stack, its `AbilitySourceContext`, controller, captured event facts, and chosen targets transfer into the triggered stack item before the pending record is removed. `AbilitySourceContext` carries the exact `ability_key` and `semantic_profile_id`; `originating_trigger` remains as trusted provenance only. Duplicate controller/source fields are removed; controller belongs to `StackRecord`, and source identity belongs to the typed payload. Spell card objects in Stack Zone and `stack_records` must validate bidirectionally. A triggered/activated ability can have no stack-zone card object. Payload origin/profile/source identities join only under the immutable execution content contract.
 
 Target references are a closed trusted union (current object incarnation, player, and stack item where a triggered/counter rule needs it). Ability/card semantics resolve through the immutable content and semantic contract bound by `ExecutionIdentityV1`; no card-name switch or process-global catalog lookup. A stack payload is not Oracle text, arbitrary JSON, an opcode, a callback, a closure, or an untyped `EffectRecord` label. A profile that needs a new captured value must add a typed reviewed variant before its card can be admitted.
 
-The pending trigger record contains controller; immutable source/profile/ability identity; trigger-time event class and only the typed facts needed by its predicate/resolution; target timing; and any required intervening-if receipt. It cannot depend on a live source after departure. Triggers already detected survive source departure. The record is removed when the typed payload is transferred to the stack. APNAP placement order and each player's chosen order are explicit vectors, never BTreeMap/TriggerInstanceId order. Reflexive/delayed trigger frameworks are not added here; their exact profiles remain later Shared or deck-exclusive work.
+The pending trigger record contains controller; immutable source/profile/ability identity; the closed trigger-time `TriggerEventSnapshot`; and the exact `target_timing_tag`. It cannot depend on a live source after departure. Triggers already detected survive source departure. The record is removed when the typed payload is transferred to the stack. No intervening-if receipt is stored because no locked R1 × W1 witness requires one. APNAP placement order and each player's chosen order are explicit vectors, never BTreeMap/TriggerInstanceId order. Reflexive/delayed trigger frameworks are not added here; their exact profiles remain later Shared or deck-exclusive work.
 
-The trigger event context is a typed snapshot, never just `RuleEventId` or a lookup into an unpersisted event log. The G0 closed event facts cover only event families needed by the locked clauses, such as `SpellCast`, `AbilityActivated`, `TargetBecame`, `ObjectEntered`, `ObjectLeftOrDied`, `AttackDeclared`, `CardDrawn`, and post-replacement `DamageOrLifeChanged`. Each variant carries only the rule facts needed for its admitted predicates/effects (actor/controller, trusted source/subject references, relevant profile key, amount/type/zone snapshot). A new event fact or predicate shape outside those families requires G0 amendment; no arbitrary map or callback payload is admitted.
+The trigger event context is a typed snapshot, never just `RuleEventId` or a lookup into an unpersisted event log. Its closed event facts are exactly the `SpellCast`, `AbilityActivated`, `TargetBecame`, `ObjectEntered`, `ObjectLeftOrDied`, `BeginningOfCombat`, `AttackDeclared`, `CardDrawn`, `CounterChanged`, `DamageApplied`, and `LifeChanged` variants defined below. Each carries only the rule facts needed for its admitted predicates/effects. A new event fact or predicate shape outside those families requires G0 amendment; no arbitrary map or callback payload is admitted.
 
-The initial typed temporary-operation vocabulary is bounded to additive P/T, selected keyword grants, type additions, and only conditional/protection operations with an accepted locked witness. Duration initially represents `UntilEndOfTurn { turn_number }`; duration semantics outside that witness remain unsupported. The effect record stores a trusted `EffectInstanceId`, target incarnation(s), closed operation, expiry, and a rule timestamp only where the admitted operation's order can affect a query. Source dependence is not added absent a selected profile witness. Static Aura/Role contributions stay live-source/AttachmentState-derived and never produce a temporary record. `delayed_effects` remain outside Shared G0 unless a separate Shared witness is accepted.
+The G0 temporary-operation vocabulary is bounded to additive P/T and the keyword grants `Haste` and `DoubleStrike`, with direct R1 Prowess/Rockface and W1 Origin of Spider-Man chapter III witnesses. No temporary type-addition or protection operation is admitted. Hexproof from Shardmage's Rescue and other Aura/Role abilities remain live source/profile/AttachmentState-derived contributions where applicable. Origin of Spider-Man chapter II's permanent type change is W1-exclusive, has no end-of-turn duration, and requires separate persistent-effect characterization before W1 implementation; it is not represented by `TemporaryEffectRecord`. Duration in G0 represents only `UntilEndOfTurn { turn_number }`; duration semantics outside those witnesses remain unsupported. The effect record stores a trusted `EffectInstanceId`, target incarnation(s), closed operation, expiry, and a rule timestamp only where the admitted operation's order can affect a query. Static Aura/Role contributions stay live-source/AttachmentState-derived and never produce a temporary record. `delayed_effects` remain outside Shared G0 unless a separate Shared witness is accepted.
 
 The record's expiry is checked against the current authoritative turn/turn-position at cleanup. Effects that are independent of their creating source have no source-liveness gate. If a selected profile proves a source-dependent temporary duration, it gets a distinct typed source reference and explicit invalidation rule before admission; the evaluator may not infer dependence from a source ID's presence.
 
@@ -220,22 +216,87 @@ SuccessorDecisionResponse {
 
 The player request/response must not contain `StateRevision`. `view_sequence` is the actor's existing perspective-local `next_visible_sequence` at the request boundary; the response echoes it with PlayerDecisionIdV1. The trusted pending request still stores global StateRevision and candidate bindings. Server validation matches the actor-bound endpoint, exact pending PlayerDecisionId/view-sequence pair, answer domain, dense candidate IDs, and exact trusted bindings before mutation. A new response wire identity is required because DecisionResponseV2's required global `state_revision` field cannot be reinterpreted as a perspective cursor.
 
-`DecisionPurpose` is a closed tagged union: `PriorityAction`, `CastCostRoute`, `ModeSelection { mode_slot }`, `TargetSelection { target_slot }`, `CostOperandSelection { cost_slot, operation, counter_kind, count }`, `ManaProductionChoice`, `ManaPayment`, `OptionalCostPayment { profile_local_cost_id }`, `AbilityAction`, `TriggerOrder`, or `TriggerTarget { target_slot }`. Purpose IDs are typed profile-local ordinals, not strings or `AbilityKey`. The successor candidate intent/binding pairs add:
+`DecisionPurpose` is a closed tagged union: `PriorityAction`, `AttackerDeclaration`, `SbaGraveyardOrder`, `CastCostRoute`, `ModeSelection { mode_slot }`, `TargetSelection { target_slot }`, `CostOperandSelection { cost_slot, operation, counter_kind, count }`, `ManaProductionChoice`, `ManaPayment`, `OptionalCostPayment { profile_local_cost_id }`, `AbilityAction`, `TriggerOrder`, `TriggerTarget { target_slot }`, or `SyntheticAssembly { stage }`. Purpose IDs are typed profile-local ordinals, not strings or `AbilityKey`. `AttackerDeclaration` preserves the already implemented M3 ChooseMany over visible SelectObject candidates and is required for combat in both locked decks. `SbaGraveyardOrder` preserves the existing Magic M2 graveyard-order continuation: each APNAP owner explicitly orders that owner's simultaneous graveyard-bound object set using the existing `Order` domain and safe `SelectObject` candidates. It is a general rules decision, not a card or capability mechanic. `SyntheticAssembly` preserves only the existing non-Magic deterministic test program's entry/count/member/order decisions; it adds no Magic rule, card capability, or execution-program identity. Its closed stage values are `entry`, `choose_count`, `choose_members`, and `order_members`. The successor candidate intent/binding pairs add:
 
-* `SelectCostRoute { route_id_u32 }` ↔ `SelectCostRoute { route_id_u32 }`;
+Purpose and answer-domain compatibility is closed: `PriorityAction`, `CastCostRoute`, `CostOperandSelection`, `ManaProductionChoice`, `ManaPayment`, `OptionalCostPayment`, and `AbilityAction` require `ChooseOne`; `AttackerDeclaration` requires `ChooseMany`; `SbaGraveyardOrder` and `TriggerOrder` require `Order`; `ModeSelection`, `TargetSelection`, and `TriggerTarget` accept `ChooseOne` or `ChooseMany` only as required by their rule-defined slot/group. `SyntheticAssembly` maps exactly by stage: `entry → ChooseOne`, `choose_count → ChooseNumber`, `choose_members → ChooseMany`, `order_members → Order`. C58 remains deferred and receives no numeric-declaration purpose. `AttackerDeclaration`, `CastCostRoute`, `SbaGraveyardOrder`, and `TriggerOrder` require `visibility = acting_player_only`: their candidates or descriptors are authorized only to the acting player, and partial cast-route choices are private under the Information Model. `SyntheticAssembly` requires `visibility = public`, matching its existing non-Magic test program. For other purposes, `visibility` is derived from candidate authorization under the Information Model; purpose alone does not widen the audience.
+
+The permitted public candidate intent variants are also purpose-closed: `PriorityAction` permits `PassPriority`, `PlayLand`, `CastSpell`, and `ActivateAbility`; `AttackerDeclaration` and `SbaGraveyardOrder` permit `SelectObject`; `CastCostRoute` permits `SelectCostRoute`; `ModeSelection` permits `SelectMode`; `TargetSelection` and `TriggerTarget` permit `SelectObject` or `SelectPlayer`; `CostOperandSelection` permits `SelectObject`; `ManaProductionChoice` permits `SelectManaSource` or `FinalizeManaProduction`; `ManaPayment` permits `SelectManaPayment`; `OptionalCostPayment` permits `ChooseBoolean`; `AbilityAction` permits `ActivateAbility`; `TriggerOrder` permits `SelectTrigger`. `SyntheticAssembly` permits `SelectObject` for `entry`, `choose_members`, and `order_members`; `choose_count` has no candidate entries. Candidate tags outside this relation reject at schema and typed DTO validation before any trusted binding is resolved.
+
+* `SelectCostRoute { descriptor: CostRouteDescriptorV1 }` ↔ `SelectCostRoute { route: CostRouteV1 }`;
+* `SelectObject { opaque_object_id }` under `SbaGraveyardOrder` ↔ the existing trusted `SelectObject { GameObjectId }` binding for one current object owned by the current APNAP ordering actor;
 * `SelectObject { opaque_object_id }` under `CostOperandSelection` ↔ trusted `SelectedCostOperand { cost_slot, GameObjectId, typed_operation }`; for the bounded Blight witness, the operation is `PutCounters { kind: MinusOneMinusOne, count: 2 }`;
 * `SelectManaSource { source_opaque_id, ability_opaque_id, produced_buckets_u32[12] }` ↔ trusted source incarnation, AbilityInstanceId/profile, admitted activation-cost receipt, and exact output;
 * `FinalizeManaProduction` ↔ the exact trusted cast continuation and current derived provisional pool;
 * `SelectManaPayment { spent_buckets_u32[12] }` ↔ the same typed bucket vector, validated against the derived provisional pool/cost;
-* `SelectTrigger { safe_trigger_descriptor }` ↔ `SelectTrigger { trigger_instance_id }`;
+* `SelectTrigger { safe_trigger_descriptor }` ↔ `SelectTrigger { trigger_instance_id }`. When resolving a trusted binding, the request validator loads that exact `PendingTriggerRecord`, projects its captured source/event snapshot through the ordering actor's authorized opaque-identity view, and requires exact equality with the candidate descriptor. A descriptor rebound to a different trigger, stale trigger, fabricated safe subject, or mismatched visible source identity rejects before an Order response can mutate state. The candidate domain is all and only currently pending triggers controlled by the current APNAP ordering actor; duplicate projected descriptors fail closed rather than being distinguished by trusted IDs or allocator order.
 
-The trigger descriptor contains only authorized source object/ability opaque IDs, a closed trigger-event tag and visible event subject facts. It carries no TriggerInstanceId or allocator-derived occurrence. If two non-equivalent trigger instances remain indistinguishable to their ordering actor, the candidate domain rejects/blocks pending a typed safe distinguisher; it may not silently select one. Mana-source descriptors similarly expose only authorized opaque source/ability IDs and the typed produced-mana vector; source activations and the optional finalize candidate share one `ManaProductionChoice` request purpose; their binding carries current trusted incarnations and profile authority. New tags are appended under a newly reviewed candidate-order identity; V3 rank/payload keys and duplicate rejection remain exact.
+The trigger descriptor is a closed `SafeTriggerDescriptorV1` value. It contains nullable authorized opaque source-object and source-ability identities, a `TriggerEventKindV1`, and one `SafeTriggerSubjectV1` whose tag must match that event kind. If `source_ability` is non-null, `source_object` must also be non-null and visible; both may be null when neither is authorized. This preserves the perspective identity map from each visible `OpaqueAbilityId` to its one source object. It never contains `TriggerInstanceId`, `StackObjectId`, `GameObjectId`, allocator-derived occurrence, or hidden card identity. The subject union mirrors the accepted `TriggerEventSnapshot` event union and projects only facts visible to the ordering actor:
+
+| Rank | Event tag | Safe subject fields |
+|---:|---|---|
+| 0 | `spell_cast` | actor opaque player identity; spell source object opaque identity only when the spell is publicly identifiable; creature-spell boolean; public typed paid-cost facts. |
+| 1 | `ability_activated` | actor opaque player identity; source object/ability opaque identities; public target descriptors; public typed paid-cost facts. |
+| 2 | `target_became` | actor opaque player identity; public target descriptor. The source stack identity is omitted. |
+| 3 | `object_entered` | object opaque identity only when the entering object is public to the ordering actor. |
+| 4 | `object_left_or_died` | last-known object opaque identity only when public to the ordering actor; public destination-zone tag. |
+| 5 | `beginning_of_combat` | active-player opaque identity; public turn number. |
+| 6 | `attack_declared` | controller opaque identity; attacker/defending-player pairs sorted by attacker opaque identity. This is a descriptor-only canonical projection; it does not change the event snapshot or combat semantics. |
+| 7 | `card_drawn` | drawing-player opaque identity. The drawn card identity is never included unless a separate public rule event has revealed it. |
+| 8 | `counter_changed` | object opaque identity only when public; closed counter-kind tag; public before/after counts. |
+| 9 | `damage_applied` | optional source object opaque identity only when public; public recipient descriptor; amount; closed damage-kind tag. |
+| 10 | `life_changed` | player opaque identity; public before/after life totals; closed cause tag. |
+
+These ranks are the exact `TriggerEventKindV1` wire/order discriminants for `SafeTriggerDescriptorV1`; declaration order, Rust enum layout, and lexical string order are not substitutes. They are used before the event-specific safe subject tuple in `CandidateOrderingV3`.
+
+The event-specific subject tuple and its field order are fixed as follows; each tuple compares lexicographically using the value ordering stated here:
+
+| Event tag | Subject comparison tuple |
+|---|---|
+| `spell_cast` | actor; nullable spell-source object; creature-spell boolean (`false < true`); `CostFactsV1`. |
+| `ability_activated` | actor; activated-source object; activated-source ability; target descriptors in captured target-slot vector order; `CostFactsV1`. |
+| `target_became` | actor; target descriptor. |
+| `object_entered` | nullable object identity. |
+| `object_left_or_died` | nullable last-known object identity; destination-zone rank. |
+| `beginning_of_combat` | active player; turn number. |
+| `attack_declared` | controller; attacker/defending-player pair vector, already sorted by attacker opaque identity. |
+| `card_drawn` | player. |
+| `counter_changed` | nullable object identity; counter-kind rank; before count; after count. |
+| `damage_applied` | nullable source object; recipient descriptor; amount; damage-kind rank. |
+| `life_changed` | player; before total; after total; cause rank. |
+
+Nullable values sort before present values. Numeric values use unsigned numeric order for IDs/counts/turns and signed numeric order for life totals. Vectors compare element-by-element, then by length. `CostFactsV1` compares selected route (`null < normal < alternative(route_id)`), then the ascending `paid_additional_cost_ids` vector. Enum ranks are fixed: zones `library=0, hand=1, battlefield=2, graveyard=3, exile=4, stack=5, command=6, ante=7, outside=8`; counter kinds `plus_one_plus_one=0, minus_one_minus_one=1, lore=2`; damage kinds `combat=0, noncombat=1`; life-change causes `damage=0, non_damage=1`. After the event tag and subject tuple, compare nullable source-object opaque identity and then nullable source-ability opaque identity. These are semantic comparator rules, not serialization field-order requirements.
+
+The `public target descriptor` fields in the `ability_activated` and `target_became` subjects use this closed `SafeTargetDescriptorV1` union:
+
+| Variant | Player-facing value | Canonical variant rank |
+|---|---|---:|
+| `object` | perspective-local `OpaqueObjectId` for an object visible to the ordering actor | 0 |
+| `player` | public `PlayerId` | 1 |
+| `stack_item` | `stack_position_from_top_u32` in the current public stack view | 2 |
+
+The trusted binding remains `GameObjectId`, `PlayerId`, or `StackObjectId`, respectively. A StackItem target is projected through its position in the public top-to-bottom stack view; `StackObjectId` is never serialized. The comparator orders target descriptors first by variant rank, then by their visible payload (opaque object ID numerically, public player ID numerically, or stack position numerically). Target vectors preserve the target-slot order captured by the event. A target that cannot be represented to the ordering actor under these rules makes the trigger-order request fail closed; the serializer may not substitute a trusted identity or omit a target needed to distinguish legal choices.
+
+An opaque object/player/ability value is admitted only when that identity is already visible to the ordering actor under the Information Model; a hidden-zone object maps to `null` or is omitted by its event-specific subject variant. Subject variants use fixed fields and closed enums, never extension maps, rendered text, or trusted IDs. The request candidate comparator orders by event tag, then the event-specific safe subject tuple, then safe source opaque identities, consistent with the rank/payload definition below. Attacker/defender pairs in this descriptor are sorted by attacker opaque identity; the underlying event snapshot retains its own existing representation. Candidate construction requires the mapping from pending trigger instances to safe descriptors to be injective for every simultaneous ordering domain in the admitted locked profiles. Any duplicate descriptor rejects the entire request before candidate IDs are assigned; G0f/G0i must prove that no admitted locked interaction reaches this case. G0 does not quotient duplicate triggers or use `TriggerInstanceId`, `StackObjectId`, allocator order, or collection order to distinguish them. If a locked interaction requires ordering colliding descriptors, stop and amend G0 with an explicitly safe distinguishing fact before implementation continues.
+
+Mana-source descriptors similarly expose only authorized opaque source/ability IDs and the typed produced-mana vector; source activations and the optional finalize candidate share one `ManaProductionChoice` request purpose; their binding carries current trusted incarnations and profile authority. New tags are appended under a newly reviewed candidate-order identity; V3 rank/payload keys and duplicate rejection remain exact.
 
 The payment candidate is a complete allocation over the six existing mana colors and two existing restriction buckets (fixed W/U/B/R/G/C order for each). It has no physical mana-unit IDs. Source activations are selected one at a time and append typed outputs in semantic order to the cast continuation; the provisional pool is derived from that sequence without mutating ManaState. All and only legal next source activations/finalization choices are enumerated, then all and only legal allocations from the resulting pool are enumerated; a complete allocation is selected in one ChooseOne step. The cost-route choice is separately explicit when the profile offers real alternatives. The final stack payload preserves the selected route and paid-cost facts; the exact post-commit mana vector and payment event preserve relevant resource consequences.
 
-`SelectCostRoute` carries a public, typed route descriptor derived from the authorized card/profile view (route class, typed printed mana symbols and profile-local option ordinal); its trusted binding is the exact closed route key under the admitted definition. It carries no Oracle prose, card name, CapabilityKey, or CardDefinitionId. The option ordinal is unique within that immutable profile and is not allocated at runtime. The same profile-local-ID rule applies to paid additional-cost facts.
+`SelectCostRoute` carries a public, typed route descriptor derived from the authorized card/profile view. The exact closed value is:
 
-Target selection reuses opaque `SelectObject`/public `SelectPlayer` values with a typed target-slot purpose; trusted target bindings remain current `GameObjectId`/`PlayerId` incarnations. Modes reuse the current numeric mode intent with profile-defined slot meaning. Mana-source ordering is the player-selected sequence in shared `ManaPaymentStaging`, not an allocator-derived order. Trigger ordering binds request-local visible trigger descriptors to trusted TriggerInstanceIds, never exposing those IDs. If two non-equivalent trigger choices cannot be distinguished by authorized typed facts, candidate generation fails closed and G0 must be amended; it cannot use trigger allocation order. C58 remains `NEEDS_FURTHER_CHARACTERIZATION`; G0 reserves no combat-damage DecisionPurpose, candidate, binding, comparator rank, or wire shape. Characterize the exact legal relation first, then amend G0 only if the accepted relation requires contract growth. No replacement-choice binding is admitted for G0 because the currently locked Ojer and Dryad replacement profiles do not present a non-equivalent player choice for one event; if characterization finds one, stop and amend G0 before implementation.
+```text
+CostRouteClassV1 = normal | alternative
+PrintedManaSymbolsV1 = [colored_wubrg_counts_u32[5], colorless_count_u32,
+                        generic_count_u32]
+CostRouteDescriptorV1 = [route_class, printed_mana_symbols,
+                         profile_local_option_ordinal_or_null]
+trusted route key = CostRouteV1::Normal
+                 | CostRouteV1::Alternative { route_id_u32 }
+```
+
+`normal` has a null option ordinal and binds only to `CostRouteV1::Normal`. `alternative` has a present ordinal which equals the bound `CostRouteV1::Alternative.route_id`. The three printed-symbol fields encode the admitted typed mana symbols in fixed W/U/B/R/G, colorless, generic order; they are display/domain facts, not a cost language. The descriptor has no rendered text, card name, CapabilityKey, CardDefinitionId, or arbitrary symbol tag. CandidateOrderingV3 compares the route class first (`normal=0`, `alternative=1`), then the alternative option ordinal; two candidates with one route key but differing printed-symbol values collide and reject. The trusted route key and descriptor must agree with the exact immutable profile definition before binding is accepted: the profile-bound validator resolves the route under the already-authorized card/profile context and compares every printed-symbol count as well as the route class and ordinal. A structurally matching `CostRouteV1` key alone is insufficient. The option ordinal is unique within that profile and is not allocated at runtime. The same profile-local-ID rule applies to paid additional-cost facts.
+
+Target selection reuses opaque `SelectObject`/public `SelectPlayer` values with a typed target-slot purpose; trusted target bindings remain current `GameObjectId`/`PlayerId` incarnations. Modes reuse the current numeric mode intent with profile-defined slot meaning. Mana-source ordering is the player-selected sequence in shared `ManaPaymentStaging`, not an allocator-derived order. Trigger ordering binds request-local visible trigger descriptors to trusted TriggerInstanceIds, never exposing those IDs. Any duplicate safe descriptor makes the candidate request fail closed; G0f/G0i must prove that all admitted locked simultaneous-trigger domains are injective, and a collision requires G0 amendment before implementation continues. C58 remains `NEEDS_FURTHER_CHARACTERIZATION`; G0 reserves no combat-damage DecisionPurpose, candidate, binding, comparator rank, or wire shape. Characterize the exact legal relation first, then amend G0 only if the accepted relation requires contract growth. No replacement-choice binding is admitted for G0 because the currently locked Ojer and Dryad replacement profiles do not present a non-equivalent player choice for one event; if characterization finds one, stop and amend G0 before implementation.
 
 The request context is player-visible only to its authorized actor. The parent request ID reuses that actor's existing perspective-local allocator and is confined to one logical staged action. It is not copied to another actor's request, PlayerInformationState, or dataset key. One policy-relevant choice remains one PlayerStep/agent response; a mandatory forced rule consequence is not a fabricated Decision.
 
@@ -245,13 +306,14 @@ For one actor's staged cast/activation, the first request uses `parent_player_de
 |---|---|---|---|
 | Select spell / activate ability | Yes: CastSpell / ActivateAbility + ChooseOne | Parent action purpose on successor request; trusted object/ability binding remains internal | One response starts the staged action. |
 | Select modes | Yes: SelectMode + ChooseOne/ChooseMany | Typed profile-defined mode slot in request context where multiple mode groups exist | One response per meaningful mode choice. |
+| Order a simultaneous Magic SBA graveyard group | Yes: existing `Order` domain + visible `SelectObject` | New `SbaGraveyardOrder` purpose binds exactly the current APNAP owner's complete object set; public candidate values use perspective-authorized opaque IDs and the existing trusted object bindings | One complete Order response per owner with at least two objects; singleton groups are forced and create no synthetic response. |
 | Select target(s) | Yes: SelectObject/SelectPlayer + ChooseOne/ChooseMany | Target group/slot purpose; bind exact object incarnation/player | One response for each rule-defined target group, not hidden auto-targeting. |
 | Select alternative/additional cost route | Not fully: Boolean lacks route semantics | New closed cost-route candidate/binding; `ChooseBoolean` is allowed only for an explicitly typed pay/decline purpose | One response per meaningful route choice. |
 | Select a cost operand (Blight 2) | Yes: `SelectObject`/ChooseOne with a typed cost-slot purpose | Trusted binding records exact object incarnation and `PutCounters { MinusOneMinusOne, 2 }`; player sees only an authorized opaque object and operation descriptor | One response selects the creature; the selected operand persists in the activation continuation until atomic cost commit. |
 | Resolve Ward optional payment | Yes: existing Boolean/ChooseOne response under `OptionalCostPayment` | `StackResolutionContinuation` retains resolving stack identity/stage and `{2}` cost; payer derives from captured target-stack controller relation; pay attaches shared `ManaPaymentStaging`, decline completes the trigger profile | One pay/decline response; if pay requires mana sources, each meaningful source/payment choice is a further explicit step. |
 | Select mana source / finish producing mana | No current typed source-choice candidate | New `SelectManaSource` descriptor and trusted source/ability/profile binding; `FinalizeManaProduction` is included only when current provisional mana can pay | One response per selected source activation; choosing finalize ends source selection and advances to payment. |
 | Choose mana payment | No current typed allocation candidate | New candidate carrying all 12 color/restriction-bucket counts; trusted binding validates against derived provisional pool and cost | One ChooseOne response selects one all-and-only legal complete allocation; no AutoPay. |
-| Order pending triggers | `Order` answer exists but V3 intents cannot identify trigger choices | New safe trigger descriptor intent bound to TriggerInstanceId; no trusted ID in request | One Order response for each player's simultaneous group; APNAP player sequence remains rules-owned. |
+| Order pending triggers | `Order` answer exists but V3 intents cannot identify trigger choices | New safe trigger descriptor intent bound to TriggerInstanceId; no trusted ID in request. Simultaneous admitted triggers must have injective safe descriptors; collisions fail closed and are a G0 conformance failure for a locked witness. | One Order response for each player's simultaneous group; APNAP player sequence remains rules-owned. |
 | Replacement choice | No choice required by the presently characterized Ojer/Dryad events; identical duplicate Dryad replacements have equivalent outcomes | No G0 binding admitted. If a non-equivalent choice is found, amend G0 before implementation. | No agent step unless characterization proves a distinct legal outcome. |
 | Combat-damage assignment (C58) | Not characterized for this G0 cut | No Decision purpose, candidate, binding, rank, or schema shape reserved | Deferred until accepted C58 characterization establishes its exact legal relation and whether contract growth is needed. |
 | Accept a permission | Not a player choice for the automatic permissions identified by R1 analysis | None | No synthetic accept/decline step; later play/cast is an ordinary action. |
@@ -259,7 +321,7 @@ For one actor's staged cast/activation, the first request uses `parent_player_de
 
 No new top-level answer or DecisionDomain variant is proposed. `CostOperandSelection` and `OptionalCostPayment` are typed request purposes over existing `SelectObject`/`ChooseBoolean` candidates and answer domains; trusted bindings retain the exact cost operand or resolving stack identity. The cost-operand domain is sound and complete over profile-legal current incarnations and rejects stale/fabricated choices without mutation. Required growth is the closed request purpose/context, candidate-intent/binding vocabulary, and comparator. If implementation shows a candidate value or target group cannot be described completely and safely by these shapes, stop and amend G0 rather than encoding it as a mode, boolean, string, or hidden ordinal.
 
-The successor comparator preserves all existing V3 visible-intent ranks and appends the new ranks, so predecessor candidate meaning is never reordered: `0 pass_priority`, `1 play_land`, `2 cast_spell`, `3 activate_ability`, `4 select_object`, `5 select_player`, `6 select_mode`, `7 choose_boolean`, `8 declare_number`, `9 confirm`, `10 select_cost_route`, `11 select_mana_source`, `12 finalize_mana_production`, `13 select_mana_payment`, `14 select_trigger`. Within the new ranks it compares numeric route ordinal; source descriptors by authorized opaque object/ability IDs and the 12-count output vector; the finalization singleton; the fixed 12-count payment vector lexicographically; then the typed public trigger descriptor tuple (opaque source values numerically, then closed trigger-kind rank and authorized public subject). No comparison uses trusted bindings, TriggerInstanceId, StackObjectId, profile lookup order, or collection order. Duplicate public ordering keys reject before candidate IDs are assigned densely.
+The successor comparator preserves all existing V3 visible-intent ranks and appends the new ranks, so predecessor candidate meaning is never reordered: `0 pass_priority`, `1 play_land`, `2 cast_spell`, `3 activate_ability`, `4 select_object`, `5 select_player`, `6 select_mode`, `7 choose_boolean`, `8 declare_number`, `9 confirm`, `10 select_cost_route`, `11 select_mana_source`, `12 finalize_mana_production`, `13 select_mana_payment`, `14 select_trigger`. Within new ranks it compares CostRoute class (`normal=0`, `alternative=1`) then its profile-local alternative ordinal; source descriptors by authorized opaque object/ability IDs and the 12-count output vector; the finalization singleton; the fixed 12-count payment vector lexicographically; then the typed public trigger descriptor tuple by closed trigger-kind rank, event-specific safe subject tuple, and authorized opaque source object/ability IDs. Two route descriptors with one route key but different printed-symbol values compare equal and reject as duplicate public keys. `SafeTargetDescriptorV1` uses variant rank `object`, `player`, `stack_item`, then visible payload numeric order; target vectors preserve captured target-slot order. AttackDeclared subject pairs are ordered by attacker opaque ID before comparison. No comparison uses trusted bindings, TriggerInstanceId, StackObjectId, profile lookup order, or collection order. Duplicate public ordering keys reject before candidate IDs are assigned densely; for trigger ordering, any such collision is a failed request and a conformance failure if reached by an admitted locked interaction.
 
 ## 7. State, delta, event, and digest growth
 
@@ -290,13 +352,10 @@ stack_record = [stack_object_id_u64, controller_player_id_u64, stack_item]
 
 stack_item =
   ["spell", stack_card_object_id, card_definition_id, face_key_u32,
-   semantic_profile_id, modes[], targets[], cost_facts, resolution_context]
-| ["activated_ability", source_object_id, source_ability_instance_id,
-   ability_key_u32, semantic_profile_id, source_context_or_null,
-   modes[], targets[], cost_facts, resolution_context]
-| ["triggered_ability", originating_trigger_id, source_context_or_null,
-   ability_key_u32, semantic_profile_id, trigger_context,
-   modes[], targets[], resolution_context]
+   semantic_profile_id, modes[], targets[], cost_facts]
+| ["activated_ability", ability_source_context, modes[], targets[], cost_facts]
+| ["triggered_ability", originating_trigger_id, ability_source_context,
+   trigger_event_snapshot, targets[]]
 
 mode_binding = [mode_slot_u32, selected_mode_u32]
 target_binding = [target_slot_u32, target_ref]
@@ -311,34 +370,50 @@ execution_successor = [
   <execution_component_identity>, pending_request_or_null,
   continuations[], temporary_effects[], waiting_triggers[], delayed_effects[]
 ]
+continuation_record = [continuation_id, created_at_revision_u64, continuation_payload_v3]
+continuation_payload_v3 =
+  ["synthetic_assembly", actor_player_id, stage, selected_count_or_null,
+   selected_piece_keys_u32[], ordered_piece_keys_u32[]]
+| ["magic_sba_graveyard_order_v1", round_start_revision_u64,
+   selected_sba_actions[], apnap_owners[], next_owner_index_u32, completed_owner_orders[]]
+| cast_continuation
+| nonmana_activation_continuation
+| trigger_placement_continuation
+| stack_resolution_continuation
 
-trigger_record = [trigger_id, controller, source_context_or_null,
-  semantic_profile_id, ability_key_u32, trigger_context,
-  intervening_if_receipt_or_null, target_timing_tag]
+`ContinuationRecordV3` is the sole owner of `continuation_id` and creation revision. It has no wrapper `actor` or `stage_index`: an action actor is stored in its cast/activation payload; trigger placement derives the current actor from `apnap_actors[current_actor_index]`; a paused resolution's choice actor is the actor of the pending authoritative request; existing SBA order derives the current owner from its APNAP cursor. No child payload repeats the wrapper continuation ID. The V3 closed payload inventory retains current `SyntheticM2Assembly` behavior under the neutral tag `synthetic_assembly` and current `MagicSbaGraveyardOrderV1` behavior, alongside Cast, NonManaActivation, TriggerPlacement, and StackResolution. Predecessor V2 bytes/tags retain their historical meaning and are not relabeled or automatically migrated.
+
+trigger_record = [trigger_id, controller, ability_source_context,
+  trigger_context,
+  target_timing_tag]
+target_timing_tag = "no_targets" | "captured_from_event" | "choose_on_placement"
 
 trigger_placement_continuation = ["trigger_placement", apnap_actors[],
   current_actor_index_u32, pending_trigger_ids[], completed_orders[],
   selected_trigger_targets[], actor_request_roots[[player_id, first_player_decision_id][]]]
 
-cast_continuation = ["cast", continuation_id, actor_player_id,
+cast_continuation = ["cast", actor_player_id,
   spell_object_id, card_definition_id, face_key_u32, semantic_profile_id,
   stage_tag, selected_route_or_null, modes[], targets[], paid_cost_choices[],
   action_cost_facts, mana_payment_staging_or_null]
-nonmana_activation_continuation = ["nonmana_activation", continuation_id,
-  actor_player_id, source_object_id, source_ability_instance_id, ability_key_u32,
+cast_stage_tag = "selecting_cost_route" | "selecting_modes" | "selecting_targets"
+              | "selecting_additional_costs" | "selecting_cost_operands" | "paying_mana"
+nonmana_activation_continuation = ["nonmana_activation", actor_player_id,
+  source_object_id, source_ability_instance_id, ability_key_u32,
   semantic_profile_id, stage_tag, modes[], targets[], action_cost_facts,
   mana_payment_staging_or_null]
+nonmana_activation_stage_tag = "selecting_modes" | "selecting_targets"
+                             | "selecting_cost_operands" | "paying_mana"
 action_cost_facts = [mana_cost_or_null, reserved_nonmana_costs[], selected_cost_operands[]]
 mana_cost = [colored_wubrg_counts_u32[5], colorless_count_u32, generic_count_u32]
 reserved_nonmana_cost = ["tap_source"] | ["sacrifice_source"]  // only locked witnesses
 selected_cost_operand = ["put_counters", game_object_id, "minus_one_minus_one", count_u32]
 mana_payment_staging = ["mana_payment_staging", payment_stage_tag,  // SelectingSources | AwaitingFinalAllocation
   mana_source_activations[]]  // embeds no duplicate cost or derived pool
-stack_resolution_continuation = ["stack_resolution", continuation_id,
-  resolving_stack_object_id, resolution_stage_tag, action_cost_facts_or_null,
+stack_resolution_continuation = ["stack_resolution", resolving_stack_object_id,
+  resolution_stage_tag, action_cost_facts_or_null,
   mana_payment_staging_or_null]
-resolution_stage_tag = "awaiting_optional_payment" | "selecting_mana_sources"
-                   | "awaiting_final_allocation"
+resolution_stage_tag = "awaiting_optional_payment" | "paying_mana"
 mana_source_activation = [source_object_id, source_ability_instance_id,
   ability_key_u32, semantic_profile_id, activation_cost_receipt,
   produced_buckets_u32[12]]
@@ -348,16 +423,57 @@ payment_choice = [spent_buckets_u32[12]]
 temporary_effect_record = [effect_id, affected_game_object_ids[], operation,
   expiry, timestamp_or_null]
 operation = ["power_toughness_delta", power_i32, toughness_i32]
-         | ["grant_keyword", closed_keyword_tag]
-         | ["add_type", closed_type_class, closed_type_tag]
-         | ["grant_protection", closed_protection_tag]
+         | ["grant_keyword", temporary_keyword]
+temporary_keyword = "haste" | "double_strike"
 expiry = ["until_end_of_turn", turn_number_u64]
 timestamp = [creation_state_revision_u64, operation_ordinal_u32]
 ```
 
-`source_context` is a separately closed tagged record: it contains the old incarnation/ObjectSnapshot reference and immutable definition/face/ability profile reference plus only typed values an admitted profile must retain as LKI (for example controller-at-event and admitted color/type/power/toughness/counter facts). It is not a second live-object map and cannot be resolved through PhysicalCardId. No whole-world snapshot or generic derived-view cache is persisted. If the existing snapshot plus explicitly typed facts do not cover an accepted profile's departure semantics, amend G0 before admitting that profile. `trigger_context` is a closed union of selected event facts (cast, activation, became-target, enter/leave/die, attack, draw, post-replacement damage/life, and any further event with an accepted locked witness); it carries facts, not just RuleEventId. Unknown event/profile/effect tags reject.
+The G0 source capture uses these closed records:
 
-The shared `ManaPaymentStaging` record is embedded in the one owning `CastContinuation`, `NonManaActivationContinuation`, or `StackResolutionContinuation`, never duplicated as a sidecar. The parent record owns typed `action_cost_facts = [mana_cost_or_null, reserved_nonmana_costs[], selected_cost_operands[]]`; the mana cost is `[colored_wubrg_counts_u32[5], colorless_count_u32, generic_count_u32]`. Cast cost facts carry the exact determined total; activation cost facts carry the ability's exact `{R}` / `{3}{W}` and its own reserved costs such as `tap_source`. The shared staging record stores each accepted source activation in selection order. There is no partial mana spend or partial-allocation cursor: the accepted source sequence and its derived provisional pool are the complete payment progress until the player chooses one complete final allocation. The provisional mana pool is derived, not stored as a second mutable value: validation starts from current ManaState and excludes from mana-source eligibility only objects made unavailable by the parent's `reserved_nonmana_costs` (currently `tap_source` or `sacrifice_source`) and sources already selected in this staging sequence. It then applies each typed source-activation cost receipt and adds each exact 12-bucket output in vector order, rejecting duplicate, exhausted, reserved, or profile-mismatched sources. `selected_cost_operands` are validated and persisted but do not by themselves reserve their objects; only a typed operation that explicitly makes an object unavailable may do so. The fixed G0 payment domain is evaluated against that derived pool. `FinalizeManaProduction` is offered in the `ManaProductionChoice` domain only when a complete legal allocation exists; if no further source activation is legal and payment is possible, advancement to payment is forced without a synthetic choice. The selected final allocation is bound by the pending authoritative request and need not be duplicated in the continuation; the shared stage records only `SelectingSources` or `AwaitingFinalAllocation`. Final acceptance commits in the same transition, so no persisted commit-ready stage exists. At final acceptance the engine revalidates the whole sequence against unchanged authoritative sources, then applies source costs, mana production, payment and the parent cast, non-mana activation, or paused-resolution commit atomically. For the currently locked R1 × W1 mana-source witnesses, the admitted mana-source activation-cost receipt is only `tap_source`; outputs are typed 12-bucket vectors, including restricted buckets such as creature-spell-only mana. Cast, non-mana activation, and paused-resolution `action_cost_facts` represent the determined mana cost, reserved non-mana costs, and selected operands. For the cited activated-ability witnesses, these facts include `{R}` / `{3}{W}` and `tap_source`; the shared candidate validator therefore cannot offer the ability source as a mana source. A paused Ward resolution carries its `{2}` cost facts in the same common shape. A future source-ability profile whose activation cost or output cannot fit these closed records blocks admission and requires a G0 amendment; no generic cost script is implied. `StackResolutionContinuation` leaves the resolving item in its existing ZoneState stack record/order owner and stores only its trusted identity and closed pause stage; it has no copied stack payload, profile interpreter, or arbitrary resolution state. The Ward witnesses are Skyward Spider native Ward {2} and Ward {2} granted by Sheltered by Ghosts; the W1 profile remains exclusive. The typed trigger/stack payload captures the affected StackObjectId and controller-at-trigger facts needed for resolution, even if the affected item later leaves the stack. The W1 profile supplies the authorized payer from those captured facts and whether its pay/decline choice still applies. `OptionalCostPayment` uses the existing `ChooseBoolean` intent and Boolean/ChooseOne response protocol, bound to its typed profile-local cost id: decline completes the profile resolution, while pay attaches shared `ManaPaymentStaging` using the `{2}` action cost and resumes the same resolving item after explicit source/allocation choices. No priority or unrelated action can interleave; the triggering stack item and its captured target StackObjectId remain authoritative until the final atomic resolution commit. The successor request binds the authorized payer through the captured stack-payload/controller relation and never exposes either trusted StackObjectId.
+```text
+SourceContext = { snapshot: ObjectSnapshot, face_key: FaceKey,
+                  semantic_profile_id: CardSemanticProfileId }
+AbilitySourceContext = { source: SourceContext,
+                         ability_instance_id: AbilityInstanceId, ability_key: AbilityKey }
+```
+
+`ObjectSnapshot` binds the old incarnation and printed definition/owner/controller/location facts; the other fields bind the immutable face/profile/ability semantics. The source zone remains the captured `ObjectSnapshot.location`; no permanent/spell/source-kind tag duplicates it. `ActivatedAbilityStackItem`, `TriggeredAbilityStackItem`, `TriggerRecord`, and `TriggerEventSnapshot.AbilityActivated` use `AbilitySourceContext` directly, so source object/profile/ability facts have one owner. `DamageApplied.source` may use `SourceContext` because a damage source may be an object in any zone. It contains no derived-characteristic cache, physical-card lookup, arbitrary fact map, or second live-object record. This is sufficient for the locked source-departure cases: an activated ability continues from its captured immutable origin while any effect that refers to the original object checks that exact incarnation. If a selected profile requires an additional last-known derived fact, stop and amend G0 before admitting it.
+
+`TriggerEventSnapshot` is the following closed event-fact union. It is captured when the trigger is created, never reconstructed later from `RuleEventId` or live source state:
+
+```text
+TriggerEventSnapshot =
+  SpellCast { actor: PlayerId, stack_item: StackObjectId, spell: SourceContext,
+              is_creature_spell: bool, cost_facts: CostFacts }
+| AbilityActivated { actor: PlayerId, stack_item: StackObjectId, source: AbilitySourceContext,
+                     targets: Vec<TargetBinding>, cost_facts: CostFacts }
+| TargetBecame { actor: PlayerId, source_stack_item: StackObjectId, target: TargetRef }
+| ObjectEntered { object: ObjectSnapshot }
+| ObjectLeftOrDied { last_known: ObjectSnapshot, destination: ZoneLocation }
+| BeginningOfCombat { active_player: PlayerId, turn_number: u64 }
+| AttackDeclared { controller: PlayerId, attackers: Vec<AttackerFact> }
+| CardDrawn { player: PlayerId }
+| CounterChanged { object: GameObjectId, kind: CounterKindV1, before: u32, after: u32 }
+| DamageApplied { source: Option<SourceContext>, recipient: DamageRecipient,
+                  amount: u32, damage_kind: DamageKind }
+| LifeChanged { player: PlayerId, before: i64, after: i64, cause: LifeChangeCause }
+
+CostFacts = { selected_route: Option<CostRoute>, paid_additional_cost_ids: Vec<u32> }
+AttackerFact = { object: GameObjectId, defending_player: PlayerId }
+TargetRef = Object(GameObjectId) | Player(PlayerId) | StackItem(StackObjectId)
+DamageRecipient = Object(GameObjectId) | Player(PlayerId)
+DamageKind = Combat | Noncombat
+LifeChangeCause = Damage | NonDamage
+```
+
+All numeric values use these exact bounded types: damage amount and counter totals are `u32`; turn number is `u64`; life totals are `i64`; player/object/stack identities use existing typed IDs. All vectors preserve semantic event order. `SpellCast.is_creature_spell` is the rules-derived value at the cast event, not a later live query. `AttackDeclared.attackers` records the declared attacker and defending player pairs; creature-type qualification is evaluated at the event and is not re-evaluated from later board state. `BeginningOfCombat` records the active player and current turn before beginning-of-combat triggers are detected. `CounterChanged` records the exact existing `CounterKindV1` and before/after totals; this includes Lore-counter changes required by Saga chapter detection. `DamageApplied` carries the post-replacement amount and recipient. `LifeChanged` carries actual before/after totals so life loss is distinct from damage. `CardDrawn` represents one card-draw occurrence and never captures a hidden drawn-card identity. This union is closed for the accepted Shared foundation; adding another event family or fact requires a reviewed G0 amendment.
+
+`TriggerRecord` has no intervening-if receipt field: the locked R1 × W1 trigger witnesses contain no intervening-if clause. `target_timing_tag` has exactly three values: `no_targets` when the trigger has no targets, `captured_from_event` when the trigger itself is caused by an object becoming a target (the Ward path retains that exact target), and `choose_on_placement` when the rules require target selection as the trigger is put on the stack. Reflexive-trigger follow-up mechanics remain outside G0; if any accepted profile requires an intervening-if receipt or a fourth target-timing value, stop and amend G0 before admitting it.
+
+There is no independent `resolution_context` field in G0 stack or trigger payloads. For the locked R1 × W1 closure, resolution is determined by the immutable semantic profile/ability identity bound in the payload, the selected mode/target slots, typed cost route/paid facts, selected cost operands, and (for triggered abilities) the captured `TriggerEventSnapshot`. No separate arbitrary profile-owned value bag is necessary. Any future clause that needs a new captured resolution value must add a named typed field/variant through a G0 amendment before that profile is admitted. Unknown event/profile/effect tags reject.
+
+The shared `ManaPaymentStaging` record is embedded in the one owning `CastContinuation`, `NonManaActivationContinuation`, or `StackResolutionContinuation`, never duplicated as a sidecar. The parent record owns typed `action_cost_facts = [mana_cost_or_null, reserved_nonmana_costs[], selected_cost_operands[]]`; the mana cost is `[colored_wubrg_counts_u32[5], colorless_count_u32, generic_count_u32]`. Cast cost facts carry the exact determined total; activation cost facts carry the ability's exact `{R}` / `{3}{W}` and its own reserved costs such as `tap_source`. The shared staging record stores each accepted source activation in selection order. There is no partial mana spend or partial-allocation cursor: the accepted source sequence and its derived provisional pool are the complete payment progress until the player chooses one complete final allocation. The provisional mana pool is derived, not stored as a second mutable value: validation starts from current ManaState and excludes from mana-source eligibility only objects made unavailable by the parent's `reserved_nonmana_costs` (currently `tap_source` or `sacrifice_source`) and sources already selected in this staging sequence. It then applies each typed source-activation cost receipt and adds each exact 12-bucket output in vector order, rejecting duplicate, exhausted, reserved, or profile-mismatched sources. `selected_cost_operands` are validated and persisted but do not by themselves reserve their objects; only a typed operation that explicitly makes an object unavailable may do so. The fixed G0 payment domain is evaluated against that derived pool. `FinalizeManaProduction` is offered in the `ManaProductionChoice` domain only when a complete legal allocation exists; if no further source activation is legal and payment is possible, advancement to payment is forced without a synthetic choice. The selected final allocation is bound by the pending authoritative request and need not be duplicated in the continuation; `ManaPaymentStaging.stage` is the sole authority for `SelectingSources` versus `AwaitingFinalAllocation`. Final acceptance commits in the same transition, so no persisted commit-ready stage exists. At final acceptance the engine revalidates the whole sequence against unchanged authoritative sources, then applies source costs, mana production, payment and the parent cast, non-mana activation, or paused-resolution commit atomically. For the currently locked R1 × W1 mana-source witnesses, the admitted mana-source activation-cost receipt is only `tap_source`; outputs are typed 12-bucket vectors, including restricted buckets such as creature-spell-only mana. Cast, non-mana activation, and paused-resolution `action_cost_facts` represent the determined mana cost, reserved non-mana costs, and selected operands. For the cited activated-ability witnesses, these facts include `{R}` / `{3}{W}` and `tap_source`; the shared candidate validator therefore cannot offer the ability source as a mana source. A paused Ward resolution carries its `{2}` cost facts in the same common shape. A future source-ability profile whose activation cost or output cannot fit these closed records blocks admission and requires a G0 amendment; no generic cost script is implied. `StackResolutionContinuation` leaves the resolving item in its existing ZoneState stack record/order owner and stores only its trusted identity and coarse pause stage (`AwaitingOptionalPayment` or `PayingMana`); while `PayingMana`, the embedded `ManaPaymentStaging.stage` is the sole authority for source-selection versus final-allocation progress. It has no copied stack payload, profile interpreter, or arbitrary resolution state. The Ward witnesses are Skyward Spider native Ward {2} and Ward {2} granted by Sheltered by Ghosts; the W1 profile remains exclusive. The typed trigger/stack payload captures the affected StackObjectId and controller-at-trigger facts needed for resolution, even if the affected item later leaves the stack. The W1 profile supplies the authorized payer from those captured facts and whether its pay/decline choice still applies. `OptionalCostPayment` uses the existing `ChooseBoolean` intent and Boolean/ChooseOne response protocol, bound to its typed profile-local cost id: decline completes the profile resolution, while pay attaches shared `ManaPaymentStaging` using the `{2}` action cost and resumes the same resolving item after explicit source/allocation choices. No priority or unrelated action can interleave; the triggering stack item and its captured target StackObjectId remain authoritative until the final atomic resolution commit. The successor request binds the authorized payer through the captured stack-payload/controller relation and never exposes either trusted StackObjectId.
 
 The representation records route choice and paid-cost keys because those may branch resolution; it does not persist a completed payment allocation. A cost profile must define its local route/cost keys and exact permitted fields in its own reviewed body. This is typed profile data, not a shared cost language. A profile requiring X or another captured value must add a named typed field through G0 review before admission; G0 does not insert an open-ended `captured_values` map.
 
@@ -380,6 +496,10 @@ Minimum semantic operations/events are grouped by actual mutation, not one event
 * temporary effect create/expire and typed effect operation;
 * one authoritative result event for damage/life/counter/zone consequences after replacement application.
 
+`SpellCast` and `AbilityActivated` identify a stack object created by that same transition: the identity is absent from the before-state, present in the after-state with the exact typed payload, and paired with one exact `StackItemCreated` operation. These events cannot report a cast or activation against a pre-existing stack record.
+
+`AbilityActivated` carries one explicit rules-derived `once_per_turn_use_committed: bool` receipt. `true` means the bound immutable ability profile has a once-per-turn use restriction and this activation committed its history fact; the same transition adds exactly `(source GameObjectId, AbilityKey)` to `TurnHistoryStateV1.once_ability_used`. `false` means it does not add that pair. The receipt is trusted event/delta evidence, not a player choice or profile interpreter input. The RulesKernel may emit `true` only when the exact bound profile authorizes it; validators bind the receipt to the matching source ability, new stack item, operation, and exact history-set change. No other ability activation may authorize that history mutation. This is generic once-use bookkeeping only; no card-specific restriction is introduced.
+
 No generic `ReplacementState` or replacement-iteration event is persisted. Existing source-derived replacement eligibility and application remain transaction-local. A replacement-modified outcome is captured in the final semantic event and exact Delta. If one event must pause for a genuinely non-equivalent replacement choice, a typed continuation and Decision must be added before implementation.
 
 Every new authoritative event defines cursor precondition, cursor update, corresponding Delta operation, and exact after-state projection. Event vectors are ordered by rules semantics, not BTree/hash iteration. Player observed events are projections, not event authority. A transition with missing events, event-only mutation, delta/state mismatch, or projection mismatch rejects before commit.
@@ -399,11 +519,11 @@ The successor digest uses the accepted independent envelope and codec unchanged 
 ]
 ```
 
-This is a proposed preimage layout, not an allocated V7 identity. The nested Zone and Execution encodings are new closed schemas with fixed array lengths, explicit tags, numeric IDs sorted ascending, semantically ordered vectors preserved, and nullable fields encoded as CBOR `null`.
+At G0a this was a proposed preimage layout with no allocated V7 identity. G0b subsequently accepted ADR 0056, which assigns `FullStateDigestV7`, `FullStateDigestInputV7`, `full-state-digest-input.v7`, and `mtgml.full-state-digest.v7`; ADR 0056 is the canonical source for those exact names. The layout here remains the proposed fixed 14-element preimage. The nested Zone and Execution encodings are new closed schemas with fixed array lengths, explicit tags, numeric IDs sorted ascending, semantically ordered vectors preserved, and nullable fields encoded as CBOR `null`.
 
 Canonical primitive rules remain the accepted restricted CBOR rules: definite-length arrays/strings/bytes, shortest integer representation, signed/unsigned ranges fixed by each typed field, no maps/floats/tags/bignums/indefinite values, strict UTF-8, bounded payload/depth/item counts, and byte-identical canonical re-encoding. There is no host endianness: CBOR's network-order integer/length representation is used. Enum discriminants are exact closed tags in fixed schema order; Rust enum declaration order and Serde output are never hashed. Digest values nested in other preimages remain 32-byte byte strings. Per-item counts and encoded records remain subject to existing 64 MiB/resource bounds unless an accepted contract explicitly lowers them.
 
-The successor semantic input must include stack payload, trigger payload, temporary records, pending continuation partial choices, relevant identity allocators, stack/trigger/effect ordering, and all existing M4 state. Every field mutation must change the successor digest; trusted identity renaming must not alter safe player bytes. No current digest domain/schema name is assigned in this proposal.
+The successor semantic input must include stack payload, trigger payload, temporary records, pending continuation partial choices, relevant identity allocators, stack/trigger/effect ordering, and all existing M4 state. Every field mutation must change the successor digest; trusted identity renaming must not alter safe player bytes. G0a left the digest domain/schema names unassigned; accepted ADR 0056 now assigns them, and the exact V7 input shape and writer/verifier evidence remain owned by G0c/G0e.
 
 ## 8. Checkpoint, fork, and replay
 
@@ -429,7 +549,7 @@ The public event union needs a successor for safe stack-item add/remove/cast/act
 
 The basic-land observation codec is closed and has no stack/effect records. Introduce a separately named closed Magic shared-execution payload codec. ObservationEnvelopeV1 cannot remain the successor because its `state_revision` is global; a successor envelope uses `view_sequence` and omits global revision. PlayerInformationStateV2/InformationStateDigestV2 also cannot be extended in place because their V2 digest input includes global `state_revision`. A successor PlayerInformationState/InformationStateDigest uses the existing per-perspective `next_visible_sequence` as its public view cursor and removes global revision. No new public-revision allocator is needed. Retained-knowledge and opaque identity semantics otherwise remain unchanged. Any new retained opaque stack/trigger identity would require separate State/Digest growth and is not proposed.
 
-Rust owns all semantic validation and candidate generation. Python receives strict request/event/PlayerStep DTO codecs only. The public request, event, PlayerStep, observation payload, replay, and catalog vocabulary require coordinated Rust/Python/schema positive/negative fixture parity. Do not hand-edit generated contract vocabulary. Add paired worlds for hidden library/card identity, hidden continuations/trigger facts, different numbers of hidden mana-source selection steps, global allocator/RNG changes, and trusted ID renaming.
+Rust owns all semantic validation and candidate generation. Python receives strict request/event/PlayerStep DTO codecs only. The public request, event, PlayerStep, observation payload, replay, and catalog vocabulary require coordinated Rust/Python/schema positive/negative fixture parity. Do not hand-edit generated contract vocabulary. G0 pairs admitted worlds that differ in hidden library/card identity/order, global revision, allocator/RNG history, and trusted stack/effect identities while their authorized products agree. Pairs that differ in profile-dependent continuations, trigger facts, target/cost choices, or mana-source staging are deferred to the first Shared Rules batch that admits those requests; the batch must prove its own exact paired-world noninterference before activation.
 
 ### 9.1 Information-safety matrix
 
@@ -453,9 +573,39 @@ The successor PlayerInformationState remains separate from both FullGameState an
 
 ### 9.2 Public observation and event boundary
 
-The new named observation payload adds an ordered public stack view and the bounded public temporary-effect view needed to make the current legal action understandable. The stack view is top-to-bottom and each item exposes only kind, public controller, public spell/source references using OpaqueObjectId, public ability reference using OpaqueAbilityId when authorized, and rule-public modes/targets/cost outcomes. It has no StackObjectId. The temporary-effect view exposes only rule-public typed operation, affected OpaqueObjectId(s), and duration; it has no EffectInstanceId, capability key, card profile internals, or trusted source reference. Public objects already represented by retained knowledge continue through the successor PlayerInformationState contract, which preserves existing retained-knowledge semantics while removing global StateRevision.
+The new named observation payload retains the exact active M4.2 `MagicBasicLandObservationV1` public field family under its new codec identity: active player, turn number/position, priority, pending SBA ordering, mana pools, counters, attachments, and faces. Their existing closed meanings and field shapes carry forward; the new codec does not reuse or reinterpret `magic-basic-land-observation.v1`. The older standalone `magic-combat-observation.v2` through `.v4` payloads remain exact historical codec families and are not nested or merged by this G0 payload. G0 adds an ordered public stack view and the bounded public temporary-effect view needed to make the current legal action understandable. The stack view is top-to-bottom and each item exposes only kind, public controller, public spell/source references using OpaqueObjectId, public ability reference using OpaqueAbilityId when authorized, and rule-public modes/targets/cost outcomes. It has no StackObjectId. The temporary-effect view exposes only rule-public typed operation, affected OpaqueObjectId(s), and duration; it has no EffectInstanceId, capability key, card profile internals, or trusted source reference. Public objects already represented by retained knowledge continue through the successor PlayerInformationState contract, which preserves existing retained-knowledge semantics while removing global StateRevision.
 
 The successor ObservedEvent envelope removes global `state_revision`; its existing per-perspective visible sequence is the only public chronology. It needs a closed public event union for `StackItemAdded`, `StackItemRemoved` (resolved/countered), `ManaPoolChanged` with a `Spent` cause, and `TemporaryEffectCreated/Expired`, plus existing V3 event meanings under a new successor identity. Stack item events use current stack position and safe source/target views; temporary-effect events use typed public operations. Cast, activation, target, trigger-placement and counter meanings are explicit event subcases or exact typed fields in those two stack-item events, never inferred from arbitrary prose. Public card zone transitions continue through ObjectMoved. Audience policy is rules-owned and the environment projects only after authoritative validation.
+
+The new public stack and temporary-effect views use these exact closed payloads in both `MagicSharedExecutionObservationV1` and ObservedEvent V4:
+
+```text
+PublicStackItemV1 =
+  Spell { controller: PlayerId, card_object: OpaqueObjectId,
+          modes: Vec<PublicModeV1>, targets: Vec<SafeTargetDescriptorV1>,
+          cost_facts: CostFactsV1 }
+| ActivatedAbility { controller: PlayerId,
+                     source_object: Option<OpaqueObjectId>,
+                     source_ability: Option<OpaqueAbilityId>,
+                     modes: Vec<PublicModeV1>,
+                     targets: Vec<SafeTargetDescriptorV1>, cost_facts: CostFactsV1 }
+| TriggeredAbility { controller: PlayerId,
+                     source_object: Option<OpaqueObjectId>,
+                     source_ability: Option<OpaqueAbilityId>,
+                     targets: Vec<SafeTargetDescriptorV1> }
+
+PublicModeV1 = { mode_slot: u32, selected_mode: u32 }
+PublicTemporaryEffectV1 = {
+  affected_objects: Vec<OpaqueObjectId>,
+  operation: PowerToughnessDelta { power: i32, toughness: i32 }
+           | GrantKeyword { keyword: haste | double_strike },
+  expiry: UntilEndOfTurn { turn_number: u64 }
+}
+```
+
+Stack arrays are top-to-bottom; `stack_position_from_top` in an event names the item's position immediately before the indicated addition/removal. The `StackItemAdded` and `StackItemRemoved` event records carry `{ stack_position_from_top: u32, item: PublicStackItemV1 }`; removal adds `cause: resolved | countered`. `ManaPoolChanged` retains its existing `pool_after` value and has the closed cause set `produced | emptied | spent`. `TemporaryEffectCreated` and `TemporaryEffectExpired` each carry one `PublicTemporaryEffectV1`. V3 event shapes otherwise retain their exact member meanings with the V4 envelope/variant identity.
+
+For every perspective projection, the spell's `card_object` is that perspective's visible OpaqueObjectId; no definition/face key is embedded in the stack record, and authorized card identity comes through retained knowledge. Ability source opaque IDs are nullable only when not authorized; a present `source_ability` requires a present visible `source_object`. Mode vectors on spell and activated-ability stack items are ascending by unique `mode_slot`; target vectors preserve their captured target-slot order and use SafeTargetDescriptorV1. `affected_objects` is ascending and duplicate-free. The temporary-effect view list is sorted lexicographically by affected-object vector, operation rank (`power_toughness_delta=0`, `grant_keyword=1`), typed operation payload, and expiry turn; equivalent public records may repeat and their multiplicity is preserved. For `PowerToughnessDelta`, compare signed `power_i32` then signed `toughness_i32`; for `GrantKeyword`, compare `haste=0` before `double_strike=1`. Expiry compares unsigned numeric turn number. No stack/trigger/effect instance ID, source profile/AbilityKey/CardDefinitionId, trusted target ID, timestamp, allocator order, or continuation field is projected. A field that is not authorized to the perspective makes that projection omit the containing public fact only where the rules permit omission; otherwise projection fails closed. It never replaces hidden identity with a trusted ID.
 
 The successor PlayerStep keeps the existing submission/status/information/event/next-decision composition principles with successor child types but contains no global StateRevision. It never contains trusted candidate bindings, a continuation, stack object identity, or a second rules command. Its information/event chronology uses the perspective-local view sequence. PlayerInformationStateV2 and PlayerStepV3 remain exact historical readers.
 
@@ -480,6 +630,66 @@ PlayerStepSuccessor {
 ```
 
 `current_observation.view_sequence` equals `information_state.next_visible_sequence`; the InfoState digest binds both the view sequence and observation envelope. The event vector contains strictly increasing event sequences below the after-state next-visible cursor. The next request carries the same actor view sequence, but no global state revision. The authoritative pending request and replay/checkpoint carry StateRevision privately. A public state/projection change without an authorized visible event/cursor advance is an invariant failure; hidden stages consume no sequence for an unauthorized perspective. This uses the already checkpointed perspective-local cursor, not a global revision rewritten or a new per-player counter.
+
+### 9.3 Profile-dependent candidate-domain admission
+
+Exact visible-to-trusted binding equality does not prove that a profile-dependent candidate domain is sound or complete. Route symbol counts, legal mana-source outputs/costs, payment allocations, legal target sets, Blight creature operands, and profile-local optional costs must be rederived from the exact immutable Rules/profile view. State alone does not own those card/profile semantics and must not duplicate or infer them from card names, request descriptors, trusted bindings, or profile labels.
+
+The G0 implementation baseline contains only the accepted basic-land profile in Card IR. It has no R1/W1 semantic profile handlers that can independently derive the locked decks' spell routes, mode/target domains, mana-source outputs, payment allocations, Blight operands, or optional costs. A public context value containing a caller-supplied request and caller-supplied identity IDs is not evidence of domain completeness; the rejected `ProfileDecisionDomainContextV1` proposal at `5ddd7d5a54afe670366db60d9bb0711c88c35aff` demonstrated that copying the persisted request could forge the alleged proof.
+
+Therefore G0 does not define or expose a profile-domain proof DTO or caller-supplied context-aware State/Digest/Delta API. The typed V4 request/candidate/binding vocabulary remains available as detached wire/state vocabulary. Generic state-only admission does not admit profile-dependent pending requests: `EngineStatePartsV3::validate()`, the typed FullStateDigestV7 producer, StateDelta construction/application, checkpoint save/restore, fork, replay execution, and runtime response admission all fail closed absent RulesKernel-derived exact-domain authorization. `PriorityAction`, `AttackerDeclaration`, `CastCostRoute`, `ModeSelection`, `TargetSelection`, `CostOperandSelection`, `ManaProductionChoice`, `ManaPayment`, `OptionalCostPayment`, `AbilityAction`, and `TriggerTarget` are profile-dependent, including a `PriorityAction` domain containing only `PassPriority`. The sole proposed exception is the exact previously accepted M4.2 Basic Land PriorityAction domain described in §9.4; it is not admitted until that clarification is independently accepted and G0j verifies its RulesKernel-owned admission. `SyntheticAssembly`, `SbaGraveyardOrder`, and `TriggerOrder` remain profile-independent and may use their existing typed owner and state-derived all-and-only validators.
+
+For other profile-dependent requests, the first Shared Rules batch that produces them must add the RulesKernel-owned exact-domain derivation and its ephemeral admission path in the same reviewed semantic cut. It must derive the complete ordered request from the verified active content/rules binding, typed profile facts, and current authoritative state; it must never copy a persisted request to manufacture expected evidence. The RulesKernel/environment call path must validate that exact derived request before any state, digest, delta, checkpoint, restore, fork, replay, or response operation accepts the profile-dependent state. The proposed M4.2 exception uses this same path at G0j with only the existing verified Basic Land domain. Any transient admission value remains nonpersistent, unhashed, unprojected, and absent from replay control input. No generic callback, arbitrary extension map, profile interpreter, new contract version, allocator, or execution-program identity is permitted. If that Rules-owned derivation cannot be implemented without changing these constraints, stop and amend G0 before the affected capability is implemented.
+
+Detached positive/negative Decision fixtures may establish wire shape and structural binding only. They do not establish authoritative candidate soundness/completeness or permit profile-dependent state acceptance. G0 tests require fail-closed behavior at generic state-only boundaries. The proposed M4.2 Basic Land route additionally requires the complete V7↔V8 semantic parity matrix in §9.4 before activation. Actual R1/W1 route, payment, target, cost, and staged-action domain completeness plus checkpoint/fork/replay parity remain entry gates for the first Shared batch that emits each such Decision family.
+
+### 9.4 Proposed preservation of the accepted M4.2 Basic Land slice
+
+The exact contradiction has four separate parts:
+
+1. **Normative prohibition:** the accepted G0 §9.3 and G0f Plan explicitly classify every `PriorityAction` as profile-dependent, including pass-only requests, and prohibit admitting such pending state through the detached G0 path. That is real normative text, not merely a validator implementation detail.
+2. **Validator behavior:** `DecisionPurposeV4::is_profile_dependent()` and `EngineStatePartsV3::validate()` implement that accepted prohibition. The validator is not independently wrong under the current G0 contract.
+3. **Successor representation:** Decision V4 already has the purpose and closed candidate/binding shapes for `PassPriority`, `PlayLand`, and `ActivateAbility`; the M4.2 action set needs no new candidate, wire field, schema, or identity.
+4. **Runtime integration at the preservation review:** the accepted V7 runtime owned `EngineStatePartsV2`, request V3/response V2, and the Basic Land RulesKernel candidate producer. No G0 V8 RulesKernel/environment route yet rederived and admitted that exact producer's PriorityAction under V4. That missing route was the G0j preservation task. The current integration candidate now provides the route; the `master` writer remains V7 until this exact G0j head passes review/CI and is merged.
+
+The acceptance authority is closed Issue #225 and PR #248: reviewed activation head `a43d151c636544246223c2a3f9a08a72f502e484`, merged/post-merge master `6c6ee4c9b237696c50e944cae998f85c2d358e1c`. The general G0 rule accurately describes the state-only validator but excludes PriorityAction requests needed by that already accepted M4.2 executable, Mountain and Plains under `basic-land@1.0.0`. PR #252's reviewed preservation clarification was merged into the G0 integration lineage at `4d3b82d9517f08fef4b6a2126cb8409049e714ca`; it accepts this subsection for G0j only. This clarification changes no V4 field or semantic meaning.
+
+The existing successor Decision V4 representation is sufficient and remains unchanged:
+
+```text
+DecisionPurposeV4::PriorityAction / ChooseOne
+  PassPriority
+  PlayLand { object: OpaqueObjectId }
+  ActivateAbility { ability: OpaqueAbilityId }
+```
+
+Their existing V4 trusted bindings carry `PassPriority`, `PlayLand { object: GameObjectId }`, and `ActivateAbility { ability: AbilityInstanceId }`. The M4.2 preservation admission is limited to this exact domain for the verified `basic-land@1.0.0` profile: legal pass, legal Mountain/Plains land play, and activation of the existing intrinsic basic-land mana ability. `CastSpell`, non-mana abilities, and every other profile-dependent request remain unsupported. `PriorityAction` remains profile-dependent in general; the generic `EngineStatePartsV3::validate()` and state-only acceptance APIs remain fail-closed for it.
+
+The sole M4.2 runtime exception is a RulesKernel-owned path. It must derive the complete, canonically ordered V4 request from the verified immutable `ExecutableProfileAdmissionV1` and current authoritative state, porting the existing Basic Land candidate/domain/transition semantics to V3/V4 without changing them. The current V2 functions `derive_basic_land_candidates` and `validate_basic_land_pending_request` are the source witnesses for those semantics, not a second Rules authority. The exact domain must be validated before transition acceptance and before digest, delta, checkpoint, restore, fork, replay, or response operations admit the state. Restore and replay must rederive it under the same exact verified admission. A pending request copied from state, caller-supplied candidate context, or structural binding equality alone never authorizes admission. Any evidence used to carry this RulesKernel authorization across internal calls is transient: it is nonpersistent, unhashed, unprojected, and absent from replay input. This does not create a public context DTO, second state owner, callback mechanism, or new identity.
+
+This clarification changes no state bytes, canonical representation, Decision V4 fields, schema, wire tag, response meaning, allocator, digest domain, checkpoint/replay identity, or execution-program identity. ADR 0056 successor names remain in force. G0j performs only the migration needed to retain the accepted M4.2 behavior; it adds no spell casting, new ability/card/profile semantics, capability promotion, or Shared S1–S7 behavior.
+
+Before V8 becomes the current writer, G0j must pass this semantic equivalence matrix against the accepted V7 executable. Compare legal domains and trusted bindings; accepted PlayLand, zone-incarnation, intrinsic mana activation, priority, turn-step and mana-emptying outcomes; rejection nonmutation; public observations/events; deterministic candidate ordering; state/event/delta consistency; and direct/checkpoint-restore/fork/authoritative-replay outcomes. Verify `FullStateDigestV6` and `FullStateDigestV7` under their own identities; their bytes are intentionally unequal. Verify CheckpointDigestV7/V8 independently as well. Also prove unsupported profile-dependent actions continue to fail closed and paired-world privacy remains intact.
+
+The current G0j implementation candidate uses the existing Basic-Land mutation
+draft after RulesKernel-owned V4 domain rederivation. The V8 path does not call
+the V2 response executor, construct `StateDeltaV2`, or calculate
+`FullStateDigestV6`; it installs the next V4 request and emits V3 Delta/events
+plus V8/V4 successors directly. Legacy operation/event facts remain
+transaction-local conversion inputs and are never returned as current
+transition products, persisted, or used to admit state. The V2 wrapper and
+`ProgramKernelV1` executable API are retained only for test/historical
+conformance use. This is implementation reuse of the locked M4.2 rule owner,
+not a second current writer; the exact boundary remains subject to independent
+G0j review and activation gates.
+
+The `*_structural_only` digest/Delta/projection helpers do not admit a pending
+profile-dependent request. The checkpoint's raw structural validator is
+private; public runtime creation, restore, information projection, response
+submission, and replay import rederive the exact Basic-Land domain through the
+verified RulesKernel admission. These low-level Rust helpers are explicitly
+documentation-hidden where cross-crate use is required and must never become
+a player-facing or persistence-admission API.
 
 ## 10. Contract compatibility and exact version disposition
 
@@ -536,9 +746,9 @@ CONTRACT_GROWTH_BOUNDARY = ACCEPTED
 EXACT_IMPLEMENTATION_BASELINE = FROZEN
 ```
 
-G0a acceptance authorizes preparation and review of G0b only. G0b remains unaccepted until its proposed ADR receives independent Exact-Head review, required CI, merge, and post-merge verification. No G0c producer work may begin before those steps. Only after the G0b identity decision is accepted, compatibility matrices are frozen, and an exact implementation baseline is frozen can `G0_IMPLEMENTATION_AUTHORIZED = YES`.
+G0a acceptance authorized preparation and review of G0b only. Those G0b conditions are now satisfied: ADR 0056 passed independent exact-head review, required PR #251 CI, merge, and post-merge tree verification. The accepted identity decision and matrices authorize G0c onward from the exact implementation baseline above. G0c–G0i remain detached from current runtime producers; only G0j may activate the successor writer.
 
-G0 exit requires exact typed/canonical state records; one state authority; sound/complete Decision requests; total rejection nonmutation; state/event/delta/projection equality; Rust/Python/schema parity; noninterference; direct/restore/fork/replay parity; exact historic compatibility; and exact-head CI and independent review. It unblocks Shared S1–S7 contract use only. It does not implement game semantics or complete M4/R1/W1.
+G0 exit requires exact typed/canonical state records; one state authority; sound/complete Decision domains for every G0-admitted request; fail-closed rejection of unsupported or unadmitted profile-dependent requests; total rejection nonmutation; state/event/delta/projection equality for the admitted scope; Rust/Python/schema parity; noninterference; direct/restore/fork/replay parity for every admitted state; exact historic compatibility; and exact-head CI and independent review. If §9.4 is accepted, the exact RulesKernel-admitted M4.2 Basic Land domain and its V7↔V8 state/checkpoint/replay parity must also pass before the G0j current-writer activation. Each later Shared Rules batch must establish exact profile-domain soundness/completeness and staged restore/fork/replay parity before it emits or admits its profile-dependent request. G0 unblocks Shared S1–S7 contract use only. It does not implement game semantics or complete M4/R1/W1.
 
 Stop and amend this design if any source finds a second owner, a new allocator, a needed hidden callback, a new source-departure fact not representable in the typed payload, an unhandled decision descriptor collision, a history/digest mismatch, a public stack/effect projection that leaks trusted identity, a non-replayable staged action, or a historical value whose meaning would change. If a later card/profile requires a new payload tag, decision binding, observation field, or persistence value, update G0 and re-review it before implementing that profile.
 

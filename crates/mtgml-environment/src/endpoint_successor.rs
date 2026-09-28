@@ -1,8 +1,8 @@
-//! Current player endpoint over PlayerStep V3 and decision V3.
+//! Current player endpoint over PlayerStep V4 and Decision V4.
 
-use mtgml_decision::{DecisionResponseV2, PlayerDecisionRequestV3};
+use mtgml_decision::{DecisionResponseV3, PlayerDecisionRequestV4};
 use mtgml_model::PlayerId;
-use mtgml_observation::{ObservationEnvelope, PlayerInformationStateV2, PlayerStepV3};
+use mtgml_observation::{ObservationEnvelopeV2, PlayerInformationStateV3, PlayerStepV4};
 use std::sync::MutexGuard;
 
 use crate::controller_successor::SharedBackend;
@@ -16,10 +16,10 @@ pub struct PlayerEndpointHandle {
 
 pub trait PlayerEndpoint: Send + Sync {
     fn perspective(&self) -> PlayerId;
-    fn observation(&self) -> Result<ObservationEnvelope, PlayerEndpointError>;
-    fn information_state(&self) -> Result<PlayerInformationStateV2, PlayerEndpointError>;
-    fn visible_decision(&self) -> Result<Option<PlayerDecisionRequestV3>, PlayerEndpointError>;
-    fn submit(&self, response: DecisionResponseV2) -> Result<PlayerStepV3, PlayerEndpointError>;
+    fn observation(&self) -> Result<ObservationEnvelopeV2, PlayerEndpointError>;
+    fn information_state(&self) -> Result<PlayerInformationStateV3, PlayerEndpointError>;
+    fn visible_decision(&self) -> Result<Option<PlayerDecisionRequestV4>, PlayerEndpointError>;
+    fn submit(&self, response: DecisionResponseV3) -> Result<PlayerStepV4, PlayerEndpointError>;
 }
 
 impl PlayerEndpointHandle {
@@ -40,19 +40,19 @@ impl PlayerEndpoint for PlayerEndpointHandle {
         self.perspective
     }
 
-    fn observation(&self) -> Result<ObservationEnvelope, PlayerEndpointError> {
+    fn observation(&self) -> Result<ObservationEnvelopeV2, PlayerEndpointError> {
         self.lock()?.player_observation(self.perspective)
     }
 
-    fn information_state(&self) -> Result<PlayerInformationStateV2, PlayerEndpointError> {
+    fn information_state(&self) -> Result<PlayerInformationStateV3, PlayerEndpointError> {
         self.lock()?.player_information_state(self.perspective)
     }
 
-    fn visible_decision(&self) -> Result<Option<PlayerDecisionRequestV3>, PlayerEndpointError> {
+    fn visible_decision(&self) -> Result<Option<PlayerDecisionRequestV4>, PlayerEndpointError> {
         self.lock()?.player_visible_decision(self.perspective)
     }
 
-    fn submit(&self, response: DecisionResponseV2) -> Result<PlayerStepV3, PlayerEndpointError> {
+    fn submit(&self, response: DecisionResponseV3) -> Result<PlayerStepV4, PlayerEndpointError> {
         self.lock()?
             .submit_player_response(self.perspective, response)
     }

@@ -569,6 +569,156 @@
       "expected_error_code": "decode.invalid_json",
       "expected_reject_layer": "rust-python-semantic-or-decode",
       "path": "magic-m3-unknown-pending-field.json"
+    },
+    {
+      "contract": "observation-envelope.v2",
+      "expected_error_code": "decode.invalid_json",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "observation-envelope-v2-global-revision.json"
+    },
+    {
+      "contract": "information-state-envelope.v3",
+      "expected_error_code": "decode.invalid_json",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "information-state-v3-global-revision.json"
+    },
+    {
+      "contract": "information-state-envelope.v3",
+      "expected_error_code": "semantic.information_state",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "information-state-v3-view-cursor-mismatch.json"
+    },
+    {
+      "contract": "information-state-envelope.v3",
+      "expected_error_code": "semantic.information_state",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "information-state-v3-digest-mismatch.json"
+    },
+    {
+      "contract": "magic-shared-execution-observation.v1",
+      "expected_error_code": "decode.invalid_json",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "magic-shared-observation-v1-global-revision.json"
+    },
+    {
+      "contract": "magic-shared-execution-observation.v1",
+      "expected_error_code": "decode.invalid_json",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "magic-shared-observation-v1-trusted-stack-id.json"
+    },
+    {
+      "contract": "magic-shared-execution-observation.v1",
+      "expected_error_code": "decode.invalid_json",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "magic-shared-observation-v1-unknown-keyword.json"
+    },
+    {
+      "contract": "magic-shared-execution-observation.v1",
+      "expected_error_code": "semantic.observation",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "magic-shared-observation-v1-unbound-ability.json"
+    },
+    {
+      "contract": "magic-shared-execution-observation.v1",
+      "expected_error_code": "semantic.observation",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "magic-shared-observation-v1-effect-order.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "expected_error_code": "decode.invalid_json",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "observed-event-v4-global-revision.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "expected_error_code": "decode.invalid_json",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "observed-event-v4-trusted-stack-id.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "expected_error_code": "decode.invalid_json",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "observed-event-v4-unknown-cause.json"
+    },
+    {
+      "contract": "player-step.v4",
+      "expected_error_code": "decode.invalid_json",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "player-step-v4-global-revision.json"
+    },
+    {
+      "contract": "player-step.v4",
+      "expected_error_code": "semantic.player_step",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "player-step-v4-event-at-next-cursor.json"
+    },
+    {
+      "contract": "replay-manifest.v8",
+      "expected_error_code": "semantic.replay_manifest",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "replay-manifest-v8-old-response-identity.json"
+    },
+    {
+      "contract": "authoritative-replay.v8",
+      "expected_error_code": "decode.invalid_json",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "authoritative-replay-v8-wrong-version.json"
+    },
+    {
+      "contract": "replay-manifest.v8",
+      "expected_error_code": "semantic.replay_manifest",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "replay-manifest-v8-program-authority-mismatch.json"
+    },
+    {
+      "contract": "authoritative-replay.v8",
+      "expected_error_code": "semantic.replay",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "authoritative-replay-v8-program-authority-mismatch.json"
+    },
+    {
+      "contract": "authoritative-replay.v8",
+      "expected_error_code": "semantic.replay",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "authoritative-replay-v8-step-after-terminal.json"
+    },
+    {
+      "contract": "authoritative-replay.v8",
+      "expected_error_code": "semantic.replay",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "authoritative-replay-v8-step-after-truncated.json"
+    },
+    {
+      "contract": "player-decision-request.v4",
+      "expected_error_code": "semantic.decision",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "player-decision-request-v4-cost-route-duplicate-key.json"
+    },
+    {
+      "contract": "player-decision-request.v4",
+      "expected_error_code": "semantic.decision",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "player-decision-request-v4-cost-route-normal-with-ordinal.json"
+    },
+    {
+      "contract": "player-decision-request.v4",
+      "expected_error_code": "semantic.decision",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "player-decision-request-v4-cost-route-alternative-without-ordinal.json"
+    },
+    {
+      "contract": "player-decision-request.v4",
+      "expected_error_code": "semantic.decision",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "player-decision-request-v4-sba-graveyard-order-public.json"
+    },
+    {
+      "contract": "player-decision-request.v4",
+      "expected_error_code": "semantic.decision",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "player-decision-request-v4-sba-graveyard-order-wrong-candidate.json"
     }
   ]
 }

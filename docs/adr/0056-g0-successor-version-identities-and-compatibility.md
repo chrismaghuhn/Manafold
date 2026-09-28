@@ -1,7 +1,7 @@
 # ADR 0056 — G0 Successor Version Identities and Compatibility
 
-- **Status:** proposed; candidate until merge
-- **Stability:** proposed architecture; no current producer authority
+- **Status:** accepted by PR #251; G0 implementation contract identity decision
+- **Stability:** accepted architecture; detached G0c–G0h contract work authorized, current-writer authority only at G0j
 - **Date:** 2026-09-27
 - **Owners:** architecture, state, rules, decision, observation, persistence, replay, and API maintainers
 - **Supersedes:** none
@@ -353,7 +353,7 @@ After this ADR is accepted, G0c may implement detached successor vocabulary and 
 
 Implementation must stop and amend this ADR if source discovery changes any identity reason, a supposedly unchanged family needs new meaning, or a successor requires a contract family outside this matrix. ADR 0056 freezes no card mechanics, capability lifecycle, G0 RED test code, or runtime behavior.
 
-The G0 Spec and Plan are accepted for G0b. This ADR itself is proposed and is not yet accepted. The merge of G0a and existence of this proposed ADR do not set `G0_IMPLEMENTATION_AUTHORIZED = YES`.
+The G0 Spec and Plan were accepted for G0b. ADR 0056 was independently reviewed at exact head `72287961907164db6dc7a53b532c8d5076d3516a` with zero findings, passed required PR #251 CI, and merged as `f5c1ed2aa0719edaebd95f80f7c1c5c38b3dea3d`; the post-merge master tree is identical to the reviewed head tree. The accepted G0b identity decision and frozen matrices authorize the serial detached G0 implementation sequence from that exact master baseline. They do not authorize a current successor writer before G0j.
 
 ## 11. G0 implementation entry gate
 

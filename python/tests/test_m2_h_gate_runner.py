@@ -550,10 +550,10 @@ pub use crate::endpoint_successor::*;
 ENDPOINT_SUCCESSOR_RS_PINNED = """\
 pub trait PlayerEndpoint {
     fn perspective(&self) -> PlayerId;
-    fn observation(&self) -> Result<ObservationEnvelope, PlayerEndpointError>;
-    fn information_state(&self) -> Result<PlayerInformationStateV2, PlayerEndpointError>;
-    fn visible_decision(&self) -> Result<Option<PlayerDecisionRequestV3>, PlayerEndpointError>;
-    fn submit(&self, response: DecisionResponseV2) -> Result<PlayerStepV3, PlayerEndpointError>;
+    fn observation(&self) -> Result<ObservationEnvelopeV2, PlayerEndpointError>;
+    fn information_state(&self) -> Result<PlayerInformationStateV3, PlayerEndpointError>;
+    fn visible_decision(&self) -> Result<Option<PlayerDecisionRequestV4>, PlayerEndpointError>;
+    fn submit(&self, response: DecisionResponseV3) -> Result<PlayerStepV4, PlayerEndpointError>;
 }
 """
 
@@ -571,6 +571,12 @@ PLAYER_CLIENT_PY_SUCCESSOR = """\
 from typing import Protocol
 
 class PlayerClient(Protocol):
+    def observation(self) -> ObservationEnvelopeV2: ...
+    def information_state(self) -> PlayerInformationStateV3: ...
+    def visible_decision(self) -> PlayerDecisionRequestV4 | None: ...
+    def submit(self, response: DecisionResponseV3) -> PlayerStepV4: ...
+
+class HistoricalPlayerClientV3(Protocol):
     def observation(self) -> ObservationEnvelope: ...
     def information_state(self) -> PlayerInformationStateV2: ...
     def visible_decision(self) -> PlayerDecisionRequestV3 | None: ...
@@ -839,15 +845,12 @@ class RegistryRelationTests(unittest.TestCase):
             <= runner.COMMON_NAMED_CONTRACTS
         )
 
-    def test_schema_only_successors_exclude_typed_replay_v7_owners(self) -> None:
+    def test_schema_only_successors_exclude_rust_owned_m4_and_g0_contracts(self) -> None:
         self.assertEqual(
             runner.SCHEMA_ONLY_SUCCESSORS,
             frozenset(
                 {
                     "player-decision-request.v3",
-                    "observed-event-envelope.v3",
-                    "player-step.v3",
-                    "magic-basic-land-observation.v1",
                 }
             ),
         )
@@ -855,6 +858,22 @@ class RegistryRelationTests(unittest.TestCase):
             {
                 "replay-manifest.v7",
                 "authoritative-replay.v7",
+            }
+            <= runner.COMMON_NAMED_CONTRACTS
+        )
+        self.assertTrue(
+            {
+                "magic-basic-land-observation.v1",
+                "observation-envelope.v2",
+                "information-state-envelope.v3",
+                "decision-response.v3",
+                "player-decision-request.v4",
+                "observed-event-envelope.v4",
+                "player-step.v4",
+                "magic-shared-execution-observation.v1",
+                "replay-manifest.v8",
+                "replay-step.v8",
+                "authoritative-replay.v8",
             }
             <= runner.COMMON_NAMED_CONTRACTS
         )

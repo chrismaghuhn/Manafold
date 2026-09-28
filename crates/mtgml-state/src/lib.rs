@@ -8,13 +8,16 @@ mod core;
 mod damage;
 mod delta;
 mod delta_v2;
+mod delta_v3;
 mod digest;
 mod digest_v3;
 mod digest_v4;
 mod digest_v5;
 mod digest_v6;
+mod digest_v7;
 mod engine;
 mod engine_state_parts_v2;
+mod engine_state_parts_v3;
 mod engine_state_shape;
 mod execution;
 mod format;
@@ -22,9 +25,16 @@ mod identity;
 mod knowledge;
 mod lifecycle;
 mod persisted_v6;
+mod persisted_v7;
 mod semantic_mutations;
+mod shared_execution;
 mod validation;
 mod zones;
+
+/// Detached G0 successor digest identities. G0c freezes their names; G0e
+/// owns canonical input validation and digest production.
+pub const FULL_STATE_DIGEST_DOMAIN_V7: &str = "mtgml.full-state-digest.v7";
+pub const FULL_STATE_DIGEST_INPUT_SCHEMA_V7: &str = "full-state-digest-input.v7";
 
 pub use construction::{
     construct_synthetic_engine_state, SyntheticResetInputs, SyntheticStateConstructionError,
@@ -38,6 +48,10 @@ pub use core::{
 pub use damage::{DamageAssignmentV1, DamageRecipientV1};
 pub use delta::{DeltaApplicationError, SemanticDeltaOperation, StateDelta};
 pub use delta_v2::{DeltaApplicationV2Error, SemanticDeltaOperationV2, StateDeltaV2};
+pub use delta_v3::{
+    CostCommitActionV1, DeltaApplicationV3Error, ManaPoolChangeCauseV1, SemanticDeltaOperationV3,
+    StackItemEndKindV1, StateDeltaV3,
+};
 pub use digest::StateDigestError;
 pub use digest_v4::{
     calculate_full_state_digest_v4_historical, canonical_state_bytes_v4_historical,
@@ -48,8 +62,14 @@ pub use digest_v6::{
     canonical_state_bytes_v6, canonical_state_bytes_v6_with_execution_v3,
     verify_full_state_digest_v6, FULL_STATE_DIGEST_DOMAIN_V6, FULL_STATE_DIGEST_INPUT_SCHEMA_V6,
 };
+pub use digest_v7::{
+    calculate_full_state_digest_v7, calculate_full_state_digest_v7_payload,
+    calculate_full_state_digest_v7_structural_only, canonical_state_bytes_v7,
+    verify_full_state_digest_v7,
+};
 pub use engine::{EngineState, EngineStateParts, FULL_STATE_DIGEST_INPUT_SCHEMA};
 pub use engine_state_parts_v2::{EngineStatePartsV2, EngineStatePartsV2Error};
+pub use engine_state_parts_v3::{EngineStatePartsV3, EngineStatePartsV3Error};
 pub use engine_state_shape::{
     AssemblyStageV2, ContinuationPayloadV2, ContinuationRecordV2, KnowledgeInvalidationV2,
     KnowledgeRecordV2, KnowledgeStateV2, KnownLocationFactV2, PendingDecisionRecordV2,
@@ -58,7 +78,7 @@ pub use engine_state_shape::{
     SYNTHETIC_COUNT_MAX, SYNTHETIC_COUNT_MIN,
 };
 pub use execution::{EffectRecord, ExecutionState, TriggerRecord};
-pub use execution::{ExecutionStateV3, SuccessorDecisionError};
+pub use execution::{ExecutionStateV3, ExecutionStateV4, SuccessorDecisionError};
 pub use format::{CommanderState, FormatState};
 pub use identity::{IdentityAllocationError, IdentityAllocatorState};
 pub use knowledge::{
@@ -76,9 +96,21 @@ pub use persisted_v6::{
     FullStateDigestInputV6, ManaColorV1, ManaPoolV1, ManaRestrictionV1, ManaStateV1,
     PersistedExecutionV3, PersistedV6Error, PlayerTurnHistoryV1, TurnHistoryStateV1,
 };
+pub use persisted_v7::FullStateDigestInputV7;
 pub use semantic_mutations::{
     AttachmentChangeV1, CounterAnnihilationChangeV1, RoleAttachmentRetirementV1,
     StateFamilyMutationError,
+};
+pub use shared_execution::{
+    AbilitySourceContext, ActionCostFacts, AttackerFact, CastContinuation, CastContinuationStage,
+    CompletedTriggerOrder, ContinuationPayloadV3, ContinuationRecordV3, CostFacts, CostRoute,
+    DamageKind, DamageRecipient, EffectExpiry, EffectTimestamp, LifeChangeCause, ManaCost,
+    ManaPaymentStage, ManaPaymentStaging, ManaSourceActivation, ManaSourceActivationCost,
+    ModeBinding, NonManaActivationContinuation, NonManaActivationStage, PendingTriggerRecord,
+    ReservedNonManaCost, SelectedCostOperand, SelectedTriggerTarget, SourceContext,
+    StackItemPayload, StackResolutionContinuation, StackResolutionStage, TargetBinding, TargetRef,
+    TemporaryEffectRecord, TemporaryKeyword, TemporaryOperation, TriggerActorRequestRoot,
+    TriggerEventSnapshot, TriggerPlacementContinuation, TriggerTargetTiming,
 };
 pub use validation::{validate_engine_state, EngineStateViolation};
 pub use zones::{

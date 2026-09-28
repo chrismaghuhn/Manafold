@@ -215,6 +215,110 @@
     {
       "contract": "magic-combat-observation.v4",
       "path": "magic-combat-observation.v4.json"
+    },
+    {
+      "contract": "observation-envelope.v2",
+      "path": "observation-envelope.v2.json"
+    },
+    {
+      "contract": "information-state-envelope.v3",
+      "path": "information-state-envelope.v3.json"
+    },
+    {
+      "contract": "magic-shared-execution-observation.v1",
+      "path": "magic-shared-execution-observation.v1.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "path": "observed-event-v4-object-moved.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "path": "observed-event-v4-stack-added.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "path": "observed-event-v4-stack-removed.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "path": "observed-event-v4-mana-spent.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "path": "observed-event-v4-temporary-created.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "path": "observed-event-v4-temporary-expired.json"
+    },
+    {
+      "contract": "player-step.v4",
+      "path": "player-step-v4.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "path": "observed-event-v4-object-ceased.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "path": "observed-event-v4-life-changed.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "path": "observed-event-v4-object-tapped.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "path": "observed-event-v4-decision-available.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "path": "observed-event-v4-random-outcome.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "path": "observed-event-v4-public-outcome.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "path": "observed-event-v4-counters-changed.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "path": "observed-event-v4-attachment-changed.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "path": "observed-event-v4-face-changed.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "path": "observed-event-v4-mana-produced.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "path": "observed-event-v4-mana-emptied.json"
+    },
+    {
+      "contract": "replay-manifest.v8",
+      "path": "replay-manifest-v8.json"
+    },
+    {
+      "contract": "replay-step.v8",
+      "path": "replay-step-v8.json"
+    },
+    {
+      "contract": "authoritative-replay.v8",
+      "path": "authoritative-replay-v8.json"
+    },
+    {
+      "contract": "player-decision-request.v4",
+      "path": "player-decision-request-v4-cost-route.json"
+    },
+    {
+      "contract": "player-decision-request.v4",
+      "path": "player-decision-request-v4-sba-graveyard-order.json"
     }
   ]
 }

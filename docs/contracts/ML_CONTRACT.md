@@ -13,9 +13,11 @@ labels. Action abstractions are external, versioned, and cannot alter the
 authoritative replay. Every trajectory identifies engine, bundle, schemas,
 reward/action policies, and behavior metadata.
 
-The accepted M4 state-cut contract defines additive player wire successors:
-PlayerDecisionRequestV3, ObservedEventEnvelopeV3 and PlayerStepV3, with the
-named payload `magic-basic-land-observation.v1`. PlayerStepV3 continues to
-carry PlayerInformationStateV2 and DecisionResponseV2. PR #248 atomically activated these identities on `master` for the bounded
-M4.2 slice. Predecessor schemas and fixtures retain their exact meanings;
-this activation does not claim complete M4 gameplay or broader support.
+The M4.2 V3 player contracts and `magic-basic-land-observation.v1` payload
+retain their exact historical meanings after G0j. The current bounded M4.2
+trajectory products use PlayerDecisionRequestV4, DecisionResponseV3,
+ObservedEventEnvelopeV4, PlayerStepV4, ObservationEnvelopeV2,
+PlayerInformationStateV3 / InformationStateDigestV3, and
+`magic-shared-execution-observation.v1`. The successor family preserves only
+the accepted Mountain/Plains `basic-land@1.0.0` execution; it does not claim
+complete M4 gameplay or broader card/deck support.

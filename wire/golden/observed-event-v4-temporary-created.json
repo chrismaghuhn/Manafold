@@ -1,0 +1,1 @@
+{"event":{"effect":{"affected_objects":["2"],"expiry":{"kind":"until_end_of_turn","turn_number":"3"},"operation":{"kind":"power_toughness_delta","power":1,"toughness":0}},"kind":"temporary_effect_created"},"schema_version":"observed-event-envelope.v4","sequence":"6"}

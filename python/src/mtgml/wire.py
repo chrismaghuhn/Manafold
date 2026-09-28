@@ -6,32 +6,43 @@ from collections.abc import Callable
 from typing import TypeVar
 
 from ._events_v3 import ObservedEventEnvelopeV3
+from ._events_v4 import ObservedEventEnvelopeV4
 from ._magic_basic_land_observation_v1 import MagicBasicLandObservationV1
 from ._magic_combat_observation import MagicObservationV2
 from ._magic_combat_observation_v3 import MagicObservationV3
 from ._magic_combat_observation_v4 import MagicObservationV4
 from ._magic_observation import MagicObservation
 from ._player_step_v3 import PlayerStepV3
+from ._player_step_v4 import PlayerStepV4
 from ._synthetic_observation import SyntheticObservation
 from .canonical import canonical_json_bytes
 from .decision import (
     DecisionResponse,
     DecisionResponseV2,
+    DecisionResponseV3,
     PlayerDecisionRequest,
     PlayerDecisionRequestV2,
 )
 from .decision_v3 import PlayerDecisionRequestV3
+from .decision_v4 import PlayerDecisionRequestV4
 from .episode import EpisodeStatus
 from .errors import WireError
 from .events import ObservedEventEnvelope
 from .observation import (
     InformationStateDigestInputV2,
+    InformationStateDigestInputV3,
     InformationStateEnvelope,
+    MagicSharedExecutionObservationV1,
     ObservationEnvelope,
+    ObservationEnvelopeV2,
     ObservedEventEnvelopeV2,
     PlayerInformationStateV2,
+    PlayerInformationStateV3,
     PlayerStep,
     PlayerStepV2,
+)
+from .observation import (
+    compute_information_state_digest_v3 as _compute_information_state_digest_v3,
 )
 from .replay import (
     AuthoritativeReplayV1,
@@ -41,6 +52,7 @@ from .replay import (
     AuthoritativeReplayV5,
     AuthoritativeReplayV6,
     AuthoritativeReplayV7,
+    AuthoritativeReplayV8,
     ReplayManifestV1,
     ReplayManifestV2,
     ReplayManifestV3,
@@ -48,6 +60,8 @@ from .replay import (
     ReplayManifestV5,
     ReplayManifestV6,
     ReplayManifestV7,
+    ReplayManifestV8,
+    ReplayStepV8,
 )
 
 T = TypeVar("T")
@@ -57,18 +71,25 @@ _DECODERS: dict[str, Callable[[object], object]] = {
     "decision-response.v1": DecisionResponse.from_wire,
     "player-decision-request.v2": PlayerDecisionRequestV2.from_wire,
     "player-decision-request.v3": PlayerDecisionRequestV3.from_wire,
+    "player-decision-request.v4": PlayerDecisionRequestV4.from_wire,
     "decision-response.v2": DecisionResponseV2.from_wire,
+    "decision-response.v3": DecisionResponseV3.from_wire,
     "episode-status.v1": EpisodeStatus.from_wire,
     "observed-event-envelope.v1": ObservedEventEnvelope.from_wire,
     "observation-envelope.v1": ObservationEnvelope.from_wire,
+    "observation-envelope.v2": ObservationEnvelopeV2.from_wire,
     "information-state-envelope.v1": InformationStateEnvelope.from_wire,
     "player-step.v1": PlayerStep.from_wire,
     "information-state-envelope.v2": PlayerInformationStateV2.from_wire,
+    "information-state-envelope.v3": PlayerInformationStateV3.from_wire,
+    "magic-shared-execution-observation.v1": MagicSharedExecutionObservationV1.from_wire,
     "information-state-digest-input.v2": InformationStateDigestInputV2.from_wire,
     "observed-event-envelope.v2": ObservedEventEnvelopeV2.from_wire,
     "observed-event-envelope.v3": ObservedEventEnvelopeV3.from_wire,
+    "observed-event-envelope.v4": ObservedEventEnvelopeV4.from_wire,
     "player-step.v2": PlayerStepV2.from_wire,
     "player-step.v3": PlayerStepV3.from_wire,
+    "player-step.v4": PlayerStepV4.from_wire,
     "replay-manifest.v1": ReplayManifestV1.from_wire,
     "authoritative-replay.v1": AuthoritativeReplayV1.from_wire,
     "replay-manifest.v2": ReplayManifestV2.from_wire,
@@ -89,6 +110,9 @@ _DECODERS: dict[str, Callable[[object], object]] = {
     "authoritative-replay.v6": AuthoritativeReplayV6.from_wire,
     "replay-manifest.v7": ReplayManifestV7.from_wire,
     "authoritative-replay.v7": AuthoritativeReplayV7.from_wire,
+    "replay-manifest.v8": ReplayManifestV8.from_wire,
+    "replay-step.v8": ReplayStepV8.from_wire,
+    "authoritative-replay.v8": AuthoritativeReplayV8.from_wire,
 }
 
 
@@ -134,3 +158,9 @@ def compute_information_state_digest_v2(
     payload = encode_canonical(input_value)
     digest = hashlib.sha256(b"mtgml.information-state-digest.v2\0" + payload).hexdigest()
     return payload, digest
+
+
+def compute_information_state_digest_v3(
+    input_value: InformationStateDigestInputV3,
+) -> tuple[bytes, str]:
+    return _compute_information_state_digest_v3(input_value)

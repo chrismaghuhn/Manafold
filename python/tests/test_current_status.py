@@ -146,16 +146,18 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             "`basic-land@1.0.0`; no broader card/deck support is claimed.",
             readme,
         )
-        self.assertIn("**Current resumable execution contract on `master`:** V7.", readme)
+        self.assertIn(
+            "**Current resumable execution contract after the G0j activation cut:** V8.", readme
+        )
         for current_contract in (
-            "`EngineStatePartsV2`",
-            "`FullStateDigestV6`",
-            "`StateDeltaV2`",
-            "`EnvironmentCheckpointV7`",
-            "Replay V7",
-            "Decision V3",
-            "ObservedEvent V3",
-            "PlayerStep V3",
+            "`EngineStatePartsV3`",
+            "`FullStateDigestV7`",
+            "`StateDeltaV3`",
+            "`EnvironmentCheckpointV8`",
+            "Replay V8",
+            "Decision request V4 / response V3",
+            "ObservedEvent V4",
+            "PlayerStep V4",
             "`basic-land@1.0.0`",
         ):
             with self.subTest(current_contract=current_contract):
@@ -163,13 +165,13 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertRegex(readme, r"No predecessor gameplay\s+writer is current")
         self.assertRegex(
             readme,
-            r"V5/V6 predecessor artifacts, including[\s\S]+"
+            r"V6/V7 predecessor artifacts[\s\S]+"
             r"remain historical\s+read/verification only",
         )
         self.assertIn("historical read/verification only", readme)
-        self.assertIn("`EnvironmentCheckpointV6`", readme)
-        self.assertIn("`CheckpointDigestV6`", readme)
-        self.assertRegex(readme, r"V4/V5 artifacts retain their\s+historical meanings")
+        self.assertIn("`EnvironmentCheckpointV7`", readme)
+        self.assertIn("`CheckpointDigestV7`", readme)
+        self.assertRegex(readme, r"No historical identity\s+is reinterpreted")
         self.assertNotIn("M3 Pre-T0 plan hardening under Issue #178", readme)
         self.assertNotIn("HARDENED_PLAN_MERGE_AND_EXACT_MASTER_REAUTHORIZATION", readme)
         self.assertNotIn(
@@ -262,9 +264,9 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("S1_IMPLEMENTED_CAPABILITY_COUNT = 0", roadmap)
         self.assertIn("S1_COVERED_CAPABILITY_COUNT = 1", roadmap)
         self.assertIn("S1_CERTIFIED_CAPABILITY_COUNT = 0", roadmap)
-        self.assertIn("CURRENT_RESUMABLE_EXECUTION_CONTRACT = V7", roadmap)
+        self.assertIn("CURRENT_RESUMABLE_EXECUTION_CONTRACT = V8", roadmap)
         self.assertIn(
-            "V4_V5_RESUMABLE_CONTRACT_STATUS = HISTORICAL_ONLY / V5_TO_V6_MIGRATION_NONE",
+            "V6_V7_RESUMABLE_CONTRACT_STATUS = HISTORICAL_ONLY / AUTOMATIC_MIGRATION_NONE",
             roadmap,
         )
         self.assertIn("TASK_13_DOCUMENTATION_STATUS_CLOSURE = COMPLETE", roadmap)
@@ -441,7 +443,7 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("Census-driven scope", roadmap)
         self.assertRegex(roadmap, r"outside\s+this authoritative\s+engine repository")
 
-    def test_g0a_is_accepted_for_g0b_without_authorizing_implementation(self) -> None:
+    def test_g0b_acceptance_authorizes_detached_g0_implementation(self) -> None:
         spec = (
             ROOT / "docs" / "superpowers" / "specs" / "2026-09-27-m4-shared-g0-contract-growth.md"
         ).read_text(encoding="utf-8")
@@ -452,12 +454,14 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             ROOT / "docs" / "adr" / "0056-g0-successor-version-identities-and-compatibility.md"
         ).read_text(encoding="utf-8")
 
-        self.assertIn("ACCEPTED FOR G0B — NO IMPLEMENTATION AUTHORITY", spec)
+        self.assertIn("ContinuationRecordV3 ownership and payload inventory Exact-Head PASS", spec)
+        self.assertIn("f0a493c740f9002e5551d317a1411c11067a7bb3", spec)
+        self.assertIn("f5c1ed2aa0719edaebd95f80f7c1c5c38b3dea3d", spec)
         self.assertIn("G0A_ACCEPTANCE = PASS", spec)
-        self.assertIn("ACCEPTED FOR G0B — NO IMPLEMENTATION AUTHORITY UNTIL G0B ACCEPTANCE", plan)
-        self.assertIn("**Status:** proposed", adr)
-        self.assertIn("G0_IMPLEMENTATION_AUTHORIZED = NO", adr)
-        self.assertIn("**Implementation authorized:** NO", plan)
+        self.assertIn("all bounded payload/stage amendments ACCEPTED at Exact-Head", plan)
+        self.assertIn("**Implementation authorized:** YES", plan)
+        self.assertIn("**Status:** accepted by PR #251", adr)
+        self.assertIn("G0_IMPLEMENTATION_AUTHORIZED = YES", adr)
 
     def test_current_status_does_not_duplicate_a_second_status_file(self) -> None:
         readme = (ROOT / "README.md").read_text(encoding="utf-8")

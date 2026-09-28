@@ -1,0 +1,9 @@
+{
+  "answer": {
+    "candidate_id": 2,
+    "kind": "select_one"
+  },
+  "player_decision_id": "18446744073709551615",
+  "schema_version": "decision-response.v3",
+  "view_sequence": "0"
+}

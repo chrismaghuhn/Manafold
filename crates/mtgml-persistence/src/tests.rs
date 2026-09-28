@@ -1,7 +1,8 @@
 use super::{cbor, checkpoint_digest, envelope, PersistenceDecodeErrorV1};
 use mtgml_model::{
     CheckpointCodecIdentity, EnvironmentLimitCounters, EpisodeStatus, ExecutionIdentityV1,
-    ExecutionProgramV1, FullStateDigestV5, FullStateDigestV6, SemanticContractIdV1,
+    ExecutionProgramV1, FullStateDigestV5, FullStateDigestV6, FullStateDigestV7,
+    SemanticContractIdV1,
 };
 
 #[test]
@@ -798,6 +799,64 @@ fn checkpoint_digest_v7_matches_phase2_known_answer_and_rejects_predecessors() {
     );
 }
 
+#[test]
+fn checkpoint_digest_v8_g0_known_answer() {
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../persistence/golden/checkpoint-digest-v8-kat.v1.json"
+    ))
+    .unwrap();
+    let state_digest =
+        FullStateDigestV7::parse(fixture["full_state_digest_v7"].as_str().unwrap()).unwrap();
+    let identity = ExecutionIdentityV1 {
+        program_kind: ExecutionProgramV1::MagicRules,
+        semantic_contract_id: SemanticContractIdV1::parse(
+            fixture["semantic_contract_id"].as_str().unwrap().to_owned(),
+        )
+        .unwrap(),
+    };
+    let codec = CheckpointCodecIdentity {
+        codec_id: checkpoint_digest::CHECKPOINT_CODEC_ID_V8.to_owned(),
+        semantic_version: checkpoint_digest::CHECKPOINT_CODEC_SEMANTIC_VERSION_V8.to_owned(),
+    };
+    let digest = checkpoint_digest::calculate_checkpoint_digest_v8(
+        &state_digest.as_digest_reference(),
+        &EpisodeStatus::Running,
+        &EnvironmentLimitCounters::default(),
+        &codec,
+        &identity,
+    )
+    .unwrap();
+    assert_eq!(
+        digest.to_string(),
+        fixture["expected_digest"].as_str().unwrap()
+    );
+    assert_eq!(
+        digest.to_string(),
+        "1454acca17c4a4cb655d4b3201e4b5d10db3cb0a42513a33efb6f7d8eaa26025"
+    );
+    let predecessor = FullStateDigestV6::from_digest_bytes(state_digest.raw_bytes());
+    assert!(checkpoint_digest::calculate_checkpoint_digest_v8(
+        &predecessor.as_digest_reference(),
+        &EpisodeStatus::Running,
+        &EnvironmentLimitCounters::default(),
+        &codec,
+        &identity,
+    )
+    .is_err());
+    let wrong_codec = CheckpointCodecIdentity {
+        semantic_version: "7".to_owned(),
+        ..codec
+    };
+    assert!(checkpoint_digest::calculate_checkpoint_digest_v8(
+        &state_digest.as_digest_reference(),
+        &EpisodeStatus::Running,
+        &EnvironmentLimitCounters::default(),
+        &wrong_codec,
+        &identity,
+    )
+    .is_err());
+}
+
 fn hex(bytes: &[u8]) -> String {
     use std::fmt::Write as _;
 
@@ -808,4 +867,49 @@ fn hex(bytes: &[u8]) -> String {
             encoded
         },
     )
+}
+
+#[test]
+fn g0c_successor_digest_vectors_bind_v7_state_and_v8_checkpoint_identities() {
+    let cases = [
+        (
+            include_str!("../../../persistence/golden/full-state-digest-v7-kat.v1.json"),
+            "full-state-digest-input.v7",
+            "mtgml.full-state-digest.v7",
+        ),
+        (
+            include_str!("../../../persistence/golden/checkpoint-digest-v8-kat.v1.json"),
+            "environment-checkpoint-digest-input.v8",
+            "mtgml.checkpoint-digest.v8",
+        ),
+    ];
+    for (fixture, expected_schema, expected_domain) in cases {
+        let value: serde_json::Value = serde_json::from_str(fixture).unwrap();
+        let payload_hex = value["canonical_payload_hex"].as_str().unwrap();
+        let payload = decode_hex(payload_hex);
+        let decoded = cbor::decode_canonical(&payload).unwrap();
+        let cbor::Value::Array(fields) = decoded else {
+            panic!("digest fixture input must be a fixed CBOR array");
+        };
+        assert_eq!(fields[0], cbor::Value::Text(expected_schema.to_owned()));
+        assert_eq!(fields[1], cbor::Value::Text(expected_domain.to_owned()));
+        let encoded =
+            envelope::encode_envelope(expected_domain, expected_schema, &payload).unwrap();
+        assert_eq!(
+            hex(&envelope::hash_envelope(&encoded)),
+            value["expected_digest"]
+        );
+    }
+}
+
+fn decode_hex(value: &str) -> Vec<u8> {
+    assert_eq!(value.len() % 2, 0, "hex input has an odd number of digits");
+    value
+        .as_bytes()
+        .chunks_exact(2)
+        .map(|pair| {
+            let text = std::str::from_utf8(pair).unwrap();
+            u8::from_str_radix(text, 16).unwrap()
+        })
+        .collect()
 }

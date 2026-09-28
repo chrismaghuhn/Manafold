@@ -1,0 +1,707 @@
+{
+  "$defs": {
+    "cost_facts": {
+      "additionalProperties": false,
+      "properties": {
+        "paid_additional_cost_ids": {
+          "items": {
+            "$ref": "#/$defs/u32"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "selected_route": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "normal"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "alternative"
+                },
+                "route_id": {
+                  "$ref": "#/$defs/u32"
+                }
+              },
+              "required": [
+                "kind",
+                "route_id"
+              ],
+              "type": "object"
+            }
+          ]
+        }
+      },
+      "required": [
+        "selected_route",
+        "paid_additional_cost_ids"
+      ],
+      "type": "object"
+    },
+    "i32": {
+      "maximum": 2147483647,
+      "minimum": -2147483648,
+      "type": "integer"
+    },
+    "public_mode": {
+      "additionalProperties": false,
+      "properties": {
+        "mode_slot": {
+          "$ref": "#/$defs/u32"
+        },
+        "selected_mode": {
+          "$ref": "#/$defs/u32"
+        }
+      },
+      "required": [
+        "mode_slot",
+        "selected_mode"
+      ],
+      "type": "object"
+    },
+    "public_stack_item": {
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "source_ability": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "source_ability"
+            ]
+          },
+          "then": {
+            "properties": {
+              "source_object": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ],
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "card_object": {
+              "$ref": "#/$defs/u64"
+            },
+            "controller": {
+              "$ref": "#/$defs/u64"
+            },
+            "cost_facts": {
+              "$ref": "#/$defs/cost_facts"
+            },
+            "kind": {
+              "const": "spell"
+            },
+            "modes": {
+              "items": {
+                "$ref": "#/$defs/public_mode"
+              },
+              "type": "array"
+            },
+            "targets": {
+              "items": {
+                "$ref": "#/$defs/safe_target_descriptor"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "controller",
+            "card_object",
+            "modes",
+            "targets",
+            "cost_facts"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "controller": {
+              "$ref": "#/$defs/u64"
+            },
+            "cost_facts": {
+              "$ref": "#/$defs/cost_facts"
+            },
+            "kind": {
+              "const": "activated_ability"
+            },
+            "source_ability": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/u64"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "source_object": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/u64"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "targets": {
+              "items": {
+                "$ref": "#/$defs/safe_target_descriptor"
+              },
+              "type": "array"
+            },
+            "modes": {
+              "items": {
+                "$ref": "#/$defs/public_mode"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "controller",
+            "source_object",
+            "source_ability",
+            "modes",
+            "targets",
+            "cost_facts"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "controller": {
+              "$ref": "#/$defs/u64"
+            },
+            "kind": {
+              "const": "triggered_ability"
+            },
+            "source_ability": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/u64"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "source_object": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/u64"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "targets": {
+              "items": {
+                "$ref": "#/$defs/safe_target_descriptor"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "controller",
+            "source_object",
+            "source_ability",
+            "targets"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "public_temporary_effect": {
+      "additionalProperties": false,
+      "properties": {
+        "affected_objects": {
+          "items": {
+            "$ref": "#/$defs/u64"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "expiry": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "until_end_of_turn"
+            },
+            "turn_number": {
+              "$ref": "#/$defs/u64"
+            }
+          },
+          "required": [
+            "kind",
+            "turn_number"
+          ],
+          "type": "object"
+        },
+        "operation": {
+          "$ref": "#/$defs/temporary_operation"
+        }
+      },
+      "required": [
+        "affected_objects",
+        "operation",
+        "expiry"
+      ],
+      "type": "object"
+    },
+    "safe_target_descriptor": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "object"
+            },
+            "object": {
+              "$ref": "#/$defs/u64"
+            }
+          },
+          "required": [
+            "kind",
+            "object"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "player"
+            },
+            "player": {
+              "$ref": "#/$defs/u64"
+            }
+          },
+          "required": [
+            "kind",
+            "player"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "stack_item"
+            },
+            "stack_position_from_top": {
+              "$ref": "#/$defs/u32"
+            }
+          },
+          "required": [
+            "kind",
+            "stack_position_from_top"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "temporary_operation": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "power_toughness_delta"
+            },
+            "power": {
+              "$ref": "#/$defs/i32"
+            },
+            "toughness": {
+              "$ref": "#/$defs/i32"
+            }
+          },
+          "required": [
+            "kind",
+            "power",
+            "toughness"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "keyword": {
+              "enum": [
+                "haste",
+                "double_strike"
+              ]
+            },
+            "kind": {
+              "const": "grant_keyword"
+            }
+          },
+          "required": [
+            "kind",
+            "keyword"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "u32": {
+      "maximum": 4294967295,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "u64": {
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "type": "string"
+    }
+  },
+  "$id": "magic-shared-execution-observation.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "active_player": {
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "type": "string"
+    },
+    "attachments": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string"
+          },
+          "target": {
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "target"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "counters": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "maximum": 4294967295,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "counter_kind": {
+            "enum": [
+              "plus_one_plus_one",
+              "minus_one_minus_one",
+              "lore"
+            ]
+          },
+          "object": {
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "object",
+          "counter_kind",
+          "count"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "faces": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "face": {
+            "enum": [
+              "front",
+              "back"
+            ]
+          },
+          "object": {
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "object",
+          "face"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "mana_pools": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "creature_spell_only": {
+            "items": {
+              "maximum": 4294967295,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "maxItems": 6,
+            "minItems": 6,
+            "type": "array"
+          },
+          "player": {
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string"
+          },
+          "unrestricted": {
+            "items": {
+              "maximum": 4294967295,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "maxItems": 6,
+            "minItems": 6,
+            "type": "array"
+          }
+        },
+        "required": [
+          "player",
+          "unrestricted",
+          "creature_spell_only"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "pending_sba_ordering": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "completed_orders": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "ordered_objects": {
+                    "items": {
+                      "pattern": "^(0|[1-9][0-9]*)$",
+                      "type": "string"
+                    },
+                    "minItems": 2,
+                    "type": "array"
+                  },
+                  "owner": {
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "owner",
+                  "ordered_objects"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "next_order_owner": {
+              "pattern": "^(0|[1-9][0-9]*)$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "completed_orders",
+            "next_order_owner"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "priority": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "none"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "held_by"
+            },
+            "player": {
+              "pattern": "^(0|[1-9][0-9]*)$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "player"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "schema_version": {
+      "const": "magic-shared-execution-observation.v1"
+    },
+    "stack": {
+      "items": {
+        "$ref": "#/$defs/public_stack_item"
+      },
+      "type": "array"
+    },
+    "temporary_effects": {
+      "items": {
+        "$ref": "#/$defs/public_temporary_effect"
+      },
+      "type": "array"
+    },
+    "turn_number": {
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "type": "string"
+    },
+    "turn_position": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "beginning"
+            },
+            "step": {
+              "enum": [
+                "untap",
+                "upkeep",
+                "draw"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "step"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "precombat_main"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "combat"
+            },
+            "step": {
+              "enum": [
+                "beginning_of_combat",
+                "declare_attackers",
+                "declare_blockers",
+                "combat_damage",
+                "end_of_combat"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "step"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "postcombat_main"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "ending"
+            },
+            "step": {
+              "enum": [
+                "end_step",
+                "cleanup"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "step"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "active_player",
+    "turn_number",
+    "turn_position",
+    "priority",
+    "pending_sba_ordering",
+    "mana_pools",
+    "counters",
+    "attachments",
+    "faces",
+    "stack",
+    "temporary_effects"
+  ],
+  "title": "Magic Shared Execution Observation V1",
+  "type": "object"
+}

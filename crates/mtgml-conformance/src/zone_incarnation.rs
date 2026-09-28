@@ -1215,6 +1215,7 @@ fn s2_identity_old_reference_forbidden_sites_reject() {
             controller: P1,
             source_object: Some(OLD_BATTLEFIELD),
             source_ability: None,
+            payload: None,
         },
     );
     stack.zones.stack_order.push(stack_id);
@@ -2261,6 +2262,7 @@ fn s2_rejected_direct_requests_preserve_complete_environment_fingerprint_matrix(
             controller: P1,
             source_object: Some(OLD_BATTLEFIELD),
             source_ability: None,
+            payload: None,
         },
     );
     stack.zones.stack_order.push(stack_id);
@@ -3389,6 +3391,7 @@ fn s2_mutant_old_reference_after_state_rejects() {
             controller: P1,
             source_object: Some(OLD_BATTLEFIELD),
             source_ability: None,
+            payload: None,
         },
     );
     stack_reference.next_state.zones.stack_order.push(stack_id);

@@ -1,6 +1,6 @@
 # Replay and Determinism
 
-**Status:** Replay V7 is current on `master` for the bounded M4.2 Mountain/Plains slice after PR #248; Replay V1–V6 retain exact historical meanings
+**Status:** Replay V8 is current after the G0j activation cut for the bounded M4.2 Mountain/Plains slice; Replay V1–V7 retain exact historical meanings
 **Stability:** provisional-public replay identity; historical versions never reinterpreted
 
 ## Replay identity
@@ -102,12 +102,12 @@ The `magic-m3-observation.v1` payload remains unchanged and contains no combat
 participation. The successor combat payload carries public combat state using
 perspective-local opaque object IDs.
 
-### V7 replay (current on master for bounded M4.2)
+### V7 replay (historical M4.2 predecessor after G0j)
 
-The accepted M4 Semantic Spec allocates Replay V7 and its complete typed
+The accepted M4 Semantic Spec allocated Replay V7 and its complete typed
 manifest, step, recorder, schema-inventory, and initial-environment identity
-family. PR #248 activated it on `master` for the bounded M4.2 Mountain/Plains
-slice; this is not a claim of broader replay or card support. V7 binds FullStateDigestV6 and CheckpointDigestV7, request V3,
+family. PR #248 activated it for the bounded M4.2 Mountain/Plains slice; G0j
+supersedes it while retaining its exact historical meaning. V7 binds FullStateDigestV6 and CheckpointDigestV7, request V3,
 ObservedEventEnvelopeV3, PlayerStepV3, DecisionResponseV2 and the named
 `magic-basic-land-observation.v1` payload. Its semantic contract material
 includes the verified immutable content child. The JSON child is exactly a
@@ -120,14 +120,25 @@ identity. Exact shape, size bounds and mismatch rejection rules are in the
 [accepted M4 Semantic Spec](superpowers/specs/2026-09-26-m4-unified-state-cut-semantic-spec.md).
 
 Replay V6 retains its exact historical non-null-content rejection and all
-existing bytes; it is not expanded to carry content. The Phase-10 integration
-runtime executes Replay V7 by reapplying its external DecisionResponseV2
-sequence through the admitted successor RulesKernel and comparing the complete
-recorded step identities. Recorded observations and events are outputs, never
-control input. Full direct/restore/fork/replay parity across the complete future G0/S1–S7
-conformance matrix remains an implementation obligation. On `master`, Replay V7
-is the current bounded M4.2 writer; Replay V6 is exact historical verification
-only, with semantic execution requiring its archived matching runtime.
+existing bytes; it is not expanded to carry content. Replay V7 is now
+read/verifier-only under ADR 0056; semantic execution requires its archived
+matching runtime.
+
+### V8 replay (current after the G0j activation cut)
+
+Replay V8 binds `FullStateDigestV7`, `CheckpointDigestV8`,
+`InitialEnvironmentIdentityV8`, request V4, `DecisionResponseV3`,
+ObservedEvent V4, PlayerStep V4, and
+`magic-shared-execution-observation.v1`. It re-executes response records through
+the single current V8 environment and never uses observations or observed
+events as commands. The manifest RNG root seed must equal the seed in the
+admitted initial state. A replay cannot continue after a terminal or truncated
+episode status.
+
+The recorder validates each appended step against its validated prefix's final
+identity. Export revalidates the complete replay at the artifact boundary.
+G0j parity covers only the preserved M4.2 basic-land slice and does not admit
+broader card or deck support.
 
 `FullStateDigestV4`, Checkpoint V5 and Replay V5 retain their exact historical
 meaning and bytes. V4 digest and V5 checkpoint/replay artifacts are never

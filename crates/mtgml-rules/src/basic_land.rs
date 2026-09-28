@@ -75,6 +75,18 @@ pub struct BasicLandTransitionProductV1 {
     pub status: EpisodeStatus,
 }
 
+/// Shared mutation draft used by the V7 historical adapter and the current
+/// V8 bridge. It carries no V2 delta or digest product; each API boundary
+/// emits only its own accepted contract family.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct BasicLandTransitionDraftV1 {
+    pub next_state: EngineStatePartsV2,
+    pub operations: Vec<SemanticDeltaOperationV2>,
+    pub events: Vec<AuthoritativeRuleEventV2>,
+    pub next_decision_actor: PlayerId,
+    pub status: EpisodeStatus,
+}
+
 /// Authoritative public facts emitted by this bounded transition slice.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuthoritativeRuleEventV2 {
@@ -270,6 +282,66 @@ pub fn execute_basic_land_response(
 ) -> Result<BasicLandTransitionProductV1, BasicLandTransitionError> {
     let decision = selected_successor_decision(admission, state, actor, response, status)
         .map_err(|_| BasicLandTransitionError::InvalidSelection)?;
+    let pending_decision = state
+        .execution_v3
+        .pending_decision
+        .as_ref()
+        .ok_or(BasicLandTransitionError::InvalidSelection)?
+        .decision_id;
+    let mut draft = execute_basic_land_decision_draft(
+        admission,
+        state,
+        actor,
+        pending_decision,
+        decision,
+        status,
+    )?;
+    let next_decision = install_basic_land_request(
+        admission,
+        &mut draft.next_state,
+        draft.next_decision_actor,
+        status,
+    )
+    .map_err(|_| BasicLandTransitionError::InvalidResult)?;
+    draft.operations.push(SemanticDeltaOperationV2::Existing {
+        operation: Box::new(mtgml_state::SemanticDeltaOperation::DecisionCreated {
+            decision: next_decision.decision_id,
+        }),
+    });
+    push_successor_event(
+        &mut draft.next_state,
+        &mut draft.events,
+        AuthoritativeRuleEventKindV2::DecisionCreated {
+            decision: next_decision.decision_id,
+        },
+    )?;
+    draft
+        .next_state
+        .validate()
+        .map_err(|_| BasicLandTransitionError::InvalidResult)?;
+    let delta = StateDeltaV2::between(state, &draft.next_state, draft.operations)
+        .map_err(|_| BasicLandTransitionError::Delta)?;
+    Ok(BasicLandTransitionProductV1 {
+        accepted: true,
+        next_state: draft.next_state,
+        delta,
+        events: draft.events,
+        next_decision: Some(next_decision),
+        status: draft.status,
+    })
+}
+
+pub(crate) fn execute_basic_land_decision_draft(
+    admission: &ExecutableProfileAdmissionV1,
+    state: &EngineStatePartsV2,
+    actor: PlayerId,
+    pending_decision_id: mtgml_model::DecisionId,
+    decision: SelectedSuccessorDecisionV1,
+    status: &EpisodeStatus,
+) -> Result<BasicLandTransitionDraftV1, BasicLandTransitionError> {
+    state
+        .validate()
+        .map_err(|_| BasicLandTransitionError::InvalidResult)?;
     let old_revision = state.predecessor_v5.revision;
     let next_revision = mtgml_model::StateRevision(
         old_revision
@@ -277,17 +349,13 @@ pub fn execute_basic_land_response(
             .checked_add(1)
             .ok_or(BasicLandTransitionError::IdentityExhausted)?,
     );
-    let pending = state
-        .execution_v3
-        .pending_decision
-        .as_ref()
-        .ok_or(BasicLandTransitionError::InvalidSelection)?;
     let mut next = state.clone();
     next.predecessor_v5.revision = next_revision;
     next.execution_v3.pending_decision = None;
+    let mut next_decision_actor = actor;
     let mut operations = vec![SemanticDeltaOperationV2::Existing {
         operation: Box::new(mtgml_state::SemanticDeltaOperation::DecisionCleared {
-            decision: pending.decision_id,
+            decision: pending_decision_id,
         }),
     }];
     let mut events = Vec::new();
@@ -295,7 +363,7 @@ pub fn execute_basic_land_response(
         &mut next,
         &mut events,
         AuthoritativeRuleEventKindV2::DecisionCleared {
-            decision: pending.decision_id,
+            decision: pending_decision_id,
         },
     )?;
 
@@ -333,21 +401,7 @@ pub fn execute_basic_land_response(
                             to: to_priority,
                         },
                     )?;
-                    let next_request =
-                        install_basic_land_request(admission, &mut next, other, status)
-                            .map_err(|_| BasicLandTransitionError::InvalidResult)?;
-                    operations.push(SemanticDeltaOperationV2::Existing {
-                        operation: Box::new(mtgml_state::SemanticDeltaOperation::DecisionCreated {
-                            decision: next_request.decision_id,
-                        }),
-                    });
-                    push_successor_event(
-                        &mut next,
-                        &mut events,
-                        AuthoritativeRuleEventKindV2::DecisionCreated {
-                            decision: next_request.decision_id,
-                        },
-                    )?;
+                    next_decision_actor = other;
                 }
                 mtgml_state::PriorityState::HeldBy {
                     player,
@@ -439,21 +493,7 @@ pub fn execute_basic_land_response(
                             }
                         }
                     }
-                    let next_request =
-                        install_basic_land_request(admission, &mut next, next_actor, status)
-                            .map_err(|_| BasicLandTransitionError::InvalidResult)?;
-                    operations.push(SemanticDeltaOperationV2::Existing {
-                        operation: Box::new(mtgml_state::SemanticDeltaOperation::DecisionCreated {
-                            decision: next_request.decision_id,
-                        }),
-                    });
-                    push_successor_event(
-                        &mut next,
-                        &mut events,
-                        AuthoritativeRuleEventKindV2::DecisionCreated {
-                            decision: next_request.decision_id,
-                        },
-                    )?;
+                    next_decision_actor = next_actor;
                 }
                 _ => return Err(BasicLandTransitionError::InvalidSelection),
             }
@@ -462,17 +502,13 @@ pub fn execute_basic_land_response(
             // transaction. The active player receives priority at the next
             // temporal position; callers never observe Running without a
             // pending decision.
-            let next_request = next.execution_v3.pending_decision.clone();
             next.validate()
                 .map_err(|_| BasicLandTransitionError::InvalidResult)?;
-            let delta = StateDeltaV2::between(state, &next, operations)
-                .map_err(|_| BasicLandTransitionError::Delta)?;
-            return Ok(BasicLandTransitionProductV1 {
-                accepted: true,
+            return Ok(BasicLandTransitionDraftV1 {
                 next_state: next,
-                delta,
+                operations,
                 events,
-                next_decision: next_request,
+                next_decision_actor,
                 status: status.clone(),
             });
         }
@@ -1010,33 +1046,13 @@ pub fn execute_basic_land_response(
         }
     }
 
-    // Candidate requests are state, not backend cache. Both bounded actions
-    // leave priority with the actor, so the next exact request is installed
-    // before the transaction can be committed.
-    let next_request = install_basic_land_request(admission, &mut next, actor, status)
-        .map_err(|_| BasicLandTransitionError::InvalidResult)?;
-    operations.push(SemanticDeltaOperationV2::Existing {
-        operation: Box::new(mtgml_state::SemanticDeltaOperation::DecisionCreated {
-            decision: next_request.decision_id,
-        }),
-    });
-    push_successor_event(
-        &mut next,
-        &mut events,
-        AuthoritativeRuleEventKindV2::DecisionCreated {
-            decision: next_request.decision_id,
-        },
-    )?;
     next.validate()
         .map_err(|_| BasicLandTransitionError::InvalidResult)?;
-    let delta = StateDeltaV2::between(state, &next, operations)
-        .map_err(|_| BasicLandTransitionError::Delta)?;
-    Ok(BasicLandTransitionProductV1 {
-        accepted: true,
+    Ok(BasicLandTransitionDraftV1 {
         next_state: next,
-        delta,
+        operations,
         events,
-        next_decision: Some(next_request),
+        next_decision_actor,
         status: status.clone(),
     })
 }
@@ -1645,6 +1661,260 @@ mod tests {
             })
             .collect::<Vec<_>>();
         CandidateOrderingV2::validate_public(&visible).unwrap();
+    }
+
+    #[test]
+    fn v4_priority_domain_reuses_exact_m42_candidate_order_and_bindings() {
+        let admission = admission();
+        let v2 = state_with_two_lands();
+        let mut state = mtgml_state::EngineStatePartsV3::new(
+            v2.predecessor_v5,
+            Default::default(),
+            v2.card_rules_state,
+        )
+        .unwrap();
+        let candidates = crate::derive_basic_land_candidates_v4(
+            &admission,
+            &state,
+            PlayerId(1),
+            &EpisodeStatus::Running,
+        )
+        .unwrap();
+        assert_eq!(candidates.len(), 4);
+        assert!(matches!(
+            candidates[0].visible_intent,
+            mtgml_decision::CandidateIntentV4::PassPriority
+        ));
+        assert!(matches!(
+            candidates[1].visible_intent,
+            mtgml_decision::CandidateIntentV4::PlayLand { .. }
+        ));
+        assert!(matches!(
+            candidates[2].visible_intent,
+            mtgml_decision::CandidateIntentV4::PlayLand { .. }
+        ));
+        assert!(matches!(
+            candidates[3].visible_intent,
+            mtgml_decision::CandidateIntentV4::ActivateAbility { .. }
+        ));
+
+        let request = crate::install_basic_land_request_v4(
+            &admission,
+            &mut state,
+            PlayerId(1),
+            &EpisodeStatus::Running,
+        )
+        .unwrap();
+        assert!(state.validate().is_err());
+        state.validate_structure().unwrap();
+        crate::validate_basic_land_pending_request_v4(&admission, &state, &EpisodeStatus::Running)
+            .unwrap();
+
+        let response = mtgml_decision::DecisionResponseV3 {
+            schema_version: mtgml_decision::DECISION_RESPONSE_V3_SCHEMA.to_owned(),
+            player_decision_id: request.player_decision_id,
+            view_sequence: request.view_sequence,
+            answer: mtgml_decision::DecisionAnswerV2::SelectOne {
+                candidate_id: mtgml_model::CandidateIdV1(1),
+            },
+        };
+        assert!(matches!(
+            crate::selected_basic_land_action_v4(
+                &admission,
+                &state,
+                PlayerId(1),
+                &response,
+                &EpisodeStatus::Running,
+            ),
+            Ok(SelectedSuccessorDecisionV1::MagicAction(
+                MagicActionRequestV1::PlayLand { .. }
+            ))
+        ));
+        let transition = crate::execute_basic_land_response_v4(
+            &admission,
+            &state,
+            PlayerId(1),
+            &response,
+            &EpisodeStatus::Running,
+        )
+        .unwrap();
+        assert!(transition.accepted);
+        transition.next_state.validate_structure().unwrap();
+        assert_eq!(
+            transition.delta.apply_structural_only(&state).unwrap(),
+            transition.next_state
+        );
+        let stale = mtgml_decision::DecisionResponseV3 {
+            view_sequence: mtgml_model::VisibleSequence(request.view_sequence.0 + 1),
+            ..response
+        };
+        assert!(crate::selected_basic_land_action_v4(
+            &admission,
+            &state,
+            PlayerId(1),
+            &stale,
+            &EpisodeStatus::Running,
+        )
+        .is_err());
+        let before_rejected = state.clone();
+        assert!(crate::execute_basic_land_response_v4(
+            &admission,
+            &state,
+            PlayerId(1),
+            &stale,
+            &EpisodeStatus::Running,
+        )
+        .is_err());
+        assert_eq!(state, before_rejected);
+    }
+
+    #[test]
+    fn v4_mana_ability_transition_preserves_atomic_tap_and_pool_outcome() {
+        let admission = admission();
+        let v2 = state_with_two_lands();
+        let mut state = mtgml_state::EngineStatePartsV3::new(
+            v2.predecessor_v5,
+            Default::default(),
+            v2.card_rules_state,
+        )
+        .unwrap();
+        let request = crate::install_basic_land_request_v4(
+            &admission,
+            &mut state,
+            PlayerId(1),
+            &EpisodeStatus::Running,
+        )
+        .unwrap();
+        let response = mtgml_decision::DecisionResponseV3 {
+            schema_version: mtgml_decision::DECISION_RESPONSE_V3_SCHEMA.to_owned(),
+            player_decision_id: request.player_decision_id,
+            view_sequence: request.view_sequence,
+            answer: mtgml_decision::DecisionAnswerV2::SelectOne {
+                candidate_id: mtgml_model::CandidateIdV1(3),
+            },
+        };
+        let transition = crate::execute_basic_land_response_v4(
+            &admission,
+            &state,
+            PlayerId(1),
+            &response,
+            &EpisodeStatus::Running,
+        )
+        .unwrap();
+        assert!(transition.accepted);
+        let source = match request.candidates[3].trusted_binding {
+            mtgml_decision::EngineCandidateBindingV4::ActivateAbility { ability } => {
+                state.card_rules_state.abilities.by_instance[&ability].source
+            }
+            _ => panic!("candidate 3 is the intrinsic mana ability"),
+        };
+        assert!(transition.next_state.predecessor_v5.zones.objects[&source].tapped);
+        assert_eq!(
+            transition.next_state.card_rules_state.mana.pools[&PlayerId(1)].unrestricted[3],
+            1
+        );
+        assert_eq!(
+            transition.delta.apply_structural_only(&state).unwrap(),
+            transition.next_state
+        );
+    }
+
+    #[test]
+    fn v4_pass_priority_preserves_actor_transfer_and_next_request() {
+        let admission = admission();
+        let v2 = state_with_two_lands();
+        let mut state = mtgml_state::EngineStatePartsV3::new(
+            v2.predecessor_v5,
+            Default::default(),
+            v2.card_rules_state,
+        )
+        .unwrap();
+        let request = crate::install_basic_land_request_v4(
+            &admission,
+            &mut state,
+            PlayerId(1),
+            &EpisodeStatus::Running,
+        )
+        .unwrap();
+        let response = mtgml_decision::DecisionResponseV3 {
+            schema_version: mtgml_decision::DECISION_RESPONSE_V3_SCHEMA.to_owned(),
+            player_decision_id: request.player_decision_id,
+            view_sequence: request.view_sequence,
+            answer: mtgml_decision::DecisionAnswerV2::SelectOne {
+                candidate_id: mtgml_model::CandidateIdV1(0),
+            },
+        };
+        let transition = crate::execute_basic_land_response_v4(
+            &admission,
+            &state,
+            PlayerId(1),
+            &response,
+            &EpisodeStatus::Running,
+        )
+        .unwrap();
+        assert!(transition.accepted);
+        assert!(matches!(
+            transition.next_state.predecessor_v5.core.priority,
+            mtgml_state::PriorityState::HeldBy {
+                player: PlayerId(2),
+                consecutive_passes: 1,
+            }
+        ));
+        assert_eq!(
+            transition.next_decision.as_ref().unwrap().actor,
+            PlayerId(2)
+        );
+        transition.next_state.validate_structure().unwrap();
+    }
+
+    #[test]
+    fn v4_basic_land_admission_rejects_structural_but_unsupported_cast_action() {
+        let admission = admission();
+        let v2 = state_with_two_lands();
+        let mut state = mtgml_state::EngineStatePartsV3::new(
+            v2.predecessor_v5,
+            Default::default(),
+            v2.card_rules_state,
+        )
+        .unwrap();
+        let request = crate::install_basic_land_request_v4(
+            &admission,
+            &mut state,
+            PlayerId(1),
+            &EpisodeStatus::Running,
+        )
+        .unwrap();
+        let land_object = match request.candidates[1].trusted_binding {
+            mtgml_decision::EngineCandidateBindingV4::PlayLand { object } => object,
+            _ => panic!("candidate 1 is a legal PlayLand"),
+        };
+        let opaque_object = state.predecessor_v5.perspective_identities.players[&PlayerId(1)]
+            .object_to_opaque[&land_object];
+        let mut forged = request;
+        forged.candidates.insert(
+            3,
+            mtgml_decision::AuthoritativeCandidateV4 {
+                candidate_id: mtgml_model::CandidateIdV1(3),
+                visible_intent: mtgml_decision::CandidateIntentV4::CastSpell {
+                    object: opaque_object,
+                },
+                trusted_binding: mtgml_decision::EngineCandidateBindingV4::CastSpell {
+                    object: land_object,
+                },
+            },
+        );
+        for (index, candidate) in forged.candidates.iter_mut().enumerate() {
+            candidate.candidate_id = mtgml_model::CandidateIdV1(index as u32);
+        }
+        forged.project_player_request().unwrap();
+        state.execution_v4.pending_decision = Some(forged);
+        state.validate_structure().unwrap();
+        assert!(crate::validate_basic_land_pending_request_v4(
+            &admission,
+            &state,
+            &EpisodeStatus::Running,
+        )
+        .is_err());
     }
 
     #[test]

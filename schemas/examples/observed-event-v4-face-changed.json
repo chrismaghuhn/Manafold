@@ -1,0 +1,9 @@
+{
+  "event": {
+    "face": "back",
+    "kind": "object_face_changed",
+    "object": "7"
+  },
+  "schema_version": "observed-event-envelope.v4",
+  "sequence": "17"
+}
