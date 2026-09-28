@@ -1,0 +1,10 @@
+{
+  "event": {
+    "from": 20,
+    "kind": "life_changed",
+    "player": "1",
+    "to": 19
+  },
+  "schema_version": "observed-event-envelope.v4",
+  "sequence": "10"
+}

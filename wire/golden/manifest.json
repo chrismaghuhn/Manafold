@@ -255,6 +255,50 @@
     {
       "contract": "player-step.v4",
       "path": "player-step-v4.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "path": "observed-event-v4-object-ceased.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "path": "observed-event-v4-life-changed.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "path": "observed-event-v4-object-tapped.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "path": "observed-event-v4-decision-available.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "path": "observed-event-v4-random-outcome.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "path": "observed-event-v4-public-outcome.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "path": "observed-event-v4-counters-changed.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "path": "observed-event-v4-attachment-changed.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "path": "observed-event-v4-face-changed.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "path": "observed-event-v4-mana-produced.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "path": "observed-event-v4-mana-emptied.json"
     }
   ]
 }

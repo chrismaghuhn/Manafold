@@ -1,0 +1,10 @@
+{
+  "event": {
+    "kind": "attachment_changed",
+    "new_target": "7",
+    "old_target": null,
+    "source": "4"
+  },
+  "schema_version": "observed-event-envelope.v4",
+  "sequence": "16"
+}
