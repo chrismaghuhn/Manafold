@@ -81,7 +81,6 @@ pub use mtgml_model::{CheckpointCodecIdentity, EnvironmentLimitCounters};
 pub use player_projection::{
     project_magic_basic_land_observation_v1, project_successor_information_state,
     project_successor_information_state_v3,
-    project_successor_information_state_v3_after_rules_domain_validation,
 };
 // Task 3 generated catalog module: unconditional compile surface — it is the
 // production input Task 8 consumes. Only the KAT is test-only.

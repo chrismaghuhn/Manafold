@@ -61,7 +61,7 @@ impl FullStateDigestInputV7 {
     /// transaction has independently rederived and accepted the exact
     /// profile-dependent Decision domain. This is a canonical encoder, not a
     /// state-admission API; generic callers must use `from_successor`.
-    pub fn from_successor_after_rules_domain_validation(
+    pub(crate) fn from_successor_structural_only(
         state: &EngineStatePartsV3,
     ) -> Result<Self, crate::StateDigestError> {
         state

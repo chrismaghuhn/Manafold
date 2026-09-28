@@ -122,13 +122,13 @@ accepted persisted semantic codec.
 
 The detached V3 semantic digest mapping is specified in [`../STATE_HASHING.md`](../STATE_HASHING.md).
 
-## V5 state and V6 checkpoint/replay identity (historical after M4.2 activation)
+## V5 state and V6 checkpoint/replay identity (historical)
 
 ADR 0055 introduced `ExecutionIdentityV1` as the resumable checkpoint
 identity. S3.P0 added authoritative Magic SBA-order continuation state, making
 `FullStateDigestV5` the current identity at that historical cut. PR #248 later
 activated the M4 successor; `FullStateDigestV5` is now exact historical
-verification only, and V6 is current on `master`. The detached V4 codec keeps
+verification only, and V6 became historical after G0j. The detached V4 codec keeps
 its exact historical meaning and rejects the Magic continuation.
 
 `EnvironmentCheckpointV6` carries `FullStateDigestV5`,
@@ -154,7 +154,7 @@ included in the then-current V5 full-state identity, and preserved by V6
 checkpoints. PR #248 later activated the V6/V7 M4 successor on `master`. A blocked attacker remains blocked when its live
 blocker reference is absent.
 
-## Accepted M4 state successor (current on master for bounded M4.2)
+## Historical M4 state successor (PR #248)
 
 The accepted M4 state-cut Semantic Spec defines the next current EngineState
 shape with exactly six additional closed authoritative families:
@@ -162,13 +162,22 @@ shape with exactly six additional closed authoritative families:
 `FaceState`, and `AbilityAuthorityState`. Their owners, invariants, lifecycle,
 cross-family validation, and external content-catalog joins are frozen in the
 [Semantic Spec](../superpowers/specs/2026-09-26-m4-unified-state-cut-semantic-spec.md).
-PR #248 crossed the plan's final activation boundary on `master` for the
-bounded M4.2 Mountain/Plains slice. These families are current state fields
-within that slice; their presence does not claim broader card/deck support.
+PR #248 crossed the plan's final activation boundary for the bounded M4.2
+Mountain/Plains slice. These families remain part of the preserved state
+substrate; their presence does not claim broader card/deck support.
 
-That state uses `FullStateDigestV6`, `StateDeltaV2`, and
-`EngineStatePartsV2`; the checkpoint, replay, decision, event, and PlayerStep
-successors were coupled and activated as specified by PR #248. FullStateDigestV5
-and its checkpoint/replay family are historical verification only. No
-historical checkpoint or digest is reinterpreted; current runtime admission
-remains bounded to the accepted M4.2 slice.
+That historical state used `FullStateDigestV6`, `StateDeltaV2`, and
+`EngineStatePartsV2`. G0j supersedes its writer family without changing its
+historical meaning or fixtures.
+
+## Current G0 state closure (G0j)
+
+The current authoritative aggregate is `EngineStatePartsV3`, with
+`ExecutionStateV4`, `PersistedExecutionV4`, `zones_v2`, typed stack records,
+and typed continuation/effect/trigger authority. `StateDeltaV3` and
+`AuthoritativeRuleEventV3` describe current transition products;
+`FullStateDigestV7` binds the complete aggregate. `EnvironmentCheckpointV8`
+and Replay V8 bind the successor digest and product identities. The current
+runtime's executable admission remains the exact previously accepted M4.2
+Mountain/Plains slice; this contract change does not implement G0 Shared
+capabilities or broaden card support.

@@ -52,7 +52,8 @@ impl BasicLandEnvironmentRuntimeV8 {
         limit_counters: EnvironmentLimitCounters,
         manifest: ReplayManifestV8,
     ) -> Result<Self, ControllerError> {
-        verify_manifest_admission(&admission, &manifest)?;
+        let root_seed = state.predecessor_v5.random.root_seed.to_lower_hex();
+        verify_manifest_admission(&admission, &manifest, &root_seed)?;
         let checkpoint = EnvironmentCheckpointV8::new_for_basic_land_profile(
             &admission,
             state,
@@ -171,7 +172,7 @@ impl BasicLandEnvironmentRuntimeV8 {
             &self.status,
         )
         .map_err(|_| crate::PlayerEndpointError::ServiceUnavailable)?;
-        crate::project_successor_information_state_v3_after_rules_domain_validation(
+        crate::player_projection::project_successor_information_state_v3_structural_only(
             &self.state,
             perspective,
             self.admission.execution_identity(),
@@ -241,7 +242,7 @@ impl BasicLandEnvironmentRuntimeV8 {
                 .as_ref()
                 .ok_or(crate::PlayerEndpointError::ServiceUnavailable)?;
             let applied = delta
-                .apply_after_rules_domain_validation(&self.state)
+                .apply_structural_only(&self.state)
                 .map_err(|_| crate::PlayerEndpointError::ServiceUnavailable)?;
             if applied != next_state {
                 return Err(crate::PlayerEndpointError::ServiceUnavailable);
@@ -293,37 +294,38 @@ impl BasicLandEnvironmentRuntimeV8 {
         )
         .map_err(|_| crate::PlayerEndpointError::ServiceUnavailable)?;
 
-        let mut replay = self.replay.clone();
-        if accepted {
+        let replay_step = if accepted {
             let transition = transition
                 .as_ref()
                 .ok_or(crate::PlayerEndpointError::ServiceUnavailable)?;
-            let step_index = u64::try_from(replay.step_count())
+            let step_index = u64::try_from(self.replay.step_count())
                 .map_err(|_| crate::PlayerEndpointError::ServiceUnavailable)?;
-            replay
-                .append(ReplayStepV8 {
-                    step_index,
-                    actor: perspective,
-                    checkpoint_digest_before: before.checkpoint_digest.clone(),
-                    state_revision_before: before.state.predecessor_v5.revision,
-                    response,
-                    accepted: true,
-                    state_revision_after: checkpoint.state.predecessor_v5.revision,
-                    full_state_digest_after: checkpoint.state_digest.clone(),
-                    episode_status_after: checkpoint.status.clone(),
-                    environment_limit_counters_after: checkpoint.limit_counters.clone(),
-                    checkpoint_digest_after: checkpoint.checkpoint_digest.clone(),
-                })
-                .map_err(|_| crate::PlayerEndpointError::ServiceUnavailable)?;
-            replay
-                .export()
-                .map_err(|_| crate::PlayerEndpointError::ServiceUnavailable)?;
+            let step = ReplayStepV8 {
+                step_index,
+                actor: perspective,
+                checkpoint_digest_before: before.checkpoint_digest.clone(),
+                state_revision_before: before.state.predecessor_v5.revision,
+                response,
+                accepted: true,
+                state_revision_after: checkpoint.state.predecessor_v5.revision,
+                full_state_digest_after: checkpoint.state_digest.clone(),
+                episode_status_after: checkpoint.status.clone(),
+                environment_limit_counters_after: checkpoint.limit_counters.clone(),
+                checkpoint_digest_after: checkpoint.checkpoint_digest.clone(),
+            };
             let _ = transition;
+            Some(step)
+        } else {
+            None
+        };
+        if let Some(step) = replay_step {
+            self.replay
+                .append(step)
+                .map_err(|_| crate::PlayerEndpointError::ServiceUnavailable)?;
         }
         self.state = next_state.clone();
         self.status = status;
         self.limit_counters = checkpoint.limit_counters.clone();
-        self.replay = replay;
         Ok(BasicLandRuntimeOutputV8 {
             accepted,
             next_state,
@@ -343,7 +345,14 @@ impl BasicLandEnvironmentRuntimeV8 {
         replay: AuthoritativeReplayV8,
     ) -> Result<BasicLandReplayV8ExecutionReport, ControllerError> {
         replay.validate()?;
-        verify_manifest_admission(&self.admission, &replay.manifest)?;
+        let root_seed = self
+            .replay_origin
+            .state
+            .predecessor_v5
+            .random
+            .root_seed
+            .to_lower_hex();
+        verify_manifest_admission(&self.admission, &replay.manifest, &root_seed)?;
         if replay.manifest.initial_identity != identity(&self.replay_origin) {
             return Err(crate::ReplayExecutionError::ManifestMismatch.into());
         }
@@ -456,9 +465,11 @@ fn checked_add(value: u64) -> Result<u64, crate::PlayerEndpointError> {
 fn verify_manifest_admission(
     admission: &ExecutableProfileAdmissionV1,
     manifest: &ReplayManifestV8,
+    state_root_seed: &str,
 ) -> Result<(), ControllerError> {
     manifest.validate()?;
-    if manifest.execution_identity != *admission.execution_identity()
+    if manifest.randomness.root_seed_hex != state_root_seed
+        || manifest.execution_identity != *admission.execution_identity()
         || manifest.semantic_contract.semantic_contract_id != *admission.semantic_contract_id()
         || manifest.semantic_contract.manifest != *admission.semantic_contract_manifest()
         || manifest.semantic_contract.rules_manifest != *admission.rules_contract_manifest()
@@ -750,6 +761,12 @@ mod tests {
         manifest.decks.push(player_two);
         manifest.rules_snapshot = RULES_SNAPSHOT.to_owned();
         manifest.card_bundle = admission.content_contract_id().to_string();
+        manifest.randomness.root_seed_hex = checkpoint
+            .state
+            .predecessor_v5
+            .random
+            .root_seed
+            .to_lower_hex();
         manifest.initial_identity = identity(checkpoint);
         manifest
     }
@@ -888,6 +905,126 @@ mod tests {
         assert!(!rejected_output.accepted);
         assert_eq!(rejected_output.checkpoint, before_reject);
         assert_eq!(restored.export_replay().unwrap().steps.len(), 1);
+    }
+
+    #[test]
+    fn runtime_rejects_manifest_with_a_different_rng_root_seed() {
+        let initial_admission = admission();
+        let mut state = state_with_two_lands();
+        let status = EpisodeStatus::Running;
+        mtgml_rules::install_basic_land_request_v4(
+            &initial_admission,
+            &mut state,
+            PlayerId(1),
+            &status,
+        )
+        .unwrap();
+        let checkpoint = EnvironmentCheckpointV8::new_for_basic_land_profile(
+            &initial_admission,
+            state.clone(),
+            status.clone(),
+            EnvironmentLimitCounters::default(),
+            initial_admission.execution_identity().clone(),
+        )
+        .unwrap();
+        let mut manifest = v8_manifest(&initial_admission, &checkpoint);
+        manifest.randomness.root_seed_hex = "00".repeat(32);
+
+        assert!(BasicLandEnvironmentRuntimeV8::new(
+            initial_admission,
+            state,
+            status,
+            EnvironmentLimitCounters::default(),
+            manifest,
+        )
+        .is_err());
+
+        let admission = admission();
+        let mut state = state_with_two_lands();
+        mtgml_rules::install_basic_land_request_v4(
+            &admission,
+            &mut state,
+            PlayerId(1),
+            &EpisodeStatus::Running,
+        )
+        .unwrap();
+        let checkpoint = EnvironmentCheckpointV8::new_for_basic_land_profile(
+            &admission,
+            state.clone(),
+            EpisodeStatus::Running,
+            EnvironmentLimitCounters::default(),
+            admission.execution_identity().clone(),
+        )
+        .unwrap();
+        let runtime = BasicLandEnvironmentRuntimeV8::new(
+            admission.clone(),
+            state,
+            EpisodeStatus::Running,
+            EnvironmentLimitCounters::default(),
+            v8_manifest(&admission, &checkpoint),
+        )
+        .unwrap();
+        let mut replay = runtime.export_replay().unwrap();
+        replay.manifest.randomness.root_seed_hex = "00".repeat(32);
+        assert!(replay.validate().is_ok());
+        assert!(runtime.execute_replay(replay).is_err());
+    }
+
+    #[test]
+    fn structural_digest_helpers_do_not_admit_forged_profile_decisions() {
+        let admission = admission();
+        let mut state = state_with_two_lands();
+        mtgml_rules::install_basic_land_request_v4(
+            &admission,
+            &mut state,
+            PlayerId(1),
+            &EpisodeStatus::Running,
+        )
+        .unwrap();
+        let request = state.execution_v4.pending_decision.clone().unwrap();
+        let land_object = match request.candidates[1].trusted_binding {
+            mtgml_decision::EngineCandidateBindingV4::PlayLand { object } => object,
+            _ => panic!("candidate 1 is the legal PlayLand"),
+        };
+        let opaque_object = state.predecessor_v5.perspective_identities.players[&PlayerId(1)]
+            .object_to_opaque[&land_object];
+        let mut forged = request;
+        forged.candidates.insert(
+            3,
+            mtgml_decision::AuthoritativeCandidateV4 {
+                candidate_id: mtgml_model::CandidateIdV1(3),
+                visible_intent: mtgml_decision::CandidateIntentV4::CastSpell {
+                    object: opaque_object,
+                },
+                trusted_binding: mtgml_decision::EngineCandidateBindingV4::CastSpell {
+                    object: land_object,
+                },
+            },
+        );
+        for (index, candidate) in forged.candidates.iter_mut().enumerate() {
+            candidate.candidate_id = mtgml_model::CandidateIdV1(index as u32);
+        }
+        forged.project_player_request().unwrap();
+        state.execution_v4.pending_decision = Some(forged);
+
+        state.validate_structure().unwrap();
+        mtgml_state::calculate_full_state_digest_v7_structural_only(&state).unwrap();
+        assert!(state.validate().is_err());
+        assert!(EnvironmentCheckpointV8::new(
+            state.clone(),
+            EpisodeStatus::Running,
+            EnvironmentLimitCounters::default(),
+            admission.execution_identity().clone(),
+        )
+        .is_err());
+        assert!(EnvironmentCheckpointV8::new_for_basic_land_profile(
+            &admission,
+            state,
+            EpisodeStatus::Running,
+            EnvironmentLimitCounters::default(),
+            admission.execution_identity().clone(),
+        )
+        .is_err());
     }
 
     #[test]
@@ -1270,10 +1407,7 @@ mod tests {
         }
         assert!(old.transition.next_state.full_state_digest_v6().is_ok());
         assert!(
-            mtgml_state::calculate_full_state_digest_v7_after_rules_domain_validation(
-                &new.next_state
-            )
-            .is_ok()
+            mtgml_state::calculate_full_state_digest_v7_structural_only(&new.next_state).is_ok()
         );
 
         let old_before_rejection = v7.checkpoint().unwrap();

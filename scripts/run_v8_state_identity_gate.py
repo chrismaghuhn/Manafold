@@ -126,6 +126,18 @@ def main() -> None:
             if token in content:
                 failures.append(f"{relative}: current consumer still uses {token}")
 
+    v8_rules_bridge = (ROOT / "crates/mtgml-rules/src/basic_land_v4.rs").read_text(encoding="utf-8")
+    for token in (
+        "execute_basic_land_response(",
+        "StateDeltaV2::between(",
+        "DecisionResponseV2",
+        "AuthoritativeDecisionRequestV3",
+        "request_v3_from_v4",
+        "request_v4_from_v3",
+    ):
+        if token in v8_rules_bridge:
+            failures.append(f"V8 Rules bridge still produces predecessor transition value {token}")
+
     environment_lib = (ROOT / "crates/mtgml-environment/src/lib.rs").read_text(encoding="utf-8")
     successor_cut_requirements = (
         '#[cfg(any(test, feature = "historical-conformance-runtime"))]\n'
@@ -143,6 +155,58 @@ def main() -> None:
     for required in successor_cut_requirements:
         if required not in environment_lib:
             failures.append("environment default authority does not select the V8/V4 G0 path")
+
+    rules_lib = (ROOT / "crates/mtgml-rules/src/lib.rs").read_text(encoding="utf-8")
+    historical_program_export = (
+        '#[cfg(any(test, feature = "historical-runtime-testkit"))]\n'
+        "pub use program_kernel::{ProgramKernelConstructionErrorV1, ProgramKernelV1};"
+    )
+    if historical_program_export not in rules_lib:
+        failures.append(
+            "the V2 ProgramKernel executable API is not isolated as historical/test-only"
+        )
+
+    restricted_structural_surfaces = (
+        (
+            "crates/mtgml-state/src/delta_v3.rs",
+            "#[doc(hidden)]\n    pub fn between_structural_only",
+        ),
+        (
+            "crates/mtgml-state/src/delta_v3.rs",
+            "#[doc(hidden)]\n    pub fn apply_structural_only",
+        ),
+        (
+            "crates/mtgml-state/src/digest_v7.rs",
+            "#[doc(hidden)]\npub fn calculate_full_state_digest_v7_structural_only",
+        ),
+        (
+            "crates/mtgml-environment/src/checkpoint_v8.rs",
+            "    fn validate_structural_only(",
+        ),
+        (
+            "crates/mtgml-environment/src/player_projection.rs",
+            "pub(crate) fn project_successor_information_state_v3_structural_only",
+        ),
+        (
+            "crates/mtgml-rules/src/events_v3.rs",
+            "pub(crate) fn validate_event_delta_state_v3_structural_only",
+        ),
+    )
+    for relative, token in restricted_structural_surfaces:
+        if token not in (ROOT / relative).read_text(encoding="utf-8"):
+            failures.append(f"structural-only helper is not explicitly restricted: {relative}")
+    for relative, token in (
+        (
+            "crates/mtgml-environment/src/lib.rs",
+            "project_successor_information_state_v3_structural_only",
+        ),
+        (
+            "crates/mtgml-rules/src/lib.rs",
+            "validate_event_delta_state_v3_structural_only",
+        ),
+    ):
+        if token in (ROOT / relative).read_text(encoding="utf-8"):
+            failures.append(f"structural-only helper leaks through a public re-export: {relative}")
 
     for relative in (
         "crates/mtgml-environment/src/controller.rs",

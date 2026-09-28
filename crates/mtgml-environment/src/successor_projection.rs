@@ -982,7 +982,7 @@ pub fn project_successor_player_steps_v4(
     let mut steps = BTreeMap::new();
     for perspective in players {
         let information_state = if authority.basic_land_admission.is_some() {
-            crate::project_successor_information_state_v3_after_rules_domain_validation(
+            crate::player_projection::project_successor_information_state_v3_structural_only(
                 transition.after,
                 perspective,
                 authority.execution_identity,

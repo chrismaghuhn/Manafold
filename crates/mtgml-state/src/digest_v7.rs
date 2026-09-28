@@ -18,10 +18,10 @@ pub fn canonical_state_bytes_v7(state: &EngineStatePartsV3) -> Result<Vec<u8>, S
 /// Canonicalizes a structurally valid state after a RulesKernel-owned exact
 /// profile-domain check at the containing runtime boundary. This encoder does
 /// not itself prove or admit a Decision domain.
-pub fn canonical_state_bytes_v7_after_rules_domain_validation(
+pub(crate) fn canonical_state_bytes_v7_structural_only(
     state: &EngineStatePartsV3,
 ) -> Result<Vec<u8>, StateDigestError> {
-    FullStateDigestInputV7::from_successor_after_rules_domain_validation(state)?.canonical_payload()
+    FullStateDigestInputV7::from_successor_structural_only(state)?.canonical_payload()
 }
 
 pub fn calculate_full_state_digest_v7(
@@ -31,10 +31,11 @@ pub fn calculate_full_state_digest_v7(
     calculate_full_state_digest_v7_payload(&payload)
 }
 
-pub fn calculate_full_state_digest_v7_after_rules_domain_validation(
+#[doc(hidden)]
+pub fn calculate_full_state_digest_v7_structural_only(
     state: &EngineStatePartsV3,
 ) -> Result<FullStateDigestV7, StateDigestError> {
-    let payload = canonical_state_bytes_v7_after_rules_domain_validation(state)?;
+    let payload = canonical_state_bytes_v7_structural_only(state)?;
     calculate_full_state_digest_v7_payload(&payload)
 }
 

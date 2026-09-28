@@ -167,11 +167,12 @@ impl StateDeltaV3 {
         })
     }
 
-    /// Constructs a structural Delta after the caller has independently
-    /// rederived and accepted the exact profile-dependent Decision domain
-    /// through its RulesKernel. This does not itself admit or authorize that
-    /// domain; generic callers must use `between`.
-    pub fn between_after_rules_domain_validation(
+    /// Constructs a structural Delta from states whose exact profile-dependent
+    /// Decision domain is validated by the containing RulesKernel transaction.
+    /// This function validates structure and coverage only; it does not admit
+    /// either state. Generic callers must use `between`.
+    #[doc(hidden)]
+    pub fn between_structural_only(
         before: &EngineStatePartsV3,
         after: &EngineStatePartsV3,
         operations: Vec<SemanticDeltaOperationV3>,
@@ -186,8 +187,8 @@ impl StateDeltaV3 {
         Ok(Self {
             before_revision: before.predecessor_v5.revision,
             after_revision: after.predecessor_v5.revision,
-            before_digest: digest_after_rules_domain_validation(before)?,
-            after_digest: digest_after_rules_domain_validation(after)?,
+            before_digest: digest_structural_only(before)?,
+            after_digest: digest_structural_only(after)?,
             replacement: after.clone(),
             operations,
         })
@@ -217,13 +218,14 @@ impl StateDeltaV3 {
     /// Applies a structural Delta after RulesKernel domain validation at the
     /// containing environment transaction boundary. This operation alone is
     /// not state admission; generic callers must use `apply`.
-    pub fn apply_after_rules_domain_validation(
+    #[doc(hidden)]
+    pub fn apply_structural_only(
         &self,
         before: &EngineStatePartsV3,
     ) -> Result<EngineStatePartsV3, DeltaApplicationV3Error> {
         before.validate_structure()?;
         if before.predecessor_v5.revision != self.before_revision
-            || digest_after_rules_domain_validation(before)? != self.before_digest
+            || digest_structural_only(before)? != self.before_digest
         {
             return Err(DeltaApplicationV3Error::BeforeMismatch);
         }
@@ -231,7 +233,7 @@ impl StateDeltaV3 {
         validate_revision_step(self.before_revision, self.after_revision)?;
         validate_delta_operation_coverage(before, &self.replacement, &self.operations)?;
         if self.replacement.predecessor_v5.revision != self.after_revision
-            || digest_after_rules_domain_validation(&self.replacement)? != self.after_digest
+            || digest_structural_only(&self.replacement)? != self.after_digest
         {
             return Err(DeltaApplicationV3Error::AfterMismatch);
         }
@@ -243,10 +245,10 @@ fn digest(state: &EngineStatePartsV3) -> Result<FullStateDigestV7, DeltaApplicat
     calculate_full_state_digest_v7(state).map_err(|_| DeltaApplicationV3Error::DigestCalculation)
 }
 
-fn digest_after_rules_domain_validation(
+fn digest_structural_only(
     state: &EngineStatePartsV3,
 ) -> Result<FullStateDigestV7, DeltaApplicationV3Error> {
-    crate::calculate_full_state_digest_v7_after_rules_domain_validation(state)
+    crate::calculate_full_state_digest_v7_structural_only(state)
         .map_err(|_| DeltaApplicationV3Error::DigestCalculation)
 }
 

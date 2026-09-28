@@ -47,14 +47,12 @@ pub use events::{
 };
 pub use events_v3::{
     allocate_rule_events_v3, validate_event_delta_parity_v3, validate_event_delta_state_v3,
-    validate_event_delta_state_v3_after_rules_domain_validation, validate_rule_event_cursor_v3,
-    AuthoritativeRuleEventKindV3, AuthoritativeRuleEventV3, EventDeltaV3Error,
-    RuleEventCursorV3Error,
+    validate_rule_event_cursor_v3, AuthoritativeRuleEventKindV3, AuthoritativeRuleEventV3,
+    EventDeltaV3Error, RuleEventCursorV3Error,
 };
-pub use program_kernel::{
-    validate_runtime_state, validate_runtime_state_for_contract, ProgramKernelConstructionErrorV1,
-    ProgramKernelV1,
-};
+pub use program_kernel::{validate_runtime_state, validate_runtime_state_for_contract};
+#[cfg(any(test, feature = "historical-runtime-testkit"))]
+pub use program_kernel::{ProgramKernelConstructionErrorV1, ProgramKernelV1};
 pub use semantic_execution_generated::execution_contract_supported;
 #[cfg(feature = "magic-conformance-testkit")]
 pub use state_based_actions::SbaContinuationValidationError;

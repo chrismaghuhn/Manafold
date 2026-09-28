@@ -3,7 +3,7 @@
 **Status:** accepted schema-evolution policy  
 **Stability:** normative
 
-## Accepted M4 successor cut (activated on master for bounded M4.2 by PR #248)
+## Historical M4 successor cut (PR #248)
 
 The accepted M4 Semantic Spec allocates one coupled successor family:
 FullStateDigestV6 / input V6, StateDeltaV2, Checkpoint V7 / digest V7, Replay
@@ -15,9 +15,21 @@ cross-field rules, and predecessor dispositions are defined in the accepted
 The JSON schemas were additive at introduction; existing V2/V6 schema files
 and fixtures remain unchanged. Replay V7 carries content-child CBOR via the
 accepted strict Base64 transport; it does not introduce a JSON CardDefinition
-manifest. PR #248 atomically activated this successor family on `master` for
-the bounded M4.2 Mountain/Plains slice. Its current status does not imply
-complete M4 gameplay or broader card/deck support.
+manifest. PR #248 atomically activated this successor family for the bounded
+M4.2 Mountain/Plains slice. G0j supersedes these current-writer identities
+while preserving their exact historical meanings and fixtures. This does not
+imply complete M4 gameplay or broader card/deck support.
+
+## Current G0 successor cut (G0j)
+
+G0j activates one coordinated successor family: FullStateDigestV7 / input V7,
+StateDeltaV3, Checkpoint V8 / digest V8, Replay V8, Decision request V4 /
+response V3, ObservedEventEnvelopeV4, PlayerStepV4, ObservationEnvelopeV2,
+PlayerInformationStateV3 / InformationStateDigestV3, and
+`magic-shared-execution-observation.v1`. ADR 0056 owns the exact identities,
+historical dispositions, and no-migration policy. These contracts preserve
+only the accepted Mountain/Plains `basic-land@1.0.0` executable slice; they do
+not add spell casting, other cards, or broader playability.
 
 1. name the exact semantic surface and current version;
 2. add/modify reader and writer fixtures before producer code;

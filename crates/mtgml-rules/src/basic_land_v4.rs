@@ -5,11 +5,9 @@
 
 use mtgml_card_ir::ExecutableProfileAdmissionV1;
 use mtgml_decision::{
-    AuthoritativeCandidateV3, AuthoritativeCandidateV4, AuthoritativeDecisionRequestV3,
-    AuthoritativeDecisionRequestV4, CandidateIntentV3, CandidateIntentV4, DecisionAnswerV2,
-    DecisionDomainV2, DecisionPurposeV4, DecisionResponseV2, DecisionResponseV3,
-    DecisionVisibility, EngineCandidateBindingV3, EngineCandidateBindingV4,
-    DECISION_RESPONSE_V2_SCHEMA,
+    AuthoritativeCandidateV4, AuthoritativeDecisionRequestV4, CandidateIntentV3, CandidateIntentV4,
+    DecisionAnswerV2, DecisionDomainV2, DecisionPurposeV4, DecisionResponseV3, DecisionVisibility,
+    EngineCandidateBindingV3, EngineCandidateBindingV4,
 };
 use mtgml_model::{DecisionId, EpisodeStatus, PlayerDecisionIdV1, PlayerId, RuleEventId};
 use mtgml_state::{
@@ -68,8 +66,12 @@ pub fn derive_basic_land_candidates_v4(
     status: &EpisodeStatus,
 ) -> Result<Vec<AuthoritativeCandidateV4>, BasicLandCandidateError> {
     let candidate_state = candidate_state_v2(state)?;
-    let candidates =
-        crate::derive_basic_land_candidates(admission, &candidate_state, actor, status)?;
+    let candidates = crate::basic_land::derive_basic_land_candidates(
+        admission,
+        &candidate_state,
+        actor,
+        status,
+    )?;
     candidates
         .into_iter()
         .map(|candidate| {
@@ -304,59 +306,69 @@ pub fn execute_basic_land_response_v4(
         .validate_response(response)
         .map_err(|_| crate::BasicLandTransitionError::InvalidSelection)?;
 
-    let mut before_v2 =
+    let before_v2 =
         candidate_state_v2(state).map_err(|_| crate::BasicLandTransitionError::InvalidResult)?;
-    before_v2.execution_v3.pending_decision = Some(
-        request_v3_from_v4(request)
-            .map_err(|_| crate::BasicLandTransitionError::InvalidSelection)?,
-    );
     before_v2
         .validate()
         .map_err(|_| crate::BasicLandTransitionError::InvalidResult)?;
-    let response_v2 = DecisionResponseV2 {
-        schema_version: DECISION_RESPONSE_V2_SCHEMA.to_owned(),
-        player_decision_id: response.player_decision_id,
-        state_revision: request.state_revision,
-        answer: response.answer.clone(),
-    };
-    let legacy = crate::basic_land::execute_basic_land_response(
+    let selected = selected_basic_land_action_v4(admission, state, actor, response, status)
+        .map_err(|_| crate::BasicLandTransitionError::InvalidSelection)?;
+    let draft = crate::basic_land::execute_basic_land_decision_draft(
         admission,
         &before_v2,
         actor,
-        &response_v2,
+        request.decision_id,
+        selected,
         status,
     )?;
-    let next_request = legacy
-        .next_decision
-        .as_ref()
-        .map(|request| request_v4_from_v3(&legacy.next_state, request))
-        .transpose()
-        .map_err(|_| crate::BasicLandTransitionError::InvalidResult)?;
     let mut next_state = EngineStatePartsV3 {
-        predecessor_v5: legacy.next_state.predecessor_v5.clone(),
-        execution_v4: mtgml_state::ExecutionStateV4 {
-            pending_decision: next_request.clone(),
-            ..Default::default()
-        },
-        card_rules_state: legacy.next_state.card_rules_state.clone(),
+        predecessor_v5: draft.next_state.predecessor_v5.clone(),
+        execution_v4: Default::default(),
+        card_rules_state: draft.next_state.card_rules_state.clone(),
     };
+    let next_request = install_basic_land_request_v4(
+        admission,
+        &mut next_state,
+        draft.next_decision_actor,
+        status,
+    )
+    .map_err(|_| crate::BasicLandTransitionError::InvalidResult)?;
     let events = convert_events_v2_to_v3(
         state.predecessor_v5.allocators.next_rule_event_id,
         next_state.predecessor_v5.revision,
-        &legacy.events,
+        &draft.events,
         &mut next_state,
     )?;
-    let mut operations = convert_operations_v2_to_v3(&legacy.delta.operations, &legacy.events)?;
+    let event_id = next_state.predecessor_v5.allocators.next_rule_event_id;
+    next_state.predecessor_v5.allocators.next_rule_event_id = RuleEventId(
+        event_id
+            .0
+            .checked_add(1)
+            .ok_or(crate::BasicLandTransitionError::IdentityExhausted)?,
+    );
+    let decision_created = crate::AuthoritativeRuleEventV3 {
+        event_id,
+        state_revision: next_state.predecessor_v5.revision,
+        event: crate::AuthoritativeRuleEventKindV3::Existing {
+            event: Box::new(crate::AuthoritativeRuleEventKind::DecisionCreated {
+                decision: next_request.decision_id,
+            }),
+        },
+    };
+    let mut events = events;
+    events.push(decision_created.clone());
+    let mut operations = convert_operations_v2_to_v3(&draft.operations, &draft.events)?;
     operations.push(SemanticDeltaOperationV3::PendingRequestChanged {
         from: Some(Box::new(request.clone())),
-        to: next_request.clone().map(Box::new),
+        to: Some(Box::new(next_request.clone())),
     });
+    operations.extend(decision_created.event.semantic_operations());
     next_state
         .validate_structure()
         .map_err(|_| crate::BasicLandTransitionError::InvalidResult)?;
-    let delta = StateDeltaV3::between_after_rules_domain_validation(state, &next_state, operations)
+    let delta = StateDeltaV3::between_structural_only(state, &next_state, operations)
         .map_err(|_| crate::BasicLandTransitionError::Delta)?;
-    crate::validate_event_delta_state_v3_after_rules_domain_validation(
+    crate::events_v3::validate_event_delta_state_v3_structural_only(
         state,
         &next_state,
         &events,
@@ -364,149 +376,25 @@ pub fn execute_basic_land_response_v4(
     )
     .map_err(|_| crate::BasicLandTransitionError::InvalidResult)?;
     Ok(BasicLandTransitionProductV4 {
-        accepted: legacy.accepted,
+        accepted: true,
         next_state,
         delta,
         events,
-        next_decision: next_request,
-        status: legacy.status,
+        next_decision: Some(next_request),
+        status: draft.status,
     })
-}
-
-fn request_v3_from_v4(
-    request: &AuthoritativeDecisionRequestV4,
-) -> Result<AuthoritativeDecisionRequestV3, BasicLandCandidateError> {
-    let candidates = request
-        .candidates
-        .iter()
-        .map(|candidate| {
-            let visible_intent = match candidate.visible_intent {
-                CandidateIntentV4::PassPriority => CandidateIntentV3::PassPriority,
-                CandidateIntentV4::PlayLand { object } => CandidateIntentV3::PlayLand { object },
-                CandidateIntentV4::ActivateAbility { ability } => {
-                    CandidateIntentV3::ActivateAbility { ability }
-                }
-                _ => return Err(BasicLandCandidateError::CandidateOrdering),
-            };
-            let trusted_binding = match candidate.trusted_binding {
-                EngineCandidateBindingV4::PassPriority => EngineCandidateBindingV3::PassPriority,
-                EngineCandidateBindingV4::PlayLand { object } => {
-                    EngineCandidateBindingV3::PlayLand { object }
-                }
-                EngineCandidateBindingV4::ActivateAbility { ability } => {
-                    EngineCandidateBindingV3::ActivateAbility { ability }
-                }
-                _ => return Err(BasicLandCandidateError::CandidateOrdering),
-            };
-            Ok(AuthoritativeCandidateV3 {
-                candidate_id: candidate.candidate_id,
-                visible_intent,
-                trusted_binding,
-            })
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(AuthoritativeDecisionRequestV3 {
-        decision_id: request.decision_id,
-        player_decision_id: request.player_decision_id,
-        state_revision: request.state_revision,
-        actor: request.actor,
-        visibility: request.visibility,
-        decision: request.decision_domain_v2.clone(),
-        candidates,
-        continuation_id: request.continuation_id,
-    })
-}
-
-fn request_v4_from_v3(
-    state: &EngineStatePartsV2,
-    request: &AuthoritativeDecisionRequestV3,
-) -> Result<AuthoritativeDecisionRequestV4, BasicLandCandidateError> {
-    let candidate_state = EngineStatePartsV3 {
-        predecessor_v5: state.predecessor_v5.clone(),
-        execution_v4: Default::default(),
-        card_rules_state: state.card_rules_state.clone(),
-    };
-    let view_sequence = candidate_state
-        .predecessor_v5
-        .knowledge
-        .players
-        .get(&request.actor)
-        .ok_or(BasicLandCandidateError::InvalidState)?
-        .next_visible_sequence;
-    let candidates = request
-        .candidates
-        .iter()
-        .map(|candidate| {
-            let visible_intent = match candidate.visible_intent {
-                CandidateIntentV3::PassPriority => CandidateIntentV4::PassPriority,
-                CandidateIntentV3::PlayLand { object } => CandidateIntentV4::PlayLand { object },
-                CandidateIntentV3::ActivateAbility { ability } => {
-                    CandidateIntentV4::ActivateAbility { ability }
-                }
-                _ => return Err(BasicLandCandidateError::CandidateOrdering),
-            };
-            let trusted_binding = match candidate.trusted_binding {
-                EngineCandidateBindingV3::PassPriority => EngineCandidateBindingV4::PassPriority,
-                EngineCandidateBindingV3::PlayLand { object } => {
-                    EngineCandidateBindingV4::PlayLand { object }
-                }
-                EngineCandidateBindingV3::ActivateAbility { ability } => {
-                    EngineCandidateBindingV4::ActivateAbility { ability }
-                }
-                _ => return Err(BasicLandCandidateError::CandidateOrdering),
-            };
-            Ok(AuthoritativeCandidateV4 {
-                candidate_id: candidate.candidate_id,
-                visible_intent,
-                trusted_binding,
-            })
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    let next_player_decision_id = candidate_state
-        .predecessor_v5
-        .perspective_identities
-        .players
-        .get(&request.actor)
-        .ok_or(BasicLandCandidateError::InvalidState)?
-        .next_player_decision_id;
-    if next_player_decision_id.0
-        != request
-            .player_decision_id
-            .0
-            .checked_add(1)
-            .ok_or(BasicLandCandidateError::InvalidState)?
-    {
-        return Err(BasicLandCandidateError::PendingCandidateSetMismatch);
-    }
-    let result = AuthoritativeDecisionRequestV4 {
-        decision_id: request.decision_id,
-        player_decision_id: request.player_decision_id,
-        state_revision: request.state_revision,
-        view_sequence,
-        actor: request.actor,
-        visibility: request.visibility,
-        decision_domain_v2: request.decision.clone(),
-        purpose: DecisionPurposeV4::PriorityAction,
-        parent_player_decision_id: None,
-        continuation_id: request.continuation_id,
-        candidates,
-    };
-    result
-        .project_player_request()
-        .map_err(|_| BasicLandCandidateError::CandidateOrdering)?;
-    Ok(result)
 }
 
 fn convert_events_v2_to_v3(
     first_event_id: RuleEventId,
     revision: mtgml_model::StateRevision,
-    source: &[crate::AuthoritativeRuleEventV2],
+    source: &[crate::basic_land::AuthoritativeRuleEventV2],
     after: &mut EngineStatePartsV3,
 ) -> Result<Vec<crate::AuthoritativeRuleEventV3>, crate::BasicLandTransitionError> {
-    use crate::{
-        AuthoritativeRuleEventKindV2 as Old, AuthoritativeRuleEventKindV3 as New,
-        SuccessorObservationPolicyV1 as OldPolicy,
+    use crate::basic_land::{
+        AuthoritativeRuleEventKindV2 as Old, SuccessorObservationPolicyV1 as OldPolicy,
     };
+    use crate::AuthoritativeRuleEventKindV3 as New;
 
     let source_order = causal_event_order_v2_to_v3(source)?;
     let mut new_ids = std::collections::BTreeMap::new();
@@ -667,9 +555,11 @@ fn convert_events_v2_to_v3(
 /// occurrence, so this stable topological order moves only the required source
 /// ahead while retaining the order among otherwise independent events.
 fn causal_event_order_v2_to_v3(
-    source: &[crate::AuthoritativeRuleEventV2],
+    source: &[crate::basic_land::AuthoritativeRuleEventV2],
 ) -> Result<Vec<usize>, crate::BasicLandTransitionError> {
-    use crate::{AuthoritativeRuleEventKindV2 as Old, SuccessorObservationPolicyV1 as OldPolicy};
+    use crate::basic_land::{
+        AuthoritativeRuleEventKindV2 as Old, SuccessorObservationPolicyV1 as OldPolicy,
+    };
 
     let included = |index: usize| {
         !matches!(
@@ -751,9 +641,9 @@ fn causal_event_order_v2_to_v3(
 
 fn convert_operations_v2_to_v3(
     operations: &[SemanticDeltaOperationV2],
-    events: &[crate::AuthoritativeRuleEventV2],
+    events: &[crate::basic_land::AuthoritativeRuleEventV2],
 ) -> Result<Vec<SemanticDeltaOperationV3>, crate::BasicLandTransitionError> {
-    use crate::AuthoritativeRuleEventKindV2 as Event;
+    use crate::basic_land::AuthoritativeRuleEventKindV2 as Event;
     use mtgml_state::SemanticDeltaOperation;
     use SemanticDeltaOperationV2 as Old;
     use SemanticDeltaOperationV3 as New;

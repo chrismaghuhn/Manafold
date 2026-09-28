@@ -72,7 +72,7 @@ impl EnvironmentCheckpointV8 {
                 .map_err(|_| CheckpointV8Error::State)?;
         }
         let state_digest = if structurally_validated_by_rules {
-            mtgml_state::calculate_full_state_digest_v7_after_rules_domain_validation(&state)
+            mtgml_state::calculate_full_state_digest_v7_structural_only(&state)
         } else {
             mtgml_state::calculate_full_state_digest_v7(&state)
         }
@@ -99,7 +99,7 @@ impl EnvironmentCheckpointV8 {
             checkpoint_digest,
         };
         if structurally_validated_by_rules {
-            value.validate_after_rules_domain_validation()?;
+            value.validate_structural_only()?;
         } else {
             value.validate()?;
         }
@@ -112,7 +112,7 @@ impl EnvironmentCheckpointV8 {
 
     /// Validates checkpoint identity and structure after the caller has
     /// rederived the exact RulesKernel Decision domain.
-    pub fn validate_after_rules_domain_validation(&self) -> Result<(), CheckpointV8Error> {
+    fn validate_structural_only(&self) -> Result<(), CheckpointV8Error> {
         self.validate_inner(true)
     }
 
@@ -153,7 +153,7 @@ impl EnvironmentCheckpointV8 {
             .validate()
             .map_err(|_| CheckpointV8Error::LimitCounters)?;
         let actual_state = if structurally_validated_by_rules {
-            mtgml_state::calculate_full_state_digest_v7_after_rules_domain_validation(&self.state)
+            mtgml_state::calculate_full_state_digest_v7_structural_only(&self.state)
         } else {
             mtgml_state::calculate_full_state_digest_v7(&self.state)
         }
@@ -278,7 +278,7 @@ impl EnvironmentCheckpointV8 {
         structurally_validated_by_rules: bool,
     ) -> Result<EngineStatePartsV3, CheckpointV8Error> {
         if structurally_validated_by_rules {
-            self.validate_after_rules_domain_validation()?;
+            self.validate_structural_only()?;
         } else {
             self.validate()?;
         }

@@ -18,9 +18,10 @@
 - Replay V2: provisional-public M1 replay identity; after the M2 state cut it is `READABLE_VERIFIABLE_ONLY` in the current engine and is not semantically executed against M2 `EngineState`.
 - M2 Decision V2, Information/Event/PlayerStep V2, synthetic observation payload V1: `experimental` during M2.A–M2.H; promotion to `provisional-public` requires M2 executable closure.
 - `FullStateDigestV3`, Checkpoint V3 and Replay V3: experimental/freeze-candidate until their ADR-0038 codec/schema fixtures and executable parity gates pass.
-- `FullStateDigestV5`, Checkpoint V6 and Replay V6: exact historical identity family after PR #248 activated the M4 V6/V7 cut on `master`; digest/replay readers and verifiers retain their original meanings, V6 checkpoint restore is unsupported by the current V7 runtime.
-- `FullStateDigestV6`, `EnvironmentCheckpointV7` / `CheckpointDigestV7`, and Replay V7: current resumable identity family on `master` for the bounded M4.2 Mountain/Plains slice after PR #248; this identity status does not imply broader card/deck support.
-- M4 player products on `master` after PR #248: PlayerDecisionRequestV3, DecisionResponseV2, ObservationEnvelopeV1, PlayerInformationStateV2 / InformationStateDigestV2, ObservedEventEnvelopeV3, and PlayerStepV3 are the current bounded M4.2 endpoint family; each retains its own exact versioned meaning.
+- `FullStateDigestV5`, Checkpoint V6 and Replay V6: exact historical identity family after PR #248; digest/replay readers and verifiers retain their original meanings. These do not restore or execute under the current V8 runtime.
+- `FullStateDigestV6`, `EnvironmentCheckpointV7` / `CheckpointDigestV7`, and Replay V7: exact historical M4.2 identity family after G0j; no current writer or current-runtime restore/replay execution. Their bounded Mountain/Plains evidence remains unchanged.
+- Current resumable identity family after G0j: `EngineStatePartsV3`, `StateDeltaV3`, `FullStateDigestV7`, `EnvironmentCheckpointV8` / `CheckpointDigestV8`, and Replay V8.
+- Current bounded M4.2 player products after G0j: PlayerDecisionRequestV4, DecisionResponseV3, ObservationEnvelopeV2, PlayerInformationStateV3 / InformationStateDigestV3, ObservedEventEnvelopeV4, PlayerStepV4, and `magic-shared-execution-observation.v1`. Each keeps its own exact versioned meaning; none implies broader card/deck support.
 - FullStateDigest V4, Checkpoint V5, and Replay V5 retain their exact original meanings as historical evidence; they are not interpreted as V5-state/V6-checkpoint artifacts.
 - the temporary M2 subprocess Python semantic adapter: internal/experimental test infrastructure; never a production transport promise.
 - concrete Card IR variants: experimental.
@@ -58,9 +59,9 @@ Once the M2 V3 runtime cut lands, current-engine support is frozen as follows:
 
 A future explicit V2→V3 migration ADR may change only the `Migration` column by adding a provenance-preserving Rust-authoritative migration. It cannot relabel or reinterpret the source artifact.
 
-## V4–V6 historical and V7 current support matrix
+## V4–V7 historical and V8 current support matrix
 
-ADR 0055 §2.12 freezes the historical V4→V5 cut. S3.P0 added the V5-state/V6-checkpoint/replay cut, which PR #248 later superseded on `master` with the bounded M4 V6-state/V7-checkpoint/replay cut. No cut defines an automatic migration.
+ADR 0055 §2.12 freezes the historical V4→V5 cut. S3.P0 added the V5-state/V6-checkpoint/replay cut; PR #248 activated the bounded M4 V6-state/V7-checkpoint/replay cut; G0j supersedes that family with the bounded V7-state/V8-checkpoint/replay cut. No cut defines an automatic migration.
 
 | Surface | Writer | Reader | Verifier | Semantic execution | Migration | Classification |
 |---|---|---|---|---|---|---|
@@ -71,15 +72,18 @@ ADR 0055 §2.12 freezes the historical V4→V5 cut. S3.P0 added the V5-state/V6-
 | `ReplayStepV4` | no | yes | yes, detached | no | none | `READABLE_VERIFIABLE_ONLY` |
 | `AuthoritativeReplayV4` | no | yes | yes, detached | archived matching V4 runtime ONLY | none | `READABLE_VERIFIABLE_ONLY` |
 | `FullStateDigestV5` | no current writer | detached exact reader | yes, exact V5 canonical input | historical only | none | `READABLE_VERIFIABLE_ONLY` |
-| `EnvironmentCheckpointV5` | no current writer | historical in-memory value only | exact historical validator | no under V7 runtime | none | `UNSUPPORTED` for current restore |
+| `EnvironmentCheckpointV5` | no current writer | historical in-memory value only | exact historical validator | no under V8 runtime | none | `UNSUPPORTED` for current restore |
 | `CheckpointDigestV5` | no current writer | detached input/value | yes, exact V5 preimage | n/a | none | `READABLE_VERIFIABLE_ONLY` |
 | `ReplayManifestV5` / `ReplayStepV5` / `AuthoritativeReplayV5` | no current writer | yes, version-specific DTO | yes, exact V5 identity chain | archived matching V5 runtime only | none | `READABLE_VERIFIABLE_ONLY` |
-| `EnvironmentCheckpointV6` | no current writer | historical in-memory value only | exact historical validator | no under V7 runtime | none | `UNSUPPORTED` for current restore |
+| `EnvironmentCheckpointV6` | no current writer | historical in-memory value only | exact historical validator | no under V8 runtime | none | `UNSUPPORTED` for current restore |
 | `CheckpointDigestV6` | no current writer | detached input/value | yes, exact V6 preimage | n/a | none | `READABLE_VERIFIABLE_ONLY` |
 | Replay V6 family | no current writer | yes, version-specific DTO | yes, exact V6 identity chain | archived matching V6 runtime only | none | `READABLE_VERIFIABLE_ONLY` |
-| `FullStateDigestV6` | yes | yes | yes, V6 canonical input | current bounded M4.2 state identity | n/a | `EXECUTABLE` within locked slice |
-| `EnvironmentCheckpointV7` / `CheckpointDigestV7` | yes | yes | yes, V6 state digest + V7 checkpoint identity | current bounded M4.2 checkpoint identity | n/a | `EXECUTABLE` within locked slice |
-| Replay V7 family | yes | yes | yes, exact V7 identity chain | current bounded M4.2 replay identity | n/a | `EXECUTABLE` within locked slice |
+| `FullStateDigestV6` | no after G0j | exact detached reader | yes, V6 canonical input | archived V7 runtime only | none | `READABLE_VERIFIABLE_ONLY` |
+| `EnvironmentCheckpointV7` / `CheckpointDigestV7` | no after G0j | exact versioned reader/value | yes, V6 state digest + V7 checkpoint identity | archived V7 runtime only; no V8 restore | none | `READABLE_VERIFIABLE_ONLY` / `UNSUPPORTED` for current restore |
+| Replay V7 family | no after G0j | yes, exact V7 DTO | yes, exact V7 identity chain | archived V7 runtime only | none | `READABLE_VERIFIABLE_ONLY` |
+| `FullStateDigestV7` | yes | yes | yes, V7 canonical input | current bounded M4.2 state identity | n/a | `EXECUTABLE` within locked slice |
+| `EnvironmentCheckpointV8` / `CheckpointDigestV8` | yes | yes | yes, V7 state digest + V8 checkpoint identity | current bounded M4.2 checkpoint identity | n/a | `EXECUTABLE` within locked slice |
+| Replay V8 family | yes | yes | yes, exact V8 identity chain | current bounded M4.2 replay identity | n/a | `EXECUTABLE` within locked slice |
 | V4 → V5 automatic migration | — | — | — | — | NONE | — |
 | V5 → V6 automatic migration | — | — | — | — | NONE | — |
 | V6 → V7 state/checkpoint/replay automatic migration | — | — | — | — | NONE | — |

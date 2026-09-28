@@ -1,6 +1,6 @@
 # State and Artifact Hashing
 
-**Status:** FullStateDigestV6 / Checkpoint V7 / Replay V7 are current on `master` for bounded M4.2 after PR #248; FullStateDigest V1–V5, Checkpoint V1–V6, and Replay V1–V6 retain historical meanings
+**Status:** FullStateDigestV7 / Checkpoint V8 / Replay V8 are current after the G0j activation cut for the bounded M4.2 slice; V6/V7 predecessor identities retain their exact historical meanings
 **Stability:** normative identity separation and ADR-0038 persistence-codec specification
 
 ## Digest domains
@@ -16,7 +16,8 @@ Current/historical families include:
 | `FullStateDigestV3` | M2 full authoritative state with typed continuation/information/perspective-local visible identity semantics |
 | `FullStateDigestV4` | historical M3 state meaning; detached exact verifier only after S3.P0 |
 | `FullStateDigestV5` | predecessor complete EngineState identity; exact historical verification only after PR #248 |
-| `FullStateDigestV6` | complete EngineStatePartsV2 identity; current writer on `master` for the bounded M4.2 slice |
+| `FullStateDigestV6` | complete EngineStatePartsV2 identity; exact historical M4.2 predecessor after G0j |
+| `FullStateDigestV7` | complete EngineStatePartsV3 identity; current writer for the bounded M4.2 slice after G0j |
 | `InformationStateDigest` | historical M1 information-state digest (`mtgml.information-state-digest.v1`) |
 | `InformationStateDigestV2` | M2 perspective-safe current observation + retained knowledge (`mtgml.information-state-digest.v2`) |
 | `ObservationDigest` | exact current observation bytes |
@@ -24,16 +25,34 @@ Current/historical families include:
 | `CheckpointDigestV2/V3` | complete trusted checkpoint identity for the corresponding state version |
 | `CheckpointDigestV5` | historical execution-identity checkpoint digest; detached exact verifier only after S3.P0 |
 | `CheckpointDigestV6` | predecessor checkpoint identity binding `FullStateDigestV5` and `ExecutionIdentityV1`; exact historical verification only after PR #248 |
-| `CheckpointDigestV7` | checkpoint identity binding `FullStateDigestV6` and `ExecutionIdentityV1`; current on `master` for the bounded M4.2 slice |
+| `CheckpointDigestV7` | checkpoint identity binding `FullStateDigestV6` and `ExecutionIdentityV1`; exact historical M4.2 predecessor after G0j |
+| `CheckpointDigestV8` | checkpoint identity binding `FullStateDigestV7` and `ExecutionIdentityV1`; current for the bounded M4.2 slice after G0j |
 
 Digest identity provides content identity/divergence detection, not authenticity.
 
-## FullStateDigestV6 current identity
+## FullStateDigestV7 current identity
+
+G0j activates `FullStateDigestV7` for the complete `EngineStatePartsV3`
+successor aggregate. Its fixed canonical input is
+`full-state-digest-input.v7`, domain-separated by
+`mtgml.full-state-digest.v7`. The input includes the accepted `zones_v2` and
+`execution_v4` child identities and their closed typed records. Canonical
+encoding remains explicit restricted CBOR; arbitrary Serde output is never
+hashed. `FullStateDigestV6` known-answer vectors remain immutable historical
+evidence and are checked under their own V6 domain.
+
+`EnvironmentCheckpointV8` binds this digest with the V8 checkpoint identity.
+The V8 replay and observation families bind the same successor identities.
+This cut preserves only the accepted Mountain/Plains `basic-land@1.0.0`
+execution scope.
+
+## FullStateDigestV6 historical identity
 
 PR #248 activated the explicit `FullStateDigestV6` identity for complete
-`EngineStatePartsV2` on `master` for the bounded M4.2 slice. The predecessor
+`EngineStatePartsV2` for the bounded M4.2 slice. G0j supersedes it as the
+current writer while retaining its exact historical meaning. The predecessor
 `EngineState::digest()` and V5 bytes remain unchanged for exact historical
-verification; they are no longer current writers. Its envelope uses domain
+verification; it is a read/verifier-only identity after G0j. Its envelope uses domain
 `mtgml.full-state-digest.v6`, input schema `full-state-digest-input.v6`,
 `mtgml.canonical-cbor.v1`, and SHA-256. The canonical preimage is the fixed
 14-element array in the accepted M4 semantic specification: the unchanged V5
@@ -45,9 +64,8 @@ Face, and AbilityAuthority state. Validation rejects noncanonical ordering,
 duplicates, invalid fixed tags, malformed record lengths, integer range/domain
 errors, and any `land_plays_used` value outside `{0,1}`. Its bytes use the
 shared canonical-CBOR and digest-envelope implementations. The verifier checks
-canonical decode/re-encode equality and the V6 digest identity. The environment
-binds it to Checkpoint V7 and verified executable content admission before
-runtime construction.
+canonical decode/re-encode equality and the V6 digest identity. Historical
+V7 checkpoints bind it; the V8 runtime does not restore V7 checkpoints.
 
 V5 was the runtime identity before the Phase 13 activation. After PR #248 it
 is historical verification only. Historical V5 artifacts and vectors retain

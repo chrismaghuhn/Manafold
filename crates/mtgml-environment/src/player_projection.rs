@@ -859,7 +859,7 @@ pub fn project_successor_information_state_v3(
     )
 }
 
-pub fn project_successor_information_state_v3_after_rules_domain_validation(
+pub(crate) fn project_successor_information_state_v3_structural_only(
     parts: &EngineStatePartsV3,
     perspective: PlayerId,
     execution_identity: &ExecutionIdentityV1,

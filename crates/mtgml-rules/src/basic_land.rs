@@ -75,6 +75,18 @@ pub struct BasicLandTransitionProductV1 {
     pub status: EpisodeStatus,
 }
 
+/// Shared mutation draft used by the V7 historical adapter and the current
+/// V8 bridge. It carries no V2 delta or digest product; each API boundary
+/// emits only its own accepted contract family.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct BasicLandTransitionDraftV1 {
+    pub next_state: EngineStatePartsV2,
+    pub operations: Vec<SemanticDeltaOperationV2>,
+    pub events: Vec<AuthoritativeRuleEventV2>,
+    pub next_decision_actor: PlayerId,
+    pub status: EpisodeStatus,
+}
+
 /// Authoritative public facts emitted by this bounded transition slice.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuthoritativeRuleEventV2 {
@@ -270,6 +282,66 @@ pub fn execute_basic_land_response(
 ) -> Result<BasicLandTransitionProductV1, BasicLandTransitionError> {
     let decision = selected_successor_decision(admission, state, actor, response, status)
         .map_err(|_| BasicLandTransitionError::InvalidSelection)?;
+    let pending_decision = state
+        .execution_v3
+        .pending_decision
+        .as_ref()
+        .ok_or(BasicLandTransitionError::InvalidSelection)?
+        .decision_id;
+    let mut draft = execute_basic_land_decision_draft(
+        admission,
+        state,
+        actor,
+        pending_decision,
+        decision,
+        status,
+    )?;
+    let next_decision = install_basic_land_request(
+        admission,
+        &mut draft.next_state,
+        draft.next_decision_actor,
+        status,
+    )
+    .map_err(|_| BasicLandTransitionError::InvalidResult)?;
+    draft.operations.push(SemanticDeltaOperationV2::Existing {
+        operation: Box::new(mtgml_state::SemanticDeltaOperation::DecisionCreated {
+            decision: next_decision.decision_id,
+        }),
+    });
+    push_successor_event(
+        &mut draft.next_state,
+        &mut draft.events,
+        AuthoritativeRuleEventKindV2::DecisionCreated {
+            decision: next_decision.decision_id,
+        },
+    )?;
+    draft
+        .next_state
+        .validate()
+        .map_err(|_| BasicLandTransitionError::InvalidResult)?;
+    let delta = StateDeltaV2::between(state, &draft.next_state, draft.operations)
+        .map_err(|_| BasicLandTransitionError::Delta)?;
+    Ok(BasicLandTransitionProductV1 {
+        accepted: true,
+        next_state: draft.next_state,
+        delta,
+        events: draft.events,
+        next_decision: Some(next_decision),
+        status: draft.status,
+    })
+}
+
+pub(crate) fn execute_basic_land_decision_draft(
+    admission: &ExecutableProfileAdmissionV1,
+    state: &EngineStatePartsV2,
+    actor: PlayerId,
+    pending_decision_id: mtgml_model::DecisionId,
+    decision: SelectedSuccessorDecisionV1,
+    status: &EpisodeStatus,
+) -> Result<BasicLandTransitionDraftV1, BasicLandTransitionError> {
+    state
+        .validate()
+        .map_err(|_| BasicLandTransitionError::InvalidResult)?;
     let old_revision = state.predecessor_v5.revision;
     let next_revision = mtgml_model::StateRevision(
         old_revision
@@ -277,17 +349,13 @@ pub fn execute_basic_land_response(
             .checked_add(1)
             .ok_or(BasicLandTransitionError::IdentityExhausted)?,
     );
-    let pending = state
-        .execution_v3
-        .pending_decision
-        .as_ref()
-        .ok_or(BasicLandTransitionError::InvalidSelection)?;
     let mut next = state.clone();
     next.predecessor_v5.revision = next_revision;
     next.execution_v3.pending_decision = None;
+    let mut next_decision_actor = actor;
     let mut operations = vec![SemanticDeltaOperationV2::Existing {
         operation: Box::new(mtgml_state::SemanticDeltaOperation::DecisionCleared {
-            decision: pending.decision_id,
+            decision: pending_decision_id,
         }),
     }];
     let mut events = Vec::new();
@@ -295,7 +363,7 @@ pub fn execute_basic_land_response(
         &mut next,
         &mut events,
         AuthoritativeRuleEventKindV2::DecisionCleared {
-            decision: pending.decision_id,
+            decision: pending_decision_id,
         },
     )?;
 
@@ -333,21 +401,7 @@ pub fn execute_basic_land_response(
                             to: to_priority,
                         },
                     )?;
-                    let next_request =
-                        install_basic_land_request(admission, &mut next, other, status)
-                            .map_err(|_| BasicLandTransitionError::InvalidResult)?;
-                    operations.push(SemanticDeltaOperationV2::Existing {
-                        operation: Box::new(mtgml_state::SemanticDeltaOperation::DecisionCreated {
-                            decision: next_request.decision_id,
-                        }),
-                    });
-                    push_successor_event(
-                        &mut next,
-                        &mut events,
-                        AuthoritativeRuleEventKindV2::DecisionCreated {
-                            decision: next_request.decision_id,
-                        },
-                    )?;
+                    next_decision_actor = other;
                 }
                 mtgml_state::PriorityState::HeldBy {
                     player,
@@ -439,21 +493,7 @@ pub fn execute_basic_land_response(
                             }
                         }
                     }
-                    let next_request =
-                        install_basic_land_request(admission, &mut next, next_actor, status)
-                            .map_err(|_| BasicLandTransitionError::InvalidResult)?;
-                    operations.push(SemanticDeltaOperationV2::Existing {
-                        operation: Box::new(mtgml_state::SemanticDeltaOperation::DecisionCreated {
-                            decision: next_request.decision_id,
-                        }),
-                    });
-                    push_successor_event(
-                        &mut next,
-                        &mut events,
-                        AuthoritativeRuleEventKindV2::DecisionCreated {
-                            decision: next_request.decision_id,
-                        },
-                    )?;
+                    next_decision_actor = next_actor;
                 }
                 _ => return Err(BasicLandTransitionError::InvalidSelection),
             }
@@ -462,17 +502,13 @@ pub fn execute_basic_land_response(
             // transaction. The active player receives priority at the next
             // temporal position; callers never observe Running without a
             // pending decision.
-            let next_request = next.execution_v3.pending_decision.clone();
             next.validate()
                 .map_err(|_| BasicLandTransitionError::InvalidResult)?;
-            let delta = StateDeltaV2::between(state, &next, operations)
-                .map_err(|_| BasicLandTransitionError::Delta)?;
-            return Ok(BasicLandTransitionProductV1 {
-                accepted: true,
+            return Ok(BasicLandTransitionDraftV1 {
                 next_state: next,
-                delta,
+                operations,
                 events,
-                next_decision: next_request,
+                next_decision_actor,
                 status: status.clone(),
             });
         }
@@ -1010,33 +1046,13 @@ pub fn execute_basic_land_response(
         }
     }
 
-    // Candidate requests are state, not backend cache. Both bounded actions
-    // leave priority with the actor, so the next exact request is installed
-    // before the transaction can be committed.
-    let next_request = install_basic_land_request(admission, &mut next, actor, status)
-        .map_err(|_| BasicLandTransitionError::InvalidResult)?;
-    operations.push(SemanticDeltaOperationV2::Existing {
-        operation: Box::new(mtgml_state::SemanticDeltaOperation::DecisionCreated {
-            decision: next_request.decision_id,
-        }),
-    });
-    push_successor_event(
-        &mut next,
-        &mut events,
-        AuthoritativeRuleEventKindV2::DecisionCreated {
-            decision: next_request.decision_id,
-        },
-    )?;
     next.validate()
         .map_err(|_| BasicLandTransitionError::InvalidResult)?;
-    let delta = StateDeltaV2::between(state, &next, operations)
-        .map_err(|_| BasicLandTransitionError::Delta)?;
-    Ok(BasicLandTransitionProductV1 {
-        accepted: true,
+    Ok(BasicLandTransitionDraftV1 {
         next_state: next,
-        delta,
+        operations,
         events,
-        next_decision: Some(next_request),
+        next_decision_actor,
         status: status.clone(),
     })
 }
@@ -1725,10 +1741,7 @@ mod tests {
         assert!(transition.accepted);
         transition.next_state.validate_structure().unwrap();
         assert_eq!(
-            transition
-                .delta
-                .apply_after_rules_domain_validation(&state)
-                .unwrap(),
+            transition.delta.apply_structural_only(&state).unwrap(),
             transition.next_state
         );
         let stale = mtgml_decision::DecisionResponseV3 {
@@ -1801,10 +1814,7 @@ mod tests {
             1
         );
         assert_eq!(
-            transition
-                .delta
-                .apply_after_rules_domain_validation(&state)
-                .unwrap(),
+            transition.delta.apply_structural_only(&state).unwrap(),
             transition.next_state
         );
     }

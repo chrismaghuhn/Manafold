@@ -650,9 +650,9 @@ The exact contradiction has four separate parts:
 1. **Normative prohibition:** the accepted G0 §9.3 and G0f Plan explicitly classify every `PriorityAction` as profile-dependent, including pass-only requests, and prohibit admitting such pending state through the detached G0 path. That is real normative text, not merely a validator implementation detail.
 2. **Validator behavior:** `DecisionPurposeV4::is_profile_dependent()` and `EngineStatePartsV3::validate()` implement that accepted prohibition. The validator is not independently wrong under the current G0 contract.
 3. **Successor representation:** Decision V4 already has the purpose and closed candidate/binding shapes for `PassPriority`, `PlayLand`, and `ActivateAbility`; the M4.2 action set needs no new candidate, wire field, schema, or identity.
-4. **Runtime integration:** the accepted V7 runtime still owns `EngineStatePartsV2`, request V3/response V2, and the Basic Land RulesKernel candidate producer. No G0 V8 RulesKernel/environment route yet rederives and admits that exact producer's PriorityAction under V4. This missing integration route is where G0j must preserve M4.2.
+4. **Runtime integration at the preservation review:** the accepted V7 runtime owned `EngineStatePartsV2`, request V3/response V2, and the Basic Land RulesKernel candidate producer. No G0 V8 RulesKernel/environment route yet rederived and admitted that exact producer's PriorityAction under V4. That missing route was the G0j preservation task. The current integration candidate now provides the route; the `master` writer remains V7 until this exact G0j head passes review/CI and is merged.
 
-The acceptance authority is closed Issue #225 and PR #248: reviewed activation head `a43d151c636544246223c2a3f9a08a72f502e484`, merged/post-merge master `6c6ee4c9b237696c50e944cae998f85c2d358e1c`. The general G0 rule accurately describes the state-only validator but excludes PriorityAction requests needed by that already accepted M4.2 executable, Mountain and Plains under `basic-land@1.0.0`. PR #252's reviewed preservation clarification was merged into the G0 integration lineage at `4d3b82d9517f08fef4b6a2126cb8409049e714ca`; it accepts this subsection for G0j only. The current writer remains V7 until the exact-domain and V7↔V8 preservation gates pass.
+The acceptance authority is closed Issue #225 and PR #248: reviewed activation head `a43d151c636544246223c2a3f9a08a72f502e484`, merged/post-merge master `6c6ee4c9b237696c50e944cae998f85c2d358e1c`. The general G0 rule accurately describes the state-only validator but excludes PriorityAction requests needed by that already accepted M4.2 executable, Mountain and Plains under `basic-land@1.0.0`. PR #252's reviewed preservation clarification was merged into the G0 integration lineage at `4d3b82d9517f08fef4b6a2126cb8409049e714ca`; it accepts this subsection for G0j only. This clarification changes no V4 field or semantic meaning.
 
 The existing successor Decision V4 representation is sufficient and remains unchanged:
 
@@ -670,6 +670,26 @@ The sole M4.2 runtime exception is a RulesKernel-owned path. It must derive the 
 This clarification changes no state bytes, canonical representation, Decision V4 fields, schema, wire tag, response meaning, allocator, digest domain, checkpoint/replay identity, or execution-program identity. ADR 0056 successor names remain in force. G0j performs only the migration needed to retain the accepted M4.2 behavior; it adds no spell casting, new ability/card/profile semantics, capability promotion, or Shared S1–S7 behavior.
 
 Before V8 becomes the current writer, G0j must pass this semantic equivalence matrix against the accepted V7 executable. Compare legal domains and trusted bindings; accepted PlayLand, zone-incarnation, intrinsic mana activation, priority, turn-step and mana-emptying outcomes; rejection nonmutation; public observations/events; deterministic candidate ordering; state/event/delta consistency; and direct/checkpoint-restore/fork/authoritative-replay outcomes. Verify `FullStateDigestV6` and `FullStateDigestV7` under their own identities; their bytes are intentionally unequal. Verify CheckpointDigestV7/V8 independently as well. Also prove unsupported profile-dependent actions continue to fail closed and paired-world privacy remains intact.
+
+The current G0j implementation candidate uses the existing Basic-Land mutation
+draft after RulesKernel-owned V4 domain rederivation. The V8 path does not call
+the V2 response executor, construct `StateDeltaV2`, or calculate
+`FullStateDigestV6`; it installs the next V4 request and emits V3 Delta/events
+plus V8/V4 successors directly. Legacy operation/event facts remain
+transaction-local conversion inputs and are never returned as current
+transition products, persisted, or used to admit state. The V2 wrapper and
+`ProgramKernelV1` executable API are retained only for test/historical
+conformance use. This is implementation reuse of the locked M4.2 rule owner,
+not a second current writer; the exact boundary remains subject to independent
+G0j review and activation gates.
+
+The `*_structural_only` digest/Delta/projection helpers do not admit a pending
+profile-dependent request. The checkpoint's raw structural validator is
+private; public runtime creation, restore, information projection, response
+submission, and replay import rederive the exact Basic-Land domain through the
+verified RulesKernel admission. These low-level Rust helpers are explicitly
+documentation-hidden where cross-crate use is required and must never become
+a player-facing or persistence-admission API.
 
 ## 10. Contract compatibility and exact version disposition
 

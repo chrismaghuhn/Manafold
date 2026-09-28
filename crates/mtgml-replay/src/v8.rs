@@ -252,53 +252,65 @@ impl AuthoritativeReplayV8 {
         let players: BTreeSet<_> = self.manifest.decks.iter().map(|deck| deck.player).collect();
         let mut previous = initial.clone();
         for (index, step) in self.steps.iter().enumerate() {
-            if step.step_index != index as u64
-                || !players.contains(&step.actor)
-                || step.checkpoint_digest_before != previous.checkpoint_digest
-                || step.state_revision_before != previous.state_revision
-            {
-                return Err(ReplayValidationError::RevisionDiscontinuity);
-            }
-            step.validate()?;
-            step.environment_limit_counters_after
-                .validate()
-                .map_err(|_| ReplayValidationError::CounterProgression)?;
-            if !step.accepted {
-                if step.state_revision_after != previous.state_revision
-                    || step.full_state_digest_after != previous.full_state_digest
-                    || step.episode_status_after != previous.episode_status
-                    || step.environment_limit_counters_after != previous.environment_limit_counters
-                    || step.checkpoint_digest_after != previous.checkpoint_digest
-                {
-                    return Err(ReplayValidationError::RejectedMutation);
-                }
-            } else {
-                if step.state_revision_after.0 <= previous.state_revision.0 {
-                    return Err(ReplayValidationError::RevisionDiscontinuity);
-                }
-                validate_accepted_counter_progression(
-                    &previous.environment_limit_counters,
-                    &step.environment_limit_counters_after,
-                )?;
-            }
-            let next = InitialEnvironmentIdentityV8 {
-                state_revision: step.state_revision_after,
-                full_state_digest: step.full_state_digest_after.clone(),
-                episode_status: step.episode_status_after.clone(),
-                environment_limit_counters: step.environment_limit_counters_after.clone(),
-                checkpoint_codec_identity: previous.checkpoint_codec_identity.clone(),
-                checkpoint_digest: step.checkpoint_digest_after.clone(),
-                execution_identity: previous.execution_identity.clone(),
-            };
-            validate_status_for_players(&next.episode_status, &players)?;
-            next.validate()?;
-            previous = next;
+            previous = validate_replay_step_transition(&previous, step, index as u64, &players)?;
         }
         if self.final_identity != previous {
             return Err(ReplayValidationError::FinalIdentity);
         }
         Ok(())
     }
+}
+
+fn validate_replay_step_transition(
+    previous: &InitialEnvironmentIdentityV8,
+    step: &ReplayStepV8,
+    expected_index: u64,
+    players: &BTreeSet<PlayerId>,
+) -> Result<InitialEnvironmentIdentityV8, ReplayValidationError> {
+    if !matches!(previous.episode_status, EpisodeStatus::Running) {
+        return Err(ReplayValidationError::TransitionAfterEpisodeClosed);
+    }
+    if step.step_index != expected_index
+        || !players.contains(&step.actor)
+        || step.checkpoint_digest_before != previous.checkpoint_digest
+        || step.state_revision_before != previous.state_revision
+    {
+        return Err(ReplayValidationError::RevisionDiscontinuity);
+    }
+    step.validate()?;
+    step.environment_limit_counters_after
+        .validate()
+        .map_err(|_| ReplayValidationError::CounterProgression)?;
+    if !step.accepted {
+        if step.state_revision_after != previous.state_revision
+            || step.full_state_digest_after != previous.full_state_digest
+            || step.episode_status_after != previous.episode_status
+            || step.environment_limit_counters_after != previous.environment_limit_counters
+            || step.checkpoint_digest_after != previous.checkpoint_digest
+        {
+            return Err(ReplayValidationError::RejectedMutation);
+        }
+    } else {
+        if step.state_revision_after.0 <= previous.state_revision.0 {
+            return Err(ReplayValidationError::RevisionDiscontinuity);
+        }
+        validate_accepted_counter_progression(
+            &previous.environment_limit_counters,
+            &step.environment_limit_counters_after,
+        )?;
+    }
+    let next = InitialEnvironmentIdentityV8 {
+        state_revision: step.state_revision_after,
+        full_state_digest: step.full_state_digest_after.clone(),
+        episode_status: step.episode_status_after.clone(),
+        environment_limit_counters: step.environment_limit_counters_after.clone(),
+        checkpoint_codec_identity: previous.checkpoint_codec_identity.clone(),
+        checkpoint_digest: step.checkpoint_digest_after.clone(),
+        execution_identity: previous.execution_identity.clone(),
+    };
+    validate_status_for_players(&next.episode_status, players)?;
+    next.validate()?;
+    Ok(next)
 }
 
 fn validate_accepted_counter_progression(
@@ -353,9 +365,9 @@ fn validate_status_for_players(
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReplayRecorderV8 {
-    pub manifest: ReplayManifestV8,
-    pub steps: Vec<ReplayStepV8>,
-    pub final_identity: InitialEnvironmentIdentityV8,
+    manifest: ReplayManifestV8,
+    steps: Vec<ReplayStepV8>,
+    final_identity: InitialEnvironmentIdentityV8,
 }
 
 impl ReplayRecorderV8 {
@@ -372,28 +384,22 @@ impl ReplayRecorderV8 {
     /// detached recorder does not execute the response; G0j owns the single
     /// current runtime integration that supplies such products.
     pub fn append(&mut self, step: ReplayStepV8) -> Result<(), ReplayValidationError> {
-        let mut steps = self.steps.clone();
-        steps.push(step);
-        let last = steps.last().ok_or(ReplayValidationError::FinalIdentity)?;
-        let final_identity = InitialEnvironmentIdentityV8 {
-            state_revision: last.state_revision_after,
-            full_state_digest: last.full_state_digest_after.clone(),
-            episode_status: last.episode_status_after.clone(),
-            environment_limit_counters: last.environment_limit_counters_after.clone(),
-            checkpoint_codec_identity: self.final_identity.checkpoint_codec_identity.clone(),
-            checkpoint_digest: last.checkpoint_digest_after.clone(),
-            execution_identity: self.final_identity.execution_identity.clone(),
-        };
-        let replay = AuthoritativeReplayV8 {
-            schema_version: REPLAY_FILE_SCHEMA_V8.to_owned(),
-            manifest: self.manifest.clone(),
-            steps,
-            final_identity: final_identity.clone(),
-        };
-        replay.validate()?;
-        self.steps = replay.steps;
+        let final_identity = self.validate_next(&step)?;
+        self.steps.push(step);
         self.final_identity = final_identity;
         Ok(())
+    }
+
+    /// Validates one appended step against the recorder's already validated
+    /// prefix without rescanning or cloning that prefix.
+    fn validate_next(
+        &self,
+        step: &ReplayStepV8,
+    ) -> Result<InitialEnvironmentIdentityV8, ReplayValidationError> {
+        let expected_index =
+            u64::try_from(self.steps.len()).map_err(|_| ReplayValidationError::FinalIdentity)?;
+        let players = self.manifest.decks.iter().map(|deck| deck.player).collect();
+        validate_replay_step_transition(&self.final_identity, step, expected_index, &players)
     }
 
     pub fn export(&self) -> Result<AuthoritativeReplayV8, ReplayValidationError> {
@@ -511,6 +517,84 @@ mod tests {
             before.state_revision.0 + 1
         );
         assert_eq!(replay.final_identity.full_state_digest, after_digest);
+    }
+
+    #[test]
+    fn replay_v8_rejects_transitions_after_terminal_status() {
+        let mut recorder = ReplayRecorderV8::new(manifest()).unwrap();
+        let before = recorder.manifest().initial_identity.clone();
+        let players = recorder
+            .manifest()
+            .decks
+            .iter()
+            .map(|deck| deck.player)
+            .collect::<Vec<_>>();
+        let terminal = EpisodeStatus::Terminal {
+            reason: mtgml_model::TerminalReason::Concession,
+            players: players
+                .iter()
+                .map(|player| mtgml_model::PlayerOutcome {
+                    player: *player,
+                    result: mtgml_model::PlayerResult::Win,
+                })
+                .collect(),
+        };
+        let mut counters = before.environment_limit_counters.clone();
+        counters.decisions_submitted += 1;
+        counters.accepted_transitions += 1;
+        let after_digest = FullStateDigestV7::from_digest_bytes([0x4a; 32]);
+        let terminal_checkpoint_digest =
+            mtgml_persistence::checkpoint_digest::calculate_checkpoint_digest_v8(
+                &after_digest.as_digest_reference(),
+                &terminal,
+                &counters,
+                &before.checkpoint_codec_identity,
+                &before.execution_identity,
+            )
+            .unwrap();
+        let mut terminal_step: ReplayStepV8 = serde_json::from_str(include_str!(
+            "../../../schemas/examples/replay-step-v8.json"
+        ))
+        .unwrap();
+        terminal_step.checkpoint_digest_before = before.checkpoint_digest.clone();
+        terminal_step.state_revision_before = before.state_revision;
+        terminal_step.state_revision_after = StateRevision(before.state_revision.0 + 1);
+        terminal_step.full_state_digest_after = after_digest.clone();
+        terminal_step.episode_status_after = terminal.clone();
+        terminal_step.environment_limit_counters_after = counters.clone();
+        terminal_step.checkpoint_digest_after = terminal_checkpoint_digest.clone();
+        terminal_step.accepted = true;
+        recorder.append(terminal_step).unwrap();
+
+        let terminal_identity = recorder.export().unwrap().final_identity;
+        let mut after_close: ReplayStepV8 = serde_json::from_str(include_str!(
+            "../../../schemas/examples/replay-step-v8.json"
+        ))
+        .unwrap();
+        after_close.step_index = 1;
+        after_close.checkpoint_digest_before = terminal_identity.checkpoint_digest.clone();
+        after_close.state_revision_before = terminal_identity.state_revision;
+        after_close.state_revision_after = terminal_identity.state_revision;
+        after_close.full_state_digest_after = terminal_identity.full_state_digest.clone();
+        after_close.episode_status_after = terminal_identity.episode_status.clone();
+        after_close.environment_limit_counters_after =
+            terminal_identity.environment_limit_counters.clone();
+        after_close.checkpoint_digest_after = terminal_identity.checkpoint_digest.clone();
+        after_close.accepted = false;
+
+        let recorder_before = recorder.clone();
+        assert_eq!(
+            recorder.append(after_close.clone()),
+            Err(ReplayValidationError::TransitionAfterEpisodeClosed)
+        );
+        assert_eq!(recorder, recorder_before);
+
+        let mut malformed_replay = recorder.export().unwrap();
+        malformed_replay.steps.push(after_close);
+        assert_eq!(
+            malformed_replay.validate(),
+            Err(ReplayValidationError::TransitionAfterEpisodeClosed)
+        );
     }
 
     #[test]

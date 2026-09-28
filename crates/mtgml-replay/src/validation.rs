@@ -14,6 +14,8 @@ pub enum ReplayValidationError {
     DuplicateDeckPlayer,
     #[error("replay revisions are not contiguous")]
     RevisionDiscontinuity,
+    #[error("replay contains a transition after the episode closed")]
+    TransitionAfterEpisodeClosed,
     #[error("rejected response mutated the authoritative revision or full-state identity")]
     RejectedMutation,
     #[error("decision response is invalid")]

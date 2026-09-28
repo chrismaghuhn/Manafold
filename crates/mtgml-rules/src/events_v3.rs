@@ -496,7 +496,7 @@ pub fn validate_event_delta_state_v3(
 /// Validates event/Delta/state consistency for a transaction whose exact
 /// profile-dependent Decision domain was already rederived by its RulesKernel
 /// owner. This does not independently admit the state.
-pub fn validate_event_delta_state_v3_after_rules_domain_validation(
+pub(crate) fn validate_event_delta_state_v3_structural_only(
     before: &EngineStatePartsV3,
     after: &EngineStatePartsV3,
     events: &[AuthoritativeRuleEventV3],
@@ -513,7 +513,7 @@ fn validate_event_delta_state_v3_inner(
     rules_domain_validated: bool,
 ) -> Result<(), EventDeltaV3Error> {
     let applied = if rules_domain_validated {
-        delta.apply_after_rules_domain_validation(before)
+        delta.apply_structural_only(before)
     } else {
         delta.apply(before)
     }

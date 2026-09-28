@@ -255,7 +255,7 @@ For each perspective, visible events are assigned contiguous sequence values. Hi
 
 A visible random result may differ when the synthetic/rules visibility contract authorizes it. Root seed, typed stream key, derived key, stream cursor, raw words, rejection count, and hidden permutation remain trusted.
 
-## Accepted M4 observed-event and PlayerStep successors (current on master since PR #248)
+## Historical M4 observed-event and PlayerStep successors (PR #248)
 
 The accepted M4 state-cut Semantic Spec allocates
 `ObservedEventEnvelopeV3` (`observed-event-envelope.v3`) and `PlayerStepV3`
@@ -268,9 +268,19 @@ byte-exact historical contracts.
 
 `PlayerStepV3` embeds the V3 decision request and observed events while
 retaining `PlayerInformationStateV2`, unchanged DecisionResponseV2, and the
-existing revision, sequence, rejection, and endpoint-actor invariants. PR #248 activated these successors on `master` for the bounded M4.2 slice.
-Their existence does not claim broader information/event support beyond the
-accepted content closure.
+existing revision, sequence, rejection, and endpoint-actor invariants. PR #248
+activated these successors for the bounded M4.2 slice. G0j supersedes them with
+V4 observed events and PlayerStep V4 while preserving the exact V3 meaning.
+
+## Current G0 player products (G0j)
+
+The current bounded M4.2 endpoint composes ObservationEnvelopeV2,
+PlayerInformationStateV3 / InformationStateDigestV3, ObservedEventEnvelopeV4,
+PlayerDecisionRequestV4 / DecisionResponseV3, and PlayerStepV4. Player products
+omit global StateRevision and use the existing perspective-local
+VisibleSequence. The current public payload is
+`magic-shared-execution-observation.v1`; it remains scoped to the admitted
+Mountain/Plains `basic-land@1.0.0` execution.
 
 ## Noninterference
 
