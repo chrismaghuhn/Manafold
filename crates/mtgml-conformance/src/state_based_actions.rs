@@ -1089,6 +1089,7 @@ fn task6_sba_conformance_profile_rejects_effect_trigger_delay_and_stack_surfaces
             controller: P1,
             source_object: None,
             source_ability: None,
+            payload: None,
         },
     );
     stack.zones.stack_order.push(StackObjectId(1));

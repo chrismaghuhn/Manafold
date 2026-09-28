@@ -311,6 +311,14 @@ fn control_history_value(value: ControlHistory) -> Value {
 }
 
 fn zones_value(state: &EngineState) -> Result<Value, StateDigestError> {
+    if state
+        .zones
+        .stack_records
+        .values()
+        .any(|record| record.payload.is_some())
+    {
+        return Err(StateDigestError::StateInvariant);
+    }
     let objects = state.zones.objects.values().map(|object| {
         array([
             u(object.id.0),

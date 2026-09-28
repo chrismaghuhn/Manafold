@@ -54,11 +54,11 @@ fn typed_stack_payload_keeps_source_context_without_generic_resolution_blob() {
     let payload = StackItemPayload::TriggeredAbility {
         originating_trigger: TriggerInstanceId(1),
         source_context: ability_source(),
-        captured_trigger_context: TriggerEventSnapshot::TargetBecame {
+        captured_trigger_context: Box::new(TriggerEventSnapshot::TargetBecame {
             actor: PlayerId(1),
             source_stack_item: StackObjectId(3),
             target: TargetRef::Object(GameObjectId(10)),
-        },
+        }),
         targets: vec![TargetBinding {
             target_slot: 0,
             target: TargetRef::StackItem(StackObjectId(3)),

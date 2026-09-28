@@ -252,7 +252,9 @@ pub enum StackItemPayload {
     TriggeredAbility {
         originating_trigger: TriggerInstanceId,
         source_context: AbilitySourceContext,
-        captured_trigger_context: TriggerEventSnapshot,
+        /// Boxed only to keep the in-memory enum size bounded. `zones_v2`
+        /// encodes the fixed TriggerEventSnapshot value directly.
+        captured_trigger_context: Box<TriggerEventSnapshot>,
         targets: Vec<TargetBinding>,
     },
 }

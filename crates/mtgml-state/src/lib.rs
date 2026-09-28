@@ -15,6 +15,7 @@ mod digest_v5;
 mod digest_v6;
 mod engine;
 mod engine_state_parts_v2;
+mod engine_state_parts_v3;
 mod engine_state_shape;
 mod execution;
 mod format;
@@ -56,6 +57,7 @@ pub use digest_v6::{
 };
 pub use engine::{EngineState, EngineStateParts, FULL_STATE_DIGEST_INPUT_SCHEMA};
 pub use engine_state_parts_v2::{EngineStatePartsV2, EngineStatePartsV2Error};
+pub use engine_state_parts_v3::{EngineStatePartsV3, EngineStatePartsV3Error};
 pub use engine_state_shape::{
     AssemblyStageV2, ContinuationPayloadV2, ContinuationRecordV2, KnowledgeInvalidationV2,
     KnowledgeRecordV2, KnowledgeStateV2, KnownLocationFactV2, PendingDecisionRecordV2,
@@ -64,7 +66,7 @@ pub use engine_state_shape::{
     SYNTHETIC_COUNT_MAX, SYNTHETIC_COUNT_MIN,
 };
 pub use execution::{EffectRecord, ExecutionState, TriggerRecord};
-pub use execution::{ExecutionStateV3, SuccessorDecisionError};
+pub use execution::{ExecutionStateV3, ExecutionStateV4, SuccessorDecisionError};
 pub use format::{CommanderState, FormatState};
 pub use identity::{IdentityAllocationError, IdentityAllocatorState};
 pub use knowledge::{

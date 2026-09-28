@@ -1112,6 +1112,7 @@ fn m3_p0_full_state_digest_v5_mutation_matrix() {
                     controller: PlayerId(1),
                     source_object: None,
                     source_ability: None,
+                payload: None,
                 },
             );
             state.zones.stack_order.push(StackObjectId(1));

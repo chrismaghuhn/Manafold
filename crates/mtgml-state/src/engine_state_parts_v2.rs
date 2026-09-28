@@ -129,6 +129,14 @@ impl EngineStatePartsV2 {
         self.card_rules_state
             .validate()
             .map_err(|_| EngineStatePartsV2Error::CardRulesState)?;
+        if state
+            .zones
+            .stack_records
+            .values()
+            .any(|record| record.payload.is_some())
+        {
+            return Err(EngineStatePartsV2Error::UnsupportedStackPayload);
+        }
         if self.predecessor_v5.execution.pending_decision.is_some()
             || crate::PersistedExecutionV3::from_successor(&self.execution_v3).is_err()
         {
@@ -323,6 +331,8 @@ pub enum EngineStatePartsV2Error {
     CardRulesState,
     #[error("V6 execution state is invalid or duplicates a predecessor pending request")]
     ExecutionState,
+    #[error("V6 state cannot contain a G0 successor stack payload")]
+    UnsupportedStackPayload,
     #[error("V6 per-player state does not match the EngineState player universe")]
     PlayerUniverse,
     #[error("V6 turn history does not match the current turn number")]

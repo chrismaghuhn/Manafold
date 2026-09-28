@@ -530,6 +530,7 @@ mod tests {
                 controller: PlayerId(7),
                 source_object: None,
                 source_ability: None,
+                payload: None,
             },
         );
         assert!(matches!(
