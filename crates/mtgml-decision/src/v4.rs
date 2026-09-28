@@ -10,9 +10,9 @@ use crate::v2::{DecisionAnswerV2, DecisionDomainV2};
 use crate::v3::DecisionResponseV3;
 use mtgml_card_ir::{AbilityKey, CardSemanticProfileId};
 use mtgml_model::{
-    AbilityInstanceId, CandidateIdV1, ContinuationId, DecisionId, GameObjectId, OpaqueAbilityId,
-    OpaqueObjectId, PlayerDecisionIdV1, PlayerId, StateRevision, TriggerInstanceId,
-    VisibleSequence,
+    AbilityInstanceId, CandidateIdV1, ContinuationId, DecisionId, ExecutionIdentityV1,
+    GameObjectId, OpaqueAbilityId, OpaqueObjectId, PlayerDecisionIdV1, PlayerId, RulesContractIdV1,
+    StateRevision, TriggerInstanceId, VisibleSequence,
 };
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
@@ -1179,6 +1179,66 @@ impl AuthoritativeDecisionRequestV4 {
             return Err(DecisionValidationError::CandidateDomainMismatch);
         }
         Ok(())
+    }
+}
+
+/// Ephemeral Rules-owned proof input for admitting one profile-dependent
+/// pending request. It is deliberately not serializable and is never part of
+/// authoritative state. The RulesKernel must regenerate `expected_request`
+/// from the active immutable profile/content and state before constructing
+/// this value; the state crate then checks exact identity and request equality.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProfileDecisionDomainContextV1 {
+    pub execution_identity: ExecutionIdentityV1,
+    pub rules_contract_id: RulesContractIdV1,
+    pub expected_request: AuthoritativeDecisionRequestV4,
+}
+
+impl ProfileDecisionDomainContextV1 {
+    pub fn validate_for(
+        &self,
+        active_execution_identity: &ExecutionIdentityV1,
+        active_rules_contract_id: &RulesContractIdV1,
+        pending_request: &AuthoritativeDecisionRequestV4,
+    ) -> Result<(), DecisionValidationError> {
+        if &self.execution_identity != active_execution_identity
+            || &self.rules_contract_id != active_rules_contract_id
+        {
+            return Err(DecisionValidationError::ProfileDomainIdentityMismatch);
+        }
+        if !self
+            .expected_request
+            .purpose
+            .requires_profile_domain_context()
+        {
+            return Err(DecisionValidationError::ProfileDomainPurposeMismatch);
+        }
+        self.expected_request.project_player_request()?;
+        if &self.expected_request != pending_request {
+            return Err(DecisionValidationError::ProfileDomainRequestMismatch);
+        }
+        Ok(())
+    }
+}
+
+impl DecisionPurposeV4 {
+    /// These domains depend on immutable card/rules profile facts and need
+    /// Rules-owned soundness/completeness proof before admission.
+    pub fn requires_profile_domain_context(&self) -> bool {
+        matches!(
+            self,
+            Self::PriorityAction
+                | Self::AttackerDeclaration
+                | Self::CastCostRoute
+                | Self::ModeSelection { .. }
+                | Self::TargetSelection { .. }
+                | Self::CostOperandSelection { .. }
+                | Self::ManaProductionChoice
+                | Self::ManaPayment
+                | Self::OptionalCostPayment { .. }
+                | Self::AbilityAction
+                | Self::TriggerTarget { .. }
+        )
     }
 }
 

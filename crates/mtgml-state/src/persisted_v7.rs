@@ -51,7 +51,26 @@ pub struct FullStateDigestInputV7(Value);
 
 impl FullStateDigestInputV7 {
     pub fn from_successor(state: &EngineStatePartsV3) -> Result<Self, crate::StateDigestError> {
-        Ok(Self(state_value(state)?))
+        state
+            .validate()
+            .map_err(|_| crate::StateDigestError::StateInvariant)?;
+        Ok(Self(state_value_validated(state)?))
+    }
+
+    pub fn from_successor_with_profile_domain_context(
+        state: &EngineStatePartsV3,
+        context: &mtgml_decision::ProfileDecisionDomainContextV1,
+        active_execution_identity: &mtgml_model::ExecutionIdentityV1,
+        active_rules_contract_id: &mtgml_model::RulesContractIdV1,
+    ) -> Result<Self, crate::StateDigestError> {
+        state
+            .validate_with_profile_domain_context(
+                context,
+                active_execution_identity,
+                active_rules_contract_id,
+            )
+            .map_err(|_| crate::StateDigestError::StateInvariant)?;
+        Ok(Self(state_value_validated(state)?))
     }
 
     pub fn canonical_value(&self) -> &Value {
@@ -1170,11 +1189,7 @@ fn optional_uint(value: &Value) -> Result<(), crate::StateDigestError> {
     }
 }
 
-fn state_value(state: &EngineStatePartsV3) -> Result<Value, crate::StateDigestError> {
-    state
-        .validate()
-        .map_err(|_| crate::StateDigestError::StateInvariant)?;
-
+fn state_value_validated(state: &EngineStatePartsV3) -> Result<Value, crate::StateDigestError> {
     // Strip successor-only stack payloads solely from this temporary V6
     // component projection; they are encoded by zones_v2 below.
     let mut predecessor = state.predecessor_v5.clone();

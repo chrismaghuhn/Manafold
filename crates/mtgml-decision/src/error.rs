@@ -40,6 +40,14 @@ pub enum DecisionValidationError {
     BindingVariantMismatch,
     #[error("visible cost-route descriptor differs from its trusted route key")]
     CostRouteMismatch,
+    #[error(
+        "profile decision context identity does not match the active execution/rules contract"
+    )]
+    ProfileDomainIdentityMismatch,
+    #[error("profile decision context is attached to a profile-independent purpose")]
+    ProfileDomainPurposeMismatch,
+    #[error("profile decision context request does not exactly match the pending request")]
+    ProfileDomainRequestMismatch,
     #[error("player decision identity does not match the request")]
     DecisionIdentityMismatch,
     #[error("state revision does not match the request")]

@@ -1,17 +1,20 @@
 use mtgml_card_ir::{CardSemanticProfileId, FaceKey};
 use mtgml_model::{
-    CardDefinitionId, GameObjectId, PhysicalCardId, PlayerId, StackObjectId, ZoneKind,
+    CardDefinitionId, ExecutionIdentityV1, ExecutionProgramV1, GameObjectId, PhysicalCardId,
+    PlayerId, RulesContractIdV1, SemanticContractIdV1, StackObjectId, ZoneKind,
 };
 use mtgml_random::RootSeed256;
 use mtgml_state::{
     calculate_full_state_digest_v7, calculate_full_state_digest_v7_payload,
-    canonical_state_bytes_v7, construct_synthetic_engine_state, ActionCostFacts,
-    CardRulesAuthoritativeStateV1, EffectExpiry, EngineStatePartsV3, ExecutionStateV4, ManaCost,
-    ManaPaymentStage, ManaPaymentStaging, ManaSourceActivation, ManaSourceActivationCost,
-    NonManaActivationContinuation, NonManaActivationStage, ReservedNonManaCost,
-    SelectedCostOperand, StackItemPayload, StackRecord, StateDeltaV3, SyntheticResetInputs,
-    SyntheticV4Setup, TemporaryEffectRecord, TemporaryOperation, VisibilityPartition, ZoneLocation,
-    ZonePosition, FULL_STATE_DIGEST_DOMAIN_V7, FULL_STATE_DIGEST_INPUT_SCHEMA_V7,
+    calculate_full_state_digest_v7_with_profile_domain_context, canonical_state_bytes_v7,
+    canonical_state_bytes_v7_with_profile_domain_context, construct_synthetic_engine_state,
+    ActionCostFacts, CardRulesAuthoritativeStateV1, EffectExpiry, EngineStatePartsV3,
+    ExecutionStateV4, ManaCost, ManaPaymentStage, ManaPaymentStaging, ManaSourceActivation,
+    ManaSourceActivationCost, NonManaActivationContinuation, NonManaActivationStage,
+    ReservedNonManaCost, SelectedCostOperand, StackItemPayload, StackRecord, StateDeltaV3,
+    SyntheticResetInputs, SyntheticV4Setup, TemporaryEffectRecord, TemporaryOperation,
+    VisibilityPartition, ZoneLocation, ZonePosition, FULL_STATE_DIGEST_DOMAIN_V7,
+    FULL_STATE_DIGEST_INPUT_SCHEMA_V7,
 };
 
 fn state() -> EngineStatePartsV3 {
@@ -156,8 +159,40 @@ fn staged_activation_state() -> EngineStatePartsV3 {
             },
         }],
     });
-    state.validate().unwrap();
+    let (context, execution_identity, rules_contract_id) = profile_context(&state);
     state
+        .validate_with_profile_domain_context(&context, &execution_identity, &rules_contract_id)
+        .unwrap();
+    state
+}
+
+fn profile_context(
+    state: &EngineStatePartsV3,
+) -> (
+    mtgml_decision::ProfileDecisionDomainContextV1,
+    ExecutionIdentityV1,
+    RulesContractIdV1,
+) {
+    let request = state
+        .execution_v4
+        .pending_decision
+        .as_ref()
+        .unwrap()
+        .clone();
+    let execution_identity = ExecutionIdentityV1 {
+        program_kind: ExecutionProgramV1::MagicRules,
+        semantic_contract_id: SemanticContractIdV1::from_digest_bytes([0x31; 32]),
+    };
+    let rules_contract_id = RulesContractIdV1::from_digest_bytes([0x52; 32]);
+    (
+        mtgml_decision::ProfileDecisionDomainContextV1 {
+            execution_identity: execution_identity.clone(),
+            rules_contract_id: rules_contract_id.clone(),
+            expected_request: request,
+        },
+        execution_identity,
+        rules_contract_id,
+    )
 }
 
 fn insert_spell(state: &mut EngineStatePartsV3, object_id: u64, stack_id: u64) {
@@ -458,7 +493,17 @@ fn v7_digest_binds_temporary_effect_operation_and_lifetime_record() {
 #[test]
 fn v7_digest_binds_pending_activation_and_selected_cost_facts() {
     let state = staged_activation_state();
-    let original = calculate_full_state_digest_v7(&state).unwrap();
+    let (context, execution_identity, rules_contract_id) = profile_context(&state);
+    let digest = |state: &EngineStatePartsV3| {
+        calculate_full_state_digest_v7_with_profile_domain_context(
+            state,
+            &context,
+            &execution_identity,
+            &rules_contract_id,
+        )
+        .unwrap()
+    };
+    let original = digest(&state);
 
     let mut changed_source_output = state.clone();
     let Some(mtgml_state::ContinuationPayloadV3::NonManaActivation(activation)) =
@@ -476,10 +521,7 @@ fn v7_digest_binds_pending_activation_and_selected_cost_facts() {
         .unwrap()
         .mana_source_activations[0]
         .produced_buckets[4] = 1;
-    assert_ne!(
-        original,
-        calculate_full_state_digest_v7(&changed_source_output).unwrap()
-    );
+    assert_ne!(original, digest(&changed_source_output));
 
     let mut changed_operand = state.clone();
     let Some(mtgml_state::ContinuationPayloadV3::NonManaActivation(activation)) = changed_operand
@@ -495,10 +537,7 @@ fn v7_digest_binds_pending_activation_and_selected_cost_facts() {
         counter_kind: mtgml_state::CounterKindV1::MinusOneMinusOne,
         count: 2,
     };
-    assert_ne!(
-        original,
-        calculate_full_state_digest_v7(&changed_operand).unwrap()
-    );
+    assert_ne!(original, digest(&changed_operand));
 }
 
 #[test]
@@ -703,7 +742,87 @@ fn v7_input_decoder_rejects_wrong_identity_truncation_and_unknown_stack_tags() {
 #[test]
 fn v7_typed_writer_accepts_exact_pending_activation_bindings() {
     let state = staged_activation_state();
-    assert!(canonical_state_bytes_v7(&state).is_ok());
+    let (context, execution_identity, rules_contract_id) = profile_context(&state);
+    assert!(canonical_state_bytes_v7_with_profile_domain_context(
+        &state,
+        &context,
+        &execution_identity,
+        &rules_contract_id,
+    )
+    .is_ok());
+    assert!(canonical_state_bytes_v7(&state).is_err());
+    assert!(calculate_full_state_digest_v7(&state).is_err());
+    let first = calculate_full_state_digest_v7_with_profile_domain_context(
+        &state,
+        &context,
+        &execution_identity,
+        &rules_contract_id,
+    )
+    .unwrap();
+    let alternative_identity = ExecutionIdentityV1 {
+        program_kind: ExecutionProgramV1::MagicRules,
+        semantic_contract_id: SemanticContractIdV1::from_digest_bytes([0x78; 32]),
+    };
+    let alternative_rules_id = RulesContractIdV1::from_digest_bytes([0x97; 32]);
+    let alternative_context = mtgml_decision::ProfileDecisionDomainContextV1 {
+        execution_identity: alternative_identity.clone(),
+        rules_contract_id: alternative_rules_id.clone(),
+        expected_request: context.expected_request.clone(),
+    };
+    assert_eq!(
+        first,
+        calculate_full_state_digest_v7_with_profile_domain_context(
+            &state,
+            &alternative_context,
+            &alternative_identity,
+            &alternative_rules_id,
+        )
+        .unwrap()
+    );
+}
+
+#[test]
+fn v7_delta_requires_separate_exact_context_for_pending_before_and_after() {
+    let before = staged_activation_state();
+    let (before_context, execution_identity, rules_contract_id) = profile_context(&before);
+    let mut after = before.clone();
+    after.predecessor_v5.revision =
+        mtgml_model::StateRevision(before.predecessor_v5.revision.0.checked_add(1).unwrap());
+    let before_request = before.execution_v4.pending_decision.clone().unwrap();
+    let mut after_request = before_request.clone();
+    after_request.state_revision = after.predecessor_v5.revision;
+    after.execution_v4.pending_decision = Some(after_request.clone());
+    let (after_context, _, _) = profile_context(&after);
+    let operations = vec![
+        mtgml_state::SemanticDeltaOperationV3::PendingRequestChanged {
+            from: Some(Box::new(before_request)),
+            to: Some(Box::new(after_request)),
+        },
+    ];
+
+    assert!(StateDeltaV3::between(&before, &after, operations.clone()).is_err());
+    let delta = StateDeltaV3::between_with_profile_domain_context(
+        &before,
+        Some(&before_context),
+        &after,
+        Some(&after_context),
+        operations,
+        &execution_identity,
+        &rules_contract_id,
+    )
+    .unwrap();
+    assert_eq!(
+        delta
+            .apply_with_profile_domain_context(
+                &before,
+                Some(&before_context),
+                Some(&after_context),
+                &execution_identity,
+                &rules_contract_id,
+            )
+            .unwrap(),
+        after
+    );
 }
 
 #[test]

@@ -1,8 +1,9 @@
 use mtgml_card_ir::{CardSemanticProfileId, FaceKey};
 use mtgml_model::{
-    AbilityInstanceId, CandidateIdV1, CardDefinitionId, ContinuationId, DecisionId, GameObjectId,
-    PhysicalCardId, PlayerDecisionIdV1, PlayerId, StackObjectId, StateRevision, VisibleSequence,
-    ZoneKind,
+    AbilityInstanceId, CandidateIdV1, CardDefinitionId, ContinuationId, DecisionId,
+    ExecutionIdentityV1, ExecutionProgramV1, GameObjectId, PhysicalCardId, PlayerDecisionIdV1,
+    PlayerId, RulesContractIdV1, SemanticContractIdV1, StackObjectId, StateRevision,
+    VisibleSequence, ZoneKind,
 };
 use mtgml_random::RootSeed256;
 use mtgml_state::{
@@ -239,6 +240,29 @@ fn staged_blight_activation() -> (EngineStatePartsV3, ContinuationId) {
     (state, continuation_id)
 }
 
+fn profile_context(
+    request: &mtgml_decision::AuthoritativeDecisionRequestV4,
+) -> (
+    mtgml_decision::ProfileDecisionDomainContextV1,
+    ExecutionIdentityV1,
+    RulesContractIdV1,
+) {
+    let execution_identity = ExecutionIdentityV1 {
+        program_kind: ExecutionProgramV1::MagicRules,
+        semantic_contract_id: SemanticContractIdV1::from_digest_bytes([0x31; 32]),
+    };
+    let rules_contract_id = RulesContractIdV1::from_digest_bytes([0x52; 32]);
+    (
+        mtgml_decision::ProfileDecisionDomainContextV1 {
+            execution_identity: execution_identity.clone(),
+            rules_contract_id: rules_contract_id.clone(),
+            expected_request: request.clone(),
+        },
+        execution_identity,
+        rules_contract_id,
+    )
+}
+
 #[test]
 fn successor_authority_has_one_v3_root_and_v4_execution_owner() {
     let state = root();
@@ -464,7 +488,46 @@ fn temporary_effect_expiry_is_bound_to_the_authoritative_turn() {
 #[test]
 fn selected_blght_operand_remains_a_distinct_legal_mana_source() {
     let (state, _) = staged_blight_activation();
-    state.validate().unwrap();
+    let request = state.execution_v4.pending_decision.as_ref().unwrap();
+    let (context, execution_identity, rules_contract_id) = profile_context(request);
+    state
+        .validate_with_profile_domain_context(&context, &execution_identity, &rules_contract_id)
+        .unwrap();
+    assert_eq!(
+        EngineStatePartsV3::new(
+            state.predecessor_v5.clone(),
+            state.execution_v4.clone(),
+            state.card_rules_state.clone(),
+        ),
+        Err(mtgml_state::EngineStatePartsV3Error::ProfileDomainContextRequired)
+    );
+    assert!(EngineStatePartsV3::new_with_profile_domain_context(
+        state.predecessor_v5.clone(),
+        state.execution_v4.clone(),
+        state.card_rules_state.clone(),
+        &context,
+        &execution_identity,
+        &rules_contract_id,
+    )
+    .is_ok());
+
+    let alternative_identity = ExecutionIdentityV1 {
+        program_kind: ExecutionProgramV1::MagicRules,
+        semantic_contract_id: SemanticContractIdV1::from_digest_bytes([0x78; 32]),
+    };
+    let alternative_rules_id = RulesContractIdV1::from_digest_bytes([0x97; 32]);
+    let alternative_context = mtgml_decision::ProfileDecisionDomainContextV1 {
+        execution_identity: alternative_identity.clone(),
+        rules_contract_id: alternative_rules_id.clone(),
+        expected_request: request.clone(),
+    };
+    state
+        .validate_with_profile_domain_context(
+            &alternative_context,
+            &alternative_identity,
+            &alternative_rules_id,
+        )
+        .unwrap();
 }
 
 #[test]
@@ -575,6 +638,63 @@ fn pending_v4_request_must_match_its_perspective_local_visible_cursor() {
     assert_eq!(
         state.validate(),
         Err(mtgml_state::EngineStatePartsV3Error::PendingDecision)
+    );
+}
+
+#[test]
+fn profile_dependent_pending_request_requires_rules_domain_context() {
+    let (state, _) = staged_blight_activation();
+    assert_eq!(
+        state.validate(),
+        Err(mtgml_state::EngineStatePartsV3Error::ProfileDomainContextRequired)
+    );
+    let request = state.execution_v4.pending_decision.as_ref().unwrap();
+    let (context, execution_identity, rules_contract_id) = profile_context(request);
+    state
+        .validate_with_profile_domain_context(&context, &execution_identity, &rules_contract_id)
+        .unwrap();
+
+    let mut rebound = context.clone();
+    rebound.expected_request.view_sequence = VisibleSequence(request.view_sequence.0 + 1);
+    assert_eq!(
+        state.validate_with_profile_domain_context(
+            &rebound,
+            &execution_identity,
+            &rules_contract_id
+        ),
+        Err(mtgml_state::EngineStatePartsV3Error::ProfileDomainContextMismatch)
+    );
+
+    let mut stale_context = state.clone();
+    stale_context
+        .execution_v4
+        .pending_decision
+        .as_mut()
+        .unwrap()
+        .view_sequence = VisibleSequence(request.view_sequence.0 + 1);
+    stale_context
+        .predecessor_v5
+        .knowledge
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap()
+        .next_visible_sequence = VisibleSequence(request.view_sequence.0 + 1);
+    assert_eq!(
+        stale_context.validate_with_profile_domain_context(
+            &context,
+            &execution_identity,
+            &rules_contract_id,
+        ),
+        Err(mtgml_state::EngineStatePartsV3Error::ProfileDomainContextMismatch)
+    );
+
+    let wrong_identity = ExecutionIdentityV1 {
+        program_kind: ExecutionProgramV1::MagicRules,
+        semantic_contract_id: SemanticContractIdV1::from_digest_bytes([0x77; 32]),
+    };
+    assert_eq!(
+        state.validate_with_profile_domain_context(&context, &wrong_identity, &rules_contract_id),
+        Err(mtgml_state::EngineStatePartsV3Error::ProfileDomainContextMismatch)
     );
 }
 
@@ -700,7 +820,20 @@ fn v4_response_returns_only_the_exact_trusted_binding_without_mutation() {
             candidate_id: CandidateIdV1(0),
         },
     };
-    let selected = state.selected_bindings_v4(PlayerId(1), &response).unwrap();
+    let (context, execution_identity, rules_contract_id) = profile_context(request);
+    assert_eq!(
+        state.selected_bindings_v4(PlayerId(1), &response),
+        Err(mtgml_state::EngineStatePartsV3Error::ProfileDomainContextRequired)
+    );
+    let selected = state
+        .selected_bindings_v4_with_profile_domain_context(
+            PlayerId(1),
+            &response,
+            &context,
+            &execution_identity,
+            &rules_contract_id,
+        )
+        .unwrap();
     assert_eq!(selected.len(), 1);
     assert!(matches!(
         selected[0],
@@ -716,7 +849,13 @@ fn v4_response_returns_only_the_exact_trusted_binding_without_mutation() {
         ..response.clone()
     };
     assert_eq!(
-        state.selected_bindings_v4(PlayerId(1), &fabricated),
+        state.selected_bindings_v4_with_profile_domain_context(
+            PlayerId(1),
+            &fabricated,
+            &context,
+            &execution_identity,
+            &rules_contract_id,
+        ),
         Err(mtgml_state::EngineStatePartsV3Error::PendingDecisionResponse)
     );
     let stale_view = mtgml_decision::DecisionResponseV3 {
@@ -724,7 +863,13 @@ fn v4_response_returns_only_the_exact_trusted_binding_without_mutation() {
         ..response
     };
     assert_eq!(
-        state.selected_bindings_v4(PlayerId(1), &stale_view),
+        state.selected_bindings_v4_with_profile_domain_context(
+            PlayerId(1),
+            &stale_view,
+            &context,
+            &execution_identity,
+            &rules_contract_id,
+        ),
         Err(mtgml_state::EngineStatePartsV3Error::PendingDecisionResponse)
     );
     assert_eq!(state, before);

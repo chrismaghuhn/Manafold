@@ -64,7 +64,9 @@ pub use digest_v6::{
 };
 pub use digest_v7::{
     calculate_full_state_digest_v7, calculate_full_state_digest_v7_payload,
-    canonical_state_bytes_v7, verify_full_state_digest_v7,
+    calculate_full_state_digest_v7_with_profile_domain_context, canonical_state_bytes_v7,
+    canonical_state_bytes_v7_with_profile_domain_context, verify_full_state_digest_v7,
+    verify_full_state_digest_v7_with_profile_domain_context,
 };
 pub use engine::{EngineState, EngineStateParts, FULL_STATE_DIGEST_INPUT_SCHEMA};
 pub use engine_state_parts_v2::{EngineStatePartsV2, EngineStatePartsV2Error};
