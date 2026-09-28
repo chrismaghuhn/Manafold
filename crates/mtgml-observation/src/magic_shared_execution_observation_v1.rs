@@ -306,4 +306,38 @@ mod tests {
             Err(ObservationValidationError::ObservationPayload)
         );
     }
+
+    #[test]
+    fn rejects_duplicate_mode_cost_and_effect_identity_values() {
+        let mut value: Value = serde_json::from_str(FIXTURE).unwrap();
+        value["stack"][0]["modes"] = serde_json::json!([
+            {"mode_slot": 0, "selected_mode": 1},
+            {"mode_slot": 0, "selected_mode": 2}
+        ]);
+        let view: MagicSharedExecutionObservationV1 = serde_json::from_value(value).unwrap();
+        assert_eq!(
+            view.validate(),
+            Err(ObservationValidationError::ObservationPayload)
+        );
+
+        let mut value: Value = serde_json::from_str(FIXTURE).unwrap();
+        value["stack"][0]["cost_facts"]["paid_additional_cost_ids"] = serde_json::json!([2, 2]);
+        let view: MagicSharedExecutionObservationV1 = serde_json::from_value(value).unwrap();
+        assert_eq!(
+            view.validate(),
+            Err(ObservationValidationError::ObservationPayload)
+        );
+
+        let mut value: Value = serde_json::from_str(FIXTURE).unwrap();
+        value["temporary_effects"][0]["affected_objects"] = serde_json::json!(["2", "2"]);
+        let view: MagicSharedExecutionObservationV1 = serde_json::from_value(value).unwrap();
+        assert_eq!(
+            view.validate(),
+            Err(ObservationValidationError::ObservationPayload)
+        );
+
+        let mut value: Value = serde_json::from_str(FIXTURE).unwrap();
+        value["temporary_effects"][0]["operation"]["power"] = serde_json::json!(2147483648_i64);
+        assert!(serde_json::from_value::<MagicSharedExecutionObservationV1>(value).is_err());
+    }
 }

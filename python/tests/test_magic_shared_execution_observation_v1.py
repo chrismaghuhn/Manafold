@@ -64,6 +64,32 @@ class MagicSharedExecutionObservationV1Tests(unittest.TestCase):
         payload = MagicSharedExecutionObservationV1.from_wire(raw)
         self.assertEqual(len(payload.temporary_effects), 4)
 
+    def test_rejects_malformed_values_and_duplicate_semantic_keys(self) -> None:
+        malformed_keyword = shared_fixture()
+        malformed_keyword["temporary_effects"][1]["operation"]["keyword"] = []
+        with self.assertRaises(WireError):
+            MagicSharedExecutionObservationV1.from_wire(malformed_keyword)
+
+        duplicate_mode_slot = shared_fixture()
+        duplicate_mode_slot["stack"][0]["modes"].append({"mode_slot": 0, "selected_mode": 2})
+        with self.assertRaises(WireError):
+            MagicSharedExecutionObservationV1.from_wire(duplicate_mode_slot)
+
+        duplicate_cost_id = shared_fixture()
+        duplicate_cost_id["stack"][0]["cost_facts"]["paid_additional_cost_ids"] = [2, 2]
+        with self.assertRaises(WireError):
+            MagicSharedExecutionObservationV1.from_wire(duplicate_cost_id)
+
+        duplicate_affected_object = shared_fixture()
+        duplicate_affected_object["temporary_effects"][0]["affected_objects"] = ["2", "2"]
+        with self.assertRaises(WireError):
+            MagicSharedExecutionObservationV1.from_wire(duplicate_affected_object)
+
+        overflowing_power = shared_fixture()
+        overflowing_power["temporary_effects"][0]["operation"]["power"] = 2**31
+        with self.assertRaises(WireError):
+            MagicSharedExecutionObservationV1.from_wire(overflowing_power)
+
 
 if __name__ == "__main__":
     unittest.main()

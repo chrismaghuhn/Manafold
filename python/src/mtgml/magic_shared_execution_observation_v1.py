@@ -219,9 +219,13 @@ class GrantKeywordV1:
     @classmethod
     def from_wire(cls, value: object) -> GrantKeywordV1:
         obj = require_exact_keys(value, {"kind", "keyword"})
-        if obj["kind"] != "grant_keyword" or obj["keyword"] not in {"haste", "double_strike"}:
+        if (
+            obj["kind"] != "grant_keyword"
+            or not isinstance(obj["keyword"], str)
+            or obj["keyword"] not in {"haste", "double_strike"}
+        ):
             raise WireError("decode.invalid_json", "invalid temporary keyword grant")
-        return cls(str(obj["keyword"]))
+        return cls(obj["keyword"])
 
     def to_wire(self) -> dict[str, str]:
         if self.keyword not in {"haste", "double_strike"}:
