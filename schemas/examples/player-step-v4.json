@@ -19,35 +19,21 @@
     {
       "event": {
         "item": {
-          "card_object": "50",
           "controller": "1",
           "cost_facts": {
             "paid_additional_cost_ids": [],
-            "selected_route": {
-              "kind": "normal"
-            }
+            "selected_route": null
           },
-          "kind": "spell",
+          "kind": "activated_ability",
           "modes": [
             {
               "mode_slot": 0,
               "selected_mode": 1
             }
           ],
-          "targets": [
-            {
-              "kind": "object",
-              "object": "4"
-            },
-            {
-              "kind": "player",
-              "player": "2"
-            },
-            {
-              "kind": "stack_item",
-              "stack_position_from_top": 0
-            }
-          ]
+          "source_ability": "8",
+          "source_object": "5",
+          "targets": []
         },
         "kind": "stack_item_added",
         "stack_position_from_top": 0
