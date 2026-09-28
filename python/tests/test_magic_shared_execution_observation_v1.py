@@ -7,8 +7,10 @@ from pathlib import Path
 
 from mtgml.errors import WireError
 from mtgml.magic_shared_execution_observation_v1 import (
+    ActivatedAbilityStackItemV1,
     GrantKeywordV1,
     MagicSharedExecutionObservationV1,
+    PublicModeV1,
     PublicTemporaryEffectV1,
 )
 from mtgml.wire import decode_canonical, encode_canonical
@@ -64,6 +66,25 @@ class MagicSharedExecutionObservationV1Tests(unittest.TestCase):
         raw["temporary_effects"] = [item.to_wire() for item in effects]
         payload = MagicSharedExecutionObservationV1.from_wire(raw)
         self.assertEqual(len(payload.temporary_effects), 4)
+
+    def test_activated_ability_modes_round_trip_and_require_unique_slot_order(self) -> None:
+        raw = shared_fixture()
+        raw["stack"][1]["modes"] = [{"mode_slot": 0, "selected_mode": 1}]
+        payload = MagicSharedExecutionObservationV1.from_wire(raw)
+        activated = payload.stack[1]
+        assert isinstance(activated, ActivatedAbilityStackItemV1)
+        self.assertEqual(activated.modes, (PublicModeV1(mode_slot=0, selected_mode=1),))
+        self.assertEqual(payload.to_wire(), raw)
+
+        duplicate = copy.deepcopy(raw)
+        duplicate["stack"][1]["modes"].append({"mode_slot": 0, "selected_mode": 2})
+        with self.assertRaises(WireError):
+            MagicSharedExecutionObservationV1.from_wire(duplicate)
+
+        missing = copy.deepcopy(raw)
+        del missing["stack"][1]["modes"]
+        with self.assertRaises(WireError):
+            MagicSharedExecutionObservationV1.from_wire(missing)
 
     def test_rejects_malformed_values_and_duplicate_semantic_keys(self) -> None:
         malformed_keyword = shared_fixture()

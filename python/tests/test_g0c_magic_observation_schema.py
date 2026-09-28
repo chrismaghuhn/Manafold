@@ -31,6 +31,13 @@ class SharedExecutionObservationSchemaTests(unittest.TestCase):
             {item["kind"] for item in fixture["stack"]},
             {"spell", "activated_ability", "triggered_ability"},
         )
+        activated = next(item for item in fixture["stack"] if item["kind"] == "activated_ability")
+        self.assertIn("modes", activated)
+        self.assertIn("modes", json.loads(
+            (ROOT / "schemas/magic-shared-execution-observation.v1.schema.json").read_text(
+                encoding="utf-8"
+            )
+        )["$defs"]["public_stack_item"]["oneOf"][1]["required"])
         self.assertEqual(
             {item["operation"]["kind"] for item in fixture["temporary_effects"]},
             {"power_toughness_delta", "grant_keyword"},

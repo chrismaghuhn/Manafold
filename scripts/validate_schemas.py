@@ -173,6 +173,10 @@ SCHEMA_NEGATIVE_CASES = [
         "schemas/negative/magic-shared-execution-observation-v1-unbound-ability.json",
     ),
     (
+        "magic-shared-execution-observation.v1.schema.json",
+        "schemas/negative/magic-shared-execution-observation-v1-activated-modes-missing.json",
+    ),
+    (
         "decision-response.v3.schema.json",
         "schemas/negative/decision-response-v3-global-state-revision.json",
     ),

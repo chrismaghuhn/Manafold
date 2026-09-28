@@ -171,6 +171,12 @@
                 "$ref": "#/$defs/safe_target_descriptor"
               },
               "type": "array"
+            },
+            "modes": {
+              "items": {
+                "$ref": "#/$defs/public_mode"
+              },
+              "type": "array"
             }
           },
           "required": [
@@ -178,6 +184,7 @@
             "controller",
             "source_object",
             "source_ability",
+            "modes",
             "targets",
             "cost_facts"
           ],

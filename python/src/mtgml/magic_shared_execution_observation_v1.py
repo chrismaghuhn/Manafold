@@ -89,6 +89,7 @@ class ActivatedAbilityStackItemV1:
     controller: int
     source_object: int | None
     source_ability: int | None
+    modes: tuple[PublicModeV1, ...]
     targets: tuple[SafeTargetDescriptorV1, ...]
     cost_facts: CostFactsV1
 
@@ -101,16 +102,22 @@ class ActivatedAbilityStackItemV1:
                 "controller",
                 "source_object",
                 "source_ability",
+                "modes",
                 "targets",
                 "cost_facts",
             },
         )
-        if obj["kind"] != "activated_ability" or not isinstance(obj["targets"], list):
+        if (
+            obj["kind"] != "activated_ability"
+            or not isinstance(obj["modes"], list)
+            or not isinstance(obj["targets"], list)
+        ):
             raise WireError("decode.invalid_json", "invalid activated ability stack item")
         return cls(
             parse_uint(obj["controller"]),
             None if obj["source_object"] is None else parse_uint(obj["source_object"]),
             None if obj["source_ability"] is None else parse_uint(obj["source_ability"]),
+            tuple(PublicModeV1.from_wire(item) for item in obj["modes"]),
             tuple(SafeTargetDescriptorV1.from_wire(item) for item in obj["targets"]),
             CostFactsV1.from_wire(obj["cost_facts"]),
         )
@@ -121,6 +128,9 @@ class ActivatedAbilityStackItemV1:
                 "semantic.observation",
                 "visible ability source requires visible source object",
             )
+        slots = tuple(mode.mode_slot for mode in self.modes)
+        if tuple(sorted(set(slots))) != slots:
+            raise WireError("semantic.observation", "stack modes must be uniquely sorted by slot")
 
     def to_wire(self) -> dict[str, object]:
         self.validate()
@@ -131,6 +141,7 @@ class ActivatedAbilityStackItemV1:
             "source_ability": None
             if self.source_ability is None
             else uint_wire(self.source_ability),
+            "modes": [item.to_wire() for item in self.modes],
             "targets": [item.to_wire() for item in self.targets],
             "cost_facts": self.cost_facts.to_wire(),
         }
@@ -357,9 +368,9 @@ class MagicSharedExecutionObservationV1:
             raise WireError("semantic.observation", "invalid base observation")
         self.base_observation.to_wire()
         for item in self.stack:
-            if isinstance(item, ActivatedAbilityStackItemV1 | TriggeredAbilityStackItemV1):
+            if isinstance(item, TriggeredAbilityStackItemV1):
                 item.to_wire()
-            if isinstance(item, SpellStackItemV1):
+            if isinstance(item, SpellStackItemV1 | ActivatedAbilityStackItemV1):
                 slots = tuple(mode.mode_slot for mode in item.modes)
                 if tuple(sorted(set(slots))) != slots:
                     raise WireError(

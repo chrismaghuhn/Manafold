@@ -45,6 +45,7 @@ pub enum PublicStackItemV1 {
         source_object: Option<OpaqueObjectId>,
         #[serde(deserialize_with = "deserialize_required_option")]
         source_ability: Option<OpaqueAbilityId>,
+        modes: Vec<PublicModeV1>,
         targets: Vec<SafeTargetDescriptorV1>,
         cost_facts: CostFactsV1,
     },
@@ -76,11 +77,18 @@ impl PublicStackItemV1 {
             Self::ActivatedAbility {
                 source_object,
                 source_ability,
+                modes,
                 cost_facts,
                 ..
             } => {
                 validate_public_source(*source_object, *source_ability)?;
                 validate_public_cost_facts(cost_facts)?;
+                if modes
+                    .windows(2)
+                    .any(|pair| pair[0].mode_slot >= pair[1].mode_slot)
+                {
+                    return Err(ObservationValidationError::ObservationPayload);
+                }
                 Ok(())
             }
             Self::TriggeredAbility {
@@ -321,6 +329,17 @@ mod tests {
         );
 
         let mut value: Value = serde_json::from_str(FIXTURE).unwrap();
+        value["stack"][1]["modes"] = serde_json::json!([
+            {"mode_slot": 0, "selected_mode": 1},
+            {"mode_slot": 0, "selected_mode": 2}
+        ]);
+        let view: MagicSharedExecutionObservationV1 = serde_json::from_value(value).unwrap();
+        assert_eq!(
+            view.validate(),
+            Err(ObservationValidationError::ObservationPayload)
+        );
+
+        let mut value: Value = serde_json::from_str(FIXTURE).unwrap();
         value["stack"][0]["cost_facts"]["paid_additional_cost_ids"] = serde_json::json!([2, 2]);
         let view: MagicSharedExecutionObservationV1 = serde_json::from_value(value).unwrap();
         assert_eq!(
@@ -339,5 +358,20 @@ mod tests {
         let mut value: Value = serde_json::from_str(FIXTURE).unwrap();
         value["temporary_effects"][0]["operation"]["power"] = serde_json::json!(2147483648_i64);
         assert!(serde_json::from_value::<MagicSharedExecutionObservationV1>(value).is_err());
+    }
+
+    #[test]
+    fn activated_ability_modes_are_preserved_in_the_public_stack_view() {
+        let mut value: Value = serde_json::from_str(FIXTURE).unwrap();
+        value["stack"][1]["modes"] = serde_json::json!([
+            {"mode_slot": 0, "selected_mode": 1}
+        ]);
+        let view: MagicSharedExecutionObservationV1 = serde_json::from_value(value).unwrap();
+        view.validate().unwrap();
+        assert!(matches!(
+            &view.stack[1],
+            PublicStackItemV1::ActivatedAbility { modes, .. }
+                if modes == &[PublicModeV1 { mode_slot: 0, selected_mode: 1 }]
+        ));
     }
 }

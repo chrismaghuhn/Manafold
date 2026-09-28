@@ -119,7 +119,8 @@
       "kind": "activated_ability",
       "source_ability": "8",
       "source_object": null,
-      "targets": []
+      "targets": [],
+      "modes": []
     },
     {
       "controller": "2",
