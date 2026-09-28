@@ -10,8 +10,9 @@ use mtgml_model::{
 use mtgml_state::{
     ActionCostFacts, CostCommitActionV1, CostFacts, DamageKind, DamageRecipient,
     EngineStatePartsV3, ManaPoolChangeCauseV1, ManaPoolV1, ManaSourceActivation,
-    PendingTriggerRecord, SemanticDeltaOperationV2, SemanticDeltaOperationV3, SourceContext,
-    StackItemEndKindV1, StackItemPayload, StateDeltaV3, TargetBinding, TemporaryEffectRecord,
+    PendingTriggerRecord, PerspectiveLifecycleAuditV1, SemanticDeltaOperationV2,
+    SemanticDeltaOperationV3, SourceContext, StackItemEndKindV1, StackItemPayload, StateDeltaV3,
+    TargetBinding, TemporaryEffectRecord,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -108,6 +109,13 @@ pub enum AuthoritativeRuleEventKindV3 {
     },
     TemporaryEffectExpired {
         effect: TemporaryEffectRecord,
+    },
+    /// A perspective-visible occurrence associated with another authoritative
+    /// event in this same transition. The source ID is trusted-only; the
+    /// environment projects the referenced rule event through opaque IDs.
+    PerspectiveObservationOccurrence {
+        lifecycle: Box<PerspectiveLifecycleAuditV1>,
+        source_event_id: RuleEventId,
     },
     DamageApplied {
         source: Option<SourceContext>,
@@ -236,6 +244,17 @@ impl AuthoritativeRuleEventKindV3 {
                     to: None,
                 }]
             }
+            Self::PerspectiveObservationOccurrence { lifecycle, .. } => {
+                vec![SemanticDeltaOperationV3::Existing {
+                    operation: Box::new(SemanticDeltaOperationV2::Existing {
+                        operation: Box::new(
+                            mtgml_state::SemanticDeltaOperation::PerspectiveLifecycle {
+                                lifecycle: lifecycle.as_ref().clone(),
+                            },
+                        ),
+                    }),
+                }]
+            }
             Self::DamageApplied {
                 source,
                 recipient,
@@ -323,6 +342,7 @@ pub fn validate_event_delta_state_v3(
     )
     .map_err(|_| EventDeltaV3Error::Mismatch)?;
     validate_event_delta_parity_v3(events, delta)?;
+    validate_observation_occurrence_lifecycle(before, after, events)?;
     let before_stack_order = &before.predecessor_v5.zones.stack_order;
     let after_stack_order = &after.predecessor_v5.zones.stack_order;
     let stack_order_operations = delta
@@ -359,6 +379,86 @@ pub fn validate_event_delta_state_v3(
     }
     validate_damage_state_projection_v3(before, after, events)?;
     Ok(())
+}
+
+fn validate_observation_occurrence_lifecycle(
+    before: &EngineStatePartsV3,
+    after: &EngineStatePartsV3,
+    events: &[AuthoritativeRuleEventV3],
+) -> Result<(), EventDeltaV3Error> {
+    let mut projected: mtgml_state::EngineState = after.predecessor_v5.clone().into();
+    projected.knowledge = before.predecessor_v5.knowledge.clone();
+    projected.perspective_identities = before.predecessor_v5.perspective_identities.clone();
+    for (index, event) in events.iter().enumerate() {
+        let (lifecycle, source_event_id) = match &event.event {
+            AuthoritativeRuleEventKindV3::PerspectiveObservationOccurrence {
+                lifecycle,
+                source_event_id,
+            } => (Some(lifecycle.as_ref()), Some(*source_event_id)),
+            AuthoritativeRuleEventKindV3::Existing { event } => match event.as_ref() {
+                AuthoritativeRuleEventKind::PerspectiveOccurrence { lifecycle, .. } => {
+                    (Some(lifecycle), None)
+                }
+                _ => (None, None),
+            },
+            _ => (None, None),
+        };
+        let Some(lifecycle) = lifecycle else {
+            continue;
+        };
+        if let Some(source_event_id) = source_event_id {
+            let Some(source_index) = events
+                .iter()
+                .position(|candidate| candidate.event_id == source_event_id)
+            else {
+                return Err(EventDeltaV3Error::Mismatch);
+            };
+            if source_index >= index
+                || !is_projectable_public_source_event(&events[source_index].event)
+            {
+                return Err(EventDeltaV3Error::Mismatch);
+            }
+        }
+        if projected
+            .knowledge
+            .players
+            .get(&lifecycle.perspective)
+            .is_none_or(|knowledge| knowledge.next_visible_sequence != lifecycle.sequence)
+            || mtgml_state::apply_perspective_lifecycle(&mut projected, lifecycle).is_err()
+        {
+            return Err(EventDeltaV3Error::Mismatch);
+        }
+    }
+    if projected.knowledge != after.predecessor_v5.knowledge
+        || projected.perspective_identities != after.predecessor_v5.perspective_identities
+    {
+        return Err(EventDeltaV3Error::Mismatch);
+    }
+    Ok(())
+}
+
+fn is_projectable_public_source_event(event: &AuthoritativeRuleEventKindV3) -> bool {
+    match event {
+        AuthoritativeRuleEventKindV3::StackItemAdded { .. }
+        | AuthoritativeRuleEventKindV3::StackItemRemoved { .. }
+        | AuthoritativeRuleEventKindV3::TriggerPlaced { .. }
+        | AuthoritativeRuleEventKindV3::CounterChanged { .. }
+        | AuthoritativeRuleEventKindV3::ManaPoolChanged { .. }
+        | AuthoritativeRuleEventKindV3::TemporaryEffectCreated { .. }
+        | AuthoritativeRuleEventKindV3::TemporaryEffectExpired { .. } => true,
+        AuthoritativeRuleEventKindV3::Existing { event } => matches!(
+            event.as_ref(),
+            AuthoritativeRuleEventKind::PerspectiveOccurrence {
+                observation: crate::PerspectiveObservationPolicyV1::MovedInSight { .. }
+                    | crate::PerspectiveObservationPolicyV1::Appeared { .. }
+                    | crate::PerspectiveObservationPolicyV1::ObjectTapped { .. }
+                    | crate::PerspectiveObservationPolicyV1::SawRandomOutcome { .. }
+                    | crate::PerspectiveObservationPolicyV1::AnnouncedOutcome { .. },
+                ..
+            }
+        ),
+        _ => false,
+    }
 }
 
 fn validate_damage_state_projection_v3(
@@ -692,6 +792,7 @@ fn validate_event_projection_v3(
         AuthoritativeRuleEventKindV3::Existing { event } => {
             validate_legacy_event_projection_v3(before, after, event)
         }
+        AuthoritativeRuleEventKindV3::PerspectiveObservationOccurrence { .. } => true,
         AuthoritativeRuleEventKindV3::DamageApplied { .. } => true,
         AuthoritativeRuleEventKindV3::StackItemAdded {
             stack_object,
@@ -2024,5 +2125,180 @@ mod tests {
         ));
         let delta = StateDeltaV3::between(&before, &after, operations).unwrap();
         validate_event_delta_state_v3(&before, &after, &[event], &delta).unwrap();
+    }
+
+    #[test]
+    fn public_observation_occurrence_binds_lifecycle_to_exact_prior_rule_event() {
+        let before = state();
+        let mut after = before.clone();
+        after.predecessor_v5.revision = StateRevision(before.predecessor_v5.revision.0 + 1);
+        after.predecessor_v5.allocators.next_effect_id = mtgml_model::EffectInstanceId(2);
+        after.predecessor_v5.allocators.next_rule_event_id = RuleEventId(3);
+        let effect = TemporaryEffectRecord {
+            id: mtgml_model::EffectInstanceId(1),
+            affected_objects: vec![GameObjectId(1)],
+            operation: mtgml_state::TemporaryOperation::PowerToughnessDelta {
+                power: 1,
+                toughness: 0,
+            },
+            expiry: mtgml_state::EffectExpiry::UntilEndOfTurn {
+                turn_number: after.predecessor_v5.core.turn_number,
+            },
+            timestamp: None,
+        };
+        after.execution_v4.effects.insert(effect.id, effect.clone());
+        let sequence = before.predecessor_v5.knowledge.players[&PlayerId(1)].next_visible_sequence;
+        let lifecycle = PerspectiveLifecycleAuditV1 {
+            perspective: PlayerId(1),
+            sequence,
+            mutation: mtgml_state::PerspectiveLifecycleMutationV1::default(),
+        };
+        let mut engine: mtgml_state::EngineState = after.predecessor_v5.clone().into();
+        mtgml_state::apply_perspective_lifecycle(&mut engine, &lifecycle).unwrap();
+        after.predecessor_v5 = engine.parts();
+
+        let events = vec![
+            AuthoritativeRuleEventV3 {
+                event_id: RuleEventId(1),
+                state_revision: after.predecessor_v5.revision,
+                event: AuthoritativeRuleEventKindV3::TemporaryEffectCreated {
+                    effect: effect.clone(),
+                },
+            },
+            AuthoritativeRuleEventV3 {
+                event_id: RuleEventId(2),
+                state_revision: after.predecessor_v5.revision,
+                event: AuthoritativeRuleEventKindV3::PerspectiveObservationOccurrence {
+                    lifecycle: Box::new(lifecycle),
+                    source_event_id: RuleEventId(1),
+                },
+            },
+        ];
+        let operations = events
+            .iter()
+            .flat_map(AuthoritativeRuleEventV3::semantic_operations)
+            .collect();
+        let delta = StateDeltaV3::between(&before, &after, operations).unwrap();
+        validate_event_delta_state_v3(&before, &after, &events, &delta).unwrap();
+
+        let mut forged = events.clone();
+        let AuthoritativeRuleEventKindV3::PerspectiveObservationOccurrence {
+            source_event_id, ..
+        } = &mut forged[1].event
+        else {
+            unreachable!()
+        };
+        *source_event_id = RuleEventId(99);
+        let forged_delta = StateDeltaV3::between(
+            &before,
+            &after,
+            forged
+                .iter()
+                .flat_map(AuthoritativeRuleEventV3::semantic_operations)
+                .collect(),
+        )
+        .unwrap();
+        assert_eq!(
+            validate_event_delta_state_v3(&before, &after, &forged, &forged_delta),
+            Err(EventDeltaV3Error::Mismatch)
+        );
+    }
+
+    #[test]
+    fn observation_occurrence_replays_state_owned_cursor_and_identity_mutation() {
+        let before = state();
+        let object = GameObjectId(10);
+        let mut after = before.clone();
+        after.predecessor_v5.revision = StateRevision(before.predecessor_v5.revision.0 + 1);
+        after.predecessor_v5.allocators.next_object_id = GameObjectId(11);
+        after.predecessor_v5.allocators.next_effect_id = mtgml_model::EffectInstanceId(2);
+        after.predecessor_v5.allocators.next_rule_event_id = RuleEventId(3);
+        after.predecessor_v5.zones.objects.insert(
+            object,
+            mtgml_state::GameObject {
+                id: object,
+                physical_card: Some(mtgml_model::PhysicalCardId(10)),
+                card_definition: mtgml_model::CardDefinitionId(10),
+                owner: PlayerId(1),
+                controller: PlayerId(1),
+                tapped: false,
+                face_down: false,
+            },
+        );
+        after.predecessor_v5.zones.locations.insert(
+            object,
+            mtgml_state::ZoneLocation {
+                zone: mtgml_model::ZoneKind::Battlefield,
+                player: None,
+                position: mtgml_state::ZonePosition::Unordered,
+                visibility: mtgml_state::VisibilityPartition::Public,
+                partition: None,
+            },
+        );
+        after.card_rules_state.faces.faces.insert(object, 0);
+        let effect = TemporaryEffectRecord {
+            id: mtgml_model::EffectInstanceId(1),
+            affected_objects: vec![object],
+            operation: mtgml_state::TemporaryOperation::PowerToughnessDelta {
+                power: 1,
+                toughness: 0,
+            },
+            expiry: mtgml_state::EffectExpiry::UntilEndOfTurn {
+                turn_number: after.predecessor_v5.core.turn_number,
+            },
+            timestamp: None,
+        };
+        after.execution_v4.effects.insert(effect.id, effect.clone());
+        let opaque =
+            after.predecessor_v5.perspective_identities.players[&PlayerId(1)].next_opaque_object_id;
+        let lifecycle = PerspectiveLifecycleAuditV1 {
+            perspective: PlayerId(1),
+            sequence: before.predecessor_v5.knowledge.players[&PlayerId(1)].next_visible_sequence,
+            mutation: mtgml_state::PerspectiveLifecycleMutationV1 {
+                identity: mtgml_state::IdentityMutationV1::Allocate { opaque, object },
+                knowledge: Some(mtgml_state::KnowledgeMutationV1::Acquire {
+                    opaque,
+                    definition: Some(after.predecessor_v5.zones.objects[&object].card_definition),
+                    location: Some(after.predecessor_v5.zones.locations[&object].clone()),
+                    acquisition: mtgml_state::KnowledgeAcquisitionReason::Observed {
+                        channel: mtgml_state::KnowledgeHistoryChannel::Public,
+                        sequence: before.predecessor_v5.knowledge.players[&PlayerId(1)]
+                            .next_visible_sequence,
+                        cause: mtgml_state::KnowledgeAcquisitionCause::PublicEvent,
+                    },
+                }),
+            },
+        };
+        let mut projected: mtgml_state::EngineState = after.predecessor_v5.clone().into();
+        mtgml_state::apply_perspective_lifecycle(&mut projected, &lifecycle).unwrap();
+        after.predecessor_v5 = projected.parts();
+        let events = vec![
+            AuthoritativeRuleEventV3 {
+                event_id: RuleEventId(1),
+                state_revision: after.predecessor_v5.revision,
+                event: AuthoritativeRuleEventKindV3::TemporaryEffectCreated { effect },
+            },
+            AuthoritativeRuleEventV3 {
+                event_id: RuleEventId(2),
+                state_revision: after.predecessor_v5.revision,
+                event: AuthoritativeRuleEventKindV3::PerspectiveObservationOccurrence {
+                    lifecycle: Box::new(lifecycle),
+                    source_event_id: RuleEventId(1),
+                },
+            },
+        ];
+        assert!(validate_observation_occurrence_lifecycle(&before, &after, &events).is_ok());
+
+        let mut bad_lifecycle = events.clone();
+        let AuthoritativeRuleEventKindV3::PerspectiveObservationOccurrence { lifecycle, .. } =
+            &mut bad_lifecycle[1].event
+        else {
+            unreachable!()
+        };
+        lifecycle.sequence.0 += 1;
+        assert_eq!(
+            validate_observation_occurrence_lifecycle(&before, &after, &bad_lifecycle),
+            Err(EventDeltaV3Error::Mismatch)
+        );
     }
 }

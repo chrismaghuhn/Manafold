@@ -172,7 +172,7 @@ impl PublicTemporaryEffectV1 {
         Ok(())
     }
 
-    fn compare(&self, other: &Self) -> Result<Ordering, ObservationValidationError> {
+    pub fn compare_canonical(&self, other: &Self) -> Result<Ordering, ObservationValidationError> {
         let self_turn = self.expiry.turn_number()?;
         let other_turn = other.expiry.turn_number()?;
         let order = self
@@ -270,7 +270,7 @@ impl MagicSharedExecutionObservationV1 {
             effect.validate_public()?;
         }
         for pair in self.temporary_effects.windows(2) {
-            if pair[0].compare(&pair[1])? == Ordering::Greater {
+            if pair[0].compare_canonical(&pair[1])? == Ordering::Greater {
                 return Err(ObservationValidationError::ObservationPayload);
             }
         }

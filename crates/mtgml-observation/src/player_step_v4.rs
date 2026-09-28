@@ -99,3 +99,39 @@ impl PlayerStepV4 {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::Value;
+
+    const FIXTURE: &str = include_str!("../../../schemas/examples/player-step-v4.json");
+
+    #[test]
+    fn v4_step_fixture_has_revision_free_public_products_and_safe_event_cursor() {
+        let step: PlayerStepV4 = serde_json::from_str(FIXTURE).unwrap();
+        step.validate().unwrap();
+        let value = serde_json::to_value(step).unwrap();
+        assert!(value.get("state_revision").is_none());
+        assert!(value["information_state"].get("state_revision").is_none());
+        assert!(value["information_state"]["current_observation"]
+            .get("state_revision")
+            .is_none());
+        assert!(value["observed_events"][0].get("state_revision").is_none());
+    }
+
+    #[test]
+    fn v4_step_rejects_global_revision_and_event_after_cursor() {
+        let mut value: Value = serde_json::from_str(FIXTURE).unwrap();
+        value["state_revision"] = Value::from("9");
+        assert!(serde_json::from_value::<PlayerStepV4>(value).is_err());
+
+        let mut value: Value = serde_json::from_str(FIXTURE).unwrap();
+        value["observed_events"][0]["sequence"] = Value::from("5");
+        let step: PlayerStepV4 = serde_json::from_value(value).unwrap();
+        assert_eq!(
+            step.validate(),
+            Err(ObservationValidationError::FutureEvent)
+        );
+    }
+}
