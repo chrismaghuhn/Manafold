@@ -228,7 +228,7 @@ class GrantKeywordV1:
         return cls(obj["keyword"])
 
     def to_wire(self) -> dict[str, str]:
-        if self.keyword not in {"haste", "double_strike"}:
+        if not isinstance(self.keyword, str) or self.keyword not in {"haste", "double_strike"}:
             raise WireError("encode.serialization", "unknown temporary keyword")
         return {"kind": "grant_keyword", "keyword": self.keyword}
 

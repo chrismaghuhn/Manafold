@@ -7,6 +7,7 @@ from pathlib import Path
 
 from mtgml.errors import WireError
 from mtgml.magic_shared_execution_observation_v1 import (
+    GrantKeywordV1,
     MagicSharedExecutionObservationV1,
     PublicTemporaryEffectV1,
 )
@@ -89,6 +90,11 @@ class MagicSharedExecutionObservationV1Tests(unittest.TestCase):
         overflowing_power["temporary_effects"][0]["operation"]["power"] = 2**31
         with self.assertRaises(WireError):
             MagicSharedExecutionObservationV1.from_wire(overflowing_power)
+
+    def test_invalid_constructed_keyword_has_stable_encoding_error(self) -> None:
+        with self.assertRaises(WireError) as raised:
+            GrantKeywordV1([]).to_wire()  # type: ignore[arg-type]
+        self.assertEqual(raised.exception.code, "encode.serialization")
 
 
 if __name__ == "__main__":
