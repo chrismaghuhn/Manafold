@@ -456,9 +456,9 @@ fn v7_digest_binds_temporary_effect_operation_and_lifetime_record() {
 }
 
 #[test]
-fn v7_digest_binds_staged_activation_payment_and_selected_cost_operand() {
+fn v7_digest_admission_fails_closed_for_unvalidated_pending_activation_request() {
     let state = staged_activation_state();
-    let original = calculate_full_state_digest_v7(&state).unwrap();
+    assert!(calculate_full_state_digest_v7(&state).is_err());
 
     let mut changed_source_output = state.clone();
     let Some(mtgml_state::ContinuationPayloadV3::NonManaActivation(activation)) =
@@ -476,10 +476,7 @@ fn v7_digest_binds_staged_activation_payment_and_selected_cost_operand() {
         .unwrap()
         .mana_source_activations[0]
         .produced_buckets[4] = 1;
-    assert_ne!(
-        original,
-        calculate_full_state_digest_v7(&changed_source_output).unwrap()
-    );
+    assert!(calculate_full_state_digest_v7(&changed_source_output).is_err());
 
     let mut changed_operand = state.clone();
     let Some(mtgml_state::ContinuationPayloadV3::NonManaActivation(activation)) = changed_operand
@@ -495,14 +492,11 @@ fn v7_digest_binds_staged_activation_payment_and_selected_cost_operand() {
         counter_kind: mtgml_state::CounterKindV1::MinusOneMinusOne,
         count: 2,
     };
-    assert_ne!(
-        original,
-        calculate_full_state_digest_v7(&changed_operand).unwrap()
-    );
+    assert!(calculate_full_state_digest_v7(&changed_operand).is_err());
 }
 
 #[test]
-fn v7_digest_binds_pending_trigger_event_snapshot() {
+fn v7_digest_admission_fails_closed_for_pending_trigger_request() {
     let mut state = state();
     state.predecessor_v5.allocators.next_object_id = GameObjectId(4);
     state.predecessor_v5.allocators.next_ability_id = mtgml_model::AbilityInstanceId(2);
@@ -614,7 +608,7 @@ fn v7_digest_binds_pending_trigger_event_snapshot() {
         ],
     });
     state.validate().unwrap();
-    let original = calculate_full_state_digest_v7(&state).unwrap();
+    assert!(calculate_full_state_digest_v7(&state).is_err());
     state
         .execution_v4
         .waiting_triggers
@@ -640,7 +634,7 @@ fn v7_digest_binds_pending_trigger_event_snapshot() {
         mtgml_decision::EngineCandidateBindingV4::SelectTrigger {
             trigger: mtgml_model::TriggerInstanceId(1),
         };
-    assert_ne!(original, calculate_full_state_digest_v7(&state).unwrap());
+    assert!(calculate_full_state_digest_v7(&state).is_err());
 }
 
 #[test]
@@ -689,62 +683,9 @@ fn v7_input_decoder_rejects_wrong_identity_truncation_and_unknown_stack_tags() {
 }
 
 #[test]
-fn v7_input_decoder_rejects_unknown_continuation_stage_and_fixed_bucket_shape() {
+fn v7_typed_writer_fails_closed_for_unvalidated_pending_activation_request() {
     let state = staged_activation_state();
-    let bytes = canonical_state_bytes_v7(&state).unwrap();
-    let mut value = mtgml_persistence::cbor::decode_canonical(&bytes).unwrap();
-    let mtgml_persistence::cbor::Value::Array(fields) = &mut value else {
-        panic!("V7 input is an array")
-    };
-    let mtgml_persistence::cbor::Value::Array(execution) = &mut fields[6] else {
-        panic!("V7 execution is an array")
-    };
-    let mtgml_persistence::cbor::Value::Array(continuations) = &mut execution[2] else {
-        panic!("V7 continuations are an array")
-    };
-    let mtgml_persistence::cbor::Value::Array(continuation) = &mut continuations[0] else {
-        panic!("V7 continuation record is an array")
-    };
-    let mtgml_persistence::cbor::Value::Array(activation) = &mut continuation[2] else {
-        panic!("V7 continuation payload is an array")
-    };
-    activation[6] = mtgml_persistence::cbor::Value::Text("unknown_stage".to_owned());
-    let unknown_stage = mtgml_persistence::cbor::encode_canonical(&value).unwrap();
-    assert!(mtgml_state::FullStateDigestInputV7::from_canonical_payload(&unknown_stage).is_err());
-
-    let mut value = mtgml_persistence::cbor::decode_canonical(&bytes).unwrap();
-    let mtgml_persistence::cbor::Value::Array(fields) = &mut value else {
-        panic!("V7 input is an array")
-    };
-    let mtgml_persistence::cbor::Value::Array(execution) = &mut fields[6] else {
-        panic!("V7 execution is an array")
-    };
-    let mtgml_persistence::cbor::Value::Array(continuations) = &mut execution[2] else {
-        panic!("V7 continuations are an array")
-    };
-    let mtgml_persistence::cbor::Value::Array(continuation) = &mut continuations[0] else {
-        panic!("V7 continuation record is an array")
-    };
-    let mtgml_persistence::cbor::Value::Array(activation) = &mut continuation[2] else {
-        panic!("V7 continuation payload is an array")
-    };
-    let mtgml_persistence::cbor::Value::Array(staging) = &mut activation[10] else {
-        panic!("V7 staged payment is an array")
-    };
-    let mtgml_persistence::cbor::Value::Array(sources) = &mut staging[2] else {
-        panic!("V7 mana-source list is an array")
-    };
-    let mtgml_persistence::cbor::Value::Array(source) = &mut sources[0] else {
-        panic!("V7 mana source is an array")
-    };
-    let mtgml_persistence::cbor::Value::Array(buckets) = &mut source[5] else {
-        panic!("V7 mana buckets are an array")
-    };
-    buckets.pop();
-    let truncated_buckets = mtgml_persistence::cbor::encode_canonical(&value).unwrap();
-    assert!(
-        mtgml_state::FullStateDigestInputV7::from_canonical_payload(&truncated_buckets).is_err()
-    );
+    assert!(canonical_state_bytes_v7(&state).is_err());
 }
 
 #[test]
@@ -765,4 +706,29 @@ fn state_delta_v3_reapplies_the_exact_successor_replacement() {
         Err(mtgml_state::DeltaApplicationV3Error::BeforeMismatch)
     );
     assert_eq!(before, unchanged);
+}
+
+#[test]
+fn state_delta_v3_requires_exact_revision_step_and_covers_life_mutation() {
+    let before = state();
+    let mut unchanged_revision = before.clone();
+    assert_eq!(
+        StateDeltaV3::between(&before, &unchanged_revision, vec![]),
+        Err(mtgml_state::DeltaApplicationV3Error::RevisionProgression)
+    );
+
+    unchanged_revision.predecessor_v5.revision =
+        mtgml_model::StateRevision(before.predecessor_v5.revision.0.checked_add(1).unwrap());
+    unchanged_revision
+        .predecessor_v5
+        .core
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap()
+        .life -= 1;
+    unchanged_revision.validate().unwrap();
+    assert_eq!(
+        StateDeltaV3::between(&before, &unchanged_revision, vec![]),
+        Err(mtgml_state::DeltaApplicationV3Error::UncoveredMutation)
+    );
 }

@@ -1481,10 +1481,12 @@ mod tests {
 
     #[test]
     fn event_semantics_require_the_exact_ordered_delta_operation() {
-        let state = state();
+        let before = state();
+        let mut after = before.clone();
+        after.predecessor_v5.revision = StateRevision(before.predecessor_v5.revision.0 + 1);
         let event = AuthoritativeRuleEventV3 {
             event_id: RuleEventId(1),
-            state_revision: state.predecessor_v5.revision,
+            state_revision: after.predecessor_v5.revision,
             event: AuthoritativeRuleEventKindV3::Existing {
                 event: Box::new(AuthoritativeRuleEventKind::CombatEnded),
             },
@@ -1495,10 +1497,10 @@ mod tests {
             .into_iter()
             .next()
             .unwrap();
-        let delta = mtgml_state::StateDeltaV3::between(&state, &state, vec![operation]).unwrap();
+        let delta = mtgml_state::StateDeltaV3::between(&before, &after, vec![operation]).unwrap();
         validate_event_delta_parity_v3(std::slice::from_ref(&event), &delta).unwrap();
 
-        let missing = mtgml_state::StateDeltaV3::between(&state, &state, vec![]).unwrap();
+        let missing = mtgml_state::StateDeltaV3::between(&before, &after, vec![]).unwrap();
         assert_eq!(
             validate_event_delta_parity_v3(&[event], &missing),
             Err(EventDeltaV3Error::Mismatch)
@@ -1552,21 +1554,7 @@ mod tests {
             to: ManaPoolV1::default(),
             cause: ManaPoolChangeCauseV1::Produced,
         };
-        let wrong_delta = StateDeltaV3::between(&before, &after, vec![wrong_operation]).unwrap();
-        let wrong_event = AuthoritativeRuleEventV3 {
-            event_id: RuleEventId(1),
-            state_revision: after.predecessor_v5.revision,
-            event: AuthoritativeRuleEventKindV3::ManaPoolChanged {
-                player,
-                before: old_pool,
-                after: ManaPoolV1::default(),
-                cause: ManaPoolChangeCauseV1::Produced,
-            },
-        };
-        assert_eq!(
-            validate_event_delta_state_v3(&before, &after, &[wrong_event], &wrong_delta),
-            Err(EventDeltaV3Error::Mismatch)
-        );
+        assert!(StateDeltaV3::between(&before, &after, vec![wrong_operation]).is_err());
     }
 
     #[test]

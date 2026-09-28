@@ -149,7 +149,9 @@ impl EngineStatePartsV3 {
                 captured_trigger_context,
                 targets,
             } => {
-                if originating_trigger.0 >= state.allocators.next_trigger_id.0 {
+                if originating_trigger.0 == 0
+                    || originating_trigger.0 >= state.allocators.next_trigger_id.0
+                {
                     return Err(EngineStatePartsV3Error::TriggerAllocator);
                 }
                 self.validate_ability_source_context(source_context, players)?;

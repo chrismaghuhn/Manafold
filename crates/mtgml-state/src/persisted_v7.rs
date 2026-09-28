@@ -51,6 +51,9 @@ pub struct FullStateDigestInputV7(Value);
 
 impl FullStateDigestInputV7 {
     pub fn from_successor(state: &EngineStatePartsV3) -> Result<Self, crate::StateDigestError> {
+        if state.execution_v4.pending_decision.is_some() {
+            return Err(crate::StateDigestError::StateInvariant);
+        }
         Ok(Self(state_value(state)?))
     }
 
@@ -86,6 +89,12 @@ fn validate_v7_envelope_shape(value: &Value) -> Result<(), crate::StateDigestErr
     validate_unchanged_v6_components(fields)?;
     validate_zones_v2_value(&fields[4])?;
     validate_execution_v4_value(&fields[6])?;
+    // G0e does not yet own exact trusted-binding validation for V4 requests.
+    // Keep them out of digest admission until G0f composes that validator.
+    let execution = array_fields(&fields[6], 6)?;
+    if execution[1] != Value::Null {
+        return Err(crate::StateDigestError::StateInvariant);
+    }
     Ok(())
 }
 
@@ -183,7 +192,9 @@ fn validate_stack_payload_value(value: &Value) -> Result<(), crate::StateDigestE
             validate_cost_facts(&fields[4])?;
         }
         "triggered_ability" if fields.len() == 5 => {
-            uint(&fields[1])?;
+            if uint(&fields[1])? == 0 {
+                return Err(crate::StateDigestError::StateInvariant);
+            }
             validate_ability_source_context(&fields[2])?;
             validate_trigger_event_value(&fields[3])?;
             validate_target_bindings(&fields[4])?;
@@ -519,7 +530,10 @@ fn validate_decision_purpose(value: &Value) -> Result<(), crate::StateDigestErro
         "cost_operand_selection" if fields.len() == 5 => {
             uint32(&fields[1])?;
             expect_text(&fields[2], "put_counters")?;
-            expect_text(&fields[3], "minus_one_minus_one")?;
+            closed_tag(
+                &fields[3],
+                &["plus_one_plus_one", "minus_one_minus_one", "lore"],
+            )?;
             uint32(&fields[4])?;
             Ok(())
         }
@@ -619,9 +633,10 @@ fn validate_candidate_binding(value: &Value) -> Result<(), crate::StateDigestErr
         }
         "select_cost_route" if fields.len() == 2 => validate_cost_route(&fields[1]),
         "select_mana_source" if fields.len() == 7 => {
-            for index in [1, 2, 3] {
+            for index in [1, 2] {
                 uint(&fields[index])?;
             }
+            uint32(&fields[3])?;
             nonempty_text(&fields[4])?;
             let cost = array_fields(&fields[5], 1)?;
             expect_text(&cost[0], "tap_source")?;
@@ -2206,5 +2221,65 @@ fn safe_zone_name(value: SafeZoneKindV1) -> &'static str {
         SafeZoneKindV1::Command => "command",
         SafeZoneKindV1::Ante => "ante",
         SafeZoneKindV1::Outside => "outside",
+    }
+}
+
+#[cfg(test)]
+mod g0_validation_tests {
+    use super::*;
+
+    #[test]
+    fn v7_request_decoder_accepts_every_typed_counter_kind() {
+        for kind in ["plus_one_plus_one", "minus_one_minus_one", "lore"] {
+            let request = array([
+                u(1),
+                u(1),
+                u(1),
+                u(0),
+                u(1),
+                text("acting_player_only"),
+                array([text("choose_one")]),
+                array([
+                    text("cost_operand_selection"),
+                    u(0),
+                    text("put_counters"),
+                    text(kind),
+                    u(2),
+                ]),
+                Value::Null,
+                Value::Null,
+                array([]),
+            ]);
+            assert!(validate_decision_request(&request).is_ok(), "{kind}");
+        }
+    }
+
+    #[test]
+    fn v7_stack_payload_rejects_zero_originating_trigger_identity() {
+        let payload = array([
+            text("triggered_ability"),
+            u(0),
+            Value::Null,
+            Value::Null,
+            array([]),
+        ]);
+        assert!(validate_stack_payload_value(&payload).is_err());
+    }
+
+    #[test]
+    fn v7_mana_source_binding_uses_u32_ability_key() {
+        let binding = |ability_key| {
+            array([
+                text("select_mana_source"),
+                u(1),
+                u(2),
+                u(ability_key),
+                text("test/mana-source@1.0.0"),
+                array([text("tap_source")]),
+                array((0..12).map(|_| u(0))),
+            ])
+        };
+        assert!(validate_candidate_binding(&binding(u64::from(u32::MAX))).is_ok());
+        assert!(validate_candidate_binding(&binding(u64::from(u32::MAX) + 1)).is_err());
     }
 }
