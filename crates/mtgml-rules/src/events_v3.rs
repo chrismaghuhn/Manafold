@@ -277,18 +277,22 @@ pub fn validate_event_delta_parity_v3(
     events: &[AuthoritativeRuleEventV3],
     delta: &StateDeltaV3,
 ) -> Result<(), EventDeltaV3Error> {
+    let (grouped_entry_operations, grouped_entry_events) =
+        validate_basic_land_entry_group(events, delta)?;
     let expected = events
         .iter()
+        .filter(|event| !grouped_entry_events.contains(&event.event_id))
         .flat_map(AuthoritativeRuleEventV3::semantic_operations)
         .collect::<Vec<_>>();
     let mut expected_index = 0;
-    for operation in &delta.operations {
+    for (operation_index, operation) in delta.operations.iter().enumerate() {
         if matches!(
             operation,
             SemanticDeltaOperationV3::ContinuationChanged { .. }
                 | SemanticDeltaOperationV3::PendingRequestChanged { .. }
                 | SemanticDeltaOperationV3::StackOrderChanged { .. }
-        ) {
+        ) || grouped_entry_operations.contains(&operation_index)
+        {
             continue;
         }
         if expected.get(expected_index) != Some(operation) {
@@ -318,6 +322,164 @@ pub fn validate_event_delta_parity_v3(
         return Err(EventDeltaV3Error::Mismatch);
     }
     Ok(())
+}
+
+/// Basic-land entry is one rules event with a small set of state-index
+/// operations: the new incarnation, its land-play entitlement receipt, and
+/// its derived intrinsic ability authority/opaque aliases. These operations
+/// remain individually typed in StateDelta; the ZoneTransition is their
+/// causal event owner. This bounded bridge preserves the already accepted
+/// M4.2 event grouping without weakening parity for other transitions.
+fn validate_basic_land_entry_group(
+    events: &[AuthoritativeRuleEventV3],
+    delta: &StateDeltaV3,
+) -> Result<
+    (
+        std::collections::BTreeSet<usize>,
+        std::collections::BTreeSet<RuleEventId>,
+    ),
+    EventDeltaV3Error,
+> {
+    use SemanticDeltaOperationV2 as V2;
+    use SemanticDeltaOperationV3 as V3;
+
+    let has_land_play_operation = delta.operations.iter().any(|operation| {
+        matches!(operation, V3::Existing { operation }
+            if matches!(operation.as_ref(), V2::LandPlayCountChanged { .. }))
+    });
+    if !has_land_play_operation {
+        return Ok((
+            std::collections::BTreeSet::new(),
+            std::collections::BTreeSet::new(),
+        ));
+    }
+    let transitions = events
+        .iter()
+        .filter_map(|record| match &record.event {
+            AuthoritativeRuleEventKindV3::Existing { event } => match event.as_ref() {
+                AuthoritativeRuleEventKind::ZoneTransition { transition } => {
+                    Some((record.event_id, transition.as_ref()))
+                }
+                _ => None,
+            },
+            _ => None,
+        })
+        .filter(|(_, transition)| {
+            transition.from.zone == mtgml_model::ZoneKind::Hand
+                && transition.to.zone == mtgml_model::ZoneKind::Battlefield
+        })
+        .collect::<Vec<_>>();
+    if transitions.is_empty() {
+        return Ok((
+            std::collections::BTreeSet::new(),
+            std::collections::BTreeSet::new(),
+        ));
+    }
+    if transitions.len() != 1 {
+        return Err(EventDeltaV3Error::Mismatch);
+    }
+    let (entry_event_id, transition) = transitions[0];
+    let mut grouped = std::collections::BTreeSet::new();
+    let entry_indices = delta
+        .operations
+        .iter()
+        .enumerate()
+        .filter_map(|(index, operation)| match operation {
+            V3::Existing { operation }
+                if matches!(operation.as_ref(), V2::ObjectEntered {
+                    old_object: Some(old), new_object, from_zone, to_zone, tapped: false, face: 0
+                } if *old == transition.old_object
+                    && *new_object == transition.new_object
+                    && *from_zone == mtgml_model::ZoneKind::Hand
+                    && *to_zone == mtgml_model::ZoneKind::Battlefield) =>
+            {
+                Some(index)
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    if entry_indices.len() != 1
+        || transition.new_snapshot.object != transition.new_object
+        || transition.last_known.object != transition.old_object
+        || transition.new_snapshot.tapped
+    {
+        return Err(EventDeltaV3Error::Mismatch);
+    }
+    grouped.insert(entry_indices[0]);
+
+    let land_count_indices = delta
+        .operations
+        .iter()
+        .enumerate()
+        .filter_map(|(index, operation)| match operation {
+            V3::Existing { operation }
+                if matches!(operation.as_ref(), V2::LandPlayCountChanged {
+                    player, from: 0, to: 1
+                } if *player == transition.new_snapshot.controller) =>
+            {
+                Some(index)
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    if land_count_indices.len() != 1 {
+        return Err(EventDeltaV3Error::Mismatch);
+    }
+    grouped.insert(land_count_indices[0]);
+
+    let added_authorities = delta
+        .operations
+        .iter()
+        .enumerate()
+        .filter_map(|(index, operation)| match operation {
+            V3::Existing { operation }
+                if matches!(operation.as_ref(), V2::AbilityAuthorityAdded { source, .. }
+                    if *source == transition.new_object) =>
+            {
+                Some((index, operation.as_ref()))
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    if added_authorities.len() != 1 {
+        return Err(EventDeltaV3Error::Mismatch);
+    }
+    let (authority_index, authority) = added_authorities[0];
+    let V2::AbilityAuthorityAdded { instance, .. } = authority else {
+        return Err(EventDeltaV3Error::Mismatch);
+    };
+    grouped.insert(authority_index);
+
+    let alias_entries = delta
+        .operations
+        .iter()
+        .enumerate()
+        .filter_map(|(index, operation)| match operation {
+            V3::Existing { operation }
+                if matches!(operation.as_ref(), V2::AbilityIdentityChanged {
+                    instance: alias_instance, from: None, to: Some(_), ..
+                } if alias_instance == instance) =>
+            {
+                match operation.as_ref() {
+                    V2::AbilityIdentityChanged { perspective, .. } => Some((index, *perspective)),
+                    _ => None,
+                }
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let unique_perspectives = alias_entries
+        .iter()
+        .map(|(_, perspective)| *perspective)
+        .collect::<std::collections::BTreeSet<_>>();
+    if alias_entries.is_empty() || unique_perspectives.len() != alias_entries.len() {
+        return Err(EventDeltaV3Error::Mismatch);
+    }
+    for (index, _) in alias_entries {
+        grouped.insert(index);
+    }
+
+    Ok((grouped, [entry_event_id].into_iter().collect()))
 }
 
 /// Applies the successor delta and checks event projections against the same
@@ -1671,6 +1833,121 @@ mod tests {
         let missing = mtgml_state::StateDeltaV3::between(&before, &after, vec![]).unwrap();
         assert_eq!(
             validate_event_delta_parity_v3(&[event], &missing),
+            Err(EventDeltaV3Error::Mismatch)
+        );
+    }
+
+    #[test]
+    fn basic_land_entry_event_owns_its_typed_state_index_operations() {
+        use mtgml_state::{
+            ObjectSnapshot, SemanticDeltaOperationV2, ZoneLocation, ZonePosition, ZoneTransition,
+        };
+
+        let before = state();
+        let actor = PlayerId(1);
+        let old_object = GameObjectId(10);
+        let new_object = GameObjectId(11);
+        let from = ZoneLocation {
+            zone: mtgml_model::ZoneKind::Hand,
+            player: Some(actor),
+            position: ZonePosition::Index { index: 0 },
+            visibility: VisibilityPartition::OwnerOnly,
+            partition: None,
+        };
+        let to = ZoneLocation {
+            zone: mtgml_model::ZoneKind::Battlefield,
+            player: None,
+            position: ZonePosition::Unordered,
+            visibility: VisibilityPartition::Public,
+            partition: None,
+        };
+        let snapshot = |object, location: ZoneLocation| ObjectSnapshot {
+            object,
+            physical_card: Some(mtgml_model::PhysicalCardId(20)),
+            card_definition: mtgml_model::CardDefinitionId(30),
+            owner: actor,
+            controller: actor,
+            tapped: false,
+            face_down: false,
+            location,
+        };
+        let transition = ZoneTransition {
+            old_object,
+            new_object,
+            physical_card: Some(mtgml_model::PhysicalCardId(20)),
+            from: from.clone(),
+            to: to.clone(),
+            last_known: snapshot(old_object, from),
+            new_snapshot: snapshot(new_object, to),
+        };
+        let event = AuthoritativeRuleEventV3 {
+            event_id: RuleEventId(1),
+            state_revision: StateRevision(1),
+            event: AuthoritativeRuleEventKindV3::Existing {
+                event: Box::new(AuthoritativeRuleEventKind::ZoneTransition {
+                    transition: Box::new(transition),
+                }),
+            },
+        };
+        let ability = mtgml_model::AbilityInstanceId(4);
+        let operations = vec![
+            SemanticDeltaOperationV3::Existing {
+                operation: Box::new(SemanticDeltaOperationV2::ObjectEntered {
+                    old_object: Some(old_object),
+                    new_object,
+                    from_zone: mtgml_model::ZoneKind::Hand,
+                    to_zone: mtgml_model::ZoneKind::Battlefield,
+                    tapped: false,
+                    face: 0,
+                }),
+            },
+            SemanticDeltaOperationV3::Existing {
+                operation: Box::new(SemanticDeltaOperationV2::LandPlayCountChanged {
+                    player: actor,
+                    from: 0,
+                    to: 1,
+                }),
+            },
+            SemanticDeltaOperationV3::Existing {
+                operation: Box::new(SemanticDeltaOperationV2::AbilityAuthorityAdded {
+                    instance: ability,
+                    source: new_object,
+                    ability_key: 0,
+                }),
+            },
+            SemanticDeltaOperationV3::Existing {
+                operation: Box::new(SemanticDeltaOperationV2::AbilityIdentityChanged {
+                    perspective: actor,
+                    instance: ability,
+                    from: None,
+                    to: Some(mtgml_model::OpaqueAbilityId(7)),
+                }),
+            },
+        ];
+        let delta = StateDeltaV3 {
+            before_revision: StateRevision(0),
+            after_revision: StateRevision(1),
+            before_digest: mtgml_model::FullStateDigestV7::from_digest_bytes([0; 32]),
+            after_digest: mtgml_model::FullStateDigestV7::from_digest_bytes([1; 32]),
+            replacement: before,
+            operations,
+        };
+
+        assert_eq!(
+            validate_event_delta_parity_v3(std::slice::from_ref(&event), &delta),
+            Ok(())
+        );
+
+        let mut fabricated = delta.clone();
+        fabricated.operations[1] = SemanticDeltaOperationV3::Existing {
+            operation: Box::new(SemanticDeltaOperationV2::LandPlayCountChanged {
+                player: PlayerId(2),
+                from: 0,
+                to: 1,
+            }),
+        };
+        assert_eq!(
+            validate_event_delta_parity_v3(std::slice::from_ref(&event), &fabricated),
             Err(EventDeltaV3Error::Mismatch)
         );
     }
