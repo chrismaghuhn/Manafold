@@ -54,5 +54,5 @@
   },
   "schema_version": "player-decision-request.v4",
   "view_sequence": "4",
-  "visibility": "acting_player_only"
+  "visibility": "public"
 }

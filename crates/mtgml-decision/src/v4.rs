@@ -193,7 +193,7 @@ impl DecisionPurposeV4 {
 
     fn visibility_is_valid(&self, visibility: DecisionVisibility) -> bool {
         match self {
-            Self::AttackerDeclaration | Self::TriggerOrder => {
+            Self::AttackerDeclaration | Self::CastCostRoute | Self::TriggerOrder => {
                 visibility == DecisionVisibility::ActingPlayerOnly
             }
             Self::SyntheticAssembly { .. } => visibility == DecisionVisibility::Public,
@@ -1272,6 +1272,8 @@ mod tests {
 
     const TRIGGERS: &str =
         include_str!("../../../schemas/examples/player-decision-request-v4-trigger-order.json");
+    const COST_ROUTE_PUBLIC: &str =
+        include_str!("../../../schemas/negative/player-decision-request-v4-cost-route-public.json");
     const ATTACKERS: &str = include_str!(
         "../../../schemas/examples/player-decision-request-v4-attacker-declaration.json"
     );
@@ -1302,6 +1304,29 @@ mod tests {
         assert!(parse_fixture(SYNTHETIC_COUNT).candidates.is_empty());
         assert_eq!(parse_fixture(SYNTHETIC_MEMBERS).candidates.len(), 2);
         assert_eq!(parse_fixture(SYNTHETIC_ORDER).candidates.len(), 2);
+    }
+
+    #[test]
+    fn cost_route_request_is_actor_only() {
+        let mut value: Value = serde_json::from_str(include_str!(
+            "../../../schemas/examples/player-decision-request-v4-cost-route.json"
+        ))
+        .unwrap();
+        value["visibility"] = serde_json::json!("public");
+        let request: PlayerDecisionRequestV4 = serde_json::from_value(value).unwrap();
+        assert_eq!(
+            request.validate(),
+            Err(DecisionValidationError::DecisionVisibilityMismatch)
+        );
+    }
+
+    #[test]
+    fn rust_dto_rejects_public_cost_route_fixture() {
+        let request: PlayerDecisionRequestV4 = serde_json::from_str(COST_ROUTE_PUBLIC).unwrap();
+        assert_eq!(
+            request.validate(),
+            Err(DecisionValidationError::DecisionVisibilityMismatch)
+        );
     }
 
     #[test]

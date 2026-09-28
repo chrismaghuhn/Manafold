@@ -49,6 +49,16 @@ class PlayerDecisionRequestV4Tests(unittest.TestCase):
                 )
                 self.assertEqual(PlayerDecisionRequestV4.from_wire(raw).to_wire(), raw)
 
+    def test_cost_route_request_must_be_actor_only(self) -> None:
+        raw = json.loads(
+            (
+                ROOT / "schemas/examples/player-decision-request-v4-cost-route.json"
+            ).read_text(encoding="utf-8")
+        )
+        raw["visibility"] = "public"
+        with self.assertRaises(WireError):
+            PlayerDecisionRequestV4.from_wire(raw)
+
     def test_rejects_candidate_intents_outside_attacker_and_synthetic_purposes(self) -> None:
         attacker = json.loads(
             (

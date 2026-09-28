@@ -990,10 +990,14 @@
             "required": [
               "kind"
             ]
+          },
+          "visibility": {
+            "const": "acting_player_only"
           }
         },
         "required": [
-          "decision_domain_v2"
+          "decision_domain_v2",
+          "visibility"
         ]
       }
     },

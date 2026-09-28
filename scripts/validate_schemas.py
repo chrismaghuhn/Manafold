@@ -202,6 +202,10 @@ SCHEMA_NEGATIVE_CASES = [
     ),
     (
         "player-decision-request.v4.schema.json",
+        "schemas/negative/player-decision-request-v4-cost-route-public.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
         "schemas/negative/player-decision-request-v4-unbound-source-ability.json",
     ),
     (

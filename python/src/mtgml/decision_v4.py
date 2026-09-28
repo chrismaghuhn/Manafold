@@ -1219,10 +1219,10 @@ class PlayerDecisionRequestV4:
         self.purpose.validate()
         if self.decision_domain_v2.kind not in _PURPOSE_DOMAINS[self.purpose.kind]:
             raise WireError("semantic.decision", "decision domain is incompatible with purpose")
-        if self.purpose.kind == "trigger_order" and self.visibility != "acting_player_only":
-            raise WireError("semantic.decision", "trigger-order request is not actor-only")
-        if self.purpose.kind == "attacker_declaration" and self.visibility != "acting_player_only":
-            raise WireError("semantic.decision", "attacker declaration request is not actor-only")
+        if self.purpose.kind in {"trigger_order", "attacker_declaration", "cast_cost_route"} and (
+            self.visibility != "acting_player_only"
+        ):
+            raise WireError("semantic.decision", "private decision request is not actor-only")
         if self.purpose.kind == "synthetic_assembly":
             if self.visibility != "public":
                 raise WireError("semantic.decision", "synthetic assembly request is not public")
