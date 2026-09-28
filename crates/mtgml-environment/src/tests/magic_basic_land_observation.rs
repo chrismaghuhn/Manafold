@@ -604,6 +604,7 @@ fn g0g_projection_adds_shared_views_and_hides_revision_and_allocator_history() {
             crate::successor_projection::SuccessorTransitionV4Projection {
                 before,
                 after,
+                before_status: &running,
                 events,
                 delta: None,
                 accepted: true,

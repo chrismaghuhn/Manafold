@@ -111,6 +111,11 @@ pub fn validate_basic_land_pending_request_v4(
         .validate_structure()
         .map_err(|_| BasicLandCandidateError::InvalidState)?;
     let Some(request) = state.execution_v4.pending_decision.as_ref() else {
+        // Closed episodes have no pending request, but they remain subject to
+        // the same Basic-Land profile state boundary. Do not let terminal or
+        // truncated checkpoints bypass rejection of stack/effect/trigger
+        // state by taking the no-request fast path.
+        candidate_state_v2(state)?;
         return match status {
             EpisodeStatus::Terminal { .. } | EpisodeStatus::Truncated { .. } => Ok(()),
             EpisodeStatus::Running => Err(BasicLandCandidateError::PendingCandidateSetMismatch),

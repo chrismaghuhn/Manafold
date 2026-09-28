@@ -289,6 +289,7 @@ impl BasicLandEnvironmentRuntimeV8 {
             crate::successor_projection::SuccessorTransitionV4Projection {
                 before: &self.state,
                 after: &next_state,
+                before_status: &before.status,
                 events: &events,
                 delta: delta.as_ref(),
                 accepted,
@@ -713,6 +714,179 @@ mod tests {
         }
     }
 
+    fn hidden_stack_source_world(
+        source_definition: CardDefinitionId,
+        keep_opponent_mapping: bool,
+    ) -> EngineStatePartsV3 {
+        let mut state = state_with_two_lands();
+        let hidden_source = *state
+            .predecessor_v5
+            .zones
+            .locations
+            .iter()
+            .find(|(object, location)| {
+                location.zone == mtgml_model::ZoneKind::Hand
+                    && state.predecessor_v5.zones.objects[object].owner == PlayerId(1)
+                    && state.predecessor_v5.perspective_identities.players[&PlayerId(1)]
+                        .object_to_opaque
+                        .contains_key(object)
+            })
+            .map(|(object, _)| object)
+            .unwrap();
+        state
+            .predecessor_v5
+            .zones
+            .objects
+            .get_mut(&hidden_source)
+            .unwrap()
+            .card_definition = source_definition;
+        let owner_identity = state
+            .predecessor_v5
+            .perspective_identities
+            .players
+            .get(&PlayerId(1))
+            .unwrap();
+        let owner_opaque = owner_identity.object_to_opaque[&hidden_source];
+        let source_object = &state.predecessor_v5.zones.objects[&hidden_source];
+        let source_location = state.predecessor_v5.zones.locations[&hidden_source].clone();
+        state
+            .predecessor_v5
+            .knowledge
+            .players
+            .get_mut(&PlayerId(1))
+            .unwrap()
+            .active
+            .entry(owner_opaque)
+            .or_insert_with(|| mtgml_state::KnowledgeRecordV2 {
+                opaque_object: owner_opaque,
+                physical_card: source_object.physical_card,
+                card_definition: Some(source_definition),
+                known_location: Some(mtgml_state::KnownLocationFactV2 {
+                    location: source_location,
+                    provenance: mtgml_state::KnowledgeAcquisitionReason::InitialConfiguration,
+                }),
+                historical_locations: Vec::new(),
+                acquisition: mtgml_state::KnowledgeAcquisitionReason::InitialConfiguration,
+            });
+        state
+            .predecessor_v5
+            .knowledge
+            .players
+            .get_mut(&PlayerId(1))
+            .unwrap()
+            .active
+            .get_mut(&owner_opaque)
+            .unwrap()
+            .card_definition = Some(source_definition);
+
+        let opponent_identity = state
+            .predecessor_v5
+            .perspective_identities
+            .players
+            .get_mut(&PlayerId(2))
+            .unwrap();
+        let opponent_opaque = opponent_identity
+            .object_to_opaque
+            .get(&hidden_source)
+            .copied();
+        if let Some(opaque) = opponent_opaque {
+            state
+                .predecessor_v5
+                .knowledge
+                .players
+                .get_mut(&PlayerId(2))
+                .unwrap()
+                .active
+                .remove(&opaque);
+            if !keep_opponent_mapping {
+                opponent_identity.object_to_opaque.remove(&hidden_source);
+                opponent_identity.opaque_to_object.remove(&opaque);
+            }
+        }
+
+        let ability_instance = mtgml_model::AbilityInstanceId(2);
+        state.card_rules_state.abilities.by_instance.insert(
+            ability_instance,
+            mtgml_state::AbilityAuthorityV1 {
+                source: hidden_source,
+                ability_key: 0,
+            },
+        );
+        state.predecessor_v5.allocators.next_ability_id = mtgml_model::AbilityInstanceId(3);
+        for perspective in [PlayerId(1), PlayerId(2)] {
+            let identity = state
+                .predecessor_v5
+                .perspective_identities
+                .players
+                .get_mut(&perspective)
+                .unwrap();
+            if perspective == PlayerId(2) && !keep_opponent_mapping {
+                continue;
+            }
+            let opaque = identity.next_opaque_ability_id;
+            identity.next_opaque_ability_id = mtgml_model::OpaqueAbilityId(opaque.0 + 1);
+            identity.ability_to_opaque.insert(ability_instance, opaque);
+            identity.opaque_to_ability.insert(opaque, ability_instance);
+        }
+
+        let object = &state.predecessor_v5.zones.objects[&hidden_source];
+        let source_context = mtgml_state::AbilitySourceContext {
+            source: mtgml_state::SourceContext {
+                snapshot: mtgml_state::ObjectSnapshot {
+                    object: hidden_source,
+                    physical_card: object.physical_card,
+                    card_definition: object.card_definition,
+                    owner: object.owner,
+                    controller: object.controller,
+                    tapped: object.tapped,
+                    face_down: object.face_down,
+                    location: state.predecessor_v5.zones.locations[&hidden_source].clone(),
+                },
+                face_key: mtgml_card_ir::FaceKey(0),
+                semantic_profile_id: mtgml_card_ir::CardSemanticProfileId::parse(
+                    mtgml_card_ir::BASIC_LAND_PROFILE_ID_V1,
+                )
+                .unwrap(),
+            },
+            ability_instance_id: ability_instance,
+            ability_key: mtgml_card_ir::AbilityKey(0),
+        };
+        let activated = mtgml_state::StackItemPayload::ActivatedAbility {
+            source_context: source_context.clone(),
+            modes: Vec::new(),
+            targets: Vec::new(),
+            cost_facts: mtgml_state::CostFacts::default(),
+        };
+        let triggered = mtgml_state::StackItemPayload::TriggeredAbility {
+            originating_trigger: mtgml_model::TriggerInstanceId(1),
+            source_context,
+            captured_trigger_context: Box::new(mtgml_state::TriggerEventSnapshot::CardDrawn {
+                player: PlayerId(1),
+            }),
+            targets: Vec::new(),
+        };
+        for (id, payload) in [
+            (mtgml_model::StackObjectId(1), activated),
+            (mtgml_model::StackObjectId(2), triggered),
+        ] {
+            state.predecessor_v5.zones.stack_records.insert(
+                id,
+                mtgml_state::StackRecord {
+                    id,
+                    controller: PlayerId(1),
+                    source_object: None,
+                    source_ability: None,
+                    payload: Some(payload),
+                },
+            );
+            state.predecessor_v5.zones.stack_order.push(id);
+        }
+        state.predecessor_v5.allocators.next_stack_object_id = mtgml_model::StackObjectId(3);
+        state.predecessor_v5.allocators.next_trigger_id = mtgml_model::TriggerInstanceId(2);
+        state.validate_structure().unwrap();
+        state
+    }
+
     fn add_object(
         state: &mut mtgml_state::EngineState,
         definition: CardDefinitionId,
@@ -946,12 +1120,15 @@ mod tests {
             .map(|(object, _)| object)
             .unwrap();
         let effect = temporary_haste_effect(target);
-        let public_projection = crate::player_projection::project_public_temporary_effect_v1(
-            &state,
-            PlayerId(1),
-            &effect,
-        )
-        .unwrap();
+        let project_effect = |candidate: &EngineStatePartsV3| {
+            crate::player_projection::project_public_temporary_effect_v1(
+                candidate,
+                &candidate.predecessor_v5.perspective_identities.players[&PlayerId(1)],
+                &candidate.predecessor_v5.knowledge.players[&PlayerId(1)],
+                &effect,
+            )
+        };
+        let public_projection = project_effect(&state).unwrap();
         assert_eq!(public_projection.affected_objects.len(), 1);
 
         let mut mapped_without_knowledge = state.clone();
@@ -968,11 +1145,7 @@ mod tests {
             .unwrap()
             .active
             .remove(&opaque);
-        let mapped_result = crate::player_projection::project_public_temporary_effect_v1(
-            &mapped_without_knowledge,
-            PlayerId(1),
-            &effect,
-        );
+        let mapped_result = project_effect(&mapped_without_knowledge);
 
         let mut unmapped_without_knowledge = mapped_without_knowledge.clone();
         let identity = unmapped_without_knowledge
@@ -983,17 +1156,954 @@ mod tests {
             .unwrap();
         identity.object_to_opaque.remove(&target);
         identity.opaque_to_object.remove(&opaque);
-        let unmapped_result = crate::player_projection::project_public_temporary_effect_v1(
-            &unmapped_without_knowledge,
-            PlayerId(1),
-            &effect,
-        );
+        let unmapped_result = project_effect(&unmapped_without_knowledge);
 
         assert_eq!(
             mapped_result,
             Err(crate::PlayerEndpointError::ServiceUnavailable)
         );
         assert_eq!(unmapped_result, mapped_result);
+    }
+
+    #[test]
+    fn paired_admitted_states_hide_stack_source_mapping_and_hidden_face_changes() {
+        use base64::Engine as _;
+
+        let admission = admission();
+        let manifest = decode_content_manifest_v1(CONTENT).unwrap();
+        let definition_for = |subtype| {
+            manifest
+                .definitions
+                .iter()
+                .find(|definition| {
+                    matches!(&definition.semantic_binding,
+                        CardSemanticBindingV1::ProfiledV1 { body, .. } if body.subtype == subtype)
+                })
+                .unwrap()
+                .card_definition_id
+        };
+        let mountain = definition_for(mtgml_card_ir::BasicLandSubtypeV1::Mountain);
+        let plains = definition_for(mtgml_card_ir::BasicLandSubtypeV1::Plains);
+        let with_internal_mapping = hidden_stack_source_world(mountain, true);
+        let without_internal_mapping = hidden_stack_source_world(plains, false);
+
+        // Both worlds are structurally admitted, checkpointable V8 states
+        // under the same verified content/execution contracts. Only P2's
+        // hidden source identity/definition differ.
+        let closed_status = EpisodeStatus::Running;
+        for state in [&with_internal_mapping, &without_internal_mapping] {
+            EnvironmentCheckpointV8::new(
+                state.clone(),
+                closed_status.clone(),
+                EnvironmentLimitCounters::default(),
+                admission.execution_identity().clone(),
+            )
+            .unwrap();
+        }
+        let project = |state: &EngineStatePartsV3| {
+            crate::project_successor_information_state_v3(
+                state,
+                PlayerId(2),
+                admission.execution_identity(),
+                admission.semantic_contract_manifest(),
+                admission.rules_contract_manifest(),
+                admission.verified_catalog(),
+            )
+            .unwrap()
+        };
+        let first = project(&with_internal_mapping);
+        let second = project(&without_internal_mapping);
+        assert_eq!(
+            serde_json::to_vec(&first).unwrap(),
+            serde_json::to_vec(&second).unwrap(),
+            "P2 bytes must not depend on an opaque mapping or hidden card face"
+        );
+        let payload = base64::engine::general_purpose::STANDARD
+            .decode(first.current_observation.payload_base64)
+            .unwrap();
+        let observation: mtgml_observation::MagicSharedExecutionObservationV1 =
+            mtgml_wire::decode_canonical(&payload).unwrap();
+        assert!(observation.stack.iter().all(|item| match item {
+            mtgml_observation::PublicStackItemV1::ActivatedAbility {
+                source_object,
+                source_ability,
+                ..
+            }
+            | mtgml_observation::PublicStackItemV1::TriggeredAbility {
+                source_object,
+                source_ability,
+                ..
+            } => source_object.is_none() && source_ability.is_none(),
+            _ => false,
+        }));
+        let owner_information =
+            crate::player_projection::project_successor_information_state_v3_structural_only(
+                &with_internal_mapping,
+                PlayerId(1),
+                admission.execution_identity(),
+                admission.semantic_contract_manifest(),
+                admission.rules_contract_manifest(),
+                admission.verified_catalog(),
+            )
+            .unwrap();
+        let owner_payload = base64::engine::general_purpose::STANDARD
+            .decode(owner_information.current_observation.payload_base64)
+            .unwrap();
+        let owner_observation: mtgml_observation::MagicSharedExecutionObservationV1 =
+            mtgml_wire::decode_canonical(&owner_payload).unwrap();
+        assert!(owner_observation.stack.iter().all(|item| matches!(
+            item,
+            mtgml_observation::PublicStackItemV1::ActivatedAbility {
+                source_object: Some(_),
+                source_ability: Some(_),
+                ..
+            } | mtgml_observation::PublicStackItemV1::TriggeredAbility {
+                source_object: Some(_),
+                source_ability: Some(_),
+                ..
+            },
+        )));
+        let mut missing_owner_ability_identity = with_internal_mapping.clone();
+        let owner_identity = missing_owner_ability_identity
+            .predecessor_v5
+            .perspective_identities
+            .players
+            .get_mut(&PlayerId(1))
+            .unwrap();
+        let owner_opaque_ability = owner_identity
+            .ability_to_opaque
+            .remove(&mtgml_model::AbilityInstanceId(2))
+            .unwrap();
+        owner_identity
+            .opaque_to_ability
+            .remove(&owner_opaque_ability);
+        assert!(matches!(
+            crate::player_projection::project_successor_information_state_v3_structural_only(
+                &missing_owner_ability_identity,
+                PlayerId(1),
+                admission.execution_identity(),
+                admission.semantic_contract_manifest(),
+                admission.rules_contract_manifest(),
+                admission.verified_catalog(),
+            ),
+            Err(crate::PlayerEndpointError::ServiceUnavailable)
+        ));
+
+        let hidden_object = *with_internal_mapping
+            .predecessor_v5
+            .zones
+            .locations
+            .iter()
+            .find(|(object, location)| {
+                location.zone == mtgml_model::ZoneKind::Hand
+                    && with_internal_mapping.predecessor_v5.zones.objects[object].owner
+                        == PlayerId(1)
+            })
+            .map(|(object, _)| object)
+            .unwrap();
+        let mut hidden_effect_worlds = [with_internal_mapping, without_internal_mapping];
+        for state in &mut hidden_effect_worlds {
+            state.execution_v4.effects.insert(
+                mtgml_model::EffectInstanceId(1),
+                temporary_haste_effect(hidden_object),
+            );
+            state.predecessor_v5.allocators.next_effect_id = mtgml_model::EffectInstanceId(2);
+            state.validate_structure().unwrap();
+            EnvironmentCheckpointV8::new(
+                state.clone(),
+                EpisodeStatus::Running,
+                EnvironmentLimitCounters::default(),
+                admission.execution_identity().clone(),
+            )
+            .unwrap();
+            assert!(matches!(
+                crate::project_successor_information_state_v3(
+                    state,
+                    PlayerId(2),
+                    admission.execution_identity(),
+                    admission.semantic_contract_manifest(),
+                    admission.rules_contract_manifest(),
+                    admission.verified_catalog(),
+                ),
+                Err(crate::PlayerEndpointError::ServiceUnavailable)
+            ));
+        }
+
+        let mut public_effect_state = state_with_two_lands();
+        let public_target = *public_effect_state
+            .predecessor_v5
+            .zones
+            .locations
+            .iter()
+            .find(|(_, location)| location.zone == mtgml_model::ZoneKind::Battlefield)
+            .map(|(object, _)| object)
+            .unwrap();
+        public_effect_state.execution_v4.effects.insert(
+            mtgml_model::EffectInstanceId(1),
+            temporary_haste_effect(public_target),
+        );
+        public_effect_state.predecessor_v5.allocators.next_effect_id =
+            mtgml_model::EffectInstanceId(2);
+        let public_information = crate::project_successor_information_state_v3(
+            &public_effect_state,
+            PlayerId(2),
+            admission.execution_identity(),
+            admission.semantic_contract_manifest(),
+            admission.rules_contract_manifest(),
+            admission.verified_catalog(),
+        )
+        .unwrap();
+        let public_payload = base64::engine::general_purpose::STANDARD
+            .decode(public_information.current_observation.payload_base64)
+            .unwrap();
+        let public_observation: mtgml_observation::MagicSharedExecutionObservationV1 =
+            mtgml_wire::decode_canonical(&public_payload).unwrap();
+        assert_eq!(public_observation.temporary_effects.len(), 1);
+    }
+
+    #[test]
+    fn public_stack_source_requires_authorized_object_and_ability_identity() {
+        use base64::Engine as _;
+
+        let admission = admission();
+        let mut state = state_with_two_lands();
+        let source_object = *state
+            .predecessor_v5
+            .zones
+            .locations
+            .iter()
+            .find(|(_, location)| location.zone == mtgml_model::ZoneKind::Battlefield)
+            .map(|(object, _)| object)
+            .unwrap();
+        let source = &state.predecessor_v5.zones.objects[&source_object];
+        let source_context = mtgml_state::AbilitySourceContext {
+            source: mtgml_state::SourceContext {
+                snapshot: mtgml_state::ObjectSnapshot {
+                    object: source_object,
+                    physical_card: source.physical_card,
+                    card_definition: source.card_definition,
+                    owner: source.owner,
+                    controller: source.controller,
+                    tapped: source.tapped,
+                    face_down: source.face_down,
+                    location: state.predecessor_v5.zones.locations[&source_object].clone(),
+                },
+                face_key: mtgml_card_ir::FaceKey(0),
+                semantic_profile_id: mtgml_card_ir::CardSemanticProfileId::parse(
+                    mtgml_card_ir::BASIC_LAND_PROFILE_ID_V1,
+                )
+                .unwrap(),
+            },
+            ability_instance_id: mtgml_model::AbilityInstanceId(2),
+            ability_key: mtgml_card_ir::AbilityKey(0),
+        };
+        state.card_rules_state.abilities.by_instance.insert(
+            source_context.ability_instance_id,
+            mtgml_state::AbilityAuthorityV1 {
+                source: source_object,
+                ability_key: source_context.ability_key.0,
+            },
+        );
+        state.predecessor_v5.allocators.next_ability_id = mtgml_model::AbilityInstanceId(3);
+        for perspective in [PlayerId(1), PlayerId(2)] {
+            let identity = state
+                .predecessor_v5
+                .perspective_identities
+                .players
+                .get_mut(&perspective)
+                .unwrap();
+            let opaque = identity.next_opaque_ability_id;
+            identity.next_opaque_ability_id = mtgml_model::OpaqueAbilityId(opaque.0 + 1);
+            identity
+                .ability_to_opaque
+                .insert(source_context.ability_instance_id, opaque);
+            identity
+                .opaque_to_ability
+                .insert(opaque, source_context.ability_instance_id);
+        }
+        let payload = mtgml_state::StackItemPayload::ActivatedAbility {
+            source_context,
+            modes: Vec::new(),
+            targets: Vec::new(),
+            cost_facts: mtgml_state::CostFacts::default(),
+        };
+        state.predecessor_v5.zones.stack_records.insert(
+            mtgml_model::StackObjectId(1),
+            mtgml_state::StackRecord {
+                id: mtgml_model::StackObjectId(1),
+                controller: PlayerId(1),
+                source_object: None,
+                source_ability: None,
+                payload: Some(payload),
+            },
+        );
+        state
+            .predecessor_v5
+            .zones
+            .stack_order
+            .push(mtgml_model::StackObjectId(1));
+        state.predecessor_v5.allocators.next_stack_object_id = mtgml_model::StackObjectId(2);
+        state.validate_structure().unwrap();
+        EnvironmentCheckpointV8::new(
+            state.clone(),
+            EpisodeStatus::Running,
+            EnvironmentLimitCounters::default(),
+            admission.execution_identity().clone(),
+        )
+        .unwrap();
+
+        let project = |candidate: &EngineStatePartsV3| {
+            crate::player_projection::project_successor_information_state_v3_structural_only(
+                candidate,
+                PlayerId(2),
+                admission.execution_identity(),
+                admission.semantic_contract_manifest(),
+                admission.rules_contract_manifest(),
+                admission.verified_catalog(),
+            )
+        };
+        let authorized = project(&state).unwrap();
+        let payload_bytes = base64::engine::general_purpose::STANDARD
+            .decode(authorized.current_observation.payload_base64)
+            .unwrap();
+        let observation: mtgml_observation::MagicSharedExecutionObservationV1 =
+            mtgml_wire::decode_canonical(&payload_bytes).unwrap();
+        assert!(matches!(
+            &observation.stack[0],
+            mtgml_observation::PublicStackItemV1::ActivatedAbility {
+                source_object: Some(_),
+                source_ability: Some(_),
+                ..
+            }
+        ));
+
+        let mut missing_source_knowledge = state.clone();
+        let source_opaque = missing_source_knowledge
+            .predecessor_v5
+            .perspective_identities
+            .players[&PlayerId(2)]
+            .object_to_opaque[&source_object];
+        missing_source_knowledge
+            .predecessor_v5
+            .knowledge
+            .players
+            .get_mut(&PlayerId(2))
+            .unwrap()
+            .active
+            .remove(&source_opaque);
+        assert!(matches!(
+            project(&missing_source_knowledge),
+            Err(crate::PlayerEndpointError::ServiceUnavailable)
+        ));
+
+        let mut missing_ability_mapping = state;
+        let identity = missing_ability_mapping
+            .predecessor_v5
+            .perspective_identities
+            .players
+            .get_mut(&PlayerId(2))
+            .unwrap();
+        let opaque = identity
+            .ability_to_opaque
+            .remove(&mtgml_model::AbilityInstanceId(2))
+            .unwrap();
+        identity.opaque_to_ability.remove(&opaque);
+        assert!(matches!(
+            project(&missing_ability_mapping),
+            Err(crate::PlayerEndpointError::ServiceUnavailable)
+        ));
+    }
+
+    #[test]
+    fn same_transition_does_not_use_later_reveal_knowledge_for_earlier_stack_events() {
+        let admission = admission();
+        let content = decode_content_manifest_v1(CONTENT).unwrap();
+        let definition_for = |subtype| {
+            content
+                .definitions
+                .iter()
+                .find(|definition| {
+                    matches!(&definition.semantic_binding,
+                        CardSemanticBindingV1::ProfiledV1 { body, .. } if body.subtype == subtype)
+                })
+                .unwrap()
+                .card_definition_id
+        };
+        let mountain = definition_for(mtgml_card_ir::BasicLandSubtypeV1::Mountain);
+        let plains = definition_for(mtgml_card_ir::BasicLandSubtypeV1::Plains);
+
+        let project_pair = |source_definition| {
+            let mut before = state_with_two_lands();
+            let source_object = *before
+                .predecessor_v5
+                .zones
+                .locations
+                .iter()
+                .find(|(object, location)| {
+                    location.zone == mtgml_model::ZoneKind::Hand
+                        && before.predecessor_v5.zones.objects[object].owner == PlayerId(1)
+                })
+                .map(|(object, _)| object)
+                .unwrap();
+            let public_object = *before
+                .predecessor_v5
+                .zones
+                .locations
+                .iter()
+                .find(|(_, location)| location.zone == mtgml_model::ZoneKind::Battlefield)
+                .map(|(object, _)| object)
+                .unwrap();
+            before
+                .predecessor_v5
+                .zones
+                .objects
+                .get_mut(&source_object)
+                .unwrap()
+                .card_definition = source_definition;
+            let source_location = before.predecessor_v5.zones.locations[&source_object].clone();
+
+            for perspective in [PlayerId(1), PlayerId(2)] {
+                let identity = &before.predecessor_v5.perspective_identities.players[&perspective];
+                let opaque = identity.object_to_opaque[&source_object];
+                let knowledge = &mut before
+                    .predecessor_v5
+                    .knowledge
+                    .players
+                    .get_mut(&perspective)
+                    .unwrap()
+                    .active;
+                knowledge.remove(&opaque);
+                if perspective == PlayerId(1) {
+                    knowledge.insert(
+                        opaque,
+                        mtgml_state::KnowledgeRecordV2 {
+                            opaque_object: opaque,
+                            physical_card: None,
+                            card_definition: Some(source_definition),
+                            known_location: Some(mtgml_state::KnownLocationFactV2 {
+                                location: source_location.clone(),
+                                provenance:
+                                    mtgml_state::KnowledgeAcquisitionReason::InitialConfiguration,
+                            }),
+                            historical_locations: Vec::new(),
+                            acquisition:
+                                mtgml_state::KnowledgeAcquisitionReason::InitialConfiguration,
+                        },
+                    );
+                }
+
+                let public_opaque = before.predecessor_v5.perspective_identities.players
+                    [&perspective]
+                    .object_to_opaque[&public_object];
+                let public_object_state = &before.predecessor_v5.zones.objects[&public_object];
+                before
+                    .predecessor_v5
+                    .knowledge
+                    .players
+                    .get_mut(&perspective)
+                    .unwrap()
+                    .active
+                    .insert(
+                        public_opaque,
+                        mtgml_state::KnowledgeRecordV2 {
+                            opaque_object: public_opaque,
+                            physical_card: public_object_state.physical_card,
+                            card_definition: Some(public_object_state.card_definition),
+                            known_location: Some(mtgml_state::KnownLocationFactV2 {
+                                location: before.predecessor_v5.zones.locations[&public_object]
+                                    .clone(),
+                                provenance:
+                                    mtgml_state::KnowledgeAcquisitionReason::InitialConfiguration,
+                            }),
+                            historical_locations: Vec::new(),
+                            acquisition:
+                                mtgml_state::KnowledgeAcquisitionReason::InitialConfiguration,
+                        },
+                    );
+            }
+            before
+                .predecessor_v5
+                .zones
+                .objects
+                .get_mut(&public_object)
+                .unwrap()
+                .tapped = false;
+            before.card_rules_state.abilities.by_instance.insert(
+                mtgml_model::AbilityInstanceId(2),
+                mtgml_state::AbilityAuthorityV1 {
+                    source: source_object,
+                    ability_key: 0,
+                },
+            );
+            before.predecessor_v5.allocators.next_ability_id = mtgml_model::AbilityInstanceId(3);
+            for perspective in [PlayerId(1), PlayerId(2)] {
+                let identity = before
+                    .predecessor_v5
+                    .perspective_identities
+                    .players
+                    .get_mut(&perspective)
+                    .unwrap();
+                let opaque = identity.next_opaque_ability_id;
+                identity.next_opaque_ability_id = mtgml_model::OpaqueAbilityId(opaque.0 + 1);
+                identity
+                    .ability_to_opaque
+                    .insert(mtgml_model::AbilityInstanceId(2), opaque);
+                identity
+                    .opaque_to_ability
+                    .insert(opaque, mtgml_model::AbilityInstanceId(2));
+            }
+
+            let source_state = &before.predecessor_v5.zones.objects[&source_object];
+            let source_context = mtgml_state::AbilitySourceContext {
+                source: mtgml_state::SourceContext {
+                    snapshot: mtgml_state::ObjectSnapshot {
+                        object: source_object,
+                        physical_card: source_state.physical_card,
+                        card_definition: source_definition,
+                        owner: source_state.owner,
+                        controller: source_state.controller,
+                        tapped: source_state.tapped,
+                        face_down: source_state.face_down,
+                        location: source_location.clone(),
+                    },
+                    face_key: mtgml_card_ir::FaceKey(0),
+                    semantic_profile_id: mtgml_card_ir::CardSemanticProfileId::parse(
+                        mtgml_card_ir::BASIC_LAND_PROFILE_ID_V1,
+                    )
+                    .unwrap(),
+                },
+                ability_instance_id: mtgml_model::AbilityInstanceId(2),
+                ability_key: mtgml_card_ir::AbilityKey(0),
+            };
+            let activated = mtgml_state::StackItemPayload::ActivatedAbility {
+                source_context: source_context.clone(),
+                modes: Vec::new(),
+                targets: Vec::new(),
+                cost_facts: mtgml_state::CostFacts::default(),
+            };
+            let first_event_id = before.predecessor_v5.allocators.next_rule_event_id;
+            let mut after = before.clone();
+            after.predecessor_v5.zones.stack_records.insert(
+                mtgml_model::StackObjectId(1),
+                mtgml_state::StackRecord {
+                    id: mtgml_model::StackObjectId(1),
+                    controller: PlayerId(1),
+                    source_object: None,
+                    source_ability: None,
+                    payload: Some(activated),
+                },
+            );
+            after
+                .predecessor_v5
+                .zones
+                .stack_order
+                .push(mtgml_model::StackObjectId(1));
+            after.predecessor_v5.allocators.next_stack_object_id = mtgml_model::StackObjectId(2);
+            after
+                .predecessor_v5
+                .zones
+                .objects
+                .get_mut(&public_object)
+                .unwrap()
+                .tapped = true;
+            after.predecessor_v5.revision =
+                mtgml_model::StateRevision(before.predecessor_v5.revision.0 + 1);
+
+            let p1_sequence =
+                before.predecessor_v5.knowledge.players[&PlayerId(1)].next_visible_sequence;
+            let p2_sequence =
+                before.predecessor_v5.knowledge.players[&PlayerId(2)].next_visible_sequence;
+            let p2_source_opaque = before.predecessor_v5.perspective_identities.players
+                [&PlayerId(2)]
+                .object_to_opaque[&source_object];
+            let lifecycle = |perspective, sequence, mutation| {
+                Box::new(mtgml_state::PerspectiveLifecycleAuditV1 {
+                    perspective,
+                    sequence,
+                    mutation,
+                })
+            };
+            let occurrence = |event_id, revision, lifecycle, source_event_id| {
+                mtgml_rules::AuthoritativeRuleEventV3 {
+                    event_id,
+                    state_revision: revision,
+                    event: mtgml_rules::AuthoritativeRuleEventKindV3::PerspectiveObservationOccurrence {
+                        lifecycle,
+                        source_event_id,
+                    },
+                }
+            };
+            let revision = after.predecessor_v5.revision;
+            let tapped_event_id = mtgml_model::RuleEventId(first_event_id.0 + 1);
+            let events = vec![
+                mtgml_rules::AuthoritativeRuleEventV3 {
+                    event_id: first_event_id,
+                    state_revision: revision,
+                    event: mtgml_rules::AuthoritativeRuleEventKindV3::StackItemAdded {
+                        stack_object: mtgml_model::StackObjectId(1),
+                        payload: after.predecessor_v5.zones.stack_records
+                            [&mtgml_model::StackObjectId(1)]
+                            .payload
+                            .clone()
+                            .unwrap(),
+                    },
+                },
+                mtgml_rules::AuthoritativeRuleEventV3 {
+                    event_id: tapped_event_id,
+                    state_revision: revision,
+                    event: mtgml_rules::AuthoritativeRuleEventKindV3::Existing {
+                        event: Box::new(mtgml_rules::AuthoritativeRuleEventKind::ObjectTapped {
+                            object: public_object,
+                            from: false,
+                            to: true,
+                        }),
+                    },
+                },
+                occurrence(
+                    mtgml_model::RuleEventId(first_event_id.0 + 2),
+                    revision,
+                    lifecycle(
+                        PlayerId(1),
+                        p1_sequence,
+                        mtgml_state::PerspectiveLifecycleMutationV1::default(),
+                    ),
+                    first_event_id,
+                ),
+                occurrence(
+                    mtgml_model::RuleEventId(first_event_id.0 + 3),
+                    revision,
+                    lifecycle(
+                        PlayerId(2),
+                        p2_sequence,
+                        mtgml_state::PerspectiveLifecycleMutationV1::default(),
+                    ),
+                    first_event_id,
+                ),
+                occurrence(
+                    mtgml_model::RuleEventId(first_event_id.0 + 4),
+                    revision,
+                    lifecycle(
+                        PlayerId(1),
+                        mtgml_model::VisibleSequence(p1_sequence.0 + 1),
+                        mtgml_state::PerspectiveLifecycleMutationV1::default(),
+                    ),
+                    tapped_event_id,
+                ),
+                occurrence(
+                    mtgml_model::RuleEventId(first_event_id.0 + 5),
+                    revision,
+                    lifecycle(
+                        PlayerId(2),
+                        mtgml_model::VisibleSequence(p2_sequence.0 + 1),
+                        mtgml_state::PerspectiveLifecycleMutationV1 {
+                            identity: mtgml_state::IdentityMutationV1::None,
+                            knowledge: Some(mtgml_state::KnowledgeMutationV1::Acquire {
+                                opaque: p2_source_opaque,
+                                definition: Some(source_definition),
+                                location: Some(source_location.clone()),
+                                acquisition: mtgml_state::KnowledgeAcquisitionReason::Observed {
+                                    channel: mtgml_state::KnowledgeHistoryChannel::Public,
+                                    sequence: mtgml_model::VisibleSequence(p2_sequence.0 + 1),
+                                    cause: mtgml_state::KnowledgeAcquisitionCause::ExplicitReveal,
+                                },
+                            }),
+                        },
+                    ),
+                    tapped_event_id,
+                ),
+            ];
+            after.predecessor_v5.allocators.next_rule_event_id =
+                mtgml_model::RuleEventId(first_event_id.0 + events.len() as u64);
+            let mut after_engine: mtgml_state::EngineState = after.predecessor_v5.clone().into();
+            for event in &events {
+                if let mtgml_rules::AuthoritativeRuleEventKindV3::PerspectiveObservationOccurrence {
+                    lifecycle,
+                    ..
+                } = &event.event
+                {
+                    mtgml_state::apply_perspective_lifecycle(
+                        &mut after_engine,
+                        lifecycle,
+                    )
+                    .unwrap();
+                }
+            }
+            after.predecessor_v5 = after_engine.parts();
+            after.validate().unwrap();
+            for state in [&before, &after] {
+                EnvironmentCheckpointV8::new(
+                    state.clone(),
+                    EpisodeStatus::Running,
+                    EnvironmentLimitCounters::default(),
+                    admission.execution_identity().clone(),
+                )
+                .unwrap();
+            }
+
+            let projected =
+                crate::successor_projection::project_successor_events_v4(&before, &after, &events)
+                    .unwrap();
+            let p2_events = &projected[&PlayerId(2)];
+            let stack_added = p2_events
+                .iter()
+                .find_map(|event| match &event.event {
+                    mtgml_observation::ObservedEventKindV4::StackItemAdded { item, .. } => {
+                        Some(item)
+                    }
+                    _ => None,
+                })
+                .unwrap();
+            assert!(matches!(
+                stack_added,
+                mtgml_observation::PublicStackItemV1::ActivatedAbility {
+                    source_object: None,
+                    source_ability: None,
+                    ..
+                }
+            ));
+            assert!(after.predecessor_v5.knowledge.players[&PlayerId(2)]
+                .active
+                .values()
+                .any(|record| record.card_definition == Some(source_definition)));
+            (projected, first_event_id)
+        };
+
+        let (mountain_events, mountain_start) = project_pair(mountain);
+        let (plains_events, plains_start) = project_pair(plains);
+        assert_eq!(mountain_start, plains_start);
+        assert_eq!(
+            serde_json::to_vec(&mountain_events[&PlayerId(2)][0]).unwrap(),
+            serde_json::to_vec(&plains_events[&PlayerId(2)][0]).unwrap(),
+            "the earlier stack occurrence cannot use knowledge introduced by the later reveal"
+        );
+        assert!(matches!(
+            mountain_events[&PlayerId(1)][0].event,
+            mtgml_observation::ObservedEventKindV4::StackItemAdded {
+                item: mtgml_observation::PublicStackItemV1::ActivatedAbility {
+                    source_object: Some(_),
+                    source_ability: Some(_),
+                    ..
+                },
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn terminal_basic_land_restore_rejects_unsupported_state_without_mutation() {
+        let admission = admission();
+        let mut initial_state = state_with_two_lands();
+        mtgml_rules::install_basic_land_request_v4(
+            &admission,
+            &mut initial_state,
+            PlayerId(1),
+            &EpisodeStatus::Running,
+        )
+        .unwrap();
+        let initial_checkpoint = EnvironmentCheckpointV8::new_for_basic_land_profile(
+            &admission,
+            initial_state.clone(),
+            EpisodeStatus::Running,
+            EnvironmentLimitCounters::default(),
+            admission.execution_identity().clone(),
+        )
+        .unwrap();
+        let mut runtime = BasicLandEnvironmentRuntimeV8::new(
+            admission.clone(),
+            initial_state,
+            EpisodeStatus::Running,
+            EnvironmentLimitCounters::default(),
+            v8_manifest(&admission, &initial_checkpoint),
+        )
+        .unwrap();
+
+        let truncated = EpisodeStatus::Truncated {
+            reason: mtgml_model::TruncationReason::ExternalStop,
+            players: [PlayerId(1), PlayerId(2)]
+                .into_iter()
+                .map(|player| mtgml_model::PlayerOutcome {
+                    player,
+                    result: mtgml_model::PlayerResult::Unresolved,
+                })
+                .collect(),
+        };
+        let mut unsupported_state = state_with_two_lands();
+        let affected = *unsupported_state
+            .predecessor_v5
+            .zones
+            .locations
+            .iter()
+            .find(|(_, location)| location.zone == mtgml_model::ZoneKind::Battlefield)
+            .map(|(object, _)| object)
+            .unwrap();
+        unsupported_state.execution_v4.effects.insert(
+            mtgml_model::EffectInstanceId(1),
+            temporary_haste_effect(affected),
+        );
+        unsupported_state.predecessor_v5.allocators.next_effect_id =
+            mtgml_model::EffectInstanceId(2);
+        unsupported_state.validate_structure().unwrap();
+
+        // A terminal checkpoint with no unsupported Shared state remains an
+        // accepted closed Basic-Land checkpoint.
+        let closed_checkpoint = EnvironmentCheckpointV8::new_for_basic_land_profile(
+            &admission,
+            state_with_two_lands(),
+            truncated.clone(),
+            EnvironmentLimitCounters::default(),
+            admission.execution_identity().clone(),
+        )
+        .unwrap();
+        assert_eq!(closed_checkpoint.status, truncated);
+
+        // The generic checkpoint type can carry structurally valid V8 state;
+        // the verified profile restore must still reject the unsupported effect.
+        let unsupported_checkpoint = EnvironmentCheckpointV8::new(
+            unsupported_state,
+            truncated,
+            EnvironmentLimitCounters::default(),
+            admission.execution_identity().clone(),
+        )
+        .unwrap();
+        let before_checkpoint = runtime.checkpoint().unwrap();
+        let before_replay = runtime.export_replay().unwrap();
+        assert!(runtime.restore(unsupported_checkpoint).is_err());
+        assert_eq!(runtime.checkpoint().unwrap(), before_checkpoint);
+        assert_eq!(runtime.export_replay().unwrap(), before_replay);
+    }
+
+    #[test]
+    fn successor_projection_accepts_running_to_terminal_and_truncated_statuses() {
+        let admission = admission();
+        let mut before = state_with_two_lands();
+        mtgml_rules::install_basic_land_request_v4(
+            &admission,
+            &mut before,
+            PlayerId(1),
+            &EpisodeStatus::Running,
+        )
+        .unwrap();
+        let mut after = before.clone();
+        after.execution_v4.pending_decision = None;
+        let closed_statuses = [
+            EpisodeStatus::Terminal {
+                reason: mtgml_model::TerminalReason::Concession,
+                players: vec![
+                    mtgml_model::PlayerOutcome {
+                        player: PlayerId(1),
+                        result: mtgml_model::PlayerResult::Loss,
+                    },
+                    mtgml_model::PlayerOutcome {
+                        player: PlayerId(2),
+                        result: mtgml_model::PlayerResult::Win,
+                    },
+                ],
+            },
+            EpisodeStatus::Truncated {
+                reason: mtgml_model::TruncationReason::ExternalStop,
+                players: [PlayerId(1), PlayerId(2)]
+                    .into_iter()
+                    .map(|player| mtgml_model::PlayerOutcome {
+                        player,
+                        result: mtgml_model::PlayerResult::Unresolved,
+                    })
+                    .collect(),
+            },
+        ];
+
+        for after_status in closed_statuses {
+            let products = crate::successor_projection::project_successor_player_steps_v4(
+                crate::successor_projection::SuccessorTransitionV4Projection {
+                    before: &before,
+                    after: &after,
+                    before_status: &EpisodeStatus::Running,
+                    events: &[],
+                    delta: None,
+                    accepted: true,
+                    status: &after_status,
+                    next_request: None,
+                    actor: PlayerId(1),
+                    rejected_code: mtgml_observation::PlayerSubmissionCodeV1::InvalidAnswer,
+                },
+                crate::successor_projection::SuccessorProjectionAuthority {
+                    execution_identity: admission.execution_identity(),
+                    semantic_manifest: admission.semantic_contract_manifest(),
+                    rules_manifest: admission.rules_contract_manifest(),
+                    catalog: admission.verified_catalog(),
+                    basic_land_admission: Some(&admission),
+                },
+            )
+            .unwrap();
+            assert_eq!(products.len(), 2);
+            assert!(products.values().all(|step| step.status == after_status));
+        }
+    }
+
+    #[test]
+    fn successor_projection_uses_before_and_after_episode_status_separately() {
+        let admission = admission();
+        let mut before = state_with_two_lands();
+        mtgml_rules::install_basic_land_request_v4(
+            &admission,
+            &mut before,
+            PlayerId(1),
+            &EpisodeStatus::Running,
+        )
+        .unwrap();
+        let mut after = before.clone();
+        after.execution_v4.pending_decision = None;
+
+        let closed_statuses = [
+            EpisodeStatus::Terminal {
+                reason: mtgml_model::TerminalReason::Concession,
+                players: vec![
+                    mtgml_model::PlayerOutcome {
+                        player: PlayerId(1),
+                        result: mtgml_model::PlayerResult::Loss,
+                    },
+                    mtgml_model::PlayerOutcome {
+                        player: PlayerId(2),
+                        result: mtgml_model::PlayerResult::Win,
+                    },
+                ],
+            },
+            EpisodeStatus::Truncated {
+                reason: mtgml_model::TruncationReason::ExternalStop,
+                players: [PlayerId(1), PlayerId(2)]
+                    .into_iter()
+                    .map(|player| mtgml_model::PlayerOutcome {
+                        player,
+                        result: mtgml_model::PlayerResult::Unresolved,
+                    })
+                    .collect(),
+            },
+        ];
+        for after_status in closed_statuses {
+            let products = crate::successor_projection::project_successor_player_steps_v4(
+                crate::successor_projection::SuccessorTransitionV4Projection {
+                    before: &before,
+                    after: &after,
+                    before_status: &EpisodeStatus::Running,
+                    events: &[],
+                    delta: None,
+                    accepted: true,
+                    status: &after_status,
+                    next_request: None,
+                    actor: PlayerId(1),
+                    rejected_code: mtgml_observation::PlayerSubmissionCodeV1::InvalidAnswer,
+                },
+                crate::successor_projection::SuccessorProjectionAuthority {
+                    execution_identity: admission.execution_identity(),
+                    semantic_manifest: admission.semantic_contract_manifest(),
+                    rules_manifest: admission.rules_contract_manifest(),
+                    catalog: admission.verified_catalog(),
+                    basic_land_admission: Some(&admission),
+                },
+            )
+            .unwrap();
+            assert_eq!(products.len(), 2);
+            assert!(products.values().all(|step| step.status == after_status));
+        }
     }
 
     #[test]

@@ -974,6 +974,12 @@ fn project_shared_execution_observation(
         .players
         .get(&perspective)
         .ok_or(PlayerEndpointError::ServiceUnavailable)?;
+    let knowledge = parts
+        .predecessor_v5
+        .knowledge
+        .players
+        .get(&perspective)
+        .ok_or(PlayerEndpointError::ServiceUnavailable)?;
     let mut stack = Vec::with_capacity(parts.predecessor_v5.zones.stack_records.len());
     for stack_id in parts.predecessor_v5.zones.stack_order.iter().rev() {
         let record = parts
@@ -987,13 +993,9 @@ fn project_shared_execution_observation(
             .as_ref()
             .ok_or(PlayerEndpointError::ServiceUnavailable)?;
         stack.push(project_public_stack_item_v1(
+            parts,
             identity,
-            parts
-                .predecessor_v5
-                .knowledge
-                .players
-                .get(&perspective)
-                .ok_or(PlayerEndpointError::ServiceUnavailable)?,
+            knowledge,
             &parts.predecessor_v5.zones.stack_order,
             record.controller,
             payload,
@@ -1004,7 +1006,7 @@ fn project_shared_execution_observation(
         .execution_v4
         .effects
         .values()
-        .map(|effect| project_public_temporary_effect_v1(parts, perspective, effect))
+        .map(|effect| project_public_temporary_effect_v1(parts, identity, knowledge, effect))
         .collect::<Result<Vec<_>, _>>()?;
     for index in 1..temporary_effects.len() {
         let mut position = index;
@@ -1036,6 +1038,7 @@ fn project_shared_execution_observation(
 }
 
 pub(crate) fn project_public_stack_item_v1(
+    state: &mtgml_state::EngineStatePartsV3,
     identity: &mtgml_state::PerspectiveIdentityRecordV2,
     knowledge: &mtgml_state::PlayerKnowledgeStateV2,
     stack_order: &[mtgml_model::StackObjectId],
@@ -1043,7 +1046,7 @@ pub(crate) fn project_public_stack_item_v1(
     payload: &StackItemPayload,
 ) -> Result<mtgml_observation::PublicStackItemV1, PlayerEndpointError> {
     let object_opaque = |object: mtgml_model::GameObjectId| {
-        public_opaque_object(identity, knowledge, object)
+        public_opaque_object(state, identity, knowledge, object)
             .ok_or(PlayerEndpointError::ServiceUnavailable)
     };
     let target_views = |bindings: &[mtgml_state::TargetBinding]| {
@@ -1091,15 +1094,43 @@ pub(crate) fn project_public_stack_item_v1(
         paid_additional_cost_ids: facts.paid_additional_cost_ids.clone(),
     };
     let source_views = |source: &mtgml_state::AbilitySourceContext| {
+        let source_must_be_public = source.source.snapshot.location.visibility
+            == mtgml_state::VisibilityPartition::Public
+            && !source.source.snapshot.face_down;
+        if let Some(authority) = state
+            .card_rules_state
+            .abilities
+            .by_instance
+            .get(&source.ability_instance_id)
+        {
+            if authority.source != source.source.snapshot.object
+                || authority.ability_key != source.ability_key.0
+            {
+                return Err(PlayerEndpointError::ServiceUnavailable);
+            }
+        } else if state
+            .predecessor_v5
+            .zones
+            .objects
+            .contains_key(&source.source.snapshot.object)
+        {
+            return Err(PlayerEndpointError::ServiceUnavailable);
+        }
         let source_object =
             public_known_card_object(identity, knowledge, source.source.snapshot.object);
+        if source_must_be_public && source_object.is_none() {
+            return Err(PlayerEndpointError::ServiceUnavailable);
+        }
         let source_ability = source_object.and_then(|_| {
             identity
                 .ability_to_opaque
                 .get(&source.ability_instance_id)
                 .copied()
         });
-        (source_object, source_ability)
+        if source_object.is_some() && source_ability.is_none() {
+            return Err(PlayerEndpointError::ServiceUnavailable);
+        }
+        Ok((source_object, source_ability))
     };
 
     match payload {
@@ -1132,7 +1163,7 @@ pub(crate) fn project_public_stack_item_v1(
             targets,
             cost_facts,
         } => {
-            let (source_object, source_ability) = source_views(source_context);
+            let (source_object, source_ability) = source_views(source_context)?;
             Ok(mtgml_observation::PublicStackItemV1::ActivatedAbility {
                 controller,
                 source_object,
@@ -1147,7 +1178,7 @@ pub(crate) fn project_public_stack_item_v1(
             targets,
             ..
         } => {
-            let (source_object, source_ability) = source_views(source_context);
+            let (source_object, source_ability) = source_views(source_context)?;
             Ok(mtgml_observation::PublicStackItemV1::TriggeredAbility {
                 controller,
                 source_object,
@@ -1160,21 +1191,10 @@ pub(crate) fn project_public_stack_item_v1(
 
 pub(crate) fn project_public_temporary_effect_v1(
     state: &mtgml_state::EngineStatePartsV3,
-    perspective: PlayerId,
+    identity: &mtgml_state::PerspectiveIdentityRecordV2,
+    knowledge: &mtgml_state::PlayerKnowledgeStateV2,
     effect: &mtgml_state::TemporaryEffectRecord,
 ) -> Result<mtgml_observation::PublicTemporaryEffectV1, PlayerEndpointError> {
-    let identity = state
-        .predecessor_v5
-        .perspective_identities
-        .players
-        .get(&perspective)
-        .ok_or(PlayerEndpointError::ServiceUnavailable)?;
-    let knowledge = state
-        .predecessor_v5
-        .knowledge
-        .players
-        .get(&perspective)
-        .ok_or(PlayerEndpointError::ServiceUnavailable)?;
     let mut affected_objects = effect
         .affected_objects
         .iter()
@@ -1221,19 +1241,40 @@ pub(crate) fn project_public_temporary_effect_v1(
     })
 }
 
-fn public_opaque_object(
+pub(crate) fn public_opaque_object(
+    state: &mtgml_state::EngineStatePartsV3,
     identity: &mtgml_state::PerspectiveIdentityRecordV2,
     knowledge: &mtgml_state::PlayerKnowledgeStateV2,
     object: mtgml_model::GameObjectId,
 ) -> Option<mtgml_model::OpaqueObjectId> {
     let opaque = identity.object_to_opaque.get(&object).copied()?;
-    let record = knowledge.active.get(&opaque)?;
-    if record.opaque_object != opaque
-        || !record.known_location.as_ref().is_some_and(|fact| {
-            fact.location.visibility == mtgml_state::VisibilityPartition::Public
-                && public_knowledge_provenance(&fact.provenance)
-        })
-    {
+    let public_current_object = state
+        .predecessor_v5
+        .zones
+        .objects
+        .get(&object)
+        .zip(state.predecessor_v5.zones.locations.get(&object))
+        .is_some_and(|(record, location)| {
+            location.visibility == mtgml_state::VisibilityPartition::Public && !record.face_down
+        });
+    let knowledge_authorized = knowledge.active.get(&opaque).is_some_and(|record| {
+        record.opaque_object == opaque
+            && record.known_location.as_ref().is_some_and(|fact| {
+                (fact.location.visibility == mtgml_state::VisibilityPartition::Public
+                    || matches!(
+                        fact.provenance,
+                        mtgml_state::KnowledgeAcquisitionReason::Observed {
+                            channel: mtgml_state::KnowledgeHistoryChannel::Public,
+                            cause: mtgml_state::KnowledgeAcquisitionCause::ExplicitReveal,
+                            ..
+                        }
+                    ))
+                    && public_knowledge_provenance(&fact.provenance)
+            })
+    });
+    // A trusted opaque mapping is not visibility authority. Public current
+    // state or public-provenance knowledge independently authorizes the ID.
+    if !public_current_object && !knowledge_authorized {
         return None;
     }
     Some(opaque)
@@ -1244,12 +1285,10 @@ fn public_known_card_object(
     knowledge: &mtgml_state::PlayerKnowledgeStateV2,
     object: mtgml_model::GameObjectId,
 ) -> Option<mtgml_model::OpaqueObjectId> {
-    let opaque = public_opaque_object(identity, knowledge, object)?;
-    knowledge
-        .active
-        .get(&opaque)
-        .is_some_and(|record| record.card_definition.is_some())
-        .then_some(opaque)
+    let opaque = identity.object_to_opaque.get(&object).copied()?;
+    knowledge.active.get(&opaque).and_then(|record| {
+        (record.opaque_object == opaque && record.card_definition.is_some()).then_some(opaque)
+    })
 }
 
 fn public_knowledge_provenance(reason: &mtgml_state::KnowledgeAcquisitionReason) -> bool {
@@ -1518,151 +1557,4 @@ pub(crate) fn validate_candidate_projections_with_profile(
         })?;
     }
     Ok(())
-}
-
-#[cfg(test)]
-mod shared_execution_visibility_tests {
-    use super::*;
-    use mtgml_card_ir::{AbilityKey, CardSemanticProfileId, FaceKey};
-    use mtgml_model::{AbilityInstanceId, GameObjectId, OpaqueAbilityId, OpaqueObjectId};
-    use mtgml_state::{
-        AbilitySourceContext, CostFacts, KnowledgeAcquisitionReason, ModeBinding, ObjectSnapshot,
-        PerspectiveIdentityRecordV2, PlayerKnowledgeStateV2, SourceContext, StackItemPayload,
-        TargetBinding, TriggerEventSnapshot, VisibilityPartition, ZoneLocation, ZonePosition,
-    };
-    use std::collections::BTreeMap;
-
-    fn public_location() -> ZoneLocation {
-        ZoneLocation {
-            zone: mtgml_model::ZoneKind::Battlefield,
-            player: None,
-            position: ZonePosition::Unordered,
-            visibility: VisibilityPartition::Public,
-            partition: None,
-        }
-    }
-
-    fn source_context(object: GameObjectId) -> AbilitySourceContext {
-        AbilitySourceContext {
-            source: SourceContext {
-                snapshot: ObjectSnapshot {
-                    object,
-                    physical_card: None,
-                    card_definition: mtgml_model::CardDefinitionId(7),
-                    owner: PlayerId(1),
-                    controller: PlayerId(1),
-                    tapped: false,
-                    face_down: false,
-                    location: public_location(),
-                },
-                face_key: FaceKey(0),
-                semantic_profile_id: CardSemanticProfileId::parse("test-source@1.0.0").unwrap(),
-            },
-            ability_instance_id: AbilityInstanceId(7),
-            ability_key: AbilityKey(0),
-        }
-    }
-
-    fn identity_with_source_mapping() -> PerspectiveIdentityRecordV2 {
-        PerspectiveIdentityRecordV2 {
-            object_to_opaque: BTreeMap::from([(GameObjectId(7), OpaqueObjectId(7))]),
-            opaque_to_object: BTreeMap::from([(OpaqueObjectId(7), GameObjectId(7))]),
-            ability_to_opaque: BTreeMap::from([(AbilityInstanceId(7), OpaqueAbilityId(7))]),
-            opaque_to_ability: BTreeMap::from([(OpaqueAbilityId(7), AbilityInstanceId(7))]),
-            next_opaque_object_id: OpaqueObjectId(8),
-            next_opaque_ability_id: OpaqueAbilityId(8),
-            next_player_decision_id: mtgml_model::PlayerDecisionIdV1(1),
-            ..Default::default()
-        }
-    }
-
-    #[test]
-    fn hidden_ability_and_trigger_sources_are_not_disclosed_from_mappings_alone() {
-        let mapped = identity_with_source_mapping();
-        let unmapped = PerspectiveIdentityRecordV2::default();
-        let no_knowledge = PlayerKnowledgeStateV2::default();
-        let source = source_context(GameObjectId(7));
-        let payloads = [
-            StackItemPayload::ActivatedAbility {
-                source_context: source.clone(),
-                modes: vec![ModeBinding {
-                    mode_slot: 0,
-                    selected_mode: 1,
-                }],
-                targets: Vec::<TargetBinding>::new(),
-                cost_facts: CostFacts::default(),
-            },
-            StackItemPayload::TriggeredAbility {
-                originating_trigger: mtgml_model::TriggerInstanceId(4),
-                source_context: source,
-                captured_trigger_context: Box::new(TriggerEventSnapshot::CardDrawn {
-                    player: PlayerId(1),
-                }),
-                targets: Vec::new(),
-            },
-        ];
-
-        for payload in payloads {
-            let with_mapping =
-                project_public_stack_item_v1(&mapped, &no_knowledge, &[], PlayerId(1), &payload)
-                    .unwrap();
-            let without_mapping =
-                project_public_stack_item_v1(&unmapped, &no_knowledge, &[], PlayerId(1), &payload)
-                    .unwrap();
-            assert_eq!(with_mapping, without_mapping);
-            match with_mapping {
-                mtgml_observation::PublicStackItemV1::ActivatedAbility {
-                    source_object,
-                    source_ability,
-                    ..
-                }
-                | mtgml_observation::PublicStackItemV1::TriggeredAbility {
-                    source_object,
-                    source_ability,
-                    ..
-                } => {
-                    assert_eq!(source_object, None);
-                    assert_eq!(source_ability, None);
-                }
-                _ => panic!("expected ability stack item"),
-            }
-        }
-
-        let mut public_knowledge = PlayerKnowledgeStateV2::default();
-        public_knowledge.active.insert(
-            OpaqueObjectId(7),
-            mtgml_state::KnowledgeRecordV2 {
-                opaque_object: OpaqueObjectId(7),
-                physical_card: None,
-                card_definition: Some(mtgml_model::CardDefinitionId(7)),
-                known_location: Some(mtgml_state::KnownLocationFactV2 {
-                    location: public_location(),
-                    provenance: KnowledgeAcquisitionReason::InitialConfiguration,
-                }),
-                historical_locations: Vec::new(),
-                acquisition: KnowledgeAcquisitionReason::InitialConfiguration,
-            },
-        );
-        let public_item = project_public_stack_item_v1(
-            &mapped,
-            &public_knowledge,
-            &[],
-            PlayerId(1),
-            &StackItemPayload::ActivatedAbility {
-                source_context: source_context(GameObjectId(7)),
-                modes: Vec::new(),
-                targets: Vec::new(),
-                cost_facts: CostFacts::default(),
-            },
-        )
-        .unwrap();
-        assert!(matches!(
-            public_item,
-            mtgml_observation::PublicStackItemV1::ActivatedAbility {
-                source_object: Some(OpaqueObjectId(7)),
-                source_ability: Some(OpaqueAbilityId(7)),
-                ..
-            }
-        ));
-    }
 }

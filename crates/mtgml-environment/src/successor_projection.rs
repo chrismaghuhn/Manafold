@@ -47,6 +47,7 @@ pub struct SuccessorProjectionAuthority<'a> {
 pub struct SuccessorTransitionV4Projection<'a> {
     pub before: &'a EngineStatePartsV3,
     pub after: &'a EngineStatePartsV3,
+    pub before_status: &'a mtgml_model::EpisodeStatus,
     pub events: &'a [mtgml_rules::AuthoritativeRuleEventV3],
     pub delta: Option<&'a mtgml_state::StateDeltaV3>,
     pub accepted: bool,
@@ -54,6 +55,16 @@ pub struct SuccessorTransitionV4Projection<'a> {
     pub next_request: Option<&'a mtgml_decision::AuthoritativeDecisionRequestV4>,
     pub actor: PlayerId,
     pub rejected_code: PlayerSubmissionCodeV1,
+}
+
+struct V4PublicSourceEventContext<'a> {
+    before: &'a EngineStatePartsV3,
+    after: &'a EngineStatePartsV3,
+    perspective: PlayerId,
+    before_identity: &'a PerspectiveIdentityRecordV2,
+    after_identity: &'a PerspectiveIdentityRecordV2,
+    knowledge: &'a mtgml_state::PlayerKnowledgeStateV2,
+    stack_order_before: &'a [mtgml_model::StackObjectId],
 }
 
 fn resolve(
@@ -239,15 +250,16 @@ pub fn project_successor_events_v4(
 
 pub fn project_successor_events_v4_for_basic_land_profile(
     admission: &mtgml_card_ir::ExecutableProfileAdmissionV1,
-    status: &mtgml_model::EpisodeStatus,
     before: &EngineStatePartsV3,
+    before_status: &mtgml_model::EpisodeStatus,
     after: &EngineStatePartsV3,
+    after_status: &mtgml_model::EpisodeStatus,
     events: &[mtgml_rules::AuthoritativeRuleEventV3],
     delta: Option<&mtgml_state::StateDeltaV3>,
 ) -> Result<BTreeMap<PlayerId, Vec<ObservedEventEnvelopeV4>>, SuccessorProjectionError> {
-    mtgml_rules::validate_basic_land_pending_request_v4(admission, before, status)
+    mtgml_rules::validate_basic_land_pending_request_v4(admission, before, before_status)
         .map_err(|_| SuccessorProjectionError::ObservationOccurrenceMismatch)?;
-    mtgml_rules::validate_basic_land_pending_request_v4(admission, after, status)
+    mtgml_rules::validate_basic_land_pending_request_v4(admission, after, after_status)
         .map_err(|_| SuccessorProjectionError::ObservationOccurrenceMismatch)?;
     project_successor_events_v4_inner(before, after, events, delta, true)
 }
@@ -290,7 +302,11 @@ fn project_successor_events_v4_inner(
         .iter()
         .map(|(player, state)| (*player, state.next_visible_sequence.0))
         .collect();
+    // Keep event-time player authority separate from the fully materialized
+    // after-state. A fact learned by a later occurrence in this same atomic
+    // transition must not authorize an earlier event projection.
     let mut identities = before_engine.perspective_identities.players.clone();
+    let mut knowledge_states = before_engine.knowledge.players.clone();
     let mut working_stack_order = before.predecessor_v5.zones.stack_order.clone();
     let mut stack_order_before_event = BTreeMap::new();
     for event in events {
@@ -361,24 +377,23 @@ fn project_successor_events_v4_inner(
         let after_identity = identities
             .get_mut(&lifecycle.perspective)
             .ok_or(SuccessorProjectionError::UnknownPerspective)?;
-        let allocated_opaque = match &lifecycle.mutation.identity {
-            mtgml_state::IdentityMutationV1::Allocate { opaque, .. } => {
-                if *opaque != after_identity.next_opaque_object_id {
-                    return Err(SuccessorProjectionError::ObservationOccurrenceMismatch);
-                }
-                Some(*opaque)
-            }
-            _ => None,
-        };
-        mtgml_state::advance_identity_record(after_identity, &lifecycle.mutation.identity);
-        if let Some(opaque) = allocated_opaque {
-            after_identity.next_opaque_object_id = mtgml_model::OpaqueObjectId(
-                opaque
-                    .0
-                    .checked_add(1)
-                    .ok_or(SuccessorProjectionError::CursorMismatch)?,
-            );
-        }
+        let after_knowledge = knowledge_states
+            .get_mut(&lifecycle.perspective)
+            .ok_or(SuccessorProjectionError::UnknownPerspective)?;
+        // Apply each trusted lifecycle occurrence to the projection cursor.
+        // This validates its sequence and advances both the identity allocator
+        // and knowledge record exactly where the occurrence appears.
+        mtgml_state::apply_lifecycle_to_player(
+            after_knowledge,
+            after_identity,
+            &|object| {
+                before_engine.zones.objects.contains_key(&object)
+                    || after_engine.zones.objects.contains_key(&object)
+            },
+            lifecycle,
+        )
+        .map_err(|_| SuccessorProjectionError::ObservationOccurrenceMismatch)?;
+        let after_knowledge = after_knowledge.clone();
 
         let observation = if let Some(source_event_id) = source_event_id {
             let source_index = events
@@ -392,13 +407,16 @@ fn project_successor_events_v4_inner(
                 .cloned()
                 .unwrap_or_else(|| working_stack_order.clone());
             Some(project_v4_public_source_event(
-                before,
-                after,
                 source,
-                lifecycle.perspective,
-                &before_identity,
-                after_identity,
-                &stack_order,
+                V4PublicSourceEventContext {
+                    before,
+                    after,
+                    perspective: lifecycle.perspective,
+                    before_identity: &before_identity,
+                    after_identity,
+                    knowledge: &after_knowledge,
+                    stack_order_before: &stack_order,
+                },
             )?)
         } else {
             project_v4_legacy_observation_policy(
@@ -406,6 +424,7 @@ fn project_successor_events_v4_inner(
                 direct_policy.ok_or(SuccessorProjectionError::ObservationOccurrenceMismatch)?,
                 &before_identity,
                 after_identity,
+                &after_knowledge,
             )?
         };
         if let Some(event_kind) = observation {
@@ -436,6 +455,9 @@ fn project_successor_events_v4_inner(
         apply_projection_identity_delta(&mut identities, delta)?;
     }
     if identities != after_engine.perspective_identities.players {
+        return Err(SuccessorProjectionError::FinalCursorMismatch);
+    }
+    if knowledge_states != after_engine.knowledge.players {
         return Err(SuccessorProjectionError::FinalCursorMismatch);
     }
     for (player, next_sequence) in cursors {
@@ -516,14 +538,18 @@ pub(crate) fn public_face_up_battlefield_object(
 }
 
 fn project_v4_public_source_event(
-    before: &EngineStatePartsV3,
-    after: &EngineStatePartsV3,
     source_event: &mtgml_rules::AuthoritativeRuleEventV3,
-    perspective: PlayerId,
-    before_identity: &PerspectiveIdentityRecordV2,
-    after_identity: &PerspectiveIdentityRecordV2,
-    stack_order_before: &[mtgml_model::StackObjectId],
+    context: V4PublicSourceEventContext<'_>,
 ) -> Result<ObservedEventKindV4, SuccessorProjectionError> {
+    let V4PublicSourceEventContext {
+        before,
+        after,
+        perspective,
+        before_identity,
+        after_identity,
+        knowledge,
+        stack_order_before,
+    } = context;
     use AuthoritativeRuleEventKindV3 as Event;
     match &source_event.event {
         Event::Existing { event } => match event.as_ref() {
@@ -547,17 +573,27 @@ fn project_v4_public_source_event(
                     &policy,
                     before_identity,
                     after_identity,
+                    knowledge,
                 )?
                 .ok_or(SuccessorProjectionError::ObservationOccurrenceMismatch)
             }
             mtgml_rules::AuthoritativeRuleEventKind::ObjectTapped { object, to, .. } => {
                 Ok(ObservedEventKindV4::ObjectTapped {
-                    object: after_identity
-                        .object_to_opaque
-                        .get(object)
-                        .or_else(|| before_identity.object_to_opaque.get(object))
-                        .copied()
-                        .ok_or(SuccessorProjectionError::MissingOpaqueIdentity)?,
+                    object: crate::player_projection::public_opaque_object(
+                        after,
+                        after_identity,
+                        knowledge,
+                        *object,
+                    )
+                    .or_else(|| {
+                        crate::player_projection::public_opaque_object(
+                            before,
+                            before_identity,
+                            knowledge,
+                            *object,
+                        )
+                    })
+                    .ok_or(SuccessorProjectionError::MissingOpaqueIdentity)?,
                     tapped: *to,
                 })
             }
@@ -580,13 +616,9 @@ fn project_v4_public_source_event(
                 .map(|record| record.controller)
                 .ok_or(SuccessorProjectionError::ObservationOccurrenceMismatch)?;
             let item = crate::player_projection::project_public_stack_item_v1(
+                after,
                 after_identity,
-                after
-                    .predecessor_v5
-                    .knowledge
-                    .players
-                    .get(&perspective)
-                    .ok_or(SuccessorProjectionError::UnknownPerspective)?,
+                knowledge,
                 stack_order_before,
                 controller,
                 payload,
@@ -616,13 +648,9 @@ fn project_v4_public_source_event(
                 .and_then(|position| u32::try_from(position).ok())
                 .ok_or(SuccessorProjectionError::ObservationOccurrenceMismatch)?;
             let item = crate::player_projection::project_public_stack_item_v1(
+                before,
                 before_identity,
-                before
-                    .predecessor_v5
-                    .knowledge
-                    .players
-                    .get(&perspective)
-                    .ok_or(SuccessorProjectionError::UnknownPerspective)?,
+                knowledge,
                 stack_order_before,
                 controller,
                 payload,
@@ -647,12 +675,21 @@ fn project_v4_public_source_event(
             before: from,
             after: to,
         } => Ok(ObservedEventKindV4::CountersChanged {
-            object: after_identity
-                .object_to_opaque
-                .get(object)
-                .or_else(|| before_identity.object_to_opaque.get(object))
-                .copied()
-                .ok_or(SuccessorProjectionError::MissingOpaqueIdentity)?,
+            object: crate::player_projection::public_opaque_object(
+                after,
+                after_identity,
+                knowledge,
+                *object,
+            )
+            .or_else(|| {
+                crate::player_projection::public_opaque_object(
+                    before,
+                    before_identity,
+                    knowledge,
+                    *object,
+                )
+            })
+            .ok_or(SuccessorProjectionError::MissingOpaqueIdentity)?,
             counter_kind: match kind {
                 mtgml_state::CounterKindV1::PlusOnePlusOne => {
                     mtgml_observation::ObservedCounterKindV3::PlusOnePlusOne
@@ -692,7 +729,8 @@ fn project_v4_public_source_event(
             Ok(ObservedEventKindV4::TemporaryEffectCreated {
                 effect: crate::player_projection::project_public_temporary_effect_v1(
                     after,
-                    perspective,
+                    after_identity,
+                    knowledge,
                     effect,
                 )
                 .map_err(|_| SuccessorProjectionError::MissingOpaqueIdentity)?,
@@ -702,7 +740,8 @@ fn project_v4_public_source_event(
             Ok(ObservedEventKindV4::TemporaryEffectExpired {
                 effect: crate::player_projection::project_public_temporary_effect_v1(
                     before,
-                    perspective,
+                    before_identity,
+                    knowledge,
                     effect,
                 )
                 .map_err(|_| SuccessorProjectionError::MissingOpaqueIdentity)?,
@@ -720,6 +759,7 @@ fn project_v4_legacy_observation_policy(
     policy: &mtgml_rules::PerspectiveObservationPolicyV1,
     before_identity: &PerspectiveIdentityRecordV2,
     after_identity: &PerspectiveIdentityRecordV2,
+    knowledge: &mtgml_state::PlayerKnowledgeStateV2,
 ) -> Result<Option<ObservedEventKindV4>, SuccessorProjectionError> {
     use mtgml_rules::PerspectiveObservationPolicyV1 as Policy;
     let public_face = |object: mtgml_model::GameObjectId| {
@@ -797,8 +837,21 @@ fn project_v4_legacy_observation_policy(
         })),
         Policy::NoEnvelope => Ok(None),
         Policy::ObjectTapped { object, tapped } => Ok(Some(ObservedEventKindV4::ObjectTapped {
-            object: resolve(true, *object, after_identity)?
-                .ok_or(SuccessorProjectionError::MissingOpaqueIdentity)?,
+            object: crate::player_projection::public_opaque_object(
+                after,
+                after_identity,
+                knowledge,
+                *object,
+            )
+            .or_else(|| {
+                crate::player_projection::public_opaque_object(
+                    after,
+                    before_identity,
+                    knowledge,
+                    *object,
+                )
+            })
+            .ok_or(SuccessorProjectionError::MissingOpaqueIdentity)?,
             tapped: *tapped,
         })),
         Policy::SawRandomOutcome {
@@ -962,7 +1015,7 @@ pub fn project_successor_player_steps_v4(
         mtgml_rules::validate_basic_land_pending_request_v4(
             admission,
             transition.before,
-            transition.status,
+            transition.before_status,
         )
         .map_err(|error| ControllerError::Backend(error.to_string()))?;
         mtgml_rules::validate_basic_land_pending_request_v4(
@@ -986,9 +1039,10 @@ pub fn project_successor_player_steps_v4(
     let events = if let Some(admission) = authority.basic_land_admission {
         project_successor_events_v4_for_basic_land_profile(
             admission,
-            transition.status,
             transition.before,
+            transition.before_status,
             transition.after,
+            transition.status,
             transition.events,
             transition.delta,
         )
