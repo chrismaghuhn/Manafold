@@ -45,6 +45,7 @@ pub enum SemanticDeltaOperationV3 {
         source: Box<crate::AbilitySourceContext>,
         targets: Vec<crate::TargetBinding>,
         cost_facts: crate::CostFacts,
+        once_per_turn_use_committed: bool,
     },
     TargetDeclared {
         source_stack_item: StackObjectId,
@@ -689,6 +690,89 @@ fn validate_delta_operation_coverage(
     if before.predecessor_v5.format != after.predecessor_v5.format {
         return uncovered();
     }
+    for operation in operations {
+        match operation {
+            V3::SpellCast {
+                stack_object,
+                spell_object,
+                card_definition,
+                face_key,
+                semantic_profile_id,
+                cost_facts,
+                ..
+            } => {
+                if before
+                    .predecessor_v5
+                    .zones
+                    .stack_records
+                    .contains_key(stack_object)
+                {
+                    return uncovered();
+                }
+                let Some(record) = after.predecessor_v5.zones.stack_records.get(stack_object)
+                else {
+                    return uncovered();
+                };
+                let payload = record.payload.as_ref();
+                let expected = matches!(payload,
+                    Some(StackItemPayload::Spell {
+                        stack_card_object, card_definition_id, face_key: actual_face,
+                        semantic_profile_id: actual_profile, cost_facts: actual_costs, ..
+                    }) if stack_card_object == spell_object && card_definition_id == card_definition
+                        && actual_face == face_key && actual_profile == semantic_profile_id
+                        && actual_costs == cost_facts);
+                let creation_count = operations
+                    .iter()
+                    .filter(|candidate| {
+                        matches!(candidate,
+                    V3::StackItemCreated { stack_object: created, payload: created_payload }
+                        if created == stack_object && Some(created_payload.as_ref()) == payload)
+                    })
+                    .count();
+                if !expected || creation_count != 1 {
+                    return uncovered();
+                }
+            }
+            V3::AbilityActivated {
+                stack_object,
+                source,
+                targets,
+                cost_facts,
+                ..
+            } => {
+                if before
+                    .predecessor_v5
+                    .zones
+                    .stack_records
+                    .contains_key(stack_object)
+                {
+                    return uncovered();
+                }
+                let Some(record) = after.predecessor_v5.zones.stack_records.get(stack_object)
+                else {
+                    return uncovered();
+                };
+                let payload = record.payload.as_ref();
+                let expected = matches!(payload,
+                    Some(StackItemPayload::ActivatedAbility {
+                        source_context, targets: actual_targets, cost_facts: actual_costs, ..
+                    }) if source_context == source.as_ref() && actual_targets == targets
+                        && actual_costs == cost_facts);
+                let creation_count = operations
+                    .iter()
+                    .filter(|candidate| {
+                        matches!(candidate,
+                    V3::StackItemCreated { stack_object: created, payload: created_payload }
+                        if created == stack_object && Some(created_payload.as_ref()) == payload)
+                    })
+                    .count();
+                if !expected || creation_count != 1 {
+                    return uncovered();
+                }
+            }
+            _ => {}
+        }
+    }
     if old_before.foundation_sources != old_after.foundation_sources
         || old_before.random != old_after.random
             && !has_legacy(&|operation| {
@@ -927,6 +1011,7 @@ fn validate_turn_history_delta(
 
     let mut expected_target_additions = std::collections::BTreeSet::new();
     let mut expected_once_additions = std::collections::BTreeSet::new();
+    let mut once_receipt_count = 0usize;
     for operation in operations {
         match operation {
             V3::TargetDeclared {
@@ -950,10 +1035,16 @@ fn validate_turn_history_delta(
                 }));
             }
             V3::AbilityActivated {
-                source, targets, ..
+                source,
+                targets,
+                once_per_turn_use_committed,
+                ..
             } => {
-                expected_once_additions
-                    .insert((source.source.snapshot.object, source.ability_key.0));
+                if *once_per_turn_use_committed {
+                    once_receipt_count += 1;
+                    expected_once_additions
+                        .insert((source.source.snapshot.object, source.ability_key.0));
+                }
                 expected_target_additions.extend(targets.iter().filter_map(|binding| {
                     match binding.target {
                         TargetRef::Object(object) => {
@@ -986,7 +1077,8 @@ fn validate_turn_history_delta(
         .copied()
         .collect::<std::collections::BTreeSet<_>>();
     if !old.once_ability_used.is_subset(&new.once_ability_used)
-        || !once_additions.is_subset(&expected_once_additions)
+        || once_receipt_count != expected_once_additions.len()
+        || once_additions != expected_once_additions
     {
         return false;
     }

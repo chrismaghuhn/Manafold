@@ -761,3 +761,31 @@ fn state_delta_v3_rejects_unrelated_turn_history_mutation_even_with_cast_operati
         Err(mtgml_state::DeltaApplicationV3Error::UncoveredMutation)
     );
 }
+
+#[test]
+fn state_delta_v3_rejects_cast_event_against_preexisting_stack_item() {
+    let mut before = state();
+    insert_spell(&mut before, 50, 1);
+    before
+        .predecessor_v5
+        .zones
+        .stack_order
+        .push(StackObjectId(1));
+    before.validate().unwrap();
+    let mut after = before.clone();
+    after.predecessor_v5.revision =
+        mtgml_model::StateRevision(before.predecessor_v5.revision.0.checked_add(1).unwrap());
+    let operation = mtgml_state::SemanticDeltaOperationV3::SpellCast {
+        stack_object: StackObjectId(1),
+        spell_object: GameObjectId(50),
+        card_definition: CardDefinitionId(50),
+        face_key: FaceKey(0),
+        semantic_profile_id: CardSemanticProfileId::parse("test/spell@1.0.0").unwrap(),
+        is_creature_spell: false,
+        cost_facts: Default::default(),
+    };
+    assert_eq!(
+        StateDeltaV3::between(&before, &after, vec![operation]),
+        Err(mtgml_state::DeltaApplicationV3Error::UncoveredMutation)
+    );
+}

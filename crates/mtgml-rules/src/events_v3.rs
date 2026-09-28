@@ -70,6 +70,7 @@ pub enum AuthoritativeRuleEventKindV3 {
         source: mtgml_state::AbilitySourceContext,
         targets: Vec<TargetBinding>,
         cost_facts: CostFacts,
+        once_per_turn_use_committed: bool,
     },
     TargetDeclared {
         source_stack_item: StackObjectId,
@@ -165,11 +166,13 @@ impl AuthoritativeRuleEventKindV3 {
                 source,
                 targets,
                 cost_facts,
+                once_per_turn_use_committed,
             } => vec![SemanticDeltaOperationV3::AbilityActivated {
                 stack_object: *stack_object,
                 source: Box::new(source.clone()),
                 targets: targets.clone(),
                 cost_facts: cost_facts.clone(),
+                once_per_turn_use_committed: *once_per_turn_use_committed,
             }],
             Self::TargetDeclared {
                 source_stack_item,
@@ -480,13 +483,18 @@ fn validate_delta_operation_projection_v3(
             semantic_profile_id,
             cost_facts,
             ..
-        } => after
+        } => !before
             .predecessor_v5
             .zones
             .stack_records
-            .get(stack_object)
-            .is_some_and(|record| {
-                matches!(record.payload.as_ref(), Some(mtgml_state::StackItemPayload::Spell {
+            .contains_key(stack_object)
+            && after
+                .predecessor_v5
+                .zones
+                .stack_records
+                .get(stack_object)
+                .is_some_and(|record| {
+                    matches!(record.payload.as_ref(), Some(mtgml_state::StackItemPayload::Spell {
                     stack_card_object,
                     card_definition_id,
                     face_key: actual_face,
@@ -498,18 +506,42 @@ fn validate_delta_operation_projection_v3(
                     && actual_face == face_key
                     && actual_profile == semantic_profile_id
                     && actual_cost == cost_facts)
-            }),
+                }),
         SemanticDeltaOperationV3::AbilityActivated {
             stack_object,
             source,
             targets,
             cost_facts,
-        } => after
-            .predecessor_v5
-            .zones
-            .stack_records
-            .get(stack_object)
-            .is_some_and(|record| {
+            once_per_turn_use_committed,
+        } => {
+            let pair = (source.source.snapshot.object, source.ability_key.0);
+            let history_before = before
+                .card_rules_state
+                .turn_history
+                .once_ability_used
+                .contains(&pair);
+            let history_after = after
+                .card_rules_state
+                .turn_history
+                .once_ability_used
+                .contains(&pair);
+            let receipt_matches = if *once_per_turn_use_committed {
+                !history_before && history_after
+            } else {
+                history_before == history_after
+            };
+            !before
+                .predecessor_v5
+                .zones
+                .stack_records
+                .contains_key(stack_object)
+                && receipt_matches
+                && after
+                    .predecessor_v5
+                    .zones
+                    .stack_records
+                    .get(stack_object)
+                    .is_some_and(|record| {
                 matches!(record.payload.as_ref(), Some(mtgml_state::StackItemPayload::ActivatedAbility {
                     source_context,
                     targets: actual_targets,
@@ -518,7 +550,8 @@ fn validate_delta_operation_projection_v3(
                 }) if source_context == source.as_ref()
                     && actual_targets == targets
                     && actual_cost == cost_facts)
-            }),
+                    })
+        }
         SemanticDeltaOperationV3::TargetDeclared {
             source_stack_item,
             targets,
@@ -589,7 +622,9 @@ fn validate_delta_operation_projection_v3(
                     .and_then(|record| record.payload.as_ref())
                     == Some(payload.as_ref())
         }
-        SemanticDeltaOperationV3::ManaPoolChanged { player, from, to, .. } => {
+        SemanticDeltaOperationV3::ManaPoolChanged {
+            player, from, to, ..
+        } => {
             before.card_rules_state.mana.pools.get(player) == Some(from)
                 && after.card_rules_state.mana.pools.get(player) == Some(to)
         }
@@ -709,51 +744,83 @@ fn validate_event_projection_v3(
             semantic_profile_id,
             cost_facts,
             ..
-        } => after
-            .predecessor_v5
-            .zones
-            .stack_records
-            .get(stack_object)
-            .is_some_and(|record| {
-                matches!(
-                    record.payload.as_ref(),
-                    Some(StackItemPayload::Spell {
-                        stack_card_object,
-                        card_definition_id,
-                        face_key: actual_face,
-                        semantic_profile_id: actual_profile,
-                        cost_facts: actual_costs,
-                        ..
-                    }) if stack_card_object == spell_object
-                        && card_definition_id == card_definition
-                        && actual_face == face_key
-                        && actual_profile == semantic_profile_id
-                        && actual_costs == cost_facts
-                )
-            }),
+        } => {
+            !before
+                .predecessor_v5
+                .zones
+                .stack_records
+                .contains_key(stack_object)
+                && after
+                    .predecessor_v5
+                    .zones
+                    .stack_records
+                    .get(stack_object)
+                    .is_some_and(|record| {
+                        matches!(
+                            record.payload.as_ref(),
+                            Some(StackItemPayload::Spell {
+                                stack_card_object,
+                                card_definition_id,
+                                face_key: actual_face,
+                                semantic_profile_id: actual_profile,
+                                cost_facts: actual_costs,
+                                ..
+                            }) if stack_card_object == spell_object
+                                && card_definition_id == card_definition
+                                && actual_face == face_key
+                                && actual_profile == semantic_profile_id
+                                && actual_costs == cost_facts
+                        )
+                    })
+        }
         AuthoritativeRuleEventKindV3::AbilityActivated {
             stack_object,
             source,
             targets,
             cost_facts,
-        } => after
-            .predecessor_v5
-            .zones
-            .stack_records
-            .get(stack_object)
-            .is_some_and(|record| {
-                matches!(
-                    record.payload.as_ref(),
-                    Some(StackItemPayload::ActivatedAbility {
-                        source_context,
-                        targets: actual_targets,
-                        cost_facts: actual_costs,
-                        ..
-                    }) if source_context == source
-                        && actual_targets == targets
-                        && actual_costs == cost_facts
-                )
-            }),
+            once_per_turn_use_committed,
+        } => {
+            let pair = (source.source.snapshot.object, source.ability_key.0);
+            let history_before = before
+                .card_rules_state
+                .turn_history
+                .once_ability_used
+                .contains(&pair);
+            let history_after = after
+                .card_rules_state
+                .turn_history
+                .once_ability_used
+                .contains(&pair);
+            let receipt_matches = if *once_per_turn_use_committed {
+                !history_before && history_after
+            } else {
+                history_before == history_after
+            };
+            !before
+                .predecessor_v5
+                .zones
+                .stack_records
+                .contains_key(stack_object)
+                && receipt_matches
+                && after
+                    .predecessor_v5
+                    .zones
+                    .stack_records
+                    .get(stack_object)
+                    .is_some_and(|record| {
+                        matches!(
+                            record.payload.as_ref(),
+                            Some(StackItemPayload::ActivatedAbility {
+                                source_context,
+                                targets: actual_targets,
+                                cost_facts: actual_costs,
+                                ..
+                            }) if source_context == source
+                                && actual_targets == targets
+                                && actual_costs == cost_facts
+                        )
+                    })
+        }
         AuthoritativeRuleEventKindV3::TargetDeclared {
             source_stack_item,
             targets,
@@ -1697,6 +1764,7 @@ mod tests {
             source: source_context,
             targets: vec![],
             cost_facts: CostFacts::default(),
+            once_per_turn_use_committed: false,
         };
         let stack_event = AuthoritativeRuleEventKindV3::StackItemAdded {
             stack_object: StackObjectId(1),
@@ -1723,6 +1791,65 @@ mod tests {
         });
         let delta = StateDeltaV3::between(&before, &after, operations).unwrap();
         validate_event_delta_state_v3(&before, &after, &events, &delta).unwrap();
+
+        let once_key = (ability_source_object, 4);
+        let mut once_after = after.clone();
+        once_after
+            .card_rules_state
+            .turn_history
+            .once_ability_used
+            .insert(once_key);
+        once_after.validate().unwrap();
+        let mut once_events = events.clone();
+        for event in &mut once_events {
+            if let AuthoritativeRuleEventKindV3::AbilityActivated {
+                once_per_turn_use_committed,
+                ..
+            } = &mut event.event
+            {
+                *once_per_turn_use_committed = true;
+            }
+        }
+        let once_operations = once_events
+            .iter()
+            .flat_map(AuthoritativeRuleEventV3::semantic_operations)
+            .chain([SemanticDeltaOperationV3::StackOrderChanged {
+                from: vec![],
+                to: vec![StackObjectId(1)],
+            }])
+            .collect();
+        let once_delta = StateDeltaV3::between(&before, &once_after, once_operations).unwrap();
+        validate_event_delta_state_v3(&before, &once_after, &once_events, &once_delta).unwrap();
+
+        let false_receipt_operations = events
+            .iter()
+            .flat_map(AuthoritativeRuleEventV3::semantic_operations)
+            .chain([SemanticDeltaOperationV3::StackOrderChanged {
+                from: vec![],
+                to: vec![StackObjectId(1)],
+            }])
+            .collect();
+        assert!(StateDeltaV3::between(&before, &once_after, false_receipt_operations).is_err());
+
+        let mut missing_history_receipt = events.clone();
+        for event in &mut missing_history_receipt {
+            if let AuthoritativeRuleEventKindV3::AbilityActivated {
+                once_per_turn_use_committed,
+                ..
+            } = &mut event.event
+            {
+                *once_per_turn_use_committed = true;
+            }
+        }
+        let missing_history_operations = missing_history_receipt
+            .iter()
+            .flat_map(AuthoritativeRuleEventV3::semantic_operations)
+            .chain([SemanticDeltaOperationV3::StackOrderChanged {
+                from: vec![],
+                to: vec![StackObjectId(1)],
+            }])
+            .collect();
+        assert!(StateDeltaV3::between(&before, &after, missing_history_operations).is_err());
 
         let mut wrong_events = events.clone();
         if let AuthoritativeRuleEventKindV3::CostCommitted { spent_buckets, .. } =
