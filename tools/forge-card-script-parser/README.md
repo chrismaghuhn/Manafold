@@ -8,7 +8,10 @@ card behavior.
 Run the example CLI with:
 
 ```sh
-cargo run -p forge-card-script-parser -- path/to/card-script.txt
+cargo run \
+  --manifest-path tools/forge-card-script-parser/Cargo.toml \
+  --bin forge-card-script \
+  -- path/to/card-script.txt
 ```
 
 Library callers can use `forge_card_script_parser::parse_card_script(source)`.
