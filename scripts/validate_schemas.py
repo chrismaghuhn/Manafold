@@ -41,6 +41,7 @@ WIRE_MAPPING = {
     "magic-combat-observation.v4": "magic-combat-observation.v4.schema.json",
     "synthetic-m3-observation.v1": "synthetic-m3-observation.v1.schema.json",
     "magic-basic-land-observation.v1": "magic-basic-land-observation.v1.schema.json",
+    "magic-shared-execution-observation.v1": "magic-shared-execution-observation.v1.schema.json",
     "replay-manifest.v4": "replay-manifest.v4.schema.json",
     "authoritative-replay.v4": "authoritative-replay.v4.schema.json",
     "replay-manifest.v5": "replay-manifest.v5.schema.json",
@@ -111,6 +112,22 @@ SCHEMA_NEGATIVE_CASES = [
     (
         "player-decision-request.v3.schema.json",
         "schemas/negative/player-decision-request-v3-trusted-game-object-id.json",
+    ),
+    (
+        "magic-shared-execution-observation.v1.schema.json",
+        "schemas/negative/magic-shared-execution-observation-v1-global-state-revision.json",
+    ),
+    (
+        "magic-shared-execution-observation.v1.schema.json",
+        "schemas/negative/magic-shared-execution-observation-v1-trusted-stack-id.json",
+    ),
+    (
+        "magic-shared-execution-observation.v1.schema.json",
+        "schemas/negative/magic-shared-execution-observation-v1-unknown-effect-keyword.json",
+    ),
+    (
+        "magic-shared-execution-observation.v1.schema.json",
+        "schemas/negative/magic-shared-execution-observation-v1-unbound-ability.json",
     ),
     (
         "decision-response.v3.schema.json",
@@ -206,6 +223,10 @@ SCHEMA_NEGATIVE_CASES = [
     ),
 ]
 SCHEMA_POSITIVE_CASES = [
+    (
+        "magic-shared-execution-observation.v1.schema.json",
+        "schemas/examples/magic-shared-execution-observation-v1.json",
+    ),
     ("observation-envelope.v2.schema.json", "schemas/examples/observation-envelope-v2.json"),
     (
         "information-state-envelope.v3.schema.json",

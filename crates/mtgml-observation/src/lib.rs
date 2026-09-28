@@ -8,6 +8,7 @@ mod error;
 mod information;
 mod knowledge;
 mod magic_observation;
+mod magic_shared_execution_observation_v1;
 mod observation;
 mod observed_event;
 mod observed_event_v3;
@@ -37,6 +38,11 @@ pub use magic_observation::{
     MagicPlayerLifeV4, ManaPoolObservationV1, PublicCounterKindV1, PublicFaceV1,
     MAGIC_OBSERVATION_SCHEMA_V1, MAGIC_OBSERVATION_SCHEMA_V2, MAGIC_OBSERVATION_SCHEMA_V3,
     MAGIC_OBSERVATION_SCHEMA_V4,
+};
+pub use magic_shared_execution_observation_v1::{
+    MagicSharedExecutionObservationV1, PublicEffectExpiryV1, PublicEffectKeywordV1, PublicModeV1,
+    PublicStackItemV1, PublicTemporaryEffectV1, PublicTemporaryOperationV1,
+    MAGIC_SHARED_EXECUTION_OBSERVATION_SCHEMA_V1,
 };
 pub use observation::ObservationEnvelope;
 pub use observed_event::{

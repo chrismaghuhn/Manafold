@@ -56,6 +56,7 @@ from .episode import (
 from .events import ObservedEvent, ObservedEventEnvelope
 from .observation import (
     MAGIC_BASIC_LAND_OBSERVATION_SCHEMA_V1,
+    MAGIC_SHARED_EXECUTION_OBSERVATION_SCHEMA_V1,
     PLAYER_STEP_SCHEMA_V3,
     AttachmentObservationV1,
     CounterObservationV1,
@@ -64,6 +65,7 @@ from .observation import (
     InformationStateDigestInputV3,
     InformationStateEnvelope,
     MagicBasicLandObservationV1,
+    MagicSharedExecutionObservationV1,
     ManaPoolObservationV1,
     ObservationEnvelope,
     ObservationEnvelopeV2,
@@ -134,6 +136,7 @@ __all__ = [
     "MAGIC_OBSERVATION_SCHEMA_V2",
     "MAGIC_OBSERVATION_SCHEMA_V3",
     "MAGIC_OBSERVATION_SCHEMA_V4",
+    "MAGIC_SHARED_EXECUTION_OBSERVATION_SCHEMA_V1",
     "PLAYER_STEP_SCHEMA_V3",
     "SYNTHETIC_OBSERVATION_SCHEMA_V1",
     "ActionCandidate",
@@ -188,6 +191,7 @@ __all__ = [
     "MagicObservationV4",
     "MagicPendingSbaOrdering",
     "MagicPlayerLifeV4",
+    "MagicSharedExecutionObservationV1",
     "ManaPoolObservationV1",
     "ObservationEnvelope",
     "ObservationEnvelopeV2",

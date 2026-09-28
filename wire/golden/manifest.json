@@ -223,6 +223,10 @@
     {
       "contract": "information-state-envelope.v3",
       "path": "information-state-envelope.v3.json"
+    },
+    {
+      "contract": "magic-shared-execution-observation.v1",
+      "path": "magic-shared-execution-observation.v1.json"
     }
   ]
 }

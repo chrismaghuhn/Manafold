@@ -5,9 +5,10 @@ use mtgml_model::InformationStateDigestV3;
 use mtgml_observation::{
     InformationStateDigestInputV2, InformationStateDigestInputV3, InformationStateEnvelope,
     MagicBasicLandObservationV1, MagicObservation, MagicObservationV2, MagicObservationV3,
-    MagicObservationV4, ObservationEnvelope, ObservationEnvelopeV2, ObservedEventEnvelope,
-    ObservedEventEnvelopeV2, ObservedEventEnvelopeV3, PlayerInformationStateV2,
-    PlayerInformationStateV3, PlayerStep, PlayerStepV2, PlayerStepV3, SyntheticObservation,
+    MagicObservationV4, MagicSharedExecutionObservationV1, ObservationEnvelope,
+    ObservationEnvelopeV2, ObservedEventEnvelope, ObservedEventEnvelopeV2, ObservedEventEnvelopeV3,
+    PlayerInformationStateV2, PlayerInformationStateV3, PlayerStep, PlayerStepV2, PlayerStepV3,
+    SyntheticObservation,
 };
 
 impl WireContract for ObservationEnvelope {
@@ -68,6 +69,13 @@ impl WireContract for MagicBasicLandObservationV1 {
                 error.to_string(),
             )
         })
+    }
+}
+
+impl WireContract for MagicSharedExecutionObservationV1 {
+    fn validate_wire(&self) -> Result<(), WireError> {
+        self.validate()
+            .map_err(|error| WireError::new("semantic.observation", error.to_string()))
     }
 }
 
