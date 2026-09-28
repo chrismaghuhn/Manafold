@@ -508,15 +508,11 @@ fn convert_events_v2_to_v3(
         SuccessorObservationPolicyV1 as OldPolicy,
     };
 
+    let source_order = causal_event_order_v2_to_v3(source)?;
     let mut new_ids = std::collections::BTreeMap::new();
     let mut next_id = first_event_id;
-    for record in source {
-        if matches!(
-            record.event,
-            Old::ObjectMoved { .. } | Old::LandPlayed { .. }
-        ) {
-            continue;
-        }
+    for source_index in &source_order {
+        let record = &source[*source_index];
         new_ids.insert(record.event_id, next_id);
         next_id = RuleEventId(
             next_id
@@ -526,7 +522,8 @@ fn convert_events_v2_to_v3(
         );
     }
     let mut events = Vec::new();
-    for (source_index, record) in source.iter().enumerate() {
+    for source_index in source_order {
+        let record = &source[source_index];
         let Some(event_id) = new_ids.get(&record.event_id).copied() else {
             continue;
         };
@@ -662,6 +659,94 @@ fn convert_events_v2_to_v3(
     }
     after.predecessor_v5.allocators.next_rule_event_id = next_id;
     Ok(events)
+}
+
+/// Preserves the source order except where an observation occurrence names a
+/// public source event that the legacy M4.2 producer emitted later in the same
+/// atomic transition. The V3 contract requires the source event to precede its
+/// occurrence, so this stable topological order moves only the required source
+/// ahead while retaining the order among otherwise independent events.
+fn causal_event_order_v2_to_v3(
+    source: &[crate::AuthoritativeRuleEventV2],
+) -> Result<Vec<usize>, crate::BasicLandTransitionError> {
+    use crate::{AuthoritativeRuleEventKindV2 as Old, SuccessorObservationPolicyV1 as OldPolicy};
+
+    let included = |index: usize| {
+        !matches!(
+            source[index].event,
+            Old::ObjectMoved { .. } | Old::LandPlayed { .. }
+        )
+    };
+    let nodes = (0..source.len())
+        .filter(|index| included(*index))
+        .collect::<Vec<_>>();
+    let mut outgoing = vec![Vec::new(); source.len()];
+    let mut indegree = vec![0usize; source.len()];
+
+    for (occurrence_index, record) in source.iter().enumerate() {
+        let Old::PerspectiveOccurrence { observation, .. } = &record.event else {
+            continue;
+        };
+        let source_index = match observation {
+            OldPolicy::MovedInSight {
+                old_object,
+                new_object,
+                from,
+                to,
+                ..
+            } => source.iter().position(|candidate| {
+                matches!(&candidate.event,
+                    Old::ZoneTransition(transition)
+                        if transition.old_object == *old_object
+                            && transition.new_object == *new_object
+                            && transition.from.zone == *from
+                            && transition.to.zone == *to)
+            }),
+            OldPolicy::ObjectTapped { object, .. } => source.iter().position(|candidate| {
+                matches!(&candidate.event,
+                    Old::ObjectTapped { object: event_object, .. }
+                        if event_object == object)
+            }),
+            // The legacy producer already chooses a prior mana event for this
+            // occurrence. Preserve and validate that source-order relation.
+            OldPolicy::ManaPoolChanged { player } => {
+                source[..occurrence_index].iter().rposition(|candidate| {
+                    matches!(&candidate.event,
+                        Old::ManaPoolChanged { player: event_player, .. }
+                            if event_player == player)
+                })
+            }
+        }
+        .ok_or(crate::BasicLandTransitionError::InvalidResult)?;
+        if source_index == occurrence_index || !included(source_index) {
+            return Err(crate::BasicLandTransitionError::InvalidResult);
+        }
+        outgoing[source_index].push(occurrence_index);
+        indegree[occurrence_index] = indegree[occurrence_index]
+            .checked_add(1)
+            .ok_or(crate::BasicLandTransitionError::InvalidResult)?;
+    }
+
+    let mut ready = std::collections::BTreeSet::new();
+    for index in &nodes {
+        if indegree[*index] == 0 {
+            ready.insert(*index);
+        }
+    }
+    let mut ordered = Vec::with_capacity(nodes.len());
+    while let Some(index) = ready.pop_first() {
+        ordered.push(index);
+        for dependent in &outgoing[index] {
+            indegree[*dependent] -= 1;
+            if indegree[*dependent] == 0 {
+                ready.insert(*dependent);
+            }
+        }
+    }
+    if ordered.len() != nodes.len() {
+        return Err(crate::BasicLandTransitionError::InvalidResult);
+    }
+    Ok(ordered)
 }
 
 fn convert_operations_v2_to_v3(

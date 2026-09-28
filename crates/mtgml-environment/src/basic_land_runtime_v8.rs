@@ -201,6 +201,12 @@ impl BasicLandEnvironmentRuntimeV8 {
             &self.status,
         )
         .map_err(|_| crate::PlayerEndpointError::ServiceUnavailable)?;
+        let rejected_code = basic_land_rejection_code(
+            &self.status,
+            self.state.execution_v4.pending_decision.as_ref(),
+            perspective,
+            &response,
+        );
         let before = self
             .checkpoint()
             .map_err(|_| crate::PlayerEndpointError::ServiceUnavailable)?;
@@ -275,7 +281,7 @@ impl BasicLandEnvironmentRuntimeV8 {
                 status: &status,
                 next_request,
                 actor: perspective,
-                rejected_code: mtgml_observation::PlayerSubmissionCodeV1::InvalidCandidate,
+                rejected_code,
             },
             crate::successor_projection::SuccessorProjectionAuthority {
                 execution_identity: self.admission.execution_identity(),
@@ -404,6 +410,40 @@ impl BasicLandEnvironmentRuntimeV8 {
 
     pub fn replay_manifest(&self) -> &ReplayManifestV8 {
         self.replay.manifest()
+    }
+}
+
+fn basic_land_rejection_code(
+    status: &EpisodeStatus,
+    request: Option<&mtgml_decision::AuthoritativeDecisionRequestV4>,
+    perspective: PlayerId,
+    response: &DecisionResponseV3,
+) -> mtgml_observation::PlayerSubmissionCodeV1 {
+    use mtgml_decision::DecisionValidationError as Error;
+    use mtgml_observation::PlayerSubmissionCodeV1 as Code;
+
+    if !matches!(status, EpisodeStatus::Running) {
+        return Code::EpisodeClosed;
+    }
+    let Some(request) = request else {
+        return Code::UnavailableDecision;
+    };
+    if request.actor != perspective {
+        return Code::UnavailableDecision;
+    }
+    match request.validate_response(response) {
+        Ok(()) => Code::InvalidCandidate,
+        Err(Error::DecisionIdentityMismatch | Error::VisibleSequenceMismatch) => {
+            Code::StaleDecision
+        }
+        Err(Error::UnknownCandidate) => Code::InvalidCandidate,
+        Err(Error::DuplicateAssignment | Error::DuplicateAnswerCandidate) => {
+            Code::DuplicateAssignment
+        }
+        Err(Error::AnswerCardinality) => Code::InvalidCardinality,
+        Err(Error::NumericOutOfBounds) => Code::InvalidNumber,
+        Err(Error::NoncanonicalAnswer) => Code::InvalidOrder,
+        Err(_) => Code::InvalidAnswer,
     }
 }
 
@@ -848,6 +888,67 @@ mod tests {
         assert!(!rejected_output.accepted);
         assert_eq!(rejected_output.checkpoint, before_reject);
         assert_eq!(restored.export_replay().unwrap().steps.len(), 1);
+    }
+
+    #[test]
+    fn stale_v4_responses_report_stale_decision_without_mutation() {
+        for stale_player_decision_id in [true, false] {
+            let admission = admission();
+            let mut state = state_with_two_lands();
+            let status = EpisodeStatus::Running;
+            mtgml_rules::install_basic_land_request_v4(
+                &admission,
+                &mut state,
+                PlayerId(1),
+                &status,
+            )
+            .unwrap();
+            let checkpoint = EnvironmentCheckpointV8::new_for_basic_land_profile(
+                &admission,
+                state.clone(),
+                status.clone(),
+                EnvironmentLimitCounters::default(),
+                admission.execution_identity().clone(),
+            )
+            .unwrap();
+            let manifest = v8_manifest(&admission, &checkpoint);
+            let mut runtime = BasicLandEnvironmentRuntimeV8::new(
+                admission,
+                state,
+                status,
+                EnvironmentLimitCounters::default(),
+                manifest,
+            )
+            .unwrap();
+            let request = runtime.visible_decision(PlayerId(1)).unwrap().unwrap();
+            let mut response = DecisionResponseV3 {
+                schema_version: mtgml_decision::DECISION_RESPONSE_V3_SCHEMA.to_owned(),
+                player_decision_id: request.player_decision_id,
+                view_sequence: request.view_sequence,
+                answer: mtgml_decision::DecisionAnswerV2::SelectOne {
+                    candidate_id: mtgml_model::CandidateIdV1(0),
+                },
+            };
+            if stale_player_decision_id {
+                response.player_decision_id.0 += 1;
+            } else {
+                response.view_sequence.0 += 1;
+            }
+
+            let before = runtime.checkpoint().unwrap();
+            let replay_before = runtime.export_replay().unwrap();
+            let output = runtime.submit(PlayerId(1), response).unwrap();
+
+            assert!(!output.accepted);
+            assert_eq!(
+                output.player_steps[&PlayerId(1)].submission,
+                mtgml_observation::PlayerStepSubmissionV1::Rejected {
+                    code: mtgml_observation::PlayerSubmissionCodeV1::StaleDecision,
+                }
+            );
+            assert_eq!(runtime.checkpoint().unwrap(), before);
+            assert_eq!(runtime.export_replay().unwrap(), replay_before);
+        }
     }
 
     #[test]

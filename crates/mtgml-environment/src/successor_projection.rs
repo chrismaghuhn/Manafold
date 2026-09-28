@@ -367,7 +367,7 @@ fn project_successor_events_v4_inner(
             let source_index = events
                 .iter()
                 .position(|candidate| candidate.event_id == source_event_id)
-                .filter(|source_index| *source_index != index)
+                .filter(|source_index| *source_index < index)
                 .ok_or(SuccessorProjectionError::ObservationOccurrenceMismatch)?;
             let source = &events[source_index];
             let stack_order = stack_order_before_event

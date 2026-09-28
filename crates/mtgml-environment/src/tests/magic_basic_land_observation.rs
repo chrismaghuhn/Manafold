@@ -624,6 +624,29 @@ fn g0g_projection_adds_shared_views_and_hides_revision_and_allocator_history() {
     let steps = project_steps(&before_effect, &state, &events).unwrap();
     assert_eq!(steps[&PlayerId(1)].observed_events.len(), 1);
     assert_eq!(steps[&PlayerId(2)].observed_events.len(), 1);
+
+    let mut occurrence = events[1].clone();
+    let mut source = events[0].clone();
+    let mtgml_rules::AuthoritativeRuleEventKindV3::PerspectiveObservationOccurrence {
+        source_event_id,
+        ..
+    } = &mut occurrence.event
+    else {
+        unreachable!()
+    };
+    *source_event_id = mtgml_model::RuleEventId(2);
+    occurrence.event_id = mtgml_model::RuleEventId(1);
+    source.event_id = mtgml_model::RuleEventId(2);
+    let mut future_reference_events = vec![occurrence, source, events[2].clone()];
+    if let mtgml_rules::AuthoritativeRuleEventKindV3::PerspectiveObservationOccurrence {
+        source_event_id,
+        ..
+    } = &mut future_reference_events[2].event
+    {
+        *source_event_id = mtgml_model::RuleEventId(2);
+    }
+    assert!(project_steps(&before_effect, &state, &future_reference_events).is_err());
+
     let step_bytes = [PlayerId(1), PlayerId(2)]
         .map(|player| mtgml_wire::encode_canonical(&steps[&player]).unwrap());
     for bytes in &step_bytes {

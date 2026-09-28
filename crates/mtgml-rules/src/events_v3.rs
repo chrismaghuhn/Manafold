@@ -601,7 +601,7 @@ fn validate_observation_occurrence_lifecycle(
             else {
                 return Err(EventDeltaV3Error::Mismatch);
             };
-            if source_index == index
+            if source_index >= index
                 || !is_projectable_public_source_event(&events[source_index].event)
             {
                 return Err(EventDeltaV3Error::Mismatch);
@@ -1933,7 +1933,14 @@ mod tests {
         let delta = mtgml_state::StateDeltaV3::between(&before, &after, vec![operation]).unwrap();
         validate_event_delta_parity_v3(std::slice::from_ref(&event), &delta).unwrap();
 
-        let missing = mtgml_state::StateDeltaV3::between(&before, &after, vec![]).unwrap();
+        let missing = mtgml_state::StateDeltaV3 {
+            before_revision: before.predecessor_v5.revision,
+            after_revision: after.predecessor_v5.revision,
+            before_digest: mtgml_state::calculate_full_state_digest_v7(&before).unwrap(),
+            after_digest: mtgml_state::calculate_full_state_digest_v7(&after).unwrap(),
+            replacement: after.clone(),
+            operations: vec![],
+        };
         assert_eq!(
             validate_event_delta_parity_v3(&[event], &missing),
             Err(EventDeltaV3Error::Mismatch)
@@ -2560,6 +2567,32 @@ mod tests {
             .collect();
         let delta = StateDeltaV3::between(&before, &after, operations).unwrap();
         validate_event_delta_state_v3(&before, &after, &events, &delta).unwrap();
+
+        let mut occurrence = events[1].clone();
+        let mut source = events[0].clone();
+        let AuthoritativeRuleEventKindV3::PerspectiveObservationOccurrence {
+            source_event_id, ..
+        } = &mut occurrence.event
+        else {
+            unreachable!()
+        };
+        *source_event_id = RuleEventId(2);
+        occurrence.event_id = RuleEventId(1);
+        source.event_id = RuleEventId(2);
+        let forward_reference = vec![occurrence, source];
+        let forward_delta = StateDeltaV3::between(
+            &before,
+            &after,
+            forward_reference
+                .iter()
+                .flat_map(AuthoritativeRuleEventV3::semantic_operations)
+                .collect(),
+        )
+        .unwrap();
+        assert_eq!(
+            validate_event_delta_state_v3(&before, &after, &forward_reference, &forward_delta),
+            Err(EventDeltaV3Error::Mismatch)
+        );
 
         let mut forged = events.clone();
         let AuthoritativeRuleEventKindV3::PerspectiveObservationOccurrence {
