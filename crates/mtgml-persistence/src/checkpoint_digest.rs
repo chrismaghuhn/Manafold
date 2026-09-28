@@ -1,10 +1,10 @@
 use crate::{cbor, envelope, PersistenceDecodeErrorV1};
 use mtgml_model::{
     CheckpointCodecIdentity, CheckpointDigestV3, CheckpointDigestV4, CheckpointDigestV5,
-    CheckpointDigestV6, CheckpointDigestV7, DigestReferenceV1, EnvironmentLimitCounters,
-    EpisodeStatus, ExecutionIdentityV1, ExecutionProgramV1, FullStateDigestV3, FullStateDigestV4,
-    FullStateDigestV5, FullStateDigestV6, PlayerOutcome, PlayerResult, TerminalReason,
-    TruncationReason,
+    CheckpointDigestV6, CheckpointDigestV7, CheckpointDigestV8, DigestReferenceV1,
+    EnvironmentLimitCounters, EpisodeStatus, ExecutionIdentityV1, ExecutionProgramV1,
+    FullStateDigestV3, FullStateDigestV4, FullStateDigestV5, FullStateDigestV6, FullStateDigestV7,
+    PlayerOutcome, PlayerResult, TerminalReason, TruncationReason,
 };
 
 pub const CHECKPOINT_DOMAIN: &str = "mtgml.checkpoint-digest.v3";
@@ -288,6 +288,52 @@ pub fn calculate_checkpoint_digest_v7(
     let encoded =
         envelope::encode_envelope(CHECKPOINT_DOMAIN_V7, CHECKPOINT_INPUT_SCHEMA_V7, &bytes)?;
     Ok(CheckpointDigestV7::from_digest_bytes(
+        envelope::hash_envelope(&encoded),
+    ))
+}
+
+/// Checkpoint identity for the accepted G0 state/digest cut. The fixed
+/// preimage shape is the V7 shape under the explicitly allocated V8 schema,
+/// domain, state digest, and checkpoint codec semantic version.
+pub fn calculate_checkpoint_digest_v8(
+    full_state_digest: &DigestReferenceV1,
+    status: &EpisodeStatus,
+    counters: &EnvironmentLimitCounters,
+    codec: &CheckpointCodecIdentity,
+    execution_identity: &ExecutionIdentityV1,
+) -> Result<CheckpointDigestV8, PersistenceDecodeErrorV1> {
+    validate_full_state_reference(
+        full_state_digest,
+        FullStateDigestV7::DOMAIN,
+        "full-state-digest-input.v7",
+    )?;
+    status
+        .validate()
+        .map_err(|_| PersistenceDecodeErrorV1::SemanticValidation)?;
+    counters
+        .validate()
+        .map_err(|_| PersistenceDecodeErrorV1::SemanticValidation)?;
+    if codec.codec_id != CHECKPOINT_CODEC_ID_V8
+        || codec.semantic_version != CHECKPOINT_CODEC_SEMANTIC_VERSION_V8
+    {
+        return Err(PersistenceDecodeErrorV1::SemanticValidation);
+    }
+    let payload = cbor::Value::Array(vec![
+        cbor::Value::Text(CHECKPOINT_INPUT_SCHEMA_V8.to_owned()),
+        cbor::Value::Text(CHECKPOINT_DOMAIN_V8.to_owned()),
+        envelope::digest_reference_value(full_state_digest),
+        episode_status_value(status)?,
+        counters_value(counters),
+        cbor::Value::Array(vec![
+            cbor::Value::Text(codec.codec_id.clone()),
+            cbor::Value::Text(codec.semantic_version.clone()),
+        ]),
+        execution_identity_value(execution_identity),
+    ]);
+    let bytes = cbor::encode_canonical(&payload)?;
+    let encoded =
+        envelope::encode_envelope(CHECKPOINT_DOMAIN_V8, CHECKPOINT_INPUT_SCHEMA_V8, &bytes)?;
+    Ok(CheckpointDigestV8::from_digest_bytes(
         envelope::hash_envelope(&encoded),
     ))
 }

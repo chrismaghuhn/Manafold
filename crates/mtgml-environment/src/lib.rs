@@ -7,6 +7,7 @@
 mod boundary;
 pub mod checkpoint;
 pub mod checkpoint_v7;
+pub mod checkpoint_v8;
 #[cfg(any(test, feature = "historical-conformance-runtime"))]
 #[path = "controller_predecessor.rs"]
 mod controller;
@@ -53,6 +54,10 @@ pub use checkpoint::{
 pub use checkpoint_v7::{
     CheckpointV7Error, EnvironmentCheckpointV7, CHECKPOINT_CODEC_ID_V7,
     CHECKPOINT_CODEC_SEMANTIC_VERSION_V7, ENVIRONMENT_CHECKPOINT_SCHEMA_V7,
+};
+pub use checkpoint_v8::{
+    CheckpointV8Error, EnvironmentCheckpointV8, CHECKPOINT_CODEC_ID_V8,
+    CHECKPOINT_CODEC_SEMANTIC_VERSION_V8, ENVIRONMENT_CHECKPOINT_SCHEMA_V8,
 };
 pub use controller::{EnvironmentBackend, TrustedEnvironmentController};
 pub use endpoint::{PlayerEndpoint, PlayerEndpointError, PlayerEndpointHandle};

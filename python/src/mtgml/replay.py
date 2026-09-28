@@ -115,6 +115,7 @@ from .persistence import (
     calculate_checkpoint_digest_v4,
     calculate_checkpoint_digest_v5,
     calculate_checkpoint_digest_v7,
+    calculate_checkpoint_digest_v8,
 )
 
 __all__ = [
@@ -207,6 +208,7 @@ __all__ = [
     "calculate_checkpoint_digest_v4",
     "calculate_checkpoint_digest_v5",
     "calculate_checkpoint_digest_v7",
+    "calculate_checkpoint_digest_v8",
     "dataclass",
     "parse_u64_number",
     "parse_uint",

@@ -18,7 +18,7 @@
       "codec_id": "in-memory-reference",
       "semantic_version": "8"
     },
-    "checkpoint_digest": "8888888888888888888888888888888888888888888888888888888888888888",
+    "checkpoint_digest": "d11105b35123d4da63d810049a27c8d3ca8f5d6beb389378033c2b3b726b4870",
     "environment_limit_counters": {
       "accepted_transitions": 0,
       "decisions_submitted": 0,

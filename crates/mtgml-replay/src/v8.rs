@@ -68,8 +68,7 @@ pub struct InitialEnvironmentIdentityV8 {
 }
 
 impl InitialEnvironmentIdentityV8 {
-    /// G0c checks the detached identity shape only. Digest recomputation and
-    /// checkpoint admission are implemented and proven by G0h.
+    /// Validates the identity shape and recomputes its V8 checkpoint digest.
     pub fn validate(&self) -> Result<(), ReplayValidationError> {
         self.episode_status
             .validate()
@@ -81,7 +80,19 @@ impl InitialEnvironmentIdentityV8 {
         }
         self.environment_limit_counters
             .validate()
-            .map_err(|_| ReplayValidationError::CounterProgression)
+            .map_err(|_| ReplayValidationError::CounterProgression)?;
+        let actual = mtgml_persistence::checkpoint_digest::calculate_checkpoint_digest_v8(
+            &self.full_state_digest.as_digest_reference(),
+            &self.episode_status,
+            &self.environment_limit_counters,
+            &self.checkpoint_codec_identity,
+            &self.execution_identity,
+        )
+        .map_err(|_| ReplayValidationError::CheckpointIdentity)?;
+        if actual != self.checkpoint_digest {
+            return Err(ReplayValidationError::CheckpointIdentity);
+        }
+        Ok(())
     }
 }
 
@@ -340,11 +351,185 @@ fn validate_status_for_players(
     Ok(())
 }
 
-// The V8 recorder is intentionally only an identity-bearing detached owner in G0c.
-// G0h owns append/export behavior and digest recomputation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReplayRecorderV8 {
     pub manifest: ReplayManifestV8,
     pub steps: Vec<ReplayStepV8>,
     pub final_identity: InitialEnvironmentIdentityV8,
+}
+
+impl ReplayRecorderV8 {
+    pub fn new(manifest: ReplayManifestV8) -> Result<Self, ReplayValidationError> {
+        manifest.validate()?;
+        Ok(Self {
+            final_identity: manifest.initial_identity.clone(),
+            manifest,
+            steps: Vec::new(),
+        })
+    }
+
+    /// Appends a structurally valid authoritative replay product. This
+    /// detached recorder does not execute the response; G0j owns the single
+    /// current runtime integration that supplies such products.
+    pub fn append(&mut self, step: ReplayStepV8) -> Result<(), ReplayValidationError> {
+        let mut steps = self.steps.clone();
+        steps.push(step);
+        let last = steps.last().ok_or(ReplayValidationError::FinalIdentity)?;
+        let final_identity = InitialEnvironmentIdentityV8 {
+            state_revision: last.state_revision_after,
+            full_state_digest: last.full_state_digest_after.clone(),
+            episode_status: last.episode_status_after.clone(),
+            environment_limit_counters: last.environment_limit_counters_after.clone(),
+            checkpoint_codec_identity: self.final_identity.checkpoint_codec_identity.clone(),
+            checkpoint_digest: last.checkpoint_digest_after.clone(),
+            execution_identity: self.final_identity.execution_identity.clone(),
+        };
+        let replay = AuthoritativeReplayV8 {
+            schema_version: REPLAY_FILE_SCHEMA_V8.to_owned(),
+            manifest: self.manifest.clone(),
+            steps,
+            final_identity: final_identity.clone(),
+        };
+        replay.validate()?;
+        self.steps = replay.steps;
+        self.final_identity = final_identity;
+        Ok(())
+    }
+
+    pub fn export(&self) -> Result<AuthoritativeReplayV8, ReplayValidationError> {
+        let replay = AuthoritativeReplayV8 {
+            schema_version: REPLAY_FILE_SCHEMA_V8.to_owned(),
+            manifest: self.manifest.clone(),
+            steps: self.steps.clone(),
+            final_identity: self.final_identity.clone(),
+        };
+        replay.validate()?;
+        Ok(replay)
+    }
+
+    pub fn manifest(&self) -> &ReplayManifestV8 {
+        &self.manifest
+    }
+
+    pub fn step_count(&self) -> usize {
+        self.steps.len()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn manifest() -> ReplayManifestV8 {
+        let manifest: ReplayManifestV8 = serde_json::from_str(include_str!(
+            "../../../schemas/examples/replay-manifest-v8.json"
+        ))
+        .unwrap();
+        manifest
+    }
+
+    #[test]
+    fn replay_v8_recorder_roundtrips_empty_and_rejected_steps() {
+        let manifest = manifest();
+        manifest.validate().unwrap();
+        assert_eq!(
+            manifest.initial_identity.checkpoint_digest.to_string(),
+            "d11105b35123d4da63d810049a27c8d3ca8f5d6beb389378033c2b3b726b4870"
+        );
+        let mut recorder = ReplayRecorderV8::new(manifest.clone()).unwrap();
+        assert_eq!(recorder.export().unwrap().manifest, manifest);
+        assert_eq!(recorder.step_count(), 0);
+
+        let mut step: ReplayStepV8 = serde_json::from_str(include_str!(
+            "../../../schemas/examples/replay-step-v8.json"
+        ))
+        .unwrap();
+        step.checkpoint_digest_before = manifest.initial_identity.checkpoint_digest.clone();
+        step.checkpoint_digest_after = manifest.initial_identity.checkpoint_digest.clone();
+        step.full_state_digest_after = manifest.initial_identity.full_state_digest.clone();
+        step.episode_status_after = manifest.initial_identity.episode_status.clone();
+        step.environment_limit_counters_after =
+            manifest.initial_identity.environment_limit_counters.clone();
+        step.state_revision_before = manifest.initial_identity.state_revision;
+        step.state_revision_after = manifest.initial_identity.state_revision;
+        step.accepted = false;
+        recorder.append(step.clone()).unwrap();
+        let replay = recorder.export().unwrap();
+        assert_eq!(replay.steps, vec![step]);
+        assert_eq!(replay.final_identity, manifest.initial_identity);
+        assert_eq!(recorder.step_count(), 1);
+    }
+
+    #[test]
+    fn replay_v8_rejected_append_is_total_nonmutation() {
+        let mut recorder = ReplayRecorderV8::new(manifest()).unwrap();
+        let before = recorder.clone();
+        let mut step: ReplayStepV8 = serde_json::from_str(include_str!(
+            "../../../schemas/examples/replay-step-v8.json"
+        ))
+        .unwrap();
+        step.step_index = 1;
+        assert!(recorder.append(step).is_err());
+        assert_eq!(recorder, before);
+    }
+
+    #[test]
+    fn replay_v8_recorder_accepts_complete_successor_identity_progression() {
+        let mut recorder = ReplayRecorderV8::new(manifest()).unwrap();
+        let mut step: ReplayStepV8 = serde_json::from_str(include_str!(
+            "../../../schemas/examples/replay-step-v8.json"
+        ))
+        .unwrap();
+        let before = recorder.manifest().initial_identity.clone();
+        let mut counters = before.environment_limit_counters.clone();
+        counters.decisions_submitted = 1;
+        counters.accepted_transitions = 1;
+        let after_digest = FullStateDigestV7::from_digest_bytes([0x79; 32]);
+        let checkpoint_digest =
+            mtgml_persistence::checkpoint_digest::calculate_checkpoint_digest_v8(
+                &after_digest.as_digest_reference(),
+                &before.episode_status,
+                &counters,
+                &before.checkpoint_codec_identity,
+                &before.execution_identity,
+            )
+            .unwrap();
+        step.checkpoint_digest_before = before.checkpoint_digest.clone();
+        step.state_revision_before = before.state_revision;
+        step.state_revision_after = StateRevision(before.state_revision.0 + 1);
+        step.full_state_digest_after = after_digest.clone();
+        step.episode_status_after = before.episode_status.clone();
+        step.environment_limit_counters_after = counters;
+        step.checkpoint_digest_after = checkpoint_digest;
+        step.accepted = true;
+
+        recorder.append(step.clone()).unwrap();
+        let replay = recorder.export().unwrap();
+        assert_eq!(replay.steps, vec![step]);
+        assert_eq!(
+            replay.final_identity.state_revision.0,
+            before.state_revision.0 + 1
+        );
+        assert_eq!(replay.final_identity.full_state_digest, after_digest);
+    }
+
+    #[test]
+    fn replay_v8_identity_rejects_wrong_checkpoint_digest() {
+        let mut manifest = manifest();
+        manifest.initial_identity.checkpoint_digest =
+            CheckpointDigestV8::from_digest_bytes([0; 32]);
+        assert_eq!(
+            manifest.initial_identity.validate(),
+            Err(ReplayValidationError::CheckpointIdentity)
+        );
+    }
+
+    #[test]
+    fn replay_v8_example_fixture_is_semantically_valid() {
+        let replay: AuthoritativeReplayV8 = serde_json::from_str(include_str!(
+            "../../../schemas/examples/authoritative-replay-v8.json"
+        ))
+        .unwrap();
+        replay.validate().unwrap();
+    }
 }

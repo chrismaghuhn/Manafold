@@ -92,6 +92,7 @@ from .persistence import (
     calculate_checkpoint_digest_v5,
     calculate_checkpoint_digest_v6,
     calculate_checkpoint_digest_v7,
+    calculate_checkpoint_digest_v8,
 )
 from .player_client import HistoricalPlayerClientV2, PlayerClient
 from .replay import (
@@ -266,6 +267,7 @@ __all__ = [
     "calculate_checkpoint_digest_v5",
     "calculate_checkpoint_digest_v6",
     "calculate_checkpoint_digest_v7",
+    "calculate_checkpoint_digest_v8",
     "compute_information_state_digest_v2",
     "compute_information_state_digest_v3",
     "decode_canonical",

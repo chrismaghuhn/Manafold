@@ -1,7 +1,8 @@
 use super::{cbor, checkpoint_digest, envelope, PersistenceDecodeErrorV1};
 use mtgml_model::{
     CheckpointCodecIdentity, EnvironmentLimitCounters, EpisodeStatus, ExecutionIdentityV1,
-    ExecutionProgramV1, FullStateDigestV5, FullStateDigestV6, SemanticContractIdV1,
+    ExecutionProgramV1, FullStateDigestV5, FullStateDigestV6, FullStateDigestV7,
+    SemanticContractIdV1,
 };
 
 #[test]
@@ -796,6 +797,64 @@ fn checkpoint_digest_v7_matches_phase2_known_answer_and_rejects_predecessors() {
         .to_string(),
         expected_mutations["semantic_contract_id"].as_str().unwrap()
     );
+}
+
+#[test]
+fn checkpoint_digest_v8_g0_known_answer() {
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../persistence/golden/checkpoint-digest-v8-kat.v1.json"
+    ))
+    .unwrap();
+    let state_digest =
+        FullStateDigestV7::parse(fixture["full_state_digest_v7"].as_str().unwrap()).unwrap();
+    let identity = ExecutionIdentityV1 {
+        program_kind: ExecutionProgramV1::MagicRules,
+        semantic_contract_id: SemanticContractIdV1::parse(
+            fixture["semantic_contract_id"].as_str().unwrap().to_owned(),
+        )
+        .unwrap(),
+    };
+    let codec = CheckpointCodecIdentity {
+        codec_id: checkpoint_digest::CHECKPOINT_CODEC_ID_V8.to_owned(),
+        semantic_version: checkpoint_digest::CHECKPOINT_CODEC_SEMANTIC_VERSION_V8.to_owned(),
+    };
+    let digest = checkpoint_digest::calculate_checkpoint_digest_v8(
+        &state_digest.as_digest_reference(),
+        &EpisodeStatus::Running,
+        &EnvironmentLimitCounters::default(),
+        &codec,
+        &identity,
+    )
+    .unwrap();
+    assert_eq!(
+        digest.to_string(),
+        fixture["expected_digest"].as_str().unwrap()
+    );
+    assert_eq!(
+        digest.to_string(),
+        "1454acca17c4a4cb655d4b3201e4b5d10db3cb0a42513a33efb6f7d8eaa26025"
+    );
+    let predecessor = FullStateDigestV6::from_digest_bytes(state_digest.raw_bytes());
+    assert!(checkpoint_digest::calculate_checkpoint_digest_v8(
+        &predecessor.as_digest_reference(),
+        &EpisodeStatus::Running,
+        &EnvironmentLimitCounters::default(),
+        &codec,
+        &identity,
+    )
+    .is_err());
+    let wrong_codec = CheckpointCodecIdentity {
+        semantic_version: "7".to_owned(),
+        ..codec
+    };
+    assert!(checkpoint_digest::calculate_checkpoint_digest_v8(
+        &state_digest.as_digest_reference(),
+        &EpisodeStatus::Running,
+        &EnvironmentLimitCounters::default(),
+        &wrong_codec,
+        &identity,
+    )
+    .is_err());
 }
 
 fn hex(bytes: &[u8]) -> String {

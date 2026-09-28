@@ -21,6 +21,7 @@ from .canonical import (
 from .decision import DecisionResponseV3
 from .episode import EpisodeStatus
 from .errors import WireError
+from .persistence import calculate_checkpoint_digest_v8
 
 REPLAY_MANIFEST_SCHEMA_V8 = "replay-manifest.v8"
 REPLAY_FILE_SCHEMA_V8 = "authoritative-replay.v8"
@@ -146,6 +147,17 @@ class InitialEnvironmentIdentityV8:
             or self.checkpoint_codec_identity.semantic_version != CHECKPOINT_CODEC_VERSION_V8
         ):
             raise WireError("semantic.replay_manifest", "unsupported checkpoint V8 identity")
+        expected = calculate_checkpoint_digest_v8(
+            self.full_state_digest,
+            self.episode_status,
+            self.environment_limit_counters.to_wire(),
+            self.checkpoint_codec_identity.codec_id,
+            self.checkpoint_codec_identity.semantic_version,
+            self.execution_identity.program_kind,
+            self.execution_identity.semantic_contract_id,
+        )
+        if expected != self.checkpoint_digest:
+            raise WireError("semantic.replay_manifest", "checkpoint V8 digest does not match")
 
     def to_wire(self) -> dict[str, object]:
         self.validate()
