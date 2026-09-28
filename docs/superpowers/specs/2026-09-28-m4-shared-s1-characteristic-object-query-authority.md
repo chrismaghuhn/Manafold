@@ -272,7 +272,7 @@ S1 does not implement:
 - Query purity, deterministic ordering, counter arithmetic, no allocator/RNG change, and unrelated-state independence are demonstrated.
 - Checkpoint/restore, fork and replay-equivalent states return identical results; existing historical fixtures/identities remain unchanged.
 - Paired-world tests show no internal query fact reaches unauthorized products; existing observation authority remains sole projector.
-- S2b and S6a consume the same query owner through separately reviewed typed contributions; no parallel characteristic evaluator is introduced.
+- S1 provides the shared query authority for later S2b/S6a contributions; unadmitted contributions remain fail-closed. Their actual integration and conformance evidence belong to S2b/S6a and are not S1 exit requirements. No parallel characteristic evaluator is introduced.
 - No card/capability lifecycle, coverage, certification, R1/W1 completion, or M4 completion is inferred from S1 implementation.
 
 ### S1_UNSUPPORTED_BOUNDARIES
