@@ -456,9 +456,9 @@ fn v7_digest_binds_temporary_effect_operation_and_lifetime_record() {
 }
 
 #[test]
-fn v7_digest_admission_fails_closed_for_unvalidated_pending_activation_request() {
+fn v7_digest_binds_pending_activation_and_selected_cost_facts() {
     let state = staged_activation_state();
-    assert!(calculate_full_state_digest_v7(&state).is_err());
+    let original = calculate_full_state_digest_v7(&state).unwrap();
 
     let mut changed_source_output = state.clone();
     let Some(mtgml_state::ContinuationPayloadV3::NonManaActivation(activation)) =
@@ -476,7 +476,10 @@ fn v7_digest_admission_fails_closed_for_unvalidated_pending_activation_request()
         .unwrap()
         .mana_source_activations[0]
         .produced_buckets[4] = 1;
-    assert!(calculate_full_state_digest_v7(&changed_source_output).is_err());
+    assert_ne!(
+        original,
+        calculate_full_state_digest_v7(&changed_source_output).unwrap()
+    );
 
     let mut changed_operand = state.clone();
     let Some(mtgml_state::ContinuationPayloadV3::NonManaActivation(activation)) = changed_operand
@@ -492,11 +495,14 @@ fn v7_digest_admission_fails_closed_for_unvalidated_pending_activation_request()
         counter_kind: mtgml_state::CounterKindV1::MinusOneMinusOne,
         count: 2,
     };
-    assert!(calculate_full_state_digest_v7(&changed_operand).is_err());
+    assert_ne!(
+        original,
+        calculate_full_state_digest_v7(&changed_operand).unwrap()
+    );
 }
 
 #[test]
-fn v7_digest_admission_fails_closed_for_pending_trigger_request() {
+fn v7_digest_binds_pending_trigger_context_and_exact_candidate_binding() {
     let mut state = state();
     state.predecessor_v5.allocators.next_object_id = GameObjectId(4);
     state.predecessor_v5.allocators.next_ability_id = mtgml_model::AbilityInstanceId(2);
@@ -608,7 +614,19 @@ fn v7_digest_admission_fails_closed_for_pending_trigger_request() {
         ],
     });
     state.validate().unwrap();
-    assert!(calculate_full_state_digest_v7(&state).is_err());
+    let original = calculate_full_state_digest_v7(&state).unwrap();
+    let mut rebound = state.clone();
+    rebound
+        .execution_v4
+        .pending_decision
+        .as_mut()
+        .unwrap()
+        .candidates[0]
+        .trusted_binding = mtgml_decision::EngineCandidateBindingV4::SelectTrigger {
+        trigger: mtgml_model::TriggerInstanceId(2),
+    };
+    assert!(rebound.validate().is_err());
+    assert!(calculate_full_state_digest_v7(&rebound).is_err());
     state
         .execution_v4
         .waiting_triggers
@@ -634,7 +652,7 @@ fn v7_digest_admission_fails_closed_for_pending_trigger_request() {
         mtgml_decision::EngineCandidateBindingV4::SelectTrigger {
             trigger: mtgml_model::TriggerInstanceId(1),
         };
-    assert!(calculate_full_state_digest_v7(&state).is_err());
+    assert_ne!(original, calculate_full_state_digest_v7(&state).unwrap());
 }
 
 #[test]
@@ -683,9 +701,9 @@ fn v7_input_decoder_rejects_wrong_identity_truncation_and_unknown_stack_tags() {
 }
 
 #[test]
-fn v7_typed_writer_fails_closed_for_unvalidated_pending_activation_request() {
+fn v7_typed_writer_accepts_exact_pending_activation_bindings() {
     let state = staged_activation_state();
-    assert!(canonical_state_bytes_v7(&state).is_err());
+    assert!(canonical_state_bytes_v7(&state).is_ok());
 }
 
 #[test]

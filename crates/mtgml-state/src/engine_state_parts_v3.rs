@@ -53,6 +53,45 @@ impl EngineStatePartsV3 {
         Ok(())
     }
 
+    /// Validates a V4 perspective-bound response against the exact state and
+    /// returns only the matching trusted candidate bindings. This method is
+    /// read-only; rules execution remains owned by the RulesKernel.
+    pub fn selected_bindings_v4(
+        &self,
+        actor: mtgml_model::PlayerId,
+        response: &mtgml_decision::DecisionResponseV3,
+    ) -> Result<Vec<&mtgml_decision::EngineCandidateBindingV4>, EngineStatePartsV3Error> {
+        self.validate()?;
+        let request = self
+            .execution_v4
+            .pending_decision
+            .as_ref()
+            .ok_or(EngineStatePartsV3Error::PendingDecisionResponse)?;
+        if request.actor != actor {
+            return Err(EngineStatePartsV3Error::PendingDecisionResponse);
+        }
+        request
+            .validate_response(response)
+            .map_err(|_| EngineStatePartsV3Error::PendingDecisionResponse)?;
+        let selected = match &response.answer {
+            mtgml_decision::DecisionAnswerV2::SelectOne { candidate_id } => vec![*candidate_id],
+            mtgml_decision::DecisionAnswerV2::SelectMany { candidate_ids }
+            | mtgml_decision::DecisionAnswerV2::Order { candidate_ids } => candidate_ids.clone(),
+            mtgml_decision::DecisionAnswerV2::ChooseNumber { .. } => Vec::new(),
+        };
+        selected
+            .into_iter()
+            .map(|id| {
+                request
+                    .candidates
+                    .iter()
+                    .find(|candidate| candidate.candidate_id == id)
+                    .map(|candidate| &candidate.trusted_binding)
+                    .ok_or(EngineStatePartsV3Error::PendingDecisionResponse)
+            })
+            .collect()
+    }
+
     fn validate_stack(&self) -> Result<(), EngineStatePartsV3Error> {
         let zones = &self.predecessor_v5.zones;
         let order = &zones.stack_order;
@@ -522,6 +561,7 @@ impl EngineStatePartsV3 {
             } else if !execution.continuations.is_empty() {
                 return Err(EngineStatePartsV3Error::PendingContinuation);
             }
+            self.validate_pending_candidate_bindings(request)?;
         } else if !execution.continuations.is_empty() {
             return Err(EngineStatePartsV3Error::PendingContinuation);
         }
@@ -905,21 +945,40 @@ impl EngineStatePartsV3 {
                         && matches!(&request.decision_domain_v2, Domain::ChooseOne)
                 }
                 crate::CastContinuationStage::SelectingModes => {
-                    matches!(&request.purpose, Purpose::ModeSelection { .. })
+                    matches!(&request.purpose, Purpose::ModeSelection { mode_slot }
+                        if *mode_slot == value.modes.len() as u32)
                         && Self::is_single_or_many(&request.decision_domain_v2)
                 }
                 crate::CastContinuationStage::SelectingTargets => {
-                    matches!(&request.purpose, Purpose::TargetSelection { .. })
+                    matches!(&request.purpose, Purpose::TargetSelection { target_slot }
+                        if *target_slot == value.targets.len() as u32)
                         && Self::is_single_or_many(&request.decision_domain_v2)
                 }
                 crate::CastContinuationStage::SelectingAdditionalCosts => {
-                    (matches!(
-                        &request.purpose,
-                        Purpose::OptionalCostPayment { .. } | Purpose::CostOperandSelection { .. }
-                    )) && matches!(&request.decision_domain_v2, Domain::ChooseOne)
+                    let purpose_matches = match &request.purpose {
+                        Purpose::OptionalCostPayment {
+                            profile_local_cost_id,
+                        } => !value.paid_cost_choices.contains(profile_local_cost_id),
+                        Purpose::CostOperandSelection {
+                            cost_slot,
+                            operation: mtgml_decision::CostOperandOperationV1::PutCounters,
+                            counter_kind: mtgml_decision::CounterKindV1::MinusOneMinusOne,
+                            count: 2,
+                        } => {
+                            *cost_slot
+                                == value.action_cost_facts.selected_cost_operands.len() as u32
+                        }
+                        _ => false,
+                    };
+                    purpose_matches && matches!(&request.decision_domain_v2, Domain::ChooseOne)
                 }
                 crate::CastContinuationStage::SelectingCostOperands => {
-                    matches!(&request.purpose, Purpose::CostOperandSelection { .. })
+                    matches!(&request.purpose, Purpose::CostOperandSelection {
+                        cost_slot,
+                        operation: mtgml_decision::CostOperandOperationV1::PutCounters,
+                        counter_kind: mtgml_decision::CounterKindV1::MinusOneMinusOne,
+                        count: 2,
+                    } if *cost_slot == value.action_cost_facts.selected_cost_operands.len() as u32)
                         && matches!(&request.decision_domain_v2, Domain::ChooseOne)
                 }
                 crate::CastContinuationStage::PayingMana => {
@@ -928,15 +987,22 @@ impl EngineStatePartsV3 {
             },
             crate::ContinuationPayloadV3::NonManaActivation(value) => match value.stage {
                 crate::NonManaActivationStage::SelectingModes => {
-                    matches!(&request.purpose, Purpose::ModeSelection { .. })
+                    matches!(&request.purpose, Purpose::ModeSelection { mode_slot }
+                        if *mode_slot == value.modes.len() as u32)
                         && Self::is_single_or_many(&request.decision_domain_v2)
                 }
                 crate::NonManaActivationStage::SelectingTargets => {
-                    matches!(&request.purpose, Purpose::TargetSelection { .. })
+                    matches!(&request.purpose, Purpose::TargetSelection { target_slot }
+                        if *target_slot == value.targets.len() as u32)
                         && Self::is_single_or_many(&request.decision_domain_v2)
                 }
                 crate::NonManaActivationStage::SelectingCostOperands => {
-                    matches!(&request.purpose, Purpose::CostOperandSelection { .. })
+                    matches!(&request.purpose, Purpose::CostOperandSelection {
+                        cost_slot,
+                        operation: mtgml_decision::CostOperandOperationV1::PutCounters,
+                        counter_kind: mtgml_decision::CounterKindV1::MinusOneMinusOne,
+                        count: 2,
+                    } if *cost_slot == value.action_cost_facts.selected_cost_operands.len() as u32)
                         && matches!(&request.decision_domain_v2, Domain::ChooseOne)
                 }
                 crate::NonManaActivationStage::PayingMana => {
@@ -996,6 +1062,676 @@ impl EngineStatePartsV3 {
                     Self::mana_stage_matches(value.mana_payment_staging.as_ref(), request)
                 }
             },
+        }
+    }
+
+    fn validate_pending_candidate_bindings(
+        &self,
+        request: &mtgml_decision::AuthoritativeDecisionRequestV4,
+    ) -> Result<(), EngineStatePartsV3Error> {
+        use mtgml_decision::{CandidateIntentV4 as Intent, EngineCandidateBindingV4 as Binding};
+        let identities = self
+            .predecessor_v5
+            .perspective_identities
+            .players
+            .get(&request.actor)
+            .ok_or(EngineStatePartsV3Error::PendingCandidateBinding)?;
+        if request
+            .parent_player_decision_id
+            .is_some_and(|parent| parent.0 == 0 || parent.0 >= request.player_decision_id.0)
+        {
+            return Err(EngineStatePartsV3Error::PendingCandidateBinding);
+        }
+
+        for candidate in &request.candidates {
+            let valid = match (&candidate.visible_intent, &candidate.trusted_binding) {
+                (Intent::PassPriority, Binding::PassPriority)
+                | (Intent::Confirm, Binding::Confirm) => true,
+                (Intent::PlayLand { object }, Binding::PlayLand { object: bound })
+                | (Intent::CastSpell { object }, Binding::CastSpell { object: bound }) => {
+                    identities.opaque_to_object.get(object) == Some(bound)
+                        && self.predecessor_v5.zones.objects.contains_key(bound)
+                }
+                (Intent::SelectObject { object }, Binding::SelectObject { object: bound }) => {
+                    let visible_identity_matches = identities.opaque_to_object.get(object)
+                        == Some(bound)
+                        && self.predecessor_v5.zones.objects.contains_key(bound);
+                    let cost_operand_is_legal = match request.purpose {
+                        mtgml_decision::DecisionPurposeV4::CostOperandSelection {
+                            operation: mtgml_decision::CostOperandOperationV1::PutCounters,
+                            counter_kind: mtgml_decision::CounterKindV1::MinusOneMinusOne,
+                            count: 2,
+                            ..
+                        } => {
+                            self.predecessor_v5
+                                .zones
+                                .objects
+                                .get(bound)
+                                .is_some_and(|value| value.controller == request.actor)
+                                && self.predecessor_v5.zones.locations.get(bound).is_some_and(
+                                    |location| location.zone == mtgml_model::ZoneKind::Battlefield,
+                                )
+                        }
+                        mtgml_decision::DecisionPurposeV4::CostOperandSelection { .. } => false,
+                        _ => true,
+                    };
+                    visible_identity_matches && cost_operand_is_legal
+                }
+                (
+                    Intent::ActivateAbility { ability },
+                    Binding::ActivateAbility { ability: bound },
+                ) => {
+                    identities.opaque_to_ability.get(ability) == Some(bound)
+                        && self
+                            .card_rules_state
+                            .abilities
+                            .by_instance
+                            .get(bound)
+                            .and_then(|authority| {
+                                self.predecessor_v5.zones.objects.get(&authority.source)
+                            })
+                            .is_some_and(|source| source.controller == request.actor)
+                }
+                (Intent::SelectPlayer { player }, Binding::SelectPlayer { player: bound }) => {
+                    player == bound && self.predecessor_v5.core.players.contains_key(bound)
+                }
+                (Intent::SelectMode { mode_index }, Binding::SelectMode { mode_index: bound }) => {
+                    mode_index == bound
+                }
+                (Intent::ChooseBoolean { value }, Binding::ChooseBoolean { value: bound }) => {
+                    value == bound
+                }
+                (Intent::DeclareNumber { value }, Binding::DeclareNumber { value: bound }) => {
+                    value == bound
+                }
+                (Intent::SelectCostRoute { descriptor }, Binding::SelectCostRoute { route }) => {
+                    Self::cost_route_descriptor_matches(*descriptor, route)
+                }
+                (
+                    Intent::SelectManaSource {
+                        source,
+                        ability,
+                        produced_buckets,
+                    },
+                    Binding::SelectManaSource {
+                        source: bound_source,
+                        ability: bound_ability,
+                        ability_key,
+                        activation_cost,
+                        produced_buckets: bound_buckets,
+                        ..
+                    },
+                ) => {
+                    let authority = self
+                        .card_rules_state
+                        .abilities
+                        .by_instance
+                        .get(bound_ability);
+                    let source_object = self.predecessor_v5.zones.objects.get(bound_source);
+                    let source_location = self.predecessor_v5.zones.locations.get(bound_source);
+                    identities.opaque_to_object.get(source) == Some(bound_source)
+                        && identities.opaque_to_ability.get(ability) == Some(bound_ability)
+                        && bound_buckets == produced_buckets
+                        && *activation_cost == mtgml_decision::ManaSourceActivationCostV1::TapSource
+                        && authority.is_some_and(|authority| {
+                            authority.source == *bound_source
+                                && authority.ability_key == ability_key.0
+                        })
+                        && source_object.is_some_and(|source| {
+                            source.controller == request.actor && !source.tapped
+                        })
+                        && source_location.is_some_and(|location| {
+                            location.zone == mtgml_model::ZoneKind::Battlefield
+                        })
+                        && !self.source_is_reserved_by_request_continuation(request, *bound_source)
+                }
+                (
+                    Intent::FinalizeManaProduction,
+                    Binding::FinalizeManaProduction { continuation },
+                ) => {
+                    request.continuation_id == Some(*continuation)
+                        && self
+                            .mana_staging_for_continuation(*continuation)
+                            .is_some_and(|staging| {
+                                staging.stage == crate::ManaPaymentStage::SelectingSources
+                            })
+                }
+                (
+                    Intent::SelectManaPayment { spent_buckets },
+                    Binding::SelectManaPayment {
+                        spent_buckets: bound_buckets,
+                    },
+                ) => {
+                    spent_buckets == bound_buckets
+                        && request.continuation_id.is_some_and(|id| {
+                            self.mana_staging_for_continuation(id)
+                                .is_some_and(|staging| {
+                                    staging.stage
+                                        == crate::ManaPaymentStage::AwaitingFinalAllocation
+                                })
+                        })
+                }
+                (Intent::SelectTrigger { trigger }, Binding::SelectTrigger { trigger: bound }) => {
+                    self.execution_v4
+                        .waiting_triggers
+                        .get(bound)
+                        .and_then(|record| self.safe_trigger_descriptor(request.actor, record))
+                        .is_some_and(|expected| expected == *trigger)
+                }
+                _ => false,
+            };
+            if !valid {
+                return Err(EngineStatePartsV3Error::PendingCandidateBinding);
+            }
+        }
+
+        if matches!(
+            request.purpose,
+            mtgml_decision::DecisionPurposeV4::TriggerOrder
+        ) {
+            let Some(continuation) = request.continuation_id.and_then(|id| {
+                self.execution_v4
+                    .continuations
+                    .get(&id)
+                    .map(|record| &record.payload)
+            }) else {
+                return Err(EngineStatePartsV3Error::PendingCandidateBinding);
+            };
+            let crate::ContinuationPayloadV3::TriggerPlacement(placement) = continuation else {
+                return Err(EngineStatePartsV3Error::PendingCandidateBinding);
+            };
+            let expected: BTreeSet<_> = placement
+                .pending_trigger_ids
+                .iter()
+                .filter(|id| {
+                    self.execution_v4
+                        .waiting_triggers
+                        .get(id)
+                        .is_some_and(|record| record.controller == request.actor)
+                })
+                .copied()
+                .collect();
+            let actual: BTreeSet<_> = request
+                .candidates
+                .iter()
+                .filter_map(|candidate| match candidate.trusted_binding {
+                    Binding::SelectTrigger { trigger } => Some(trigger),
+                    _ => None,
+                })
+                .collect();
+            let exact_order_domain = matches!(
+                request.decision_domain_v2,
+                mtgml_decision::DecisionDomainV2::Order { minimum, maximum }
+                    if minimum as usize == expected.len()
+                        && maximum as usize == expected.len()
+            );
+            if expected.len() < 2
+                || expected != actual
+                || actual.len() != request.candidates.len()
+                || !exact_order_domain
+            {
+                return Err(EngineStatePartsV3Error::PendingCandidateBinding);
+            }
+            let root = placement
+                .actor_request_roots
+                .iter()
+                .find(|root| root.actor == request.actor)
+                .ok_or(EngineStatePartsV3Error::PendingCandidateBinding)?;
+            if (request.player_decision_id == root.first_decision_id
+                && request.parent_player_decision_id.is_some())
+                || (request.player_decision_id != root.first_decision_id
+                    && request.parent_player_decision_id != Some(root.first_decision_id))
+            {
+                return Err(EngineStatePartsV3Error::PendingCandidateBinding);
+            }
+        }
+
+        if matches!(
+            request.purpose,
+            mtgml_decision::DecisionPurposeV4::TriggerTarget { .. }
+        ) {
+            let Some(crate::ContinuationPayloadV3::TriggerPlacement(placement)) = request
+                .continuation_id
+                .and_then(|id| self.execution_v4.continuations.get(&id))
+                .map(|record| &record.payload)
+            else {
+                return Err(EngineStatePartsV3Error::PendingCandidateBinding);
+            };
+            let root = placement
+                .actor_request_roots
+                .iter()
+                .find(|root| root.actor == request.actor)
+                .ok_or(EngineStatePartsV3Error::PendingCandidateBinding)?;
+            if (request.player_decision_id == root.first_decision_id
+                && request.parent_player_decision_id.is_some())
+                || (request.player_decision_id != root.first_decision_id
+                    && request.parent_player_decision_id != Some(root.first_decision_id))
+            {
+                return Err(EngineStatePartsV3Error::PendingCandidateBinding);
+            }
+        }
+
+        if matches!(
+            request.purpose,
+            mtgml_decision::DecisionPurposeV4::SbaGraveyardOrder
+        ) {
+            let Some(payload) = request.continuation_id.and_then(|id| {
+                self.execution_v4
+                    .continuations
+                    .get(&id)
+                    .map(|record| &record.payload)
+            }) else {
+                return Err(EngineStatePartsV3Error::PendingCandidateBinding);
+            };
+            let crate::ContinuationPayloadV3::MagicSbaGraveyardOrderV1 {
+                selected_sba_actions,
+                apnap_owners,
+                next_owner_index,
+                ..
+            } = payload
+            else {
+                return Err(EngineStatePartsV3Error::PendingCandidateBinding);
+            };
+            if apnap_owners.get(*next_owner_index as usize) != Some(&request.actor) {
+                return Err(EngineStatePartsV3Error::PendingCandidateBinding);
+            }
+            let expected_objects: BTreeSet<_> = selected_sba_actions
+                .iter()
+                .filter_map(|action| match action {
+                    crate::SbaSelectedActionV1::ObjectToOwnerGraveyard { object, .. }
+                        if self
+                            .predecessor_v5
+                            .zones
+                            .objects
+                            .get(object)
+                            .is_some_and(|value| value.owner == request.actor) =>
+                    {
+                        Some(*object)
+                    }
+                    _ => None,
+                })
+                .collect();
+            let actual_objects: BTreeSet<_> = request
+                .candidates
+                .iter()
+                .filter_map(|candidate| match &candidate.trusted_binding {
+                    Binding::SelectObject { object } => Some(*object),
+                    _ => None,
+                })
+                .collect();
+            let exact_domain = matches!(
+                request.decision_domain_v2,
+                mtgml_decision::DecisionDomainV2::Order { minimum, maximum }
+                    if minimum as usize == expected_objects.len()
+                        && maximum as usize == expected_objects.len()
+            );
+            if expected_objects.len() < 2
+                || actual_objects != expected_objects
+                || actual_objects.len() != request.candidates.len()
+                || !exact_domain
+            {
+                return Err(EngineStatePartsV3Error::PendingCandidateBinding);
+            }
+        }
+
+        Ok(())
+    }
+
+    fn cost_route_descriptor_matches(
+        descriptor: mtgml_decision::CostRouteDescriptorV1,
+        route: &mtgml_decision::CostRouteV1,
+    ) -> bool {
+        match (
+            descriptor.route_class,
+            descriptor.profile_local_option_ordinal,
+            route,
+        ) {
+            (
+                mtgml_decision::CostRouteClassV1::Normal,
+                None,
+                mtgml_decision::CostRouteV1::Normal,
+            ) => true,
+            (
+                mtgml_decision::CostRouteClassV1::Alternative,
+                Some(ordinal),
+                mtgml_decision::CostRouteV1::Alternative { route_id },
+            ) => ordinal == *route_id,
+            _ => false,
+        }
+    }
+
+    fn mana_staging_for_continuation(
+        &self,
+        continuation: mtgml_model::ContinuationId,
+    ) -> Option<&crate::ManaPaymentStaging> {
+        let record = self.execution_v4.continuations.get(&continuation)?;
+        match &record.payload {
+            crate::ContinuationPayloadV3::Cast(value) => value.mana_payment_staging.as_ref(),
+            crate::ContinuationPayloadV3::NonManaActivation(value) => {
+                value.mana_payment_staging.as_ref()
+            }
+            crate::ContinuationPayloadV3::StackResolution(value) => {
+                value.mana_payment_staging.as_ref()
+            }
+            _ => None,
+        }
+    }
+
+    fn source_is_reserved_by_request_continuation(
+        &self,
+        request: &mtgml_decision::AuthoritativeDecisionRequestV4,
+        source: mtgml_model::GameObjectId,
+    ) -> bool {
+        let Some(continuation) = request.continuation_id.and_then(|id| {
+            self.execution_v4
+                .continuations
+                .get(&id)
+                .map(|record| &record.payload)
+        }) else {
+            return false;
+        };
+        match continuation {
+            crate::ContinuationPayloadV3::NonManaActivation(value)
+                if value.source_object == source
+                    && value
+                        .action_cost_facts
+                        .reserved_nonmana_costs
+                        .iter()
+                        .any(|cost| {
+                            matches!(
+                                cost,
+                                crate::ReservedNonManaCost::TapSource
+                                    | crate::ReservedNonManaCost::SacrificeSource
+                            )
+                        }) =>
+            {
+                true
+            }
+            _ => request
+                .continuation_id
+                .and_then(|id| self.mana_staging_for_continuation(id))
+                .is_some_and(|staging| {
+                    staging
+                        .mana_source_activations
+                        .iter()
+                        .any(|selected| selected.source_object == source)
+                }),
+        }
+    }
+
+    fn safe_opaque_object(
+        &self,
+        perspective: mtgml_model::PlayerId,
+        object: mtgml_model::GameObjectId,
+    ) -> Option<mtgml_model::OpaqueObjectId> {
+        self.predecessor_v5
+            .perspective_identities
+            .players
+            .get(&perspective)?
+            .object_to_opaque
+            .get(&object)
+            .copied()
+    }
+
+    fn safe_opaque_ability(
+        &self,
+        perspective: mtgml_model::PlayerId,
+        ability: mtgml_model::AbilityInstanceId,
+    ) -> Option<mtgml_model::OpaqueAbilityId> {
+        self.predecessor_v5
+            .perspective_identities
+            .players
+            .get(&perspective)?
+            .ability_to_opaque
+            .get(&ability)
+            .copied()
+    }
+
+    fn safe_source_pair(
+        &self,
+        perspective: mtgml_model::PlayerId,
+        source: &crate::AbilitySourceContext,
+    ) -> (
+        Option<mtgml_model::OpaqueObjectId>,
+        Option<mtgml_model::OpaqueAbilityId>,
+    ) {
+        let object = self.safe_opaque_object(perspective, source.source.snapshot.object);
+        let ability =
+            object.and_then(|_| self.safe_opaque_ability(perspective, source.ability_instance_id));
+        (object, ability)
+    }
+
+    fn safe_target_descriptor(
+        &self,
+        perspective: mtgml_model::PlayerId,
+        target: crate::TargetRef,
+    ) -> Option<mtgml_decision::SafeTargetDescriptorV1> {
+        use mtgml_decision::SafeTargetDescriptorV1 as Safe;
+        match target {
+            crate::TargetRef::Object(object) => Some(Safe::Object {
+                object: self.safe_opaque_object(perspective, object)?,
+            }),
+            crate::TargetRef::Player(player) => Some(Safe::Player { player }),
+            crate::TargetRef::StackItem(stack_item) => {
+                let position = self
+                    .predecessor_v5
+                    .zones
+                    .stack_order
+                    .iter()
+                    .rev()
+                    .position(|id| *id == stack_item)?;
+                Some(Safe::StackItem {
+                    stack_position_from_top: u32::try_from(position).ok()?,
+                })
+            }
+        }
+    }
+
+    fn safe_cost_facts(facts: &crate::CostFacts) -> mtgml_decision::CostFactsV1 {
+        mtgml_decision::CostFactsV1 {
+            selected_route: facts.selected_route.map(|route| match route {
+                crate::CostRoute::Normal => mtgml_decision::CostRouteV1::Normal,
+                crate::CostRoute::Alternative {
+                    profile_local_route_id,
+                } => mtgml_decision::CostRouteV1::Alternative {
+                    route_id: profile_local_route_id,
+                },
+            }),
+            paid_additional_cost_ids: facts.paid_additional_cost_ids.clone(),
+        }
+    }
+
+    fn safe_trigger_descriptor(
+        &self,
+        perspective: mtgml_model::PlayerId,
+        trigger: &crate::PendingTriggerRecord,
+    ) -> Option<mtgml_decision::SafeTriggerDescriptorV1> {
+        use mtgml_decision::{
+            CounterKindV1 as SafeCounter, DamageKindV1 as SafeDamageKind,
+            LifeChangeCauseV1 as SafeLifeCause, SafeAttackerFactV1, SafeDamageRecipientV1,
+            SafeTargetDescriptorV1, SafeTriggerDescriptorV1, SafeTriggerSubjectV1,
+            TriggerEventKindV1,
+        };
+        let (source_object, source_ability) =
+            self.safe_source_pair(perspective, &trigger.source_context);
+        let (event_kind, subject) = match &trigger.trigger_context {
+            crate::TriggerEventSnapshot::SpellCast {
+                actor,
+                spell,
+                is_creature_spell,
+                cost_facts,
+                ..
+            } => (
+                TriggerEventKindV1::SpellCast,
+                SafeTriggerSubjectV1::SpellCast {
+                    actor: *actor,
+                    spell_source_object: self
+                        .safe_opaque_object(perspective, spell.snapshot.object),
+                    creature_spell: *is_creature_spell,
+                    cost_facts: Self::safe_cost_facts(cost_facts),
+                },
+            ),
+            crate::TriggerEventSnapshot::AbilityActivated {
+                actor,
+                source,
+                targets,
+                cost_facts,
+                ..
+            } => (
+                TriggerEventKindV1::AbilityActivated,
+                SafeTriggerSubjectV1::AbilityActivated {
+                    actor: *actor,
+                    activated_source_object: self
+                        .safe_opaque_object(perspective, source.source.snapshot.object)?,
+                    activated_source_ability: self
+                        .safe_opaque_ability(perspective, source.ability_instance_id)?,
+                    cost_facts: Self::safe_cost_facts(cost_facts),
+                    targets: targets
+                        .iter()
+                        .map(|target| self.safe_target_descriptor(perspective, target.target))
+                        .collect::<Option<Vec<SafeTargetDescriptorV1>>>()?,
+                },
+            ),
+            crate::TriggerEventSnapshot::TargetBecame { actor, target, .. } => (
+                TriggerEventKindV1::TargetBecame,
+                SafeTriggerSubjectV1::TargetBecame {
+                    actor: *actor,
+                    target: self.safe_target_descriptor(perspective, *target)?,
+                },
+            ),
+            crate::TriggerEventSnapshot::ObjectEntered { object } => (
+                TriggerEventKindV1::ObjectEntered,
+                SafeTriggerSubjectV1::ObjectEntered {
+                    object: self.safe_opaque_object(perspective, object.object),
+                },
+            ),
+            crate::TriggerEventSnapshot::ObjectLeftOrDied {
+                last_known,
+                destination,
+            } => (
+                TriggerEventKindV1::ObjectLeftOrDied,
+                SafeTriggerSubjectV1::ObjectLeftOrDied {
+                    last_known_object: self.safe_opaque_object(perspective, last_known.object),
+                    destination: Self::safe_zone_kind(destination.zone),
+                },
+            ),
+            crate::TriggerEventSnapshot::BeginningOfCombat {
+                active_player,
+                turn_number,
+            } => (
+                TriggerEventKindV1::BeginningOfCombat,
+                SafeTriggerSubjectV1::BeginningOfCombat {
+                    active_player: *active_player,
+                    turn_number: *turn_number,
+                },
+            ),
+            crate::TriggerEventSnapshot::AttackDeclared {
+                controller,
+                attackers,
+            } => {
+                let mut safe_attackers = attackers
+                    .iter()
+                    .map(|attacker| {
+                        Some(SafeAttackerFactV1 {
+                            attacker: self.safe_opaque_object(perspective, attacker.object)?,
+                            defending_player: attacker.defending_player,
+                        })
+                    })
+                    .collect::<Option<Vec<_>>>()?;
+                safe_attackers.sort_by_key(|attacker| attacker.attacker);
+                (
+                    TriggerEventKindV1::AttackDeclared,
+                    SafeTriggerSubjectV1::AttackDeclared {
+                        controller: *controller,
+                        attackers: safe_attackers,
+                    },
+                )
+            }
+            crate::TriggerEventSnapshot::CardDrawn { player } => (
+                TriggerEventKindV1::CardDrawn,
+                SafeTriggerSubjectV1::CardDrawn { player: *player },
+            ),
+            crate::TriggerEventSnapshot::CounterChanged {
+                object,
+                kind,
+                before,
+                after,
+            } => (
+                TriggerEventKindV1::CounterChanged,
+                SafeTriggerSubjectV1::CounterChanged {
+                    object: self.safe_opaque_object(perspective, *object),
+                    counter_kind: match kind {
+                        crate::CounterKindV1::PlusOnePlusOne => SafeCounter::PlusOnePlusOne,
+                        crate::CounterKindV1::MinusOneMinusOne => SafeCounter::MinusOneMinusOne,
+                        crate::CounterKindV1::Lore => SafeCounter::Lore,
+                    },
+                    before: *before,
+                    after: *after,
+                },
+            ),
+            crate::TriggerEventSnapshot::DamageApplied {
+                source,
+                recipient,
+                amount,
+                damage_kind,
+            } => (
+                TriggerEventKindV1::DamageApplied,
+                SafeTriggerSubjectV1::DamageApplied {
+                    source_object: source.as_ref().and_then(|source| {
+                        self.safe_opaque_object(perspective, source.snapshot.object)
+                    }),
+                    recipient: match recipient {
+                        crate::DamageRecipient::Object(object) => SafeDamageRecipientV1::Object {
+                            object: self.safe_opaque_object(perspective, *object)?,
+                        },
+                        crate::DamageRecipient::Player(player) => {
+                            SafeDamageRecipientV1::Player { player: *player }
+                        }
+                    },
+                    amount: *amount,
+                    damage_kind: match damage_kind {
+                        crate::DamageKind::Combat => SafeDamageKind::Combat,
+                        crate::DamageKind::Noncombat => SafeDamageKind::Noncombat,
+                    },
+                },
+            ),
+            crate::TriggerEventSnapshot::LifeChanged {
+                player,
+                before,
+                after,
+                cause,
+            } => (
+                TriggerEventKindV1::LifeChanged,
+                SafeTriggerSubjectV1::LifeChanged {
+                    player: *player,
+                    before: *before,
+                    after: *after,
+                    cause: match cause {
+                        crate::LifeChangeCause::Damage => SafeLifeCause::Damage,
+                        crate::LifeChangeCause::NonDamage => SafeLifeCause::NonDamage,
+                    },
+                },
+            ),
+        };
+        Some(SafeTriggerDescriptorV1 {
+            source_object,
+            source_ability,
+            event_kind,
+            subject,
+        })
+    }
+
+    fn safe_zone_kind(zone: mtgml_model::ZoneKind) -> mtgml_decision::SafeZoneKindV1 {
+        match zone {
+            mtgml_model::ZoneKind::Library => mtgml_decision::SafeZoneKindV1::Library,
+            mtgml_model::ZoneKind::Hand => mtgml_decision::SafeZoneKindV1::Hand,
+            mtgml_model::ZoneKind::Battlefield => mtgml_decision::SafeZoneKindV1::Battlefield,
+            mtgml_model::ZoneKind::Graveyard => mtgml_decision::SafeZoneKindV1::Graveyard,
+            mtgml_model::ZoneKind::Exile => mtgml_decision::SafeZoneKindV1::Exile,
+            mtgml_model::ZoneKind::Stack => mtgml_decision::SafeZoneKindV1::Stack,
+            mtgml_model::ZoneKind::Command => mtgml_decision::SafeZoneKindV1::Command,
+            mtgml_model::ZoneKind::Ante => mtgml_decision::SafeZoneKindV1::Ante,
+            mtgml_model::ZoneKind::Outside => mtgml_decision::SafeZoneKindV1::Outside,
         }
     }
 
@@ -1193,10 +1929,14 @@ pub enum EngineStatePartsV3Error {
     TemporaryEffectExpiry,
     #[error("pending decision is invalid for successor state")]
     PendingDecision,
+    #[error("decision response does not match the exact pending V4 request")]
+    PendingDecisionResponse,
     #[error("pending request points to a missing continuation")]
     PendingContinuation,
     #[error("pending request purpose/domain does not match the continuation stage")]
     ContinuationRequestMismatch,
+    #[error("pending decision candidate trusted binding does not match its exact state owner")]
+    PendingCandidateBinding,
     #[error("stack resolution continuation does not name the current resolving item")]
     StackResolution,
     #[error("continuation has an invalid selected cost operand")]

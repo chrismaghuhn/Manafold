@@ -54,6 +54,8 @@ pub enum DecisionValidationError {
     PurposeIntentMismatch,
     #[error("decision visibility is incompatible with the purpose")]
     DecisionVisibilityMismatch,
+    #[error("visible candidate domain is not exactly the immutable profile domain")]
+    CandidateDomainMismatch,
     #[error("trigger event and safe subject tags differ")]
     TriggerSubjectMismatch,
     #[error("a visible source ability requires its visible source object")]

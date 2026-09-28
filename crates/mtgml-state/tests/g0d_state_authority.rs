@@ -599,6 +599,153 @@ fn pending_request_purpose_must_match_mana_staging_stage() {
 }
 
 #[test]
+fn pending_finalize_binding_must_name_its_exact_continuation() {
+    let (mut state, _) = staged_blight_activation();
+    state
+        .execution_v4
+        .pending_decision
+        .as_mut()
+        .unwrap()
+        .candidates[0]
+        .trusted_binding = mtgml_decision::EngineCandidateBindingV4::FinalizeManaProduction {
+        continuation: ContinuationId(99),
+    };
+    assert_eq!(
+        state.validate(),
+        Err(mtgml_state::EngineStatePartsV3Error::PendingCandidateBinding)
+    );
+}
+
+#[test]
+fn mana_source_candidate_rejects_the_tap_reserved_activation_source() {
+    let (mut state, _) = staged_blight_activation();
+    let location = state.predecessor_v5.zones.locations[&GameObjectId(3)].clone();
+    let opaque_object = mtgml_model::OpaqueObjectId(2);
+    let opaque_ability = mtgml_model::OpaqueAbilityId(1);
+    let identity = state
+        .predecessor_v5
+        .perspective_identities
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap();
+    identity
+        .opaque_to_object
+        .insert(opaque_object, GameObjectId(3));
+    identity
+        .object_to_opaque
+        .insert(GameObjectId(3), opaque_object);
+    identity.next_opaque_object_id = mtgml_model::OpaqueObjectId(3);
+    identity
+        .opaque_to_ability
+        .insert(opaque_ability, AbilityInstanceId(1));
+    identity
+        .ability_to_opaque
+        .insert(AbilityInstanceId(1), opaque_ability);
+    identity.next_opaque_ability_id = mtgml_model::OpaqueAbilityId(2);
+    state
+        .predecessor_v5
+        .knowledge
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap()
+        .active
+        .insert(
+            opaque_object,
+            mtgml_state::KnowledgeRecordV2 {
+                opaque_object,
+                physical_card: Some(PhysicalCardId(3)),
+                card_definition: Some(CardDefinitionId(3)),
+                known_location: Some(mtgml_state::KnownLocationFactV2 {
+                    location,
+                    provenance: mtgml_state::KnowledgeAcquisitionReason::InitialConfiguration,
+                }),
+                acquisition: mtgml_state::KnowledgeAcquisitionReason::InitialConfiguration,
+                historical_locations: vec![],
+            },
+        );
+    let output = [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0];
+    let request = state.execution_v4.pending_decision.as_mut().unwrap();
+    request.candidates = vec![mtgml_decision::AuthoritativeCandidateV4 {
+        candidate_id: CandidateIdV1(0),
+        visible_intent: mtgml_decision::CandidateIntentV4::SelectManaSource {
+            source: opaque_object,
+            ability: opaque_ability,
+            produced_buckets: output,
+        },
+        trusted_binding: mtgml_decision::EngineCandidateBindingV4::SelectManaSource {
+            source: GameObjectId(3),
+            ability: AbilityInstanceId(1),
+            ability_key: mtgml_card_ir::AbilityKey(4),
+            semantic_profile_id: CardSemanticProfileId::parse("test/blight@1.0.0").unwrap(),
+            activation_cost: mtgml_decision::ManaSourceActivationCostV1::TapSource,
+            produced_buckets: output,
+        },
+    }];
+    assert_eq!(
+        state.validate(),
+        Err(mtgml_state::EngineStatePartsV3Error::PendingCandidateBinding)
+    );
+}
+
+#[test]
+fn v4_response_returns_only_the_exact_trusted_binding_without_mutation() {
+    let (state, continuation) = staged_blight_activation();
+    let before = state.clone();
+    let request = state.execution_v4.pending_decision.as_ref().unwrap();
+    let response = mtgml_decision::DecisionResponseV3 {
+        schema_version: mtgml_decision::DECISION_RESPONSE_V3_SCHEMA.to_owned(),
+        player_decision_id: request.player_decision_id,
+        view_sequence: request.view_sequence,
+        answer: mtgml_decision::DecisionAnswerV2::SelectOne {
+            candidate_id: CandidateIdV1(0),
+        },
+    };
+    let selected = state.selected_bindings_v4(PlayerId(1), &response).unwrap();
+    assert_eq!(selected.len(), 1);
+    assert!(matches!(
+        selected[0],
+        mtgml_decision::EngineCandidateBindingV4::FinalizeManaProduction {
+            continuation: selected_continuation
+        } if *selected_continuation == continuation
+    ));
+
+    let fabricated = mtgml_decision::DecisionResponseV3 {
+        answer: mtgml_decision::DecisionAnswerV2::SelectOne {
+            candidate_id: CandidateIdV1(99),
+        },
+        ..response.clone()
+    };
+    assert_eq!(
+        state.selected_bindings_v4(PlayerId(1), &fabricated),
+        Err(mtgml_state::EngineStatePartsV3Error::PendingDecisionResponse)
+    );
+    let stale_view = mtgml_decision::DecisionResponseV3 {
+        view_sequence: VisibleSequence(response.view_sequence.0 + 1),
+        ..response
+    };
+    assert_eq!(
+        state.selected_bindings_v4(PlayerId(1), &stale_view),
+        Err(mtgml_state::EngineStatePartsV3Error::PendingDecisionResponse)
+    );
+    assert_eq!(state, before);
+}
+
+#[test]
+fn v4_parent_decision_must_precede_its_child_identity() {
+    let (mut state, _) = staged_blight_activation();
+    state
+        .execution_v4
+        .pending_decision
+        .as_mut()
+        .unwrap()
+        .parent_player_decision_id = Some(PlayerDecisionIdV1(2));
+    assert_eq!(
+        state.validate(),
+        Err(mtgml_state::EngineStatePartsV3Error::PendingCandidateBinding)
+    );
+}
+
+#[test]
 fn trigger_placement_progress_must_follow_apnap_and_completed_prefix() {
     let make_state = |apnap_actors: Vec<PlayerId>, current_actor_index| {
         let mut state = root();
@@ -740,6 +887,21 @@ fn trigger_order_request_is_bound_to_the_current_apnap_group_not_trigger_ids() {
         ],
     });
     state.validate().unwrap();
+
+    let mut rebound = state.clone();
+    rebound
+        .execution_v4
+        .pending_decision
+        .as_mut()
+        .unwrap()
+        .candidates[0]
+        .trusted_binding = mtgml_decision::EngineCandidateBindingV4::SelectTrigger {
+        trigger: mtgml_model::TriggerInstanceId(2),
+    };
+    assert_eq!(
+        rebound.validate(),
+        Err(mtgml_state::EngineStatePartsV3Error::PendingCandidateBinding)
+    );
 }
 
 #[test]

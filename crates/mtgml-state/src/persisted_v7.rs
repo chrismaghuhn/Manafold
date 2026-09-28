@@ -51,9 +51,6 @@ pub struct FullStateDigestInputV7(Value);
 
 impl FullStateDigestInputV7 {
     pub fn from_successor(state: &EngineStatePartsV3) -> Result<Self, crate::StateDigestError> {
-        if state.execution_v4.pending_decision.is_some() {
-            return Err(crate::StateDigestError::StateInvariant);
-        }
         Ok(Self(state_value(state)?))
     }
 
@@ -89,12 +86,6 @@ fn validate_v7_envelope_shape(value: &Value) -> Result<(), crate::StateDigestErr
     validate_unchanged_v6_components(fields)?;
     validate_zones_v2_value(&fields[4])?;
     validate_execution_v4_value(&fields[6])?;
-    // G0e does not yet own exact trusted-binding validation for V4 requests.
-    // Keep them out of digest admission until G0f composes that validator.
-    let execution = array_fields(&fields[6], 6)?;
-    if execution[1] != Value::Null {
-        return Err(crate::StateDigestError::StateInvariant);
-    }
     Ok(())
 }
 

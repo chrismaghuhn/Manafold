@@ -1141,6 +1141,45 @@ impl AuthoritativeDecisionRequestV4 {
             &ids,
         )
     }
+
+    /// Validates the complete public route domain against the exact immutable
+    /// profile facts supplied by the RulesKernel. This is deliberately a
+    /// typed value boundary rather than a callback or text interpreter.
+    pub fn validate_cost_route_domain(
+        &self,
+        exact_profile_routes: &[CostRouteDescriptorV1],
+    ) -> Result<(), DecisionValidationError> {
+        if !matches!(self.purpose, DecisionPurposeV4::CastCostRoute)
+            || !matches!(self.decision_domain_v2, DecisionDomainV2::ChooseOne)
+            || self.visibility != DecisionVisibility::ActingPlayerOnly
+        {
+            return Err(DecisionValidationError::PurposeDomainMismatch);
+        }
+        let visible = self.project_player_request()?;
+        let mut expected = exact_profile_routes.to_vec();
+        for descriptor in &expected {
+            descriptor.validate()?;
+        }
+        expected.sort_by_key(CostRouteDescriptorV1::ordering_key);
+        if expected
+            .windows(2)
+            .any(|pair| pair[0].ordering_key() >= pair[1].ordering_key())
+        {
+            return Err(DecisionValidationError::NoncanonicalCandidateOrder);
+        }
+        let actual = visible
+            .candidates
+            .iter()
+            .map(|candidate| match &candidate.intent {
+                CandidateIntentV4::SelectCostRoute { descriptor } => Ok(*descriptor),
+                _ => Err(DecisionValidationError::PurposeIntentMismatch),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        if actual != expected {
+            return Err(DecisionValidationError::CandidateDomainMismatch);
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1544,6 +1583,39 @@ mod tests {
                 },
             ]),
             Err(DecisionValidationError::NoncanonicalCandidateOrder)
+        );
+
+        let request = AuthoritativeDecisionRequestV4 {
+            decision_id: DecisionId(2),
+            player_decision_id: PlayerDecisionIdV1(3),
+            state_revision: StateRevision(4),
+            view_sequence: VisibleSequence(5),
+            actor: PlayerId(1),
+            visibility: DecisionVisibility::ActingPlayerOnly,
+            decision_domain_v2: DecisionDomainV2::ChooseOne,
+            purpose: DecisionPurposeV4::CastCostRoute,
+            parent_player_decision_id: None,
+            continuation_id: Some(ContinuationId(1)),
+            candidates: vec![AuthoritativeCandidateV4 {
+                candidate_id: CandidateIdV1(0),
+                visible_intent: CandidateIntentV4::SelectCostRoute { descriptor },
+                trusted_binding: EngineCandidateBindingV4::SelectCostRoute {
+                    route: CostRouteV1::Alternative { route_id: 4 },
+                },
+            }],
+        };
+        assert_eq!(request.validate_cost_route_domain(&[descriptor]), Ok(()));
+        let wrong_profile_route = CostRouteDescriptorV1 {
+            printed_mana_symbols: PrintedManaSymbolsV1 {
+                colored_wubrg_counts: [0, 0, 0, 0, 1],
+                colorless_count: 0,
+                generic_count: 3,
+            },
+            ..descriptor
+        };
+        assert_eq!(
+            request.validate_cost_route_domain(&[wrong_profile_route]),
+            Err(DecisionValidationError::CandidateDomainMismatch)
         );
     }
 
