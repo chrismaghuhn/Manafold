@@ -144,6 +144,7 @@ impl BasicLandEnvironmentRuntimeV8 {
             &manifest,
             &manifest.randomness.root_seed_hex,
         )?;
+        verify_manifest_player_set(&manifest, &checkpoint.state)?;
         let replay = ReplayRecorderV8::new(manifest)?;
         self.state = checkpoint.state.clone();
         self.status = checkpoint.status.clone();
@@ -608,6 +609,10 @@ mod tests {
     }
 
     fn state_with_two_lands_v2() -> EngineStatePartsV2 {
+        state_with_players_v2([PlayerId(1), PlayerId(2)])
+    }
+
+    fn state_with_players_v2(players: [PlayerId; 2]) -> EngineStatePartsV2 {
         let manifest = decode_content_manifest_v1(CONTENT).unwrap();
         let mountain = manifest
             .definitions
@@ -638,7 +643,7 @@ mod tests {
         };
         let mut engine =
             mtgml_state::construct_synthetic_engine_state(mtgml_state::SyntheticResetInputs {
-                players: [PlayerId(1), PlayerId(2)],
+                players,
                 root_seed: mtgml_random::RootSeed256([0x38; 32]),
                 setup,
             })
@@ -721,6 +726,11 @@ mod tests {
 
     fn state_with_two_lands() -> EngineStatePartsV3 {
         let v2 = state_with_two_lands_v2();
+        EngineStatePartsV3::new(v2.predecessor_v5, Default::default(), v2.card_rules_state).unwrap()
+    }
+
+    fn state_with_players(players: [PlayerId; 2]) -> EngineStatePartsV3 {
+        let v2 = state_with_players_v2(players);
         EngineStatePartsV3::new(v2.predecessor_v5, Default::default(), v2.card_rules_state).unwrap()
     }
 
@@ -2015,6 +2025,75 @@ mod tests {
                 crate::ReplayExecutionError::ManifestMismatch
             ))
         ));
+    }
+
+    #[test]
+    fn restore_rejects_checkpoint_with_different_player_set_without_mutation() {
+        let admission = admission();
+        let status = EpisodeStatus::Running;
+        let mut initial_state = state_with_two_lands();
+        mtgml_rules::install_basic_land_request_v4(
+            &admission,
+            &mut initial_state,
+            PlayerId(1),
+            &status,
+        )
+        .unwrap();
+        let initial_checkpoint = EnvironmentCheckpointV8::new_for_basic_land_profile(
+            &admission,
+            initial_state.clone(),
+            status.clone(),
+            EnvironmentLimitCounters::default(),
+            admission.execution_identity().clone(),
+        )
+        .unwrap();
+        let mut runtime = BasicLandEnvironmentRuntimeV8::new(
+            admission.clone(),
+            initial_state,
+            status.clone(),
+            EnvironmentLimitCounters::default(),
+            v8_manifest(&admission, &initial_checkpoint),
+        )
+        .unwrap();
+
+        let mut replacement_state = state_with_players([PlayerId(1), PlayerId(3)]);
+        mtgml_rules::install_basic_land_request_v4(
+            &admission,
+            &mut replacement_state,
+            PlayerId(1),
+            &status,
+        )
+        .unwrap();
+        let replacement_checkpoint = EnvironmentCheckpointV8::new_for_basic_land_profile(
+            &admission,
+            replacement_state,
+            status,
+            EnvironmentLimitCounters::default(),
+            admission.execution_identity().clone(),
+        )
+        .unwrap();
+        assert_eq!(
+            replacement_checkpoint
+                .state
+                .predecessor_v5
+                .core
+                .players
+                .keys()
+                .copied()
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from([PlayerId(1), PlayerId(3)])
+        );
+
+        let before_checkpoint = runtime.checkpoint().unwrap();
+        let before_replay = runtime.export_replay().unwrap();
+        assert!(matches!(
+            runtime.restore(replacement_checkpoint),
+            Err(crate::ControllerError::ReplayExecution(
+                crate::ReplayExecutionError::ManifestMismatch
+            ))
+        ));
+        assert_eq!(runtime.checkpoint().unwrap(), before_checkpoint);
+        assert_eq!(runtime.export_replay().unwrap(), before_replay);
     }
 
     #[test]
