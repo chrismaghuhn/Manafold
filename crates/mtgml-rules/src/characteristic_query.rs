@@ -169,6 +169,9 @@ impl<'a> S1QueryAuthority<'a> {
     }
 }
 
+// Pure and profile-independent: callers provide one face already obtained
+// from their verified content authority. Executable-profile admission stays
+// outside this mapper, so later admitted profiles reuse the same semantics.
 fn derive_base_characteristics(
     queried: QueriedObjectV1,
     face: &BaseCharacteristicsV1,
@@ -460,7 +463,7 @@ mod s1_b_detached_tests {
         definition: CardDefinitionId,
         face_key: u32,
     ) -> (EngineStatePartsV3, GameObjectId) {
-        let state_v2 = crate::basic_land::tests::state_with_two_lands();
+        let state_v2 = crate::basic_land::s1_b_state_with_two_lands_fixture();
         let mut state = EngineStatePartsV3::new(
             state_v2.predecessor_v5,
             Default::default(),

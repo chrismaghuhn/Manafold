@@ -1417,7 +1417,12 @@ pub fn selected_successor_decision(
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+pub(crate) fn s1_b_state_with_two_lands_fixture() -> EngineStatePartsV2 {
+    tests::state_with_two_lands()
+}
+
+#[cfg(test)]
+mod tests {
     use super::*;
     use mtgml_card_ir::{
         admit_executable_profile_v1, decode_content_manifest_v1, ExecutableProfileAdmissionV1,
@@ -1482,7 +1487,7 @@ pub(crate) mod tests {
             .unwrap()
     }
 
-    pub(crate) fn state_with_two_lands() -> EngineStatePartsV2 {
+    pub(super) fn state_with_two_lands() -> EngineStatePartsV2 {
         let admission = admission();
         let manifest = decode_content_manifest_v1(MANIFEST).unwrap();
         let mountain = manifest
