@@ -598,6 +598,27 @@ mod tests {
     }
 
     #[test]
+    fn replay_v8_wire_fixtures_reject_steps_after_terminal_and_truncated() {
+        for fixture in [
+            include_str!("../../../wire/negative/authoritative-replay-v8-step-after-terminal.json"),
+            include_str!(
+                "../../../wire/negative/authoritative-replay-v8-step-after-truncated.json"
+            ),
+        ] {
+            let mut replay: AuthoritativeReplayV8 = serde_json::from_str(fixture).unwrap();
+            assert_eq!(
+                replay.validate(),
+                Err(ReplayValidationError::TransitionAfterEpisodeClosed)
+            );
+
+            // A replay whose final accepted step closes the episode remains
+            // valid; only a subsequent step is forbidden.
+            replay.steps.pop();
+            replay.validate().unwrap();
+        }
+    }
+
+    #[test]
     fn replay_v8_identity_rejects_wrong_checkpoint_digest() {
         let mut manifest = manifest();
         manifest.initial_identity.checkpoint_digest =

@@ -401,6 +401,8 @@ class AuthoritativeReplayV8:
         players = {deck.player for deck in self.manifest.decks}
         previous = initial
         for index, step in enumerate(self.steps):
+            if previous.episode_status.kind != "running":
+                raise WireError("semantic.replay", "transition follows a closed episode")
             step.validated()
             if (
                 step.step_index != index

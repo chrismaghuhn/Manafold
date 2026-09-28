@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import unittest
 from pathlib import Path
@@ -44,6 +45,24 @@ class G0HReplayV8Tests(unittest.TestCase):
         fixture["manifest"]["initial_identity"]["checkpoint_digest"] = "0" * 64
         with self.assertRaises(WireError):
             AuthoritativeReplayV8.from_wire(fixture)
+
+    def test_replay_v8_rejects_steps_after_terminal_and_truncated_but_keeps_closed_files(
+        self,
+    ) -> None:
+        for kind in ("terminal", "truncated"):
+            path = ROOT / "wire" / "negative" / f"authoritative-replay-v8-step-after-{kind}.json"
+            fixture = json.loads(path.read_text(encoding="utf-8"))
+            with (
+                self.subTest(kind=kind, case="transition-after-closed"),
+                self.assertRaises(WireError),
+            ):
+                AuthoritativeReplayV8.from_wire(fixture)
+
+            terminal_final = copy.deepcopy(fixture)
+            terminal_final["steps"] = terminal_final["steps"][:1]
+            with self.subTest(kind=kind, case="closed-final-step"):
+                replay = AuthoritativeReplayV8.from_wire(terminal_final)
+                self.assertEqual(replay.final_identity.episode_status.kind, kind)
 
 
 if __name__ == "__main__":

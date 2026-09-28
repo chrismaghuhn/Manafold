@@ -361,7 +361,24 @@ fn project_successor_events_v4_inner(
         let after_identity = identities
             .get_mut(&lifecycle.perspective)
             .ok_or(SuccessorProjectionError::UnknownPerspective)?;
+        let allocated_opaque = match &lifecycle.mutation.identity {
+            mtgml_state::IdentityMutationV1::Allocate { opaque, .. } => {
+                if *opaque != after_identity.next_opaque_object_id {
+                    return Err(SuccessorProjectionError::ObservationOccurrenceMismatch);
+                }
+                Some(*opaque)
+            }
+            _ => None,
+        };
         mtgml_state::advance_identity_record(after_identity, &lifecycle.mutation.identity);
+        if let Some(opaque) = allocated_opaque {
+            after_identity.next_opaque_object_id = mtgml_model::OpaqueObjectId(
+                opaque
+                    .0
+                    .checked_add(1)
+                    .ok_or(SuccessorProjectionError::CursorMismatch)?,
+            );
+        }
 
         let observation = if let Some(source_event_id) = source_event_id {
             let source_index = events
@@ -470,7 +487,7 @@ fn requires_all_player_audience(
     }
 }
 
-fn public_face_up_battlefield_object(
+pub(crate) fn public_face_up_battlefield_object(
     object: mtgml_model::GameObjectId,
     before: &EngineStatePartsV3,
     after: &EngineStatePartsV3,
@@ -516,7 +533,13 @@ fn project_v4_public_source_event(
                     to_zone: transition.to.zone,
                     old_object: transition.old_object,
                     new_object: transition.new_object,
-                    reveals_old: true,
+                    // Preserve the V7 Basic-Land projection rule: an old
+                    // incarnation is visible only when this perspective had
+                    // an opaque identity for it before the move. A newly
+                    // public incarnation is allocated separately below.
+                    reveals_old: before_identity
+                        .object_to_opaque
+                        .contains_key(&transition.old_object),
                     reveals_new: true,
                 };
                 project_v4_legacy_observation_policy(
@@ -668,7 +691,8 @@ fn project_v4_public_source_event(
         Event::TemporaryEffectCreated { effect } => {
             Ok(ObservedEventKindV4::TemporaryEffectCreated {
                 effect: crate::player_projection::project_public_temporary_effect_v1(
-                    after_identity,
+                    after,
+                    perspective,
                     effect,
                 )
                 .map_err(|_| SuccessorProjectionError::MissingOpaqueIdentity)?,
@@ -677,7 +701,8 @@ fn project_v4_public_source_event(
         Event::TemporaryEffectExpired { effect } => {
             Ok(ObservedEventKindV4::TemporaryEffectExpired {
                 effect: crate::player_projection::project_public_temporary_effect_v1(
-                    before_identity,
+                    before,
+                    perspective,
                     effect,
                 )
                 .map_err(|_| SuccessorProjectionError::MissingOpaqueIdentity)?,

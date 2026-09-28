@@ -679,6 +679,18 @@
       "path": "authoritative-replay-v8-program-authority-mismatch.json"
     },
     {
+      "contract": "authoritative-replay.v8",
+      "expected_error_code": "semantic.replay",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "authoritative-replay-v8-step-after-terminal.json"
+    },
+    {
+      "contract": "authoritative-replay.v8",
+      "expected_error_code": "semantic.replay",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "authoritative-replay-v8-step-after-truncated.json"
+    },
+    {
       "contract": "player-decision-request.v4",
       "expected_error_code": "semantic.decision",
       "expected_reject_layer": "rust-python-semantic-or-decode",

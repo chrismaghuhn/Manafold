@@ -699,6 +699,20 @@ mod tests {
         EngineStatePartsV3::new(v2.predecessor_v5, Default::default(), v2.card_rules_state).unwrap()
     }
 
+    fn temporary_haste_effect(
+        object: mtgml_model::GameObjectId,
+    ) -> mtgml_state::TemporaryEffectRecord {
+        mtgml_state::TemporaryEffectRecord {
+            id: mtgml_model::EffectInstanceId(1),
+            affected_objects: vec![object],
+            operation: mtgml_state::TemporaryOperation::GrantKeyword {
+                keyword: mtgml_state::TemporaryKeyword::Haste,
+            },
+            expiry: mtgml_state::EffectExpiry::UntilEndOfTurn { turn_number: 1 },
+            timestamp: None,
+        }
+    }
+
     fn add_object(
         state: &mut mtgml_state::EngineState,
         definition: CardDefinitionId,
@@ -918,6 +932,68 @@ mod tests {
         assert!(!rejected_output.accepted);
         assert_eq!(rejected_output.checkpoint, before_reject);
         assert_eq!(restored.export_replay().unwrap().steps.len(), 1);
+    }
+
+    #[test]
+    fn temporary_effect_projection_requires_public_information_not_opaque_mapping_alone() {
+        let state = state_with_two_lands();
+        let target = *state
+            .predecessor_v5
+            .zones
+            .locations
+            .iter()
+            .find(|(_, location)| location.zone == mtgml_model::ZoneKind::Battlefield)
+            .map(|(object, _)| object)
+            .unwrap();
+        let effect = temporary_haste_effect(target);
+        let public_projection = crate::player_projection::project_public_temporary_effect_v1(
+            &state,
+            PlayerId(1),
+            &effect,
+        )
+        .unwrap();
+        assert_eq!(public_projection.affected_objects.len(), 1);
+
+        let mut mapped_without_knowledge = state.clone();
+        let opaque = mapped_without_knowledge
+            .predecessor_v5
+            .perspective_identities
+            .players[&PlayerId(1)]
+            .object_to_opaque[&target];
+        mapped_without_knowledge
+            .predecessor_v5
+            .knowledge
+            .players
+            .get_mut(&PlayerId(1))
+            .unwrap()
+            .active
+            .remove(&opaque);
+        let mapped_result = crate::player_projection::project_public_temporary_effect_v1(
+            &mapped_without_knowledge,
+            PlayerId(1),
+            &effect,
+        );
+
+        let mut unmapped_without_knowledge = mapped_without_knowledge.clone();
+        let identity = unmapped_without_knowledge
+            .predecessor_v5
+            .perspective_identities
+            .players
+            .get_mut(&PlayerId(1))
+            .unwrap();
+        identity.object_to_opaque.remove(&target);
+        identity.opaque_to_object.remove(&opaque);
+        let unmapped_result = crate::player_projection::project_public_temporary_effect_v1(
+            &unmapped_without_knowledge,
+            PlayerId(1),
+            &effect,
+        );
+
+        assert_eq!(
+            mapped_result,
+            Err(crate::PlayerEndpointError::ServiceUnavailable)
+        );
+        assert_eq!(unmapped_result, mapped_result);
     }
 
     #[test]
@@ -1516,6 +1592,268 @@ mod tests {
         assert_eq!(v7.export_replay().unwrap(), old_replay_before);
         assert_eq!(v8.export_replay().unwrap(), new_replay_before);
         let _ = v7_checkpoint;
+    }
+
+    #[test]
+    fn v7_v8_play_land_preserves_perspective_specific_old_identity_reveal() {
+        for previously_known in [true, false] {
+            let admission = admission();
+            let status = EpisodeStatus::Running;
+            let mut v2_before = state_with_two_lands_v2();
+            let kernel =
+                mtgml_rules::ProgramKernelV1::for_executable_profile(admission.clone()).unwrap();
+            kernel
+                .install_successor_request(&mut v2_before, PlayerId(1), &status)
+                .unwrap();
+            let play_object = v2_before
+                .execution_v3
+                .pending_decision
+                .as_ref()
+                .unwrap()
+                .candidates
+                .iter()
+                .find_map(|candidate| match candidate.trusted_binding {
+                    mtgml_decision::EngineCandidateBindingV3::PlayLand { object } => Some(object),
+                    _ => None,
+                })
+                .unwrap();
+            let mountain_id = decode_content_manifest_v1(CONTENT)
+                .unwrap()
+                .definitions
+                .into_iter()
+                .find(|definition| {
+                    matches!(definition.semantic_binding,
+                        CardSemanticBindingV1::ProfiledV1 { body, .. }
+                            if body.subtype == mtgml_card_ir::BasicLandSubtypeV1::Mountain)
+                })
+                .unwrap()
+                .card_definition_id;
+            assert_eq!(
+                v2_before.predecessor_v5.zones.objects[&play_object].card_definition, mountain_id,
+                "the parity witness must be P0's playable Mountain in hand"
+            );
+
+            // Player 2 is the opponent of the hand owner. In the unknown-old
+            // world, remove only its old-incarnation identity/knowledge; the
+            // rule transition must allocate a new public identity on entry.
+            let opponent_identity = v2_before
+                .predecessor_v5
+                .perspective_identities
+                .players
+                .get_mut(&PlayerId(2))
+                .unwrap();
+            if !previously_known {
+                let opaque = opponent_identity
+                    .object_to_opaque
+                    .remove(&play_object)
+                    .expect("the fixture initially tracks this hand incarnation");
+                opponent_identity.opaque_to_object.remove(&opaque);
+                v2_before
+                    .predecessor_v5
+                    .knowledge
+                    .players
+                    .get_mut(&PlayerId(2))
+                    .unwrap()
+                    .active
+                    .remove(&opaque);
+            }
+            assert_eq!(
+                opponent_identity
+                    .object_to_opaque
+                    .contains_key(&play_object),
+                previously_known
+            );
+            v2_before.execution_v3.pending_decision = None;
+            v2_before.validate().unwrap();
+
+            let mut v7_state = v2_before.clone();
+            kernel
+                .install_successor_request(&mut v7_state, PlayerId(1), &status)
+                .unwrap();
+            let v7_checkpoint = crate::EnvironmentCheckpointV7::new(
+                v7_state.clone(),
+                status.clone(),
+                EnvironmentLimitCounters::default(),
+                admission.execution_identity().clone(),
+            )
+            .unwrap();
+            let mut v7 = crate::SuccessorEnvironmentRuntime::new(
+                admission.clone(),
+                v7_state.clone(),
+                status.clone(),
+                EnvironmentLimitCounters::default(),
+                v7_manifest(&admission, &v7_checkpoint),
+            )
+            .unwrap();
+
+            let mut v8_state = EngineStatePartsV3::new(
+                v2_before.predecessor_v5.clone(),
+                Default::default(),
+                v2_before.card_rules_state.clone(),
+            )
+            .unwrap();
+            mtgml_rules::install_basic_land_request_v4(
+                &admission,
+                &mut v8_state,
+                PlayerId(1),
+                &status,
+            )
+            .unwrap();
+            let v8_checkpoint = EnvironmentCheckpointV8::new_for_basic_land_profile(
+                &admission,
+                v8_state.clone(),
+                status.clone(),
+                EnvironmentLimitCounters::default(),
+                admission.execution_identity().clone(),
+            )
+            .unwrap();
+            let mut v8 = BasicLandEnvironmentRuntimeV8::new(
+                admission.clone(),
+                v8_state,
+                status.clone(),
+                EnvironmentLimitCounters::default(),
+                v8_manifest(&admission, &v8_checkpoint),
+            )
+            .unwrap();
+
+            let v7_request = v7.visible_decision(PlayerId(1)).unwrap().unwrap();
+            let v8_request = v8.visible_decision(PlayerId(1)).unwrap().unwrap();
+            let selected_candidate = v7_request
+                .candidates
+                .iter()
+                .find(|candidate| {
+                    matches!(
+                        candidate.intent,
+                        mtgml_decision::CandidateIntentV3::PlayLand { .. }
+                    )
+                })
+                .unwrap()
+                .candidate_id;
+            assert_eq!(
+                v8_request
+                    .candidates
+                    .iter()
+                    .find(|candidate| {
+                        matches!(
+                            candidate.intent,
+                            mtgml_decision::CandidateIntentV4::PlayLand { .. }
+                        )
+                    })
+                    .unwrap()
+                    .candidate_id,
+                selected_candidate
+            );
+            let v7_response = mtgml_decision::DecisionResponseV2 {
+                schema_version: mtgml_decision::DECISION_RESPONSE_V2_SCHEMA.to_owned(),
+                player_decision_id: v7_request.player_decision_id,
+                state_revision: v7_request.state_revision,
+                answer: mtgml_decision::DecisionAnswerV2::SelectOne {
+                    candidate_id: selected_candidate,
+                },
+            };
+            let v8_response = DecisionResponseV3 {
+                schema_version: mtgml_decision::DECISION_RESPONSE_V3_SCHEMA.to_owned(),
+                player_decision_id: v8_request.player_decision_id,
+                view_sequence: v8_request.view_sequence,
+                answer: v7_response.answer.clone(),
+            };
+
+            let v7_before_reject = v7.checkpoint().unwrap();
+            let v8_before_reject = v8.checkpoint().unwrap();
+            let v7_replay_before_reject = v7.export_replay().unwrap();
+            let v8_replay_before_reject = v8.export_replay().unwrap();
+            let mut stale_v7 = v7_response.clone();
+            stale_v7.state_revision.0 += 1;
+            let mut stale_v8 = v8_response.clone();
+            stale_v8.view_sequence.0 += 1;
+            assert!(
+                !v7.submit(PlayerId(1), stale_v7)
+                    .unwrap()
+                    .transition
+                    .accepted
+            );
+            assert!(!v8.submit(PlayerId(1), stale_v8).unwrap().accepted);
+            assert_eq!(v7.checkpoint().unwrap(), v7_before_reject);
+            assert_eq!(v8.checkpoint().unwrap(), v8_before_reject);
+            assert_eq!(v7.export_replay().unwrap(), v7_replay_before_reject);
+            assert_eq!(v8.export_replay().unwrap(), v8_replay_before_reject);
+
+            let mut v7_fork = v7.fork().unwrap();
+            let mut v8_fork = v8.fork().unwrap();
+            let mut v7_restored = crate::SuccessorEnvironmentRuntime::new(
+                admission.clone(),
+                v7_checkpoint.state.clone(),
+                v7_checkpoint.status.clone(),
+                v7_checkpoint.limit_counters.clone(),
+                v7_manifest(&admission, &v7_checkpoint),
+            )
+            .unwrap();
+            v7_restored.restore(v7_checkpoint.clone()).unwrap();
+            let mut v8_restored = BasicLandEnvironmentRuntimeV8::new(
+                admission.clone(),
+                v8_checkpoint.state.clone(),
+                v8_checkpoint.status.clone(),
+                v8_checkpoint.limit_counters.clone(),
+                v8_manifest(&admission, &v8_checkpoint),
+            )
+            .unwrap();
+            v8_restored.restore(v8_checkpoint.clone()).unwrap();
+
+            let v7_direct = v7.submit(PlayerId(1), v7_response.clone()).unwrap();
+            let v8_direct = v8.submit(PlayerId(1), v8_response.clone()).unwrap();
+            let v7_forked = v7_fork.submit(PlayerId(1), v7_response.clone()).unwrap();
+            let v8_forked = v8_fork.submit(PlayerId(1), v8_response.clone()).unwrap();
+            let v7_resumed = v7_restored
+                .submit(PlayerId(1), v7_response.clone())
+                .unwrap();
+            let v8_resumed = v8_restored
+                .submit(PlayerId(1), v8_response.clone())
+                .unwrap();
+            assert!(v7_direct.transition.accepted && v8_direct.accepted);
+            assert_eq!(v7_direct, v7_forked);
+            assert_eq!(v8_direct, v8_forked);
+            assert_eq!(v7_direct, v7_resumed);
+            assert_eq!(v8_direct, v8_resumed);
+
+            for perspective in [PlayerId(1), PlayerId(2)] {
+                let old_event = v7_direct.player_steps[&perspective]
+                    .observed_events
+                    .iter()
+                    .find_map(|event| match &event.event {
+                        mtgml_observation::ObservedEventKindV3::ObjectMoved {
+                            old_object,
+                            new_object,
+                            ..
+                        } => Some((*old_object, *new_object)),
+                        _ => None,
+                    })
+                    .unwrap();
+                let new_event = v8_direct.player_steps[&perspective]
+                    .observed_events
+                    .iter()
+                    .find_map(|event| match &event.event {
+                        mtgml_observation::ObservedEventKindV4::ObjectMoved {
+                            old_object,
+                            new_object,
+                            ..
+                        } => Some((*old_object, *new_object)),
+                        _ => None,
+                    })
+                    .unwrap();
+                assert_eq!(old_event, new_event);
+                if perspective == PlayerId(2) && !previously_known {
+                    assert_eq!(new_event.0, None);
+                }
+                assert!(new_event.1.is_some());
+            }
+
+            let v7_replayed = v7.execute_replay(v7.export_replay().unwrap()).unwrap();
+            let v8_replayed = v8.execute_replay(v8.export_replay().unwrap()).unwrap();
+            assert_eq!(v7_replayed.final_checkpoint, v7.checkpoint().unwrap());
+            assert_eq!(v8_replayed.final_checkpoint, v8.checkpoint().unwrap());
+            assert_eq!(v7_replayed.transitions, vec![v7_direct]);
+            assert_eq!(v8_replayed.transitions, vec![v8_direct]);
+        }
     }
 
     #[test]
