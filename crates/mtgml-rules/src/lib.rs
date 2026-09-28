@@ -3,6 +3,7 @@
 mod basic_land;
 mod basic_land_v4;
 mod basic_priority;
+mod characteristic_query;
 mod combat_damage;
 mod contract;
 mod decision_stage;
@@ -39,6 +40,7 @@ pub use basic_land_v4::{
     selected_basic_land_action_v4, validate_basic_land_pending_request_v4,
     BasicLandTransitionProductV4,
 };
+pub(crate) use characteristic_query::{S1QueryAuthority, S1QueryError};
 pub use contract::validate_transition_contract;
 pub use errors::{KernelExecutionError, ZoneIncarnationError};
 pub use events::{

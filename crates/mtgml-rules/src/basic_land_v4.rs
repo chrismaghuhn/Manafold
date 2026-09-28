@@ -9,7 +9,9 @@ use mtgml_decision::{
     DecisionAnswerV2, DecisionDomainV2, DecisionPurposeV4, DecisionResponseV3, DecisionVisibility,
     EngineCandidateBindingV3, EngineCandidateBindingV4,
 };
-use mtgml_model::{DecisionId, EpisodeStatus, PlayerDecisionIdV1, PlayerId, RuleEventId};
+use mtgml_model::{
+    DecisionId, EpisodeStatus, ExecutionProgramV1, PlayerDecisionIdV1, PlayerId, RuleEventId,
+};
 use mtgml_state::{
     EngineStatePartsV2, EngineStatePartsV3, ExecutionStateV3, SemanticDeltaOperationV2,
     SemanticDeltaOperationV3, StateDeltaV3,
@@ -72,6 +74,30 @@ pub fn derive_basic_land_candidates_v4(
         actor,
         status,
     )?;
+    for candidate in &candidates {
+        let object = match &candidate.trusted_binding {
+            EngineCandidateBindingV3::PlayLand { object } => Some(*object),
+            EngineCandidateBindingV3::ActivateAbility { ability } => Some(
+                state
+                    .card_rules_state
+                    .abilities
+                    .by_instance
+                    .get(ability)
+                    .ok_or(BasicLandCandidateError::InvalidState)?
+                    .source,
+            ),
+            _ => None,
+        };
+        if let Some(object) = object {
+            let authority = crate::S1QueryAuthority::for_object(admission, state, object)
+                .map_err(map_s1_query_error)?;
+            if authority.queried_object().object != object
+                || authority.execution_identity().program_kind != ExecutionProgramV1::MagicRules
+            {
+                return Err(BasicLandCandidateError::WrongExecutionIdentity);
+            }
+        }
+    }
     candidates
         .into_iter()
         .map(|candidate| {
@@ -100,6 +126,26 @@ pub fn derive_basic_land_candidates_v4(
             })
         })
         .collect()
+}
+
+fn map_s1_query_error(error: crate::S1QueryError) -> BasicLandCandidateError {
+    match error {
+        crate::S1QueryError::MissingCardDefinition(_)
+        | crate::S1QueryError::ContentContractMismatch
+        | crate::S1QueryError::ProfileNotAdmitted
+        | crate::S1QueryError::UnknownFace { .. }
+        | crate::S1QueryError::FaceStateMissing(_) => BasicLandCandidateError::InvalidDefinition,
+        crate::S1QueryError::UnknownObject(_)
+        | crate::S1QueryError::StaleObjectIncarnation(_)
+        | crate::S1QueryError::MissingZoneLocation(_)
+        | crate::S1QueryError::FaceDownCharacteristicsUnsupported(_)
+        | crate::S1QueryError::UnsupportedCharacteristic(_)
+        | crate::S1QueryError::UnsupportedContributor(_)
+        | crate::S1QueryError::InvalidAttachmentReference(_)
+        | crate::S1QueryError::InvalidCounterState(_)
+        | crate::S1QueryError::InconsistentState(_)
+        | crate::S1QueryError::ArithmeticOverflow => BasicLandCandidateError::InvalidState,
+    }
 }
 
 pub fn validate_basic_land_pending_request_v4(
