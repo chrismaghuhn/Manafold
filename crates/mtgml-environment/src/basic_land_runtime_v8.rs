@@ -119,7 +119,9 @@ impl BasicLandEnvironmentRuntimeV8 {
     }
 
     /// Validates a checkpoint and its RulesKernel request domain before any
-    /// environment field is replaced. A restore starts a new V8 replay segment.
+    /// environment field is replaced. A restore starts a new V8 replay segment:
+    /// checkpoint-derived RNG and initial-state identities are rebound, while
+    /// the runtime's episode and execution provenance remains unchanged.
     pub fn restore(&mut self, checkpoint: EnvironmentCheckpointV8) -> Result<(), ControllerError> {
         checkpoint.restore_with_verified_contracts_for_basic_land_profile(
             &self.admission,
@@ -129,7 +131,18 @@ impl BasicLandEnvironmentRuntimeV8 {
         )?;
         let mut manifest = self.replay.manifest().clone();
         manifest.initial_identity = identity(&checkpoint);
+        manifest.randomness.root_seed_hex = checkpoint
+            .state
+            .predecessor_v5
+            .random
+            .root_seed
+            .to_lower_hex();
         manifest.validate()?;
+        verify_manifest_admission(
+            &self.admission,
+            &manifest,
+            &manifest.randomness.root_seed_hex,
+        )?;
         let replay = ReplayRecorderV8::new(manifest)?;
         self.state = checkpoint.state.clone();
         self.status = checkpoint.status.clone();
@@ -968,6 +981,87 @@ mod tests {
         replay.manifest.randomness.root_seed_hex = "00".repeat(32);
         assert!(replay.validate().is_ok());
         assert!(runtime.execute_replay(replay).is_err());
+    }
+
+    #[test]
+    fn restore_rebinds_empty_replay_segment_to_checkpoint_rng_provenance() {
+        let admission = admission();
+        let mut state_a = state_with_two_lands();
+        mtgml_rules::install_basic_land_request_v4(
+            &admission,
+            &mut state_a,
+            PlayerId(1),
+            &EpisodeStatus::Running,
+        )
+        .unwrap();
+        let checkpoint_a = EnvironmentCheckpointV8::new_for_basic_land_profile(
+            &admission,
+            state_a.clone(),
+            EpisodeStatus::Running,
+            EnvironmentLimitCounters::default(),
+            admission.execution_identity().clone(),
+        )
+        .unwrap();
+        let manifest_a = v8_manifest(&admission, &checkpoint_a);
+        let mut runtime = BasicLandEnvironmentRuntimeV8::new(
+            admission.clone(),
+            state_a,
+            EpisodeStatus::Running,
+            EnvironmentLimitCounters::default(),
+            manifest_a.clone(),
+        )
+        .unwrap();
+
+        let mut state_b = state_with_two_lands();
+        mtgml_rules::install_basic_land_request_v4(
+            &admission,
+            &mut state_b,
+            PlayerId(1),
+            &EpisodeStatus::Running,
+        )
+        .unwrap();
+        state_b.predecessor_v5.random.root_seed = mtgml_random::RootSeed256([0x42; 32]);
+        let checkpoint_b = EnvironmentCheckpointV8::new_for_basic_land_profile(
+            &admission,
+            state_b,
+            EpisodeStatus::Running,
+            EnvironmentLimitCounters::default(),
+            admission.execution_identity().clone(),
+        )
+        .unwrap();
+
+        let checkpoint_before_rejected_restore = runtime.checkpoint().unwrap();
+        let replay_before_rejected_restore = runtime.export_replay().unwrap();
+        let mut invalid_checkpoint_b = checkpoint_b.clone();
+        invalid_checkpoint_b.schema_version = "environment-checkpoint.invalid".to_owned();
+        assert!(runtime.restore(invalid_checkpoint_b).is_err());
+        assert_eq!(
+            runtime.checkpoint().unwrap(),
+            checkpoint_before_rejected_restore
+        );
+        assert_eq!(
+            runtime.export_replay().unwrap(),
+            replay_before_rejected_restore
+        );
+
+        runtime.restore(checkpoint_b.clone()).unwrap();
+
+        assert_eq!(runtime.checkpoint().unwrap(), checkpoint_b);
+        let mut expected_manifest = manifest_a;
+        expected_manifest.randomness.root_seed_hex = "42".repeat(32);
+        expected_manifest.initial_identity = identity(&checkpoint_b);
+        assert_eq!(runtime.replay_manifest(), &expected_manifest);
+
+        let empty_segment = runtime.export_replay().unwrap();
+        assert!(empty_segment.steps.is_empty());
+        assert_eq!(
+            empty_segment.manifest.randomness.root_seed_hex,
+            "42".repeat(32)
+        );
+        let replayed = runtime.execute_replay(empty_segment).unwrap();
+        assert_eq!(replayed.initial_checkpoint, checkpoint_b);
+        assert_eq!(replayed.final_checkpoint, checkpoint_b);
+        assert!(replayed.transitions.is_empty());
     }
 
     #[test]
