@@ -6,12 +6,14 @@ from collections.abc import Callable
 from typing import TypeVar
 
 from ._events_v3 import ObservedEventEnvelopeV3
+from ._events_v4 import ObservedEventEnvelopeV4
 from ._magic_basic_land_observation_v1 import MagicBasicLandObservationV1
 from ._magic_combat_observation import MagicObservationV2
 from ._magic_combat_observation_v3 import MagicObservationV3
 from ._magic_combat_observation_v4 import MagicObservationV4
 from ._magic_observation import MagicObservation
 from ._player_step_v3 import PlayerStepV3
+from ._player_step_v4 import PlayerStepV4
 from ._synthetic_observation import SyntheticObservation
 from .canonical import canonical_json_bytes
 from .decision import (
@@ -81,8 +83,10 @@ _DECODERS: dict[str, Callable[[object], object]] = {
     "information-state-digest-input.v2": InformationStateDigestInputV2.from_wire,
     "observed-event-envelope.v2": ObservedEventEnvelopeV2.from_wire,
     "observed-event-envelope.v3": ObservedEventEnvelopeV3.from_wire,
+    "observed-event-envelope.v4": ObservedEventEnvelopeV4.from_wire,
     "player-step.v2": PlayerStepV2.from_wire,
     "player-step.v3": PlayerStepV3.from_wire,
+    "player-step.v4": PlayerStepV4.from_wire,
     "replay-manifest.v1": ReplayManifestV1.from_wire,
     "authoritative-replay.v1": AuthoritativeReplayV1.from_wire,
     "replay-manifest.v2": ReplayManifestV2.from_wire,

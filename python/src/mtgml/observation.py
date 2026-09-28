@@ -9,6 +9,11 @@ from ._events_v2 import (
     ObservedEventV2,
 )
 from ._events_v3 import ObservedEventEnvelopeV3, ObservedEventV3
+from ._events_v4 import (
+    OBSERVED_EVENT_SCHEMA_V4,
+    ObservedEventEnvelopeV4,
+    ObservedEventV4,
+)
 from ._generated_contract_vocab import OBSERVED_EVENT_KINDS, ZONE_KINDS
 from ._information_v2 import (
     INFORMATION_STATE_SCHEMA_V2,
@@ -73,6 +78,7 @@ from ._player_step_v2 import (
     PlayerStepV2,
 )
 from ._player_step_v3 import PLAYER_STEP_SCHEMA_V3, PlayerStepV3
+from ._player_step_v4 import PLAYER_STEP_SCHEMA_V4, PlayerStepV4
 from ._synthetic_observation import (
     SYNTHETIC_BEGINNING_STEPS,
     SYNTHETIC_COMBAT_STEPS,
@@ -134,9 +140,11 @@ __all__ = [
     "OBSERVATION_SCHEMA_V2",
     "OBSERVED_EVENT_KINDS",
     "OBSERVED_EVENT_SCHEMA_V2",
+    "OBSERVED_EVENT_SCHEMA_V4",
     "PLAYER_STEP_SCHEMA",
     "PLAYER_STEP_SCHEMA_V2",
     "PLAYER_STEP_SCHEMA_V3",
+    "PLAYER_STEP_SCHEMA_V4",
     "PLAYER_SUBMISSION_CODES",
     "SYNTHETIC_BEGINNING_STEPS",
     "SYNTHETIC_COMBAT_STEPS",
@@ -177,8 +185,10 @@ __all__ = [
     "ObservedEventEnvelope",
     "ObservedEventEnvelopeV2",
     "ObservedEventEnvelopeV3",
+    "ObservedEventEnvelopeV4",
     "ObservedEventV2",
     "ObservedEventV3",
+    "ObservedEventV4",
     "PlayerDecisionRequest",
     "PlayerDecisionRequestV2",
     "PlayerInformationStateV2",
@@ -192,6 +202,7 @@ __all__ = [
     "PlayerStepSubmissionV1",
     "PlayerStepV2",
     "PlayerStepV3",
+    "PlayerStepV4",
     "PowerToughnessDeltaV1",
     "PublicModeV1",
     "PublicTemporaryEffectV1",

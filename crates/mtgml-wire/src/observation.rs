@@ -7,8 +7,8 @@ use mtgml_observation::{
     MagicBasicLandObservationV1, MagicObservation, MagicObservationV2, MagicObservationV3,
     MagicObservationV4, MagicSharedExecutionObservationV1, ObservationEnvelope,
     ObservationEnvelopeV2, ObservedEventEnvelope, ObservedEventEnvelopeV2, ObservedEventEnvelopeV3,
-    PlayerInformationStateV2, PlayerInformationStateV3, PlayerStep, PlayerStepV2, PlayerStepV3,
-    SyntheticObservation,
+    ObservedEventEnvelopeV4, PlayerInformationStateV2, PlayerInformationStateV3, PlayerStep,
+    PlayerStepV2, PlayerStepV3, PlayerStepV4, SyntheticObservation,
 };
 
 impl WireContract for ObservationEnvelope {
@@ -183,6 +183,13 @@ impl WireContract for ObservedEventEnvelopeV3 {
     }
 }
 
+impl WireContract for ObservedEventEnvelopeV4 {
+    fn validate_wire(&self) -> Result<(), WireError> {
+        self.validate()
+            .map_err(|error| WireError::new("semantic.observed_event", error.to_string()))
+    }
+}
+
 impl WireContract for PlayerStepV2 {
     fn validate_wire(&self) -> Result<(), WireError> {
         self.validate()
@@ -196,6 +203,14 @@ impl WireContract for PlayerStepV3 {
         self.validate()
             .map_err(|error| WireError::new("semantic.player_step_v3", error.to_string()))?;
         verify_information_state_digest_v2(&self.information_state)
+    }
+}
+
+impl WireContract for PlayerStepV4 {
+    fn validate_wire(&self) -> Result<(), WireError> {
+        self.validate()
+            .map_err(|error| WireError::new("semantic.player_step", error.to_string()))?;
+        verify_information_state_digest_v3(&self.information_state)
     }
 }
 

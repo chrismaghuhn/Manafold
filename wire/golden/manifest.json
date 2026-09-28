@@ -227,6 +227,34 @@
     {
       "contract": "magic-shared-execution-observation.v1",
       "path": "magic-shared-execution-observation.v1.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "path": "observed-event-v4-object-moved.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "path": "observed-event-v4-stack-added.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "path": "observed-event-v4-stack-removed.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "path": "observed-event-v4-mana-spent.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "path": "observed-event-v4-temporary-created.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "path": "observed-event-v4-temporary-expired.json"
+    },
+    {
+      "contract": "player-step.v4",
+      "path": "player-step-v4.json"
     }
   ]
 }

@@ -31,8 +31,10 @@ WIRE_MAPPING = {
     "information-state-envelope.v3": "information-state-envelope.v3.schema.json",
     "observed-event-envelope.v2": "observed-event-envelope.v2.schema.json",
     "observed-event-envelope.v3": "observed-event-envelope.v3.schema.json",
+    "observed-event-envelope.v4": "observed-event-envelope.v4.schema.json",
     "player-step.v2": "player-step.v2.schema.json",
     "player-step.v3": "player-step.v3.schema.json",
+    "player-step.v4": "player-step.v4.schema.json",
     "replay-manifest.v3": "replay-manifest.v3.schema.json",
     "authoritative-replay.v3": "authoritative-replay.v3.schema.json",
     "magic-m3-observation.v1": "magic-m3-observation.v1.schema.json",
@@ -81,6 +83,18 @@ ARTIFACT_CASES = [
     ("golden-path-index.v1.schema.json", "examples/golden-path/index.json"),
 ]
 SCHEMA_NEGATIVE_CASES = [
+    (
+        "observed-event-envelope.v4.schema.json",
+        "schemas/negative/observed-event-v4-global-revision.json",
+    ),
+    (
+        "observed-event-envelope.v4.schema.json",
+        "schemas/negative/observed-event-v4-trusted-stack-id.json",
+    ),
+    (
+        "player-step.v4.schema.json",
+        "schemas/negative/player-step-v4-global-revision.json",
+    ),
     (
         "observation-envelope.v2.schema.json",
         "schemas/negative/observation-envelope-v2-global-state-revision.json",

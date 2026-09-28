@@ -59,7 +59,7 @@ pub enum PublicStackItemV1 {
 }
 
 impl PublicStackItemV1 {
-    fn validate(&self) -> Result<(), ObservationValidationError> {
+    pub(crate) fn validate_public(&self) -> Result<(), ObservationValidationError> {
         match self {
             Self::Spell {
                 modes, cost_facts, ..
@@ -151,7 +151,7 @@ pub struct PublicTemporaryEffectV1 {
 }
 
 impl PublicTemporaryEffectV1 {
-    fn validate(&self) -> Result<(), ObservationValidationError> {
+    pub(crate) fn validate_public(&self) -> Result<(), ObservationValidationError> {
         if self.affected_objects.is_empty()
             || self
                 .affected_objects
@@ -256,10 +256,10 @@ impl MagicSharedExecutionObservationV1 {
         };
         base.validate()?;
         for item in &self.stack {
-            item.validate()?;
+            item.validate_public()?;
         }
         for effect in &self.temporary_effects {
-            effect.validate()?;
+            effect.validate_public()?;
         }
         for pair in self.temporary_effects.windows(2) {
             if pair[0].compare(&pair[1])? == Ordering::Greater {

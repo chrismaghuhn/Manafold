@@ -7,9 +7,9 @@ use mtgml_model::EpisodeStatus;
 use mtgml_observation::{
     InformationStateEnvelope, MagicBasicLandObservationV1, MagicObservation, MagicObservationV2,
     MagicObservationV3, MagicObservationV4, MagicSharedExecutionObservationV1, ObservationEnvelope,
-    ObservationEnvelopeV2, ObservedEventEnvelope, ObservedEventEnvelopeV2,
-    PlayerInformationStateV2, PlayerInformationStateV3, PlayerStep, PlayerStepV2,
-    SyntheticObservation,
+    ObservationEnvelopeV2, ObservedEventEnvelope, ObservedEventEnvelopeV2, ObservedEventEnvelopeV3,
+    ObservedEventEnvelopeV4, PlayerInformationStateV2, PlayerInformationStateV3, PlayerStep,
+    PlayerStepV2, PlayerStepV3, PlayerStepV4, SyntheticObservation,
 };
 use mtgml_replay::{
     AuthoritativeReplayV1, AuthoritativeReplayV2, AuthoritativeReplayV3, AuthoritativeReplayV4,
@@ -120,7 +120,15 @@ fn decode_named(contract: &str, bytes: &[u8]) -> Result<(), WireError> {
         "observed-event-envelope.v2" => {
             decode_canonical::<ObservedEventEnvelopeV2>(bytes).map(drop)
         }
+        "observed-event-envelope.v4" => {
+            decode_canonical::<ObservedEventEnvelopeV4>(bytes).map(drop)
+        }
         "player-step.v2" => decode_canonical::<PlayerStepV2>(bytes).map(drop),
+        "observed-event-envelope.v3" => {
+            decode_canonical::<ObservedEventEnvelopeV3>(bytes).map(drop)
+        }
+        "player-step.v3" => decode_canonical::<PlayerStepV3>(bytes).map(drop),
+        "player-step.v4" => decode_canonical::<PlayerStepV4>(bytes).map(drop),
         "episode-status.v1" => decode_canonical::<EpisodeStatus>(bytes).map(drop),
         "replay-manifest.v1" => decode_canonical::<ReplayManifestV1>(bytes).map(drop),
         "authoritative-replay.v1" => decode_canonical::<AuthoritativeReplayV1>(bytes).map(drop),

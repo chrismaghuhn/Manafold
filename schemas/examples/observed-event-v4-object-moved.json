@@ -1,0 +1,13 @@
+{
+  "event": {
+    "entering_face": "front",
+    "from": "hand",
+    "kind": "object_moved",
+    "new_object": "5",
+    "old_object": "4",
+    "tapped": false,
+    "to": "battlefield"
+  },
+  "schema_version": "observed-event-envelope.v4",
+  "sequence": "2"
+}
