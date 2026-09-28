@@ -31,11 +31,13 @@ pub use v3::{
     VisibleCandidateV3, DECISION_RESPONSE_V3_SCHEMA, PLAYER_DECISION_REQUEST_V3_SCHEMA,
 };
 pub use v4::{
-    CandidateIntentV4, CandidateOrderingV3, CostFactsV1, CostOperandOperationV1, CostRouteV1,
-    CounterKindV1, DamageKindV1, DecisionPurposeV4, LifeChangeCauseV1, PlayerDecisionRequestV4,
-    SafeAttackerFactV1, SafeDamageRecipientV1, SafeTargetDescriptorV1, SafeTriggerDescriptorV1,
-    SafeTriggerSubjectV1, SafeZoneKindV1, SyntheticAssemblyStageV1, TriggerEventKindV1,
-    VisibleCandidateV4, PLAYER_DECISION_REQUEST_V4_SCHEMA,
+    AuthoritativeCandidateV4, AuthoritativeDecisionRequestV4, CandidateIntentV4,
+    CandidateOrderingV3, CostFactsV1, CostOperandOperationV1, CostRouteV1, CounterKindV1,
+    DamageKindV1, DecisionPurposeV4, EngineCandidateBindingV4, LifeChangeCauseV1,
+    ManaSourceActivationCostV1, PlayerDecisionRequestV4, SafeAttackerFactV1, SafeDamageRecipientV1,
+    SafeTargetDescriptorV1, SafeTriggerDescriptorV1, SafeTriggerSubjectV1, SafeZoneKindV1,
+    SyntheticAssemblyStageV1, TriggerEventKindV1, VisibleCandidateV4,
+    PLAYER_DECISION_REQUEST_V4_SCHEMA,
 };
 
 #[cfg(test)]

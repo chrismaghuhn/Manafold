@@ -8,8 +8,11 @@ use crate::common::DecisionVisibility;
 use crate::error::DecisionValidationError;
 use crate::v2::{DecisionAnswerV2, DecisionDomainV2};
 use crate::v3::DecisionResponseV3;
+use mtgml_card_ir::{AbilityKey, CardSemanticProfileId};
 use mtgml_model::{
-    CandidateIdV1, OpaqueAbilityId, OpaqueObjectId, PlayerDecisionIdV1, PlayerId, VisibleSequence,
+    AbilityInstanceId, CandidateIdV1, ContinuationId, DecisionId, GameObjectId, OpaqueAbilityId,
+    OpaqueObjectId, PlayerDecisionIdV1, PlayerId, StateRevision, TriggerInstanceId,
+    VisibleSequence,
 };
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
@@ -862,6 +865,209 @@ pub struct VisibleCandidateV4 {
     pub intent: CandidateIntentV4,
 }
 
+/// Typed, trusted counterpart of one visible V4 candidate. This value is
+/// never projected to player products.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EngineCandidateBindingV4 {
+    PassPriority,
+    PlayLand {
+        object: GameObjectId,
+    },
+    CastSpell {
+        object: GameObjectId,
+    },
+    ActivateAbility {
+        ability: AbilityInstanceId,
+    },
+    SelectObject {
+        object: GameObjectId,
+    },
+    SelectPlayer {
+        player: PlayerId,
+    },
+    SelectMode {
+        mode_index: u32,
+    },
+    ChooseBoolean {
+        value: bool,
+    },
+    DeclareNumber {
+        value: i64,
+    },
+    Confirm,
+    SelectCostRoute {
+        route_id: u32,
+    },
+    SelectManaSource {
+        source: GameObjectId,
+        ability: AbilityInstanceId,
+        ability_key: AbilityKey,
+        semantic_profile_id: CardSemanticProfileId,
+        activation_cost: ManaSourceActivationCostV1,
+        produced_buckets: [u32; 12],
+    },
+    FinalizeManaProduction {
+        continuation: ContinuationId,
+    },
+    SelectManaPayment {
+        spent_buckets: [u32; 12],
+    },
+    SelectTrigger {
+        trigger: TriggerInstanceId,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ManaSourceActivationCostV1 {
+    TapSource,
+}
+
+impl EngineCandidateBindingV4 {
+    pub fn same_variant_as(&self, intent: &CandidateIntentV4) -> bool {
+        matches!(
+            (self, intent),
+            (Self::PassPriority, CandidateIntentV4::PassPriority)
+                | (Self::PlayLand { .. }, CandidateIntentV4::PlayLand { .. })
+                | (Self::CastSpell { .. }, CandidateIntentV4::CastSpell { .. })
+                | (
+                    Self::ActivateAbility { .. },
+                    CandidateIntentV4::ActivateAbility { .. }
+                )
+                | (
+                    Self::SelectObject { .. },
+                    CandidateIntentV4::SelectObject { .. }
+                )
+                | (
+                    Self::SelectPlayer { .. },
+                    CandidateIntentV4::SelectPlayer { .. }
+                )
+                | (
+                    Self::SelectMode { .. },
+                    CandidateIntentV4::SelectMode { .. }
+                )
+                | (
+                    Self::ChooseBoolean { .. },
+                    CandidateIntentV4::ChooseBoolean { .. }
+                )
+                | (
+                    Self::DeclareNumber { .. },
+                    CandidateIntentV4::DeclareNumber { .. }
+                )
+                | (Self::Confirm, CandidateIntentV4::Confirm)
+                | (
+                    Self::SelectCostRoute { .. },
+                    CandidateIntentV4::SelectCostRoute { .. }
+                )
+                | (
+                    Self::SelectManaSource { .. },
+                    CandidateIntentV4::SelectManaSource { .. }
+                )
+                | (
+                    Self::FinalizeManaProduction { .. },
+                    CandidateIntentV4::FinalizeManaProduction
+                )
+                | (
+                    Self::SelectManaPayment { .. },
+                    CandidateIntentV4::SelectManaPayment { .. }
+                )
+                | (
+                    Self::SelectTrigger { .. },
+                    CandidateIntentV4::SelectTrigger { .. }
+                )
+        )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuthoritativeCandidateV4 {
+    pub candidate_id: CandidateIdV1,
+    pub visible_intent: CandidateIntentV4,
+    pub trusted_binding: EngineCandidateBindingV4,
+}
+
+impl AuthoritativeCandidateV4 {
+    fn validate_shape(&self) -> Result<(), DecisionValidationError> {
+        self.visible_intent.validate()?;
+        if !self.trusted_binding.same_variant_as(&self.visible_intent) {
+            return Err(DecisionValidationError::BindingVariantMismatch);
+        }
+        Ok(())
+    }
+}
+
+/// Detached trusted pending request. It owns global revision, per-perspective
+/// request/cursor binding and trusted candidate bindings. Candidate generation
+/// and exhaustive soundness/completeness validation are G0f responsibilities.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuthoritativeDecisionRequestV4 {
+    pub decision_id: DecisionId,
+    pub player_decision_id: PlayerDecisionIdV1,
+    pub state_revision: StateRevision,
+    pub view_sequence: VisibleSequence,
+    pub actor: PlayerId,
+    pub visibility: DecisionVisibility,
+    pub decision_domain_v2: DecisionDomainV2,
+    pub purpose: DecisionPurposeV4,
+    pub parent_player_decision_id: Option<PlayerDecisionIdV1>,
+    pub continuation_id: Option<ContinuationId>,
+    pub candidates: Vec<AuthoritativeCandidateV4>,
+}
+
+impl AuthoritativeDecisionRequestV4 {
+    pub fn project_player_request(
+        &self,
+    ) -> Result<PlayerDecisionRequestV4, DecisionValidationError> {
+        let candidates = self
+            .candidates
+            .iter()
+            .map(|candidate| {
+                candidate.validate_shape()?;
+                Ok(VisibleCandidateV4 {
+                    candidate_id: candidate.candidate_id,
+                    intent: candidate.visible_intent.clone(),
+                })
+            })
+            .collect::<Result<Vec<_>, DecisionValidationError>>()?;
+        let request = PlayerDecisionRequestV4 {
+            schema_version: PLAYER_DECISION_REQUEST_V4_SCHEMA.to_owned(),
+            player_decision_id: self.player_decision_id,
+            view_sequence: self.view_sequence,
+            actor: self.actor,
+            visibility: self.visibility,
+            decision_domain_v2: self.decision_domain_v2.clone(),
+            purpose: self.purpose.clone(),
+            parent_player_decision_id: self.parent_player_decision_id,
+            candidates,
+        };
+        request.validate()?;
+        Ok(request)
+    }
+
+    pub fn validate_response(
+        &self,
+        response: &DecisionResponseV3,
+    ) -> Result<(), DecisionValidationError> {
+        response.validate()?;
+        if response.player_decision_id != self.player_decision_id {
+            return Err(DecisionValidationError::DecisionIdentityMismatch);
+        }
+        if response.view_sequence != self.view_sequence {
+            return Err(DecisionValidationError::VisibleSequenceMismatch);
+        }
+        let request = self.project_player_request()?;
+        let ids = request
+            .candidates
+            .iter()
+            .map(|candidate| candidate.candidate_id)
+            .collect::<Vec<_>>();
+        DecisionAnswerV2::validate_for_candidate_ids(
+            &response.answer,
+            &request.decision_domain_v2,
+            &ids,
+        )
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlayerDecisionRequestV4 {
@@ -1049,6 +1255,112 @@ mod tests {
             request.validate_response(&stale),
             Err(DecisionValidationError::VisibleSequenceMismatch)
         );
+    }
+
+    #[test]
+    fn trusted_request_projects_only_safe_candidate_and_binds_response_cursor() {
+        let request = AuthoritativeDecisionRequestV4 {
+            decision_id: DecisionId(3),
+            player_decision_id: PlayerDecisionIdV1(4),
+            state_revision: StateRevision(12),
+            view_sequence: VisibleSequence(6),
+            actor: PlayerId(0),
+            visibility: DecisionVisibility::Public,
+            decision_domain_v2: DecisionDomainV2::ChooseOne,
+            purpose: DecisionPurposeV4::PriorityAction,
+            parent_player_decision_id: None,
+            continuation_id: None,
+            candidates: vec![AuthoritativeCandidateV4 {
+                candidate_id: CandidateIdV1(0),
+                visible_intent: CandidateIntentV4::PlayLand {
+                    object: OpaqueObjectId(9),
+                },
+                trusted_binding: EngineCandidateBindingV4::PlayLand {
+                    object: GameObjectId(44),
+                },
+            }],
+        };
+        let public = request.project_player_request().unwrap();
+        assert_eq!(public.view_sequence, VisibleSequence(6));
+        assert_eq!(
+            public.candidates[0].intent,
+            CandidateIntentV4::PlayLand {
+                object: OpaqueObjectId(9),
+            }
+        );
+
+        let response = DecisionResponseV3 {
+            schema_version: crate::DECISION_RESPONSE_V3_SCHEMA.to_owned(),
+            player_decision_id: PlayerDecisionIdV1(4),
+            view_sequence: VisibleSequence(6),
+            answer: DecisionAnswerV2::SelectOne {
+                candidate_id: CandidateIdV1(0),
+            },
+        };
+        request.validate_response(&response).unwrap();
+        let mut stale = response;
+        stale.view_sequence = VisibleSequence(7);
+        assert_eq!(
+            request.validate_response(&stale),
+            Err(DecisionValidationError::VisibleSequenceMismatch)
+        );
+    }
+
+    #[test]
+    fn g0c_trusted_binding_vocabulary_covers_every_new_visible_intent() {
+        let profile = CardSemanticProfileId::parse("basic-land@1.0.0").unwrap();
+        let trigger = SafeTriggerDescriptorV1 {
+            source_object: None,
+            source_ability: None,
+            event_kind: TriggerEventKindV1::CardDrawn,
+            subject: SafeTriggerSubjectV1::CardDrawn {
+                player: PlayerId(0),
+            },
+        };
+        let cases = [
+            (
+                EngineCandidateBindingV4::SelectCostRoute { route_id: 1 },
+                CandidateIntentV4::SelectCostRoute { route_id: 1 },
+            ),
+            (
+                EngineCandidateBindingV4::SelectManaSource {
+                    source: GameObjectId(8),
+                    ability: AbilityInstanceId(3),
+                    ability_key: AbilityKey(2),
+                    semantic_profile_id: profile,
+                    activation_cost: ManaSourceActivationCostV1::TapSource,
+                    produced_buckets: [0; 12],
+                },
+                CandidateIntentV4::SelectManaSource {
+                    source: OpaqueObjectId(4),
+                    ability: OpaqueAbilityId(5),
+                    produced_buckets: [0; 12],
+                },
+            ),
+            (
+                EngineCandidateBindingV4::FinalizeManaProduction {
+                    continuation: ContinuationId(6),
+                },
+                CandidateIntentV4::FinalizeManaProduction,
+            ),
+            (
+                EngineCandidateBindingV4::SelectManaPayment {
+                    spent_buckets: [0; 12],
+                },
+                CandidateIntentV4::SelectManaPayment {
+                    spent_buckets: [0; 12],
+                },
+            ),
+            (
+                EngineCandidateBindingV4::SelectTrigger {
+                    trigger: TriggerInstanceId(9),
+                },
+                CandidateIntentV4::SelectTrigger { trigger },
+            ),
+        ];
+        for (binding, intent) in cases {
+            assert!(binding.same_variant_as(&intent));
+        }
     }
 
     #[test]
