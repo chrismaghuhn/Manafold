@@ -15,10 +15,26 @@ pub fn canonical_state_bytes_v7(state: &EngineStatePartsV3) -> Result<Vec<u8>, S
     FullStateDigestInputV7::from_successor(state)?.canonical_payload()
 }
 
+/// Canonicalizes a structurally valid state after a RulesKernel-owned exact
+/// profile-domain check at the containing runtime boundary. This encoder does
+/// not itself prove or admit a Decision domain.
+pub fn canonical_state_bytes_v7_after_rules_domain_validation(
+    state: &EngineStatePartsV3,
+) -> Result<Vec<u8>, StateDigestError> {
+    FullStateDigestInputV7::from_successor_after_rules_domain_validation(state)?.canonical_payload()
+}
+
 pub fn calculate_full_state_digest_v7(
     state: &EngineStatePartsV3,
 ) -> Result<FullStateDigestV7, StateDigestError> {
     let payload = canonical_state_bytes_v7(state)?;
+    calculate_full_state_digest_v7_payload(&payload)
+}
+
+pub fn calculate_full_state_digest_v7_after_rules_domain_validation(
+    state: &EngineStatePartsV3,
+) -> Result<FullStateDigestV7, StateDigestError> {
+    let payload = canonical_state_bytes_v7_after_rules_domain_validation(state)?;
     calculate_full_state_digest_v7_payload(&payload)
 }
 

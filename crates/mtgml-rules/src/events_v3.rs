@@ -490,9 +490,34 @@ pub fn validate_event_delta_state_v3(
     events: &[AuthoritativeRuleEventV3],
     delta: &StateDeltaV3,
 ) -> Result<(), EventDeltaV3Error> {
-    let applied = delta
-        .apply(before)
-        .map_err(|_| EventDeltaV3Error::Mismatch)?;
+    validate_event_delta_state_v3_inner(before, after, events, delta, false)
+}
+
+/// Validates event/Delta/state consistency for a transaction whose exact
+/// profile-dependent Decision domain was already rederived by its RulesKernel
+/// owner. This does not independently admit the state.
+pub fn validate_event_delta_state_v3_after_rules_domain_validation(
+    before: &EngineStatePartsV3,
+    after: &EngineStatePartsV3,
+    events: &[AuthoritativeRuleEventV3],
+    delta: &StateDeltaV3,
+) -> Result<(), EventDeltaV3Error> {
+    validate_event_delta_state_v3_inner(before, after, events, delta, true)
+}
+
+fn validate_event_delta_state_v3_inner(
+    before: &EngineStatePartsV3,
+    after: &EngineStatePartsV3,
+    events: &[AuthoritativeRuleEventV3],
+    delta: &StateDeltaV3,
+    rules_domain_validated: bool,
+) -> Result<(), EventDeltaV3Error> {
+    let applied = if rules_domain_validated {
+        delta.apply_after_rules_domain_validation(before)
+    } else {
+        delta.apply(before)
+    }
+    .map_err(|_| EventDeltaV3Error::Mismatch)?;
     if &applied != after {
         return Err(EventDeltaV3Error::Mismatch);
     }
@@ -504,7 +529,7 @@ pub fn validate_event_delta_state_v3(
     )
     .map_err(|_| EventDeltaV3Error::Mismatch)?;
     validate_event_delta_parity_v3(events, delta)?;
-    validate_observation_occurrence_lifecycle(before, after, events)?;
+    validate_observation_occurrence_lifecycle(before, after, events, delta)?;
     let before_stack_order = &before.predecessor_v5.zones.stack_order;
     let after_stack_order = &after.predecessor_v5.zones.stack_order;
     let stack_order_operations = delta
@@ -547,6 +572,7 @@ fn validate_observation_occurrence_lifecycle(
     before: &EngineStatePartsV3,
     after: &EngineStatePartsV3,
     events: &[AuthoritativeRuleEventV3],
+    delta: &StateDeltaV3,
 ) -> Result<(), EventDeltaV3Error> {
     let mut projected: mtgml_state::EngineState = after.predecessor_v5.clone().into();
     projected.knowledge = before.predecessor_v5.knowledge.clone();
@@ -575,7 +601,7 @@ fn validate_observation_occurrence_lifecycle(
             else {
                 return Err(EventDeltaV3Error::Mismatch);
             };
-            if source_index >= index
+            if source_index == index
                 || !is_projectable_public_source_event(&events[source_index].event)
             {
                 return Err(EventDeltaV3Error::Mismatch);
@@ -591,10 +617,86 @@ fn validate_observation_occurrence_lifecycle(
             return Err(EventDeltaV3Error::Mismatch);
         }
     }
+    apply_delta_identity_changes_v3(&mut projected, delta)?;
     if projected.knowledge != after.predecessor_v5.knowledge
         || projected.perspective_identities != after.predecessor_v5.perspective_identities
     {
         return Err(EventDeltaV3Error::Mismatch);
+    }
+    Ok(())
+}
+
+fn apply_delta_identity_changes_v3(
+    projected: &mut mtgml_state::EngineState,
+    delta: &StateDeltaV3,
+) -> Result<(), EventDeltaV3Error> {
+    use SemanticDeltaOperationV2 as V2;
+    use SemanticDeltaOperationV3 as V3;
+
+    for operation in &delta.operations {
+        match operation {
+            V3::Existing { operation } => {
+                let V2::AbilityIdentityChanged {
+                    perspective,
+                    instance,
+                    from,
+                    to,
+                } = operation.as_ref()
+                else {
+                    continue;
+                };
+                let identity = projected
+                    .perspective_identities
+                    .players
+                    .get_mut(perspective)
+                    .ok_or(EventDeltaV3Error::Mismatch)?;
+                if identity.ability_to_opaque.get(instance).copied() != *from {
+                    return Err(EventDeltaV3Error::Mismatch);
+                }
+                if let Some(opaque) = from {
+                    identity.ability_to_opaque.remove(instance);
+                    identity.opaque_to_ability.remove(opaque);
+                    identity.retired_ability_ids.insert(*opaque);
+                }
+                if let Some(opaque) = to {
+                    if *opaque != identity.next_opaque_ability_id
+                        || identity
+                            .opaque_to_ability
+                            .insert(*opaque, *instance)
+                            .is_some()
+                        || identity
+                            .ability_to_opaque
+                            .insert(*instance, *opaque)
+                            .is_some()
+                    {
+                        return Err(EventDeltaV3Error::Mismatch);
+                    }
+                    identity.next_opaque_ability_id = mtgml_model::OpaqueAbilityId(
+                        opaque.0.checked_add(1).ok_or(EventDeltaV3Error::Mismatch)?,
+                    );
+                }
+            }
+            V3::PendingRequestChanged {
+                to: Some(request), ..
+            } => {
+                let identity = projected
+                    .perspective_identities
+                    .players
+                    .get_mut(&request.actor)
+                    .ok_or(EventDeltaV3Error::Mismatch)?;
+                if identity.next_player_decision_id != request.player_decision_id {
+                    return Err(EventDeltaV3Error::Mismatch);
+                }
+                identity.next_player_decision_id = mtgml_model::PlayerDecisionIdV1(
+                    request
+                        .player_decision_id
+                        .0
+                        .checked_add(1)
+                        .ok_or(EventDeltaV3Error::Mismatch)?,
+                );
+            }
+            _ => {}
+        }
     }
     Ok(())
 }
@@ -617,7 +719,8 @@ fn is_projectable_public_source_event(event: &AuthoritativeRuleEventKindV3) -> b
                     | crate::PerspectiveObservationPolicyV1::SawRandomOutcome { .. }
                     | crate::PerspectiveObservationPolicyV1::AnnouncedOutcome { .. },
                 ..
-            }
+            } | AuthoritativeRuleEventKind::ZoneTransition { .. }
+                | AuthoritativeRuleEventKind::ObjectTapped { .. }
         ),
         _ => false,
     }
@@ -2564,7 +2667,17 @@ mod tests {
                 },
             },
         ];
-        assert!(validate_observation_occurrence_lifecycle(&before, &after, &events).is_ok());
+        let delta = StateDeltaV3 {
+            before_revision: before.predecessor_v5.revision,
+            after_revision: after.predecessor_v5.revision,
+            before_digest: mtgml_model::FullStateDigestV7::from_digest_bytes([0; 32]),
+            after_digest: mtgml_model::FullStateDigestV7::from_digest_bytes([1; 32]),
+            replacement: after.clone(),
+            operations: Vec::new(),
+        };
+        assert!(
+            validate_observation_occurrence_lifecycle(&before, &after, &events, &delta).is_ok()
+        );
 
         let mut bad_lifecycle = events.clone();
         let AuthoritativeRuleEventKindV3::PerspectiveObservationOccurrence { lifecycle, .. } =
@@ -2574,7 +2687,7 @@ mod tests {
         };
         lifecycle.sequence.0 += 1;
         assert_eq!(
-            validate_observation_occurrence_lifecycle(&before, &after, &bad_lifecycle),
+            validate_observation_occurrence_lifecycle(&before, &after, &bad_lifecycle, &delta),
             Err(EventDeltaV3Error::Mismatch)
         );
     }

@@ -5,7 +5,9 @@
 
 use std::collections::BTreeSet;
 
-use mtgml_card_ir::{CardSemanticBindingV1, VerifiedContentCatalogV1};
+use mtgml_card_ir::{
+    CardSemanticBindingV1, ExecutableProfileAdmissionV1, VerifiedContentCatalogV1,
+};
 use mtgml_model::{
     CheckpointCodecIdentity, CheckpointDigestV8, EnvironmentLimitCounters, EpisodeStatus,
     ExecutionIdentityV1, ExecutionProgramV1, FullStateDigestV7, PlayerId, RulesContractManifestV1,
@@ -38,8 +40,43 @@ impl EnvironmentCheckpointV8 {
         execution_identity: ExecutionIdentityV1,
     ) -> Result<Self, CheckpointV8Error> {
         state.validate().map_err(|_| CheckpointV8Error::State)?;
-        let state_digest = mtgml_state::calculate_full_state_digest_v7(&state)
-            .map_err(|_| CheckpointV8Error::StateDigest)?;
+        Self::build(state, status, limit_counters, execution_identity, false)
+    }
+
+    /// Constructs a checkpoint after exact M4.2 PriorityAction rederivation
+    /// by the Basic Land RulesKernel. No caller-supplied candidate context is
+    /// accepted, and the detached structural encoder itself does not admit a
+    /// profile-dependent request.
+    pub fn new_for_basic_land_profile(
+        admission: &ExecutableProfileAdmissionV1,
+        state: EngineStatePartsV3,
+        status: EpisodeStatus,
+        limit_counters: EnvironmentLimitCounters,
+        execution_identity: ExecutionIdentityV1,
+    ) -> Result<Self, CheckpointV8Error> {
+        mtgml_rules::validate_basic_land_pending_request_v4(admission, &state, &status)
+            .map_err(|_| CheckpointV8Error::State)?;
+        Self::build(state, status, limit_counters, execution_identity, true)
+    }
+
+    fn build(
+        state: EngineStatePartsV3,
+        status: EpisodeStatus,
+        limit_counters: EnvironmentLimitCounters,
+        execution_identity: ExecutionIdentityV1,
+        structurally_validated_by_rules: bool,
+    ) -> Result<Self, CheckpointV8Error> {
+        if structurally_validated_by_rules {
+            state
+                .validate_structure()
+                .map_err(|_| CheckpointV8Error::State)?;
+        }
+        let state_digest = if structurally_validated_by_rules {
+            mtgml_state::calculate_full_state_digest_v7_after_rules_domain_validation(&state)
+        } else {
+            mtgml_state::calculate_full_state_digest_v7(&state)
+        }
+        .map_err(|_| CheckpointV8Error::StateDigest)?;
         let codec = CheckpointCodecIdentity {
             codec_id: CHECKPOINT_CODEC_ID_V8.to_owned(),
             semantic_version: CHECKPOINT_CODEC_SEMANTIC_VERSION_V8.to_owned(),
@@ -61,20 +98,52 @@ impl EnvironmentCheckpointV8 {
             execution_identity,
             checkpoint_digest,
         };
-        value.validate()?;
+        if structurally_validated_by_rules {
+            value.validate_after_rules_domain_validation()?;
+        } else {
+            value.validate()?;
+        }
         Ok(value)
     }
 
     pub fn validate(&self) -> Result<(), CheckpointV8Error> {
+        self.validate_inner(false)
+    }
+
+    /// Validates checkpoint identity and structure after the caller has
+    /// rederived the exact RulesKernel Decision domain.
+    pub fn validate_after_rules_domain_validation(&self) -> Result<(), CheckpointV8Error> {
+        self.validate_inner(true)
+    }
+
+    pub fn validate_for_basic_land_profile(
+        &self,
+        admission: &ExecutableProfileAdmissionV1,
+    ) -> Result<(), CheckpointV8Error> {
+        mtgml_rules::validate_basic_land_pending_request_v4(admission, &self.state, &self.status)
+            .map_err(|_| CheckpointV8Error::State)?;
+        self.validate_inner(true)
+    }
+
+    fn validate_inner(
+        &self,
+        structurally_validated_by_rules: bool,
+    ) -> Result<(), CheckpointV8Error> {
         if self.schema_version != ENVIRONMENT_CHECKPOINT_SCHEMA_V8
             || self.codec.codec_id != CHECKPOINT_CODEC_ID_V8
             || self.codec.semantic_version != CHECKPOINT_CODEC_SEMANTIC_VERSION_V8
         {
             return Err(CheckpointV8Error::Identity);
         }
-        self.state
-            .validate()
-            .map_err(|_| CheckpointV8Error::State)?;
+        if structurally_validated_by_rules {
+            self.state
+                .validate_structure()
+                .map_err(|_| CheckpointV8Error::State)?;
+        } else {
+            self.state
+                .validate()
+                .map_err(|_| CheckpointV8Error::State)?;
+        }
         validate_program_state(&self.execution_identity, &self.state)?;
         self.status
             .validate()
@@ -83,8 +152,12 @@ impl EnvironmentCheckpointV8 {
         self.limit_counters
             .validate()
             .map_err(|_| CheckpointV8Error::LimitCounters)?;
-        let actual_state = mtgml_state::calculate_full_state_digest_v7(&self.state)
-            .map_err(|_| CheckpointV8Error::StateDigest)?;
+        let actual_state = if structurally_validated_by_rules {
+            mtgml_state::calculate_full_state_digest_v7_after_rules_domain_validation(&self.state)
+        } else {
+            mtgml_state::calculate_full_state_digest_v7(&self.state)
+        }
+        .map_err(|_| CheckpointV8Error::StateDigest)?;
         if actual_state != self.state_digest {
             return Err(CheckpointV8Error::StateDigest);
         }
@@ -110,6 +183,14 @@ impl EnvironmentCheckpointV8 {
     /// verified content admission or instantiate an environment.
     pub fn restore_detached(&self) -> Result<EngineStatePartsV3, CheckpointV8Error> {
         self.validate()?;
+        Ok(self.state.clone())
+    }
+
+    pub fn restore_detached_for_basic_land_profile(
+        &self,
+        admission: &ExecutableProfileAdmissionV1,
+    ) -> Result<EngineStatePartsV3, CheckpointV8Error> {
+        self.validate_for_basic_land_profile(admission)?;
         Ok(self.state.clone())
     }
 
@@ -164,8 +245,95 @@ impl EnvironmentCheckpointV8 {
         Ok(self.state.clone())
     }
 
+    pub fn restore_with_verified_contracts_for_basic_land_profile(
+        &self,
+        admission: &ExecutableProfileAdmissionV1,
+        semantic_manifest: &SemanticContractManifestV1,
+        rules_manifest: &RulesContractManifestV1,
+        content_catalog: Option<&VerifiedContentCatalogV1>,
+    ) -> Result<EngineStatePartsV3, CheckpointV8Error> {
+        self.validate_for_basic_land_profile(admission)?;
+        if admission.execution_identity() != &self.execution_identity
+            || admission.semantic_contract_manifest() != semantic_manifest
+            || admission.rules_contract_manifest() != rules_manifest
+            || content_catalog.is_none_or(|catalog| {
+                catalog.content_contract_id() != admission.content_contract_id()
+            })
+        {
+            return Err(CheckpointV8Error::ContractBinding);
+        }
+        self.restore_with_verified_contracts_inner(
+            semantic_manifest,
+            rules_manifest,
+            content_catalog,
+            true,
+        )
+    }
+
+    fn restore_with_verified_contracts_inner(
+        &self,
+        semantic_manifest: &SemanticContractManifestV1,
+        rules_manifest: &RulesContractManifestV1,
+        content_catalog: Option<&VerifiedContentCatalogV1>,
+        structurally_validated_by_rules: bool,
+    ) -> Result<EngineStatePartsV3, CheckpointV8Error> {
+        if structurally_validated_by_rules {
+            self.validate_after_rules_domain_validation()?;
+        } else {
+            self.validate()?;
+        }
+        rules_manifest
+            .validate()
+            .map_err(|_| CheckpointV8Error::ContractBinding)?;
+        let rules_id = mtgml_persistence::semantic_contract_digest::calculate_rules_contract_id_v1(
+            rules_manifest,
+        )
+        .map_err(|_| CheckpointV8Error::ContractBinding)?;
+        if rules_id != semantic_manifest.rules_contract_id {
+            return Err(CheckpointV8Error::ContractBinding);
+        }
+        let semantic_id =
+            mtgml_persistence::semantic_contract_digest::calculate_semantic_contract_id_v1(
+                semantic_manifest,
+            )
+            .map_err(|_| CheckpointV8Error::ContractBinding)?;
+        if semantic_id != self.execution_identity.semantic_contract_id {
+            return Err(CheckpointV8Error::ContractBinding);
+        }
+        let content_matches = match (
+            semantic_manifest.content_contract_id.as_ref(),
+            content_catalog,
+        ) {
+            (None, None) => true,
+            (Some(expected), Some(catalog)) => expected == catalog.content_contract_id(),
+            _ => false,
+        };
+        if !content_matches
+            || !mtgml_model::execution_program_matches_rules_authority(
+                self.execution_identity.program_kind,
+                &rules_manifest.rules_authority,
+            )
+            || (self.execution_identity.program_kind == ExecutionProgramV1::MagicRules
+                && (semantic_manifest.content_contract_id.is_none() || content_catalog.is_none()))
+        {
+            return Err(CheckpointV8Error::ContractBinding);
+        }
+        if let Some(catalog) = content_catalog {
+            validate_catalog_state(&self.state, catalog)?;
+        }
+        Ok(self.state.clone())
+    }
+
     pub fn fork_detached(&self) -> Result<Self, CheckpointV8Error> {
         self.validate()?;
+        Ok(self.clone())
+    }
+
+    pub fn fork_detached_for_basic_land_profile(
+        &self,
+        admission: &ExecutableProfileAdmissionV1,
+    ) -> Result<Self, CheckpointV8Error> {
+        self.validate_for_basic_land_profile(admission)?;
         Ok(self.clone())
     }
 }

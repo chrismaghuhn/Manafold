@@ -167,6 +167,32 @@ impl StateDeltaV3 {
         })
     }
 
+    /// Constructs a structural Delta after the caller has independently
+    /// rederived and accepted the exact profile-dependent Decision domain
+    /// through its RulesKernel. This does not itself admit or authorize that
+    /// domain; generic callers must use `between`.
+    pub fn between_after_rules_domain_validation(
+        before: &EngineStatePartsV3,
+        after: &EngineStatePartsV3,
+        operations: Vec<SemanticDeltaOperationV3>,
+    ) -> Result<Self, DeltaApplicationV3Error> {
+        before.validate_structure()?;
+        after.validate_structure()?;
+        validate_revision_step(
+            before.predecessor_v5.revision,
+            after.predecessor_v5.revision,
+        )?;
+        validate_delta_operation_coverage(before, after, &operations)?;
+        Ok(Self {
+            before_revision: before.predecessor_v5.revision,
+            after_revision: after.predecessor_v5.revision,
+            before_digest: digest_after_rules_domain_validation(before)?,
+            after_digest: digest_after_rules_domain_validation(after)?,
+            replacement: after.clone(),
+            operations,
+        })
+    }
+
     pub fn apply(
         &self,
         before: &EngineStatePartsV3,
@@ -187,10 +213,41 @@ impl StateDeltaV3 {
         }
         Ok(self.replacement.clone())
     }
+
+    /// Applies a structural Delta after RulesKernel domain validation at the
+    /// containing environment transaction boundary. This operation alone is
+    /// not state admission; generic callers must use `apply`.
+    pub fn apply_after_rules_domain_validation(
+        &self,
+        before: &EngineStatePartsV3,
+    ) -> Result<EngineStatePartsV3, DeltaApplicationV3Error> {
+        before.validate_structure()?;
+        if before.predecessor_v5.revision != self.before_revision
+            || digest_after_rules_domain_validation(before)? != self.before_digest
+        {
+            return Err(DeltaApplicationV3Error::BeforeMismatch);
+        }
+        self.replacement.validate_structure()?;
+        validate_revision_step(self.before_revision, self.after_revision)?;
+        validate_delta_operation_coverage(before, &self.replacement, &self.operations)?;
+        if self.replacement.predecessor_v5.revision != self.after_revision
+            || digest_after_rules_domain_validation(&self.replacement)? != self.after_digest
+        {
+            return Err(DeltaApplicationV3Error::AfterMismatch);
+        }
+        Ok(self.replacement.clone())
+    }
 }
 
 fn digest(state: &EngineStatePartsV3) -> Result<FullStateDigestV7, DeltaApplicationV3Error> {
     calculate_full_state_digest_v7(state).map_err(|_| DeltaApplicationV3Error::DigestCalculation)
+}
+
+fn digest_after_rules_domain_validation(
+    state: &EngineStatePartsV3,
+) -> Result<FullStateDigestV7, DeltaApplicationV3Error> {
+    crate::calculate_full_state_digest_v7_after_rules_domain_validation(state)
+        .map_err(|_| DeltaApplicationV3Error::DigestCalculation)
 }
 
 fn validate_revision_step(
@@ -844,8 +901,7 @@ fn validate_delta_operation_coverage(
                     crate::SemanticDeltaOperation::RandomValueSampled { .. }
                 )
             })
-        || (old_before.knowledge != old_after.knowledge
-            || old_before.perspective_identities != old_after.perspective_identities)
+        || old_before.knowledge != old_after.knowledge
             && !has_legacy(&|operation| {
                 matches!(
                     operation,
@@ -854,6 +910,51 @@ fn validate_delta_operation_coverage(
             })
     {
         return uncovered();
+    }
+    for (perspective, old) in &old_before.perspective_identities.players {
+        let Some(new) = old_after.perspective_identities.players.get(perspective) else {
+            return uncovered();
+        };
+        let object_identity_changed = old.object_to_opaque != new.object_to_opaque
+            || old.opaque_to_object != new.opaque_to_object
+            || old.retired_object_ids != new.retired_object_ids
+            || old.next_opaque_object_id != new.next_opaque_object_id;
+        if object_identity_changed
+            && !has_legacy(&|operation| {
+                matches!(
+                    operation,
+                    crate::SemanticDeltaOperation::PerspectiveLifecycle { .. }
+                )
+            })
+        {
+            return uncovered();
+        }
+        let ability_identity_changed = old.ability_to_opaque != new.ability_to_opaque
+            || old.opaque_to_ability != new.opaque_to_ability
+            || old.retired_ability_ids != new.retired_ability_ids
+            || old.next_opaque_ability_id != new.next_opaque_ability_id;
+        if ability_identity_changed
+            && !has_v2(&|operation| {
+                matches!(operation,
+                    SemanticDeltaOperationV2::AbilityIdentityChanged {
+                        perspective: changed, ..
+                    } if changed == perspective)
+            })
+        {
+            return uncovered();
+        }
+        if old.next_player_decision_id != new.next_player_decision_id
+            && !has_v3(&|operation| {
+                matches!(operation,
+                    V3::PendingRequestChanged { to: Some(request), .. }
+                        if request.actor == *perspective
+                            && request.player_decision_id == old.next_player_decision_id
+                            && request.player_decision_id.0.checked_add(1)
+                                == Some(new.next_player_decision_id.0))
+            })
+        {
+            return uncovered();
+        }
     }
 
     let old_allocators = &old_before.allocators;

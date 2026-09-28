@@ -1,6 +1,7 @@
 //! Authoritative events and exact, compositional transition validation.
 
 mod basic_land;
+mod basic_land_v4;
 mod basic_priority;
 mod combat_damage;
 mod contract;
@@ -33,6 +34,11 @@ pub use basic_land::{
     BasicLandFaceV1, BasicLandTransitionError, BasicLandTransitionProductV1, MagicActionRequestV1,
     SelectedSuccessorDecisionV1, SuccessorObservationPolicyV1,
 };
+pub use basic_land_v4::{
+    derive_basic_land_candidates_v4, execute_basic_land_response_v4, install_basic_land_request_v4,
+    selected_basic_land_action_v4, validate_basic_land_pending_request_v4,
+    BasicLandTransitionProductV4,
+};
 pub use contract::validate_transition_contract;
 pub use errors::{KernelExecutionError, ZoneIncarnationError};
 pub use events::{
@@ -41,8 +47,9 @@ pub use events::{
 };
 pub use events_v3::{
     allocate_rule_events_v3, validate_event_delta_parity_v3, validate_event_delta_state_v3,
-    validate_rule_event_cursor_v3, AuthoritativeRuleEventKindV3, AuthoritativeRuleEventV3,
-    EventDeltaV3Error, RuleEventCursorV3Error,
+    validate_event_delta_state_v3_after_rules_domain_validation, validate_rule_event_cursor_v3,
+    AuthoritativeRuleEventKindV3, AuthoritativeRuleEventV3, EventDeltaV3Error,
+    RuleEventCursorV3Error,
 };
 pub use program_kernel::{
     validate_runtime_state, validate_runtime_state_for_contract, ProgramKernelConstructionErrorV1,

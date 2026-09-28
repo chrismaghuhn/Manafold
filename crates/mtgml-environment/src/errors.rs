@@ -17,6 +17,7 @@ impl From<PlayerServiceErrorCodeV1> for PlayerEndpointError {
 
 use crate::checkpoint::CheckpointValidationError;
 use crate::checkpoint_v7::CheckpointV7Error;
+use crate::checkpoint_v8::CheckpointV8Error;
 use mtgml_state::SyntheticStateConstructionError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
@@ -77,6 +78,8 @@ pub enum ControllerError {
     CheckpointValidation(#[from] CheckpointValidationError),
     #[error("successor checkpoint validation failed: {0}")]
     CheckpointV7(#[from] CheckpointV7Error),
+    #[error("G0 checkpoint validation failed: {0}")]
+    CheckpointV8(#[from] CheckpointV8Error),
     #[error("kernel execution failed: {0}")]
     KernelExecution(#[from] KernelExecutionError),
     #[error("synthetic state construction failed: {0}")]

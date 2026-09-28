@@ -48,7 +48,7 @@ FAST = [
     [sys.executable, "scripts/generate_card_ir_capability_projection.py", "--check"],
     [sys.executable, "scripts/generate_contracts.py", "--check"],
     [sys.executable, "scripts/run_v5_execution_identity_gate.py"],
-    [sys.executable, "scripts/run_v6_state_identity_gate.py"],
+    [sys.executable, "scripts/run_v8_state_identity_gate.py"],
     [sys.executable, "scripts/verify_repository.py"],
     [sys.executable, "scripts/check_rust_source_structure.py"],
     [sys.executable, "scripts/check_documentation.py"],
@@ -63,7 +63,7 @@ INTEGRATION_EXTRA = [
     [sys.executable, "-m", "mypy", "--config-file", "python/pyproject.toml"],
     # The workspace-wide all-features build also enables the explicitly
     # historical conformance adapter. Compile the product's default feature
-    # selection separately so the current environment API stays V7/V3.
+    # selection separately so the current environment API stays V8/V4.
     ["cargo", "check", "-p", "mtgml-environment", "--locked"],
     # Exercise the public current endpoint and wire boundary under default
     # features; the all-features workspace tests intentionally select V2
@@ -124,9 +124,12 @@ def run(commands: list[list[str]], *, allow_missing: bool) -> int:
         print(f"RUN {text}", flush=True)
         started = time.perf_counter()
         try:
+            child_environment = os.environ.copy()
+            child_environment["PYTHONDONTWRITEBYTECODE"] = "1"
             result = subprocess.run(
                 command,
                 cwd=ROOT,
+                env=child_environment,
                 timeout=MAX_SINGLE_GATE_SUBPROCESS_RUNTIME_SECONDS,
             )
         except subprocess.TimeoutExpired:

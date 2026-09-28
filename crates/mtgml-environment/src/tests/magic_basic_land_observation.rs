@@ -605,6 +605,7 @@ fn g0g_projection_adds_shared_views_and_hides_revision_and_allocator_history() {
                 before,
                 after,
                 events,
+                delta: None,
                 accepted: true,
                 status: &running,
                 next_request: None,
@@ -616,6 +617,7 @@ fn g0g_projection_adds_shared_views_and_hides_revision_and_allocator_history() {
                 semantic_manifest: &semantic_manifest,
                 rules_manifest: &rules_manifest,
                 catalog: &catalog,
+                basic_land_admission: None,
             },
         )
     };

@@ -848,9 +848,51 @@ pub fn project_successor_information_state_v3(
     rules_manifest: &RulesContractManifestV1,
     catalog: &mtgml_card_ir::VerifiedContentCatalogV1,
 ) -> Result<PlayerInformationStateV3, PlayerEndpointError> {
-    parts
-        .validate()
-        .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
+    project_successor_information_state_v3_inner(
+        parts,
+        perspective,
+        execution_identity,
+        semantic_manifest,
+        rules_manifest,
+        catalog,
+        false,
+    )
+}
+
+pub fn project_successor_information_state_v3_after_rules_domain_validation(
+    parts: &EngineStatePartsV3,
+    perspective: PlayerId,
+    execution_identity: &ExecutionIdentityV1,
+    semantic_manifest: &SemanticContractManifestV1,
+    rules_manifest: &RulesContractManifestV1,
+    catalog: &mtgml_card_ir::VerifiedContentCatalogV1,
+) -> Result<PlayerInformationStateV3, PlayerEndpointError> {
+    project_successor_information_state_v3_inner(
+        parts,
+        perspective,
+        execution_identity,
+        semantic_manifest,
+        rules_manifest,
+        catalog,
+        true,
+    )
+}
+
+fn project_successor_information_state_v3_inner(
+    parts: &EngineStatePartsV3,
+    perspective: PlayerId,
+    execution_identity: &ExecutionIdentityV1,
+    semantic_manifest: &SemanticContractManifestV1,
+    rules_manifest: &RulesContractManifestV1,
+    catalog: &mtgml_card_ir::VerifiedContentCatalogV1,
+    rules_domain_validated: bool,
+) -> Result<PlayerInformationStateV3, PlayerEndpointError> {
+    let state_validation = if rules_domain_validated {
+        parts.validate_structure()
+    } else {
+        parts.validate()
+    };
+    state_validation.map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
 
     let mut predecessor = parts.predecessor_v5.clone();
     for record in predecessor.zones.stack_records.values_mut() {

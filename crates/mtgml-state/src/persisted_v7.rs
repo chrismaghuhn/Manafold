@@ -57,6 +57,19 @@ impl FullStateDigestInputV7 {
         Ok(Self(state_value_validated(state)?))
     }
 
+    /// Encodes a structurally validated successor after its containing Rules
+    /// transaction has independently rederived and accepted the exact
+    /// profile-dependent Decision domain. This is a canonical encoder, not a
+    /// state-admission API; generic callers must use `from_successor`.
+    pub fn from_successor_after_rules_domain_validation(
+        state: &EngineStatePartsV3,
+    ) -> Result<Self, crate::StateDigestError> {
+        state
+            .validate_structure()
+            .map_err(|_| crate::StateDigestError::StateInvariant)?;
+        Ok(Self(state_value_validated(state)?))
+    }
+
     pub fn canonical_value(&self) -> &Value {
         &self.0
     }

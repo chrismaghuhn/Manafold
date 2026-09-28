@@ -41,12 +41,14 @@ pub struct SuccessorProjectionAuthority<'a> {
     pub semantic_manifest: &'a mtgml_model::SemanticContractManifestV1,
     pub rules_manifest: &'a mtgml_model::RulesContractManifestV1,
     pub catalog: &'a mtgml_card_ir::VerifiedContentCatalogV1,
+    pub basic_land_admission: Option<&'a mtgml_card_ir::ExecutableProfileAdmissionV1>,
 }
 
 pub struct SuccessorTransitionV4Projection<'a> {
     pub before: &'a EngineStatePartsV3,
     pub after: &'a EngineStatePartsV3,
     pub events: &'a [mtgml_rules::AuthoritativeRuleEventV3],
+    pub delta: Option<&'a mtgml_state::StateDeltaV3>,
     pub accepted: bool,
     pub status: &'a mtgml_model::EpisodeStatus,
     pub next_request: Option<&'a mtgml_decision::AuthoritativeDecisionRequestV4>,
@@ -232,12 +234,37 @@ pub fn project_successor_events_v4(
     after: &EngineStatePartsV3,
     events: &[mtgml_rules::AuthoritativeRuleEventV3],
 ) -> Result<BTreeMap<PlayerId, Vec<ObservedEventEnvelopeV4>>, SuccessorProjectionError> {
-    before
-        .validate()
+    project_successor_events_v4_inner(before, after, events, None, false)
+}
+
+pub fn project_successor_events_v4_for_basic_land_profile(
+    admission: &mtgml_card_ir::ExecutableProfileAdmissionV1,
+    status: &mtgml_model::EpisodeStatus,
+    before: &EngineStatePartsV3,
+    after: &EngineStatePartsV3,
+    events: &[mtgml_rules::AuthoritativeRuleEventV3],
+    delta: Option<&mtgml_state::StateDeltaV3>,
+) -> Result<BTreeMap<PlayerId, Vec<ObservedEventEnvelopeV4>>, SuccessorProjectionError> {
+    mtgml_rules::validate_basic_land_pending_request_v4(admission, before, status)
         .map_err(|_| SuccessorProjectionError::ObservationOccurrenceMismatch)?;
-    after
-        .validate()
+    mtgml_rules::validate_basic_land_pending_request_v4(admission, after, status)
         .map_err(|_| SuccessorProjectionError::ObservationOccurrenceMismatch)?;
+    project_successor_events_v4_inner(before, after, events, delta, true)
+}
+
+fn project_successor_events_v4_inner(
+    before: &EngineStatePartsV3,
+    after: &EngineStatePartsV3,
+    events: &[mtgml_rules::AuthoritativeRuleEventV3],
+    delta: Option<&mtgml_state::StateDeltaV3>,
+    rules_domain_validated: bool,
+) -> Result<BTreeMap<PlayerId, Vec<ObservedEventEnvelopeV4>>, SuccessorProjectionError> {
+    let state_validation = if rules_domain_validated {
+        before.validate_structure().and(after.validate_structure())
+    } else {
+        before.validate().and(after.validate())
+    };
+    state_validation.map_err(|_| SuccessorProjectionError::ObservationOccurrenceMismatch)?;
     mtgml_rules::validate_rule_event_cursor_v3(
         before.predecessor_v5.allocators.next_rule_event_id,
         after.predecessor_v5.allocators.next_rule_event_id,
@@ -340,7 +367,7 @@ pub fn project_successor_events_v4(
             let source_index = events
                 .iter()
                 .position(|candidate| candidate.event_id == source_event_id)
-                .filter(|source_index| *source_index < index)
+                .filter(|source_index| *source_index != index)
                 .ok_or(SuccessorProjectionError::ObservationOccurrenceMismatch)?;
             let source = &events[source_index];
             let stack_order = stack_order_before_event
@@ -387,6 +414,9 @@ pub fn project_successor_events_v4(
                 }
             }
         }
+    }
+    if let Some(delta) = delta {
+        apply_projection_identity_delta(&mut identities, delta)?;
     }
     if identities != after_engine.perspective_identities.players {
         return Err(SuccessorProjectionError::FinalCursorMismatch);
@@ -479,6 +509,37 @@ fn project_v4_public_source_event(
 ) -> Result<ObservedEventKindV4, SuccessorProjectionError> {
     use AuthoritativeRuleEventKindV3 as Event;
     match &source_event.event {
+        Event::Existing { event } => match event.as_ref() {
+            mtgml_rules::AuthoritativeRuleEventKind::ZoneTransition { transition } => {
+                let policy = mtgml_rules::PerspectiveObservationPolicyV1::MovedInSight {
+                    from_zone: transition.from.zone,
+                    to_zone: transition.to.zone,
+                    old_object: transition.old_object,
+                    new_object: transition.new_object,
+                    reveals_old: true,
+                    reveals_new: true,
+                };
+                project_v4_legacy_observation_policy(
+                    after,
+                    &policy,
+                    before_identity,
+                    after_identity,
+                )?
+                .ok_or(SuccessorProjectionError::ObservationOccurrenceMismatch)
+            }
+            mtgml_rules::AuthoritativeRuleEventKind::ObjectTapped { object, to, .. } => {
+                Ok(ObservedEventKindV4::ObjectTapped {
+                    object: after_identity
+                        .object_to_opaque
+                        .get(object)
+                        .or_else(|| before_identity.object_to_opaque.get(object))
+                        .copied()
+                        .ok_or(SuccessorProjectionError::MissingOpaqueIdentity)?,
+                    tapped: *to,
+                })
+            }
+            _ => Err(SuccessorProjectionError::UnsupportedObservedEvent),
+        },
         Event::StackItemAdded {
             stack_object,
             payload,
@@ -792,6 +853,79 @@ pub fn project_successor_player_steps(
     Ok(steps)
 }
 
+fn apply_projection_identity_delta(
+    identities: &mut BTreeMap<PlayerId, PerspectiveIdentityRecordV2>,
+    delta: &mtgml_state::StateDeltaV3,
+) -> Result<(), SuccessorProjectionError> {
+    use mtgml_state::{SemanticDeltaOperationV2 as V2, SemanticDeltaOperationV3 as V3};
+
+    for operation in &delta.operations {
+        match operation {
+            V3::Existing { operation } => {
+                let V2::AbilityIdentityChanged {
+                    perspective,
+                    instance,
+                    from,
+                    to,
+                } = operation.as_ref()
+                else {
+                    continue;
+                };
+                let identity = identities
+                    .get_mut(perspective)
+                    .ok_or(SuccessorProjectionError::UnknownPerspective)?;
+                if identity.ability_to_opaque.get(instance).copied() != *from {
+                    return Err(SuccessorProjectionError::ObservationOccurrenceMismatch);
+                }
+                if let Some(opaque) = from {
+                    identity.ability_to_opaque.remove(instance);
+                    identity.opaque_to_ability.remove(opaque);
+                    identity.retired_ability_ids.insert(*opaque);
+                }
+                if let Some(opaque) = to {
+                    if *opaque != identity.next_opaque_ability_id
+                        || identity
+                            .opaque_to_ability
+                            .insert(*opaque, *instance)
+                            .is_some()
+                        || identity
+                            .ability_to_opaque
+                            .insert(*instance, *opaque)
+                            .is_some()
+                    {
+                        return Err(SuccessorProjectionError::ObservationOccurrenceMismatch);
+                    }
+                    identity.next_opaque_ability_id = mtgml_model::OpaqueAbilityId(
+                        opaque
+                            .0
+                            .checked_add(1)
+                            .ok_or(SuccessorProjectionError::CursorMismatch)?,
+                    );
+                }
+            }
+            V3::PendingRequestChanged {
+                to: Some(request), ..
+            } => {
+                let identity = identities
+                    .get_mut(&request.actor)
+                    .ok_or(SuccessorProjectionError::UnknownPerspective)?;
+                if identity.next_player_decision_id != request.player_decision_id {
+                    return Err(SuccessorProjectionError::ObservationOccurrenceMismatch);
+                }
+                identity.next_player_decision_id = mtgml_model::PlayerDecisionIdV1(
+                    request
+                        .player_decision_id
+                        .0
+                        .checked_add(1)
+                        .ok_or(SuccessorProjectionError::CursorMismatch)?,
+                );
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
 /// Builds detached V4 player products from a validated G0 successor
 /// transition. The caller must run State/Delta/event and Rules admission
 /// before passing profile-independent state to this projection boundary.
@@ -799,14 +933,44 @@ pub fn project_successor_player_steps_v4(
     transition: SuccessorTransitionV4Projection<'_>,
     authority: SuccessorProjectionAuthority<'_>,
 ) -> Result<BTreeMap<PlayerId, mtgml_observation::PlayerStepV4>, ControllerError> {
+    if let Some(admission) = authority.basic_land_admission {
+        mtgml_rules::validate_basic_land_pending_request_v4(
+            admission,
+            transition.before,
+            transition.status,
+        )
+        .map_err(|error| ControllerError::Backend(error.to_string()))?;
+        mtgml_rules::validate_basic_land_pending_request_v4(
+            admission,
+            transition.after,
+            transition.status,
+        )
+        .map_err(|error| ControllerError::Backend(error.to_string()))?;
+    } else {
+        transition
+            .before
+            .validate()
+            .and(transition.after.validate())
+            .map_err(|error| ControllerError::Backend(error.to_string()))?;
+    }
     if transition.next_request != transition.after.execution_v4.pending_decision.as_ref() {
         return Err(ControllerError::Backend(
             "projected V4 request differs from the authoritative pending request".into(),
         ));
     }
-    let events =
+    let events = if let Some(admission) = authority.basic_land_admission {
+        project_successor_events_v4_for_basic_land_profile(
+            admission,
+            transition.status,
+            transition.before,
+            transition.after,
+            transition.events,
+            transition.delta,
+        )
+    } else {
         project_successor_events_v4(transition.before, transition.after, transition.events)
-            .map_err(|error| ControllerError::Backend(error.to_string()))?;
+    }
+    .map_err(|error| ControllerError::Backend(error.to_string()))?;
     let players: BTreeSet<_> = transition
         .after
         .predecessor_v5
@@ -817,14 +981,25 @@ pub fn project_successor_player_steps_v4(
         .collect();
     let mut steps = BTreeMap::new();
     for perspective in players {
-        let information_state = crate::project_successor_information_state_v3(
-            transition.after,
-            perspective,
-            authority.execution_identity,
-            authority.semantic_manifest,
-            authority.rules_manifest,
-            authority.catalog,
-        )
+        let information_state = if authority.basic_land_admission.is_some() {
+            crate::project_successor_information_state_v3_after_rules_domain_validation(
+                transition.after,
+                perspective,
+                authority.execution_identity,
+                authority.semantic_manifest,
+                authority.rules_manifest,
+                authority.catalog,
+            )
+        } else {
+            crate::project_successor_information_state_v3(
+                transition.after,
+                perspective,
+                authority.execution_identity,
+                authority.semantic_manifest,
+                authority.rules_manifest,
+                authority.catalog,
+            )
+        }
         .map_err(|error| ControllerError::Backend(error.to_string()))?;
         let next_decision = transition
             .next_request

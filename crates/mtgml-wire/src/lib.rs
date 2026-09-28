@@ -14,6 +14,7 @@ mod replay;
 pub use canonical_json::{decode_canonical, encode_canonical};
 pub use contract::WireContract;
 pub use decision::decision_response_v2;
+pub use decision::decision_response_v3;
 pub use error::{PlayerWireErrorCodeV1, WireError};
 pub use fixtures::{
     verify_golden_fixture_directory, verify_negative_fixture_directory, FixtureVerificationError,

@@ -2,8 +2,8 @@
 """Detached V5 execution-identity evidence gate (ADR 0055).
 
 Preserves the exact historical V5 checkpoint/replay types, detached validators,
-fixtures, and their original V4->V5 migration census. Current runtime identity
-is independently checked by ``run_v6_state_identity_gate.py``.
+fixtures, and their original V4->V5 migration census. The current G0 runtime
+identity cut is independently checked by ``run_v8_state_identity_gate.py``.
 
 The gate is intentionally RED until the current producers/consumers from the
 V4 census are migrated to V5 (Task 13).  Its RED state at this point IS the
