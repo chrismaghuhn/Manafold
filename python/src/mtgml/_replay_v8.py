@@ -238,6 +238,14 @@ class ReplayManifestV8:
         authority = self.semantic_contract.rules_manifest.get("rules_authority")
         if not isinstance(authority, dict):
             raise WireError("semantic.replay_manifest", "rules authority is malformed")
+        program_authority = {
+            "magic_rules": "comprehensive_rules",
+            "synthetic_rules_compat": "synthetic_legacy",
+        }
+        if program_authority.get(self.execution_identity.program_kind) != authority.get("variant"):
+            raise WireError(
+                "semantic.replay_manifest", "execution program and rules authority do not match"
+            )
         if (
             authority.get("variant") == "comprehensive_rules"
             and authority.get("snapshot_id") != self.rules_snapshot
@@ -358,9 +366,15 @@ class AuthoritativeReplayV8:
         obj = require_exact_keys(value, {"schema_version", "manifest", "steps", "final_identity"})
         if obj["schema_version"] != REPLAY_FILE_SCHEMA_V8 or not isinstance(obj["steps"], list):
             raise WireError("decode.invalid_json", "unsupported AuthoritativeReplayV8")
+        try:
+            manifest = ReplayManifestV8.from_wire(obj["manifest"])
+        except WireError as exc:
+            if exc.code == "semantic.replay_manifest":
+                raise WireError("semantic.replay", exc.message) from exc
+            raise
         result = cls(
             REPLAY_FILE_SCHEMA_V8,
-            ReplayManifestV8.from_wire(obj["manifest"]),
+            manifest,
             tuple(ReplayStepV8.from_wire(item) for item in obj["steps"]),
             InitialEnvironmentIdentityV8.from_wire(obj["final_identity"]),
         )

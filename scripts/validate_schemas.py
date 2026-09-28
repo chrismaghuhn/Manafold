@@ -88,6 +88,14 @@ ARTIFACT_CASES = [
 SCHEMA_NEGATIVE_CASES = [
     (
         "replay-manifest.v8.schema.json",
+        "schemas/negative/replay-manifest-v8-program-authority-mismatch.json",
+    ),
+    (
+        "authoritative-replay.v8.schema.json",
+        "schemas/negative/authoritative-replay-v8-program-authority-mismatch.json",
+    ),
+    (
+        "replay-manifest.v8.schema.json",
         "schemas/negative/replay-manifest-v8-old-response-identity.json",
     ),
     (

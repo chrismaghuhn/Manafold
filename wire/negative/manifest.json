@@ -665,6 +665,18 @@
       "expected_error_code": "decode.invalid_json",
       "expected_reject_layer": "rust-python-semantic-or-decode",
       "path": "authoritative-replay-v8-wrong-version.json"
+    },
+    {
+      "contract": "replay-manifest.v8",
+      "expected_error_code": "semantic.replay_manifest",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "replay-manifest-v8-program-authority-mismatch.json"
+    },
+    {
+      "contract": "authoritative-replay.v8",
+      "expected_error_code": "semantic.replay",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "authoritative-replay-v8-program-authority-mismatch.json"
     }
   ]
 }
