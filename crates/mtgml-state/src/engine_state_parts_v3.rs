@@ -34,7 +34,7 @@ impl EngineStatePartsV3 {
     }
 
     pub fn validate(&self) -> Result<(), EngineStatePartsV3Error> {
-        self.validate_components()?;
+        self.validate_structure()?;
         if self
             .execution_v4
             .pending_decision
@@ -44,6 +44,15 @@ impl EngineStatePartsV3 {
             return Err(EngineStatePartsV3Error::ProfileDependentDecisionNotAdmitted);
         }
         Ok(())
+    }
+
+    /// Validates the closed state shape and cross-field invariants without
+    /// admitting a pending RulesKernel decision domain. A caller may use this
+    /// for detached values or as a prerequisite to RulesKernel-owned exact
+    /// domain derivation; it never authorizes response execution, persistence
+    /// admission, checkpoint restore, or replay by itself.
+    pub fn validate_structure(&self) -> Result<(), EngineStatePartsV3Error> {
+        self.validate_components()
     }
 
     fn validate_components(&self) -> Result<(), EngineStatePartsV3Error> {

@@ -247,6 +247,48 @@ fn successor_authority_has_one_v3_root_and_v4_execution_owner() {
 }
 
 #[test]
+fn m42_priority_candidate_is_structural_but_not_rules_admitted() {
+    let mut state = root();
+    let actor = PlayerId(1);
+    let decision_id = state.predecessor_v5.allocators.next_decision_id;
+    state.predecessor_v5.allocators.next_decision_id =
+        DecisionId(decision_id.0.checked_add(1).unwrap());
+    let identity = state
+        .predecessor_v5
+        .perspective_identities
+        .players
+        .get_mut(&actor)
+        .unwrap();
+    let player_decision_id = identity.next_player_decision_id;
+    identity.next_player_decision_id =
+        PlayerDecisionIdV1(player_decision_id.0.checked_add(1).unwrap());
+    let view_sequence = state.predecessor_v5.knowledge.players[&actor].next_visible_sequence;
+    state.execution_v4.pending_decision = Some(mtgml_decision::AuthoritativeDecisionRequestV4 {
+        decision_id,
+        player_decision_id,
+        state_revision: state.predecessor_v5.revision,
+        view_sequence,
+        actor,
+        visibility: mtgml_decision::DecisionVisibility::Public,
+        decision_domain_v2: mtgml_decision::DecisionDomainV2::ChooseOne,
+        purpose: mtgml_decision::DecisionPurposeV4::PriorityAction,
+        parent_player_decision_id: None,
+        continuation_id: None,
+        candidates: vec![mtgml_decision::AuthoritativeCandidateV4 {
+            candidate_id: CandidateIdV1(0),
+            visible_intent: mtgml_decision::CandidateIntentV4::PassPriority,
+            trusted_binding: mtgml_decision::EngineCandidateBindingV4::PassPriority,
+        }],
+    });
+
+    assert!(state.validate_structure().is_ok());
+    assert_eq!(
+        state.validate(),
+        Err(mtgml_state::EngineStatePartsV3Error::ProfileDependentDecisionNotAdmitted)
+    );
+}
+
+#[test]
 fn predecessor_execution_cannot_duplicate_the_successor_execution_owner() {
     let state = root();
     let mut predecessor = state.predecessor_v5;
