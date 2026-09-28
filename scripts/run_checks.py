@@ -67,7 +67,9 @@ INTEGRATION_EXTRA = [
     ["cargo", "check", "-p", "mtgml-environment", "--locked"],
     # Exercise the public current endpoint and wire boundary under default
     # features; the all-features workspace tests intentionally select V2
-    # historical aliases for conformance coverage.
+    # historical aliases for conformance coverage. Run the complete default
+    # environment test target too, including mode-sensitive API fixtures.
+    ["cargo", "test", "-p", "mtgml-environment", "--locked"],
     [
         "cargo",
         "test",

@@ -119,6 +119,12 @@ class PythonTestProfileTests(unittest.TestCase):
             run_checks.INTEGRATION_EXTRA,
         )
 
+    def test_integration_runs_default_successor_environment_test_suite(self) -> None:
+        self.assertIn(
+            ["cargo", "test", "-p", "mtgml-environment", "--locked"],
+            run_checks.INTEGRATION_EXTRA,
+        )
+
     def test_python_tools_are_bound_to_the_selected_interpreter(self) -> None:
         self.assertIn(
             [sys.executable, "-m", "ruff", "format", "--check", "python", "scripts"],
