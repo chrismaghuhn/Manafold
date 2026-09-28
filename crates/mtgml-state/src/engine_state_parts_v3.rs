@@ -87,6 +87,16 @@ impl EngineStatePartsV3 {
             }
             self.validate_stack_payload(payload, &players)?;
         }
+        let stack_zone_cards: BTreeSet<_> = zones
+            .locations
+            .iter()
+            .filter_map(|(object, location)| {
+                (location.zone == mtgml_model::ZoneKind::Stack).then_some(*object)
+            })
+            .collect();
+        if stack_zone_cards != spell_cards {
+            return Err(EngineStatePartsV3Error::StackCardReference);
+        }
         Ok(())
     }
 
@@ -372,11 +382,12 @@ impl EngineStatePartsV3 {
         for target in targets {
             let valid = match target.target {
                 crate::TargetRef::Object(object) => {
-                    object.0 < self.predecessor_v5.allocators.next_object_id.0
+                    object.0 != 0 && object.0 < self.predecessor_v5.allocators.next_object_id.0
                 }
                 crate::TargetRef::Player(player) => players.contains(&player),
                 crate::TargetRef::StackItem(stack_item) => {
-                    stack_item.0 < self.predecessor_v5.allocators.next_stack_object_id.0
+                    stack_item.0 != 0
+                        && stack_item.0 < self.predecessor_v5.allocators.next_stack_object_id.0
                 }
             };
             if !valid {
@@ -415,7 +426,11 @@ impl EngineStatePartsV3 {
             {
                 return Err(EngineStatePartsV3Error::ContinuationRecord);
             }
-            self.validate_continuation_payload(&continuation.payload, &players)?;
+            self.validate_continuation_payload(
+                &continuation.payload,
+                continuation.created_at_revision,
+                &players,
+            )?;
         }
         for (id, trigger) in &execution.waiting_triggers {
             if id.0 == 0
@@ -497,8 +512,9 @@ impl EngineStatePartsV3 {
                 };
                 if Self::continuation_request_actor(&record.payload)
                     .is_some_and(|actor| actor != request.actor)
+                    || !self.continuation_request_matches(&record.payload, request)
                 {
-                    return Err(EngineStatePartsV3Error::PendingContinuation);
+                    return Err(EngineStatePartsV3Error::ContinuationRequestMismatch);
                 }
             } else if !execution.continuations.is_empty() {
                 return Err(EngineStatePartsV3Error::PendingContinuation);
@@ -520,13 +536,27 @@ impl EngineStatePartsV3 {
     fn validate_continuation_payload(
         &self,
         payload: &crate::ContinuationPayloadV3,
+        created_at_revision: mtgml_model::StateRevision,
         players: &BTreeSet<mtgml_model::PlayerId>,
     ) -> Result<(), EngineStatePartsV3Error> {
         match payload {
-            crate::ContinuationPayloadV3::SyntheticAssembly { actor, .. } => {
+            crate::ContinuationPayloadV3::SyntheticAssembly {
+                actor,
+                stage,
+                selected_count,
+                selected_piece_keys,
+                ordered_piece_keys,
+            } => {
                 if !players.contains(actor) {
                     return Err(EngineStatePartsV3Error::ContinuationRecord);
                 }
+                crate::engine_state_shape::validate_successor_synthetic_assembly(
+                    *stage,
+                    *selected_count,
+                    selected_piece_keys,
+                    ordered_piece_keys,
+                )
+                .map_err(|_| EngineStatePartsV3Error::ContinuationRecord)?;
             }
             crate::ContinuationPayloadV3::Cast(value) => {
                 if !players.contains(&value.actor)
@@ -601,12 +631,32 @@ impl EngineStatePartsV3 {
                     Some(value.source_object),
                 )?;
             }
-            crate::ContinuationPayloadV3::MagicSbaGraveyardOrderV1 { apnap_owners, .. } => {
+            crate::ContinuationPayloadV3::MagicSbaGraveyardOrderV1 {
+                round_start_revision,
+                selected_sba_actions,
+                apnap_owners,
+                next_owner_index,
+                completed_owner_orders,
+            } => {
                 if apnap_owners.is_empty()
                     || apnap_owners.iter().any(|actor| !players.contains(actor))
                 {
                     return Err(EngineStatePartsV3Error::ContinuationRecord);
                 }
+                crate::engine_state_shape::validate_successor_magic_sba_graveyard_order(
+                    crate::engine_state_shape::SuccessorMagicSbaGraveyardOrderValidation {
+                        round_start_revision: *round_start_revision,
+                        continuation_created_at_revision: created_at_revision,
+                        selected_sba_actions,
+                        apnap_owners,
+                        next_owner_index: *next_owner_index,
+                        completed_owner_orders,
+                        current_revision: self.predecessor_v5.revision,
+                        players,
+                        objects: &self.predecessor_v5.zones.objects,
+                    },
+                )
+                .map_err(|_| EngineStatePartsV3Error::ContinuationRecord)?;
             }
             crate::ContinuationPayloadV3::TriggerPlacement(value) => {
                 self.validate_trigger_placement(value, players)?;
@@ -617,6 +667,8 @@ impl EngineStatePartsV3 {
                     .zones
                     .stack_records
                     .contains_key(&value.resolving_stack_object)
+                    || self.predecessor_v5.zones.stack_order.last().copied()
+                        != Some(value.resolving_stack_object)
                 {
                     return Err(EngineStatePartsV3Error::StackResolution);
                 }
@@ -670,6 +722,14 @@ impl EngineStatePartsV3 {
                         .objects
                         .get(&object)
                         .is_some_and(|value| value.controller == actor)
+                        && self
+                            .predecessor_v5
+                            .zones
+                            .locations
+                            .get(&object)
+                            .is_some_and(|location| {
+                                location.zone == mtgml_model::ZoneKind::Battlefield
+                            })
                 }) => {}
                 _ => return Err(EngineStatePartsV3Error::SelectedCostOperand),
             }
@@ -803,13 +863,194 @@ impl EngineStatePartsV3 {
         }
     }
 
+    fn continuation_request_matches(
+        &self,
+        payload: &crate::ContinuationPayloadV3,
+        request: &mtgml_decision::AuthoritativeDecisionRequestV4,
+    ) -> bool {
+        use mtgml_decision::{DecisionDomainV2 as Domain, DecisionPurposeV4 as Purpose};
+
+        match payload {
+            crate::ContinuationPayloadV3::SyntheticAssembly { stage, .. } => {
+                let Purpose::SyntheticAssembly {
+                    stage: request_stage,
+                } = &request.purpose
+                else {
+                    return false;
+                };
+                matches!(
+                    (stage, request_stage),
+                    (
+                        crate::AssemblyStageV2::ChooseCount,
+                        mtgml_decision::SyntheticAssemblyStageV1::ChooseCount
+                    ) | (
+                        crate::AssemblyStageV2::ChooseMembers,
+                        mtgml_decision::SyntheticAssemblyStageV1::ChooseMembers
+                    ) | (
+                        crate::AssemblyStageV2::OrderMembers,
+                        mtgml_decision::SyntheticAssemblyStageV1::OrderMembers
+                    )
+                )
+            }
+            crate::ContinuationPayloadV3::MagicSbaGraveyardOrderV1 { .. } => {
+                matches!(&request.purpose, Purpose::SbaGraveyardOrder)
+                    && matches!(&request.decision_domain_v2, Domain::Order { .. })
+            }
+            crate::ContinuationPayloadV3::Cast(value) => match value.stage {
+                crate::CastContinuationStage::SelectingCostRoute => {
+                    matches!(&request.purpose, Purpose::CastCostRoute)
+                        && matches!(&request.decision_domain_v2, Domain::ChooseOne)
+                }
+                crate::CastContinuationStage::SelectingModes => {
+                    matches!(&request.purpose, Purpose::ModeSelection { .. })
+                        && Self::is_single_or_many(&request.decision_domain_v2)
+                }
+                crate::CastContinuationStage::SelectingTargets => {
+                    matches!(&request.purpose, Purpose::TargetSelection { .. })
+                        && Self::is_single_or_many(&request.decision_domain_v2)
+                }
+                crate::CastContinuationStage::SelectingAdditionalCosts => {
+                    (matches!(
+                        &request.purpose,
+                        Purpose::OptionalCostPayment { .. } | Purpose::CostOperandSelection { .. }
+                    )) && matches!(&request.decision_domain_v2, Domain::ChooseOne)
+                }
+                crate::CastContinuationStage::SelectingCostOperands => {
+                    matches!(&request.purpose, Purpose::CostOperandSelection { .. })
+                        && matches!(&request.decision_domain_v2, Domain::ChooseOne)
+                }
+                crate::CastContinuationStage::PayingMana => {
+                    Self::mana_stage_matches(value.mana_payment_staging.as_ref(), request)
+                }
+            },
+            crate::ContinuationPayloadV3::NonManaActivation(value) => match value.stage {
+                crate::NonManaActivationStage::SelectingModes => {
+                    matches!(&request.purpose, Purpose::ModeSelection { .. })
+                        && Self::is_single_or_many(&request.decision_domain_v2)
+                }
+                crate::NonManaActivationStage::SelectingTargets => {
+                    matches!(&request.purpose, Purpose::TargetSelection { .. })
+                        && Self::is_single_or_many(&request.decision_domain_v2)
+                }
+                crate::NonManaActivationStage::SelectingCostOperands => {
+                    matches!(&request.purpose, Purpose::CostOperandSelection { .. })
+                        && matches!(&request.decision_domain_v2, Domain::ChooseOne)
+                }
+                crate::NonManaActivationStage::PayingMana => {
+                    Self::mana_stage_matches(value.mana_payment_staging.as_ref(), request)
+                }
+            },
+            crate::ContinuationPayloadV3::TriggerPlacement(value) => {
+                let Some(actor) = value
+                    .apnap_actors
+                    .get(value.current_actor_index as usize)
+                    .copied()
+                else {
+                    return false;
+                };
+                let actor_triggers: Vec<_> = value
+                    .pending_trigger_ids
+                    .iter()
+                    .filter(|id| {
+                        self.execution_v4
+                            .waiting_triggers
+                            .get(id)
+                            .is_some_and(|trigger| trigger.controller == actor)
+                    })
+                    .copied()
+                    .collect();
+                let actor_ordered = value
+                    .completed_orders
+                    .iter()
+                    .any(|order| order.actor == actor);
+                if actor_triggers.len() > 1 && !actor_ordered {
+                    matches!(&request.purpose, Purpose::TriggerOrder)
+                        && matches!(&request.decision_domain_v2, Domain::Order { .. })
+                } else if actor_triggers.iter().any(|id| {
+                    self.execution_v4
+                        .waiting_triggers
+                        .get(id)
+                        .is_some_and(|trigger| {
+                            trigger.target_timing == crate::TriggerTargetTiming::ChooseOnPlacement
+                        })
+                        && !value
+                            .selected_trigger_targets
+                            .iter()
+                            .any(|selected| selected.trigger_id == *id)
+                }) {
+                    matches!(&request.purpose, Purpose::TriggerTarget { .. })
+                        && Self::is_single_or_many(&request.decision_domain_v2)
+                } else {
+                    false
+                }
+            }
+            crate::ContinuationPayloadV3::StackResolution(value) => match value.stage {
+                crate::StackResolutionStage::AwaitingOptionalPayment => {
+                    matches!(&request.purpose, Purpose::OptionalCostPayment { .. })
+                        && matches!(&request.decision_domain_v2, Domain::ChooseOne)
+                }
+                crate::StackResolutionStage::PayingMana => {
+                    Self::mana_stage_matches(value.mana_payment_staging.as_ref(), request)
+                }
+            },
+        }
+    }
+
+    fn is_single_or_many(domain: &mtgml_decision::DecisionDomainV2) -> bool {
+        matches!(
+            domain,
+            mtgml_decision::DecisionDomainV2::ChooseOne
+                | mtgml_decision::DecisionDomainV2::ChooseMany { .. }
+        )
+    }
+
+    fn mana_stage_matches(
+        staging: Option<&crate::ManaPaymentStaging>,
+        request: &mtgml_decision::AuthoritativeDecisionRequestV4,
+    ) -> bool {
+        match (staging.map(|value| value.stage), &request.purpose) {
+            (
+                Some(crate::ManaPaymentStage::SelectingSources),
+                mtgml_decision::DecisionPurposeV4::ManaProductionChoice,
+            ) => matches!(
+                &request.decision_domain_v2,
+                mtgml_decision::DecisionDomainV2::ChooseOne
+            ),
+            (
+                Some(crate::ManaPaymentStage::AwaitingFinalAllocation),
+                mtgml_decision::DecisionPurposeV4::ManaPayment,
+            ) => matches!(
+                &request.decision_domain_v2,
+                mtgml_decision::DecisionDomainV2::ChooseOne
+            ),
+            _ => false,
+        }
+    }
+
     fn validate_trigger_placement(
         &self,
         value: &crate::TriggerPlacementContinuation,
         players: &BTreeSet<mtgml_model::PlayerId>,
     ) -> Result<(), EngineStatePartsV3Error> {
+        if players.len() != 2 {
+            return Err(EngineStatePartsV3Error::TriggerPlacement);
+        }
+        let active = self.predecessor_v5.core.active_player;
+        let mut apnap_order = vec![active];
+        apnap_order.extend(players.iter().copied().filter(|player| *player != active));
+        let owners_with_triggers: BTreeSet<_> = self
+            .execution_v4
+            .waiting_triggers
+            .values()
+            .map(|trigger| trigger.controller)
+            .collect();
+        let expected_actors: Vec<_> = apnap_order
+            .into_iter()
+            .filter(|actor| owners_with_triggers.contains(actor))
+            .collect();
         let unique_apnap: BTreeSet<_> = value.apnap_actors.iter().copied().collect();
         if value.apnap_actors.is_empty()
+            || value.apnap_actors != expected_actors
             || value
                 .apnap_actors
                 .iter()
@@ -847,10 +1088,20 @@ impl EngineStatePartsV3 {
         let mut ordered = BTreeSet::new();
         let mut completed_actors = BTreeSet::new();
         for group in &value.completed_orders {
+            let actual: BTreeSet<_> = group.ordered_trigger_ids.iter().copied().collect();
+            let expected: BTreeSet<_> = self
+                .execution_v4
+                .waiting_triggers
+                .values()
+                .filter(|trigger| trigger.controller == group.actor)
+                .map(|trigger| trigger.id)
+                .collect();
             if !players.contains(&group.actor)
                 || !value.apnap_actors.contains(&group.actor)
                 || !completed_actors.insert(group.actor)
                 || group.ordered_trigger_ids.is_empty()
+                || actual != expected
+                || group.ordered_trigger_ids.len() != actual.len()
                 || group
                     .ordered_trigger_ids
                     .iter()
@@ -859,10 +1110,18 @@ impl EngineStatePartsV3 {
                 return Err(EngineStatePartsV3Error::TriggerPlacement);
             }
         }
+        for (index, actor) in value.apnap_actors.iter().enumerate() {
+            if (index < value.current_actor_index as usize && !completed_actors.contains(actor))
+                || (index > value.current_actor_index as usize && completed_actors.contains(actor))
+            {
+                return Err(EngineStatePartsV3Error::TriggerPlacement);
+            }
+        }
         let mut selected_target_slots = BTreeSet::new();
         for selected in &value.selected_trigger_targets {
             let trigger = self.execution_v4.waiting_triggers.get(&selected.trigger_id);
             if !value.pending_trigger_ids.contains(&selected.trigger_id)
+                || !ordered.contains(&selected.trigger_id)
                 || trigger.is_none_or(|record| {
                     record.target_timing != crate::TriggerTargetTiming::ChooseOnPlacement
                 })
@@ -933,6 +1192,8 @@ pub enum EngineStatePartsV3Error {
     PendingDecision,
     #[error("pending request points to a missing continuation")]
     PendingContinuation,
+    #[error("pending request purpose/domain does not match the continuation stage")]
+    ContinuationRequestMismatch,
     #[error("stack resolution continuation does not name the current resolving item")]
     StackResolution,
     #[error("continuation has an invalid selected cost operand")]

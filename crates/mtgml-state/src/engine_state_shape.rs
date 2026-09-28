@@ -68,6 +68,60 @@ pub enum EngineStateShapeViolation {
 pub const SYNTHETIC_COUNT_MIN: u32 = 0;
 pub const SYNTHETIC_COUNT_MAX: u32 = 3;
 
+pub(crate) fn validate_successor_synthetic_assembly(
+    stage: AssemblyStageV2,
+    selected_count: Option<u32>,
+    selected_piece_keys: &[u32],
+    ordered_piece_keys: &[u32],
+) -> Result<(), EngineStateShapeViolation> {
+    validate_synthetic_assembly(
+        stage,
+        selected_count,
+        selected_piece_keys,
+        ordered_piece_keys,
+    )
+}
+
+pub(crate) struct SuccessorMagicSbaGraveyardOrderValidation<'a> {
+    pub round_start_revision: StateRevision,
+    pub continuation_created_at_revision: StateRevision,
+    pub selected_sba_actions: &'a [SbaSelectedActionV1],
+    pub apnap_owners: &'a [PlayerId],
+    pub next_owner_index: u32,
+    pub completed_owner_orders: &'a [SbaGraveyardOwnerOrderV1],
+    pub current_revision: StateRevision,
+    pub players: &'a BTreeSet<PlayerId>,
+    pub objects: &'a BTreeMap<GameObjectId, GameObject>,
+}
+
+pub(crate) fn validate_successor_magic_sba_graveyard_order(
+    validation: SuccessorMagicSbaGraveyardOrderValidation<'_>,
+) -> Result<(), EngineStateShapeViolation> {
+    let SuccessorMagicSbaGraveyardOrderValidation {
+        round_start_revision,
+        continuation_created_at_revision,
+        selected_sba_actions,
+        apnap_owners,
+        next_owner_index,
+        completed_owner_orders,
+        current_revision,
+        players,
+        objects,
+    } = validation;
+    validate_magic_sba_graveyard_order(MagicSbaGraveyardOrderValidation {
+        round_start_revision,
+        continuation_created_at_revision,
+        selected_sba_actions,
+        apnap_owners,
+        next_owner_index,
+        completed_owner_orders,
+        current_revision,
+        players,
+        objects,
+    })
+    .map(|_| ())
+}
+
 pub fn validate_engine_state_shape(
     current_revision: StateRevision,
     players: &BTreeSet<PlayerId>,
