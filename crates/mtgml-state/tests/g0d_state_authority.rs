@@ -660,15 +660,15 @@ fn trigger_order_request_is_bound_to_the_current_apnap_group_not_trigger_ids() {
     state.predecessor_v5.allocators.next_continuation_id = ContinuationId(2);
     state.predecessor_v5.allocators.next_decision_id = DecisionId(3);
     let trigger_source = pending_trigger(1, PlayerId(1)).source_context;
-    for (id, controller) in [(1, PlayerId(1)), (2, PlayerId(1))] {
+    for (id, drawn_player) in [(1, PlayerId(1)), (2, PlayerId(2))] {
         state.execution_v4.waiting_triggers.insert(
             mtgml_model::TriggerInstanceId(id),
             mtgml_state::PendingTriggerRecord {
                 id: mtgml_model::TriggerInstanceId(id),
-                controller,
+                controller: PlayerId(1),
                 source_context: trigger_source.clone(),
                 trigger_context: mtgml_state::TriggerEventSnapshot::CardDrawn {
-                    player: controller,
+                    player: drawn_player,
                 },
                 target_timing: mtgml_state::TriggerTargetTiming::NoTargets,
             },
