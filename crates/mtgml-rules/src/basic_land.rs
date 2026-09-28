@@ -2746,4 +2746,203 @@ mod tests {
             .iter()
             .any(|candidate| matches!(candidate.visible_intent, CandidateIntentV3::PassPriority)));
     }
+
+    fn successor_state_with_two_lands() -> mtgml_state::EngineStatePartsV3 {
+        let state = state_with_two_lands();
+        mtgml_state::EngineStatePartsV3::new(
+            state.predecessor_v5,
+            Default::default(),
+            state.card_rules_state,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn s1_a_resolves_exact_admitted_live_object_without_mutation() {
+        let admission = admission();
+        let state = successor_state_with_two_lands();
+        let object_id = *state.predecessor_v5.zones.objects.keys().next().unwrap();
+        let before = state.clone();
+        let authority = crate::S1QueryAuthority::for_object(&admission, &state, object_id).unwrap();
+        let queried = authority.queried_object();
+
+        assert_eq!(queried.object, object_id);
+        let object = state.predecessor_v5.zones.objects.get(&object_id).unwrap();
+        let location = state
+            .predecessor_v5
+            .zones
+            .locations
+            .get(&object_id)
+            .unwrap();
+        assert_eq!(queried.card_definition, object.card_definition);
+        assert_eq!(queried.owner, object.owner);
+        assert_eq!(queried.controller, object.controller);
+        assert_eq!(queried.zone, location.zone);
+        assert_eq!(queried.face_key.0, 0);
+        assert_eq!(
+            authority.execution_identity(),
+            admission.execution_identity()
+        );
+        assert_eq!(state, before);
+    }
+
+    #[test]
+    fn s1_a_rejects_unknown_definition_without_fallback_or_mutation() {
+        let admission = admission();
+        let mut state = successor_state_with_two_lands();
+        let object_id = *state.predecessor_v5.zones.objects.keys().next().unwrap();
+        state
+            .predecessor_v5
+            .zones
+            .objects
+            .get_mut(&object_id)
+            .unwrap()
+            .card_definition = CardDefinitionId(999_999);
+        for (player, identity) in &state.predecessor_v5.perspective_identities.players {
+            if let Some(opaque) = identity.object_to_opaque.get(&object_id) {
+                if let Some(record) = state
+                    .predecessor_v5
+                    .knowledge
+                    .players
+                    .get_mut(player)
+                    .and_then(|knowledge| knowledge.active.get_mut(opaque))
+                {
+                    record.card_definition = Some(CardDefinitionId(999_999));
+                }
+            }
+        }
+        let before = state.clone();
+
+        let error = crate::S1QueryAuthority::for_object(&admission, &state, object_id).unwrap_err();
+        assert!(
+            matches!(
+                error,
+                crate::S1QueryError::MissingCardDefinition(CardDefinitionId(999_999))
+            ),
+            "unexpected query error: {error:?}"
+        );
+        assert_eq!(state, before);
+    }
+
+    #[test]
+    fn s1_a_distinguishes_missing_location_face_and_unknown_face() {
+        let admission = admission();
+        let state = successor_state_with_two_lands();
+        let object_id = *state.predecessor_v5.zones.objects.keys().next().unwrap();
+
+        let mut missing_location = state.clone();
+        missing_location
+            .predecessor_v5
+            .zones
+            .locations
+            .remove(&object_id);
+        assert!(matches!(
+            crate::S1QueryAuthority::for_object(&admission, &missing_location, object_id),
+            Err(crate::S1QueryError::MissingZoneLocation(id)) if id == object_id
+        ));
+
+        let mut mismatched_object_id = state.clone();
+        mismatched_object_id
+            .predecessor_v5
+            .zones
+            .objects
+            .get_mut(&object_id)
+            .unwrap()
+            .id = mtgml_model::GameObjectId(object_id.0 + 1);
+        assert!(matches!(
+            crate::S1QueryAuthority::for_object(&admission, &mismatched_object_id, object_id),
+            Err(crate::S1QueryError::InconsistentState(_))
+        ));
+
+        let mut missing_face = state.clone();
+        missing_face.card_rules_state.faces.faces.remove(&object_id);
+        assert!(matches!(
+            crate::S1QueryAuthority::for_object(&admission, &missing_face, object_id),
+            Err(crate::S1QueryError::FaceStateMissing(id)) if id == object_id
+        ));
+
+        let mut unknown_face = state;
+        unknown_face
+            .card_rules_state
+            .faces
+            .faces
+            .insert(object_id, u32::MAX);
+        let definition = unknown_face.predecessor_v5.zones.objects[&object_id].card_definition;
+        assert!(matches!(
+            crate::S1QueryAuthority::for_object(&admission, &unknown_face, object_id),
+            Err(crate::S1QueryError::UnknownFace { definition: found, face_key })
+                if found == definition && face_key.0 == u32::MAX
+        ));
+    }
+
+    #[test]
+    fn s1_a_distinguishes_unknown_stale_and_face_down_objects() {
+        let admission = admission();
+        let state = successor_state_with_two_lands();
+        assert!(matches!(
+            crate::S1QueryAuthority::for_object(
+                &admission,
+                &state,
+                mtgml_model::GameObjectId(u64::MAX)
+            ),
+            Err(crate::S1QueryError::UnknownObject(
+                mtgml_model::GameObjectId(u64::MAX)
+            ))
+        ));
+
+        // The existing bounded PlayLand transition consumes the old incarnation
+        // and allocates a new one, providing authoritative stale-ID evidence.
+        let mut pending_state = state;
+        let request = crate::install_basic_land_request_v4(
+            &admission,
+            &mut pending_state,
+            PlayerId(1),
+            &EpisodeStatus::Running,
+        )
+        .unwrap();
+        let old_object = match request.candidates[1].trusted_binding {
+            mtgml_decision::EngineCandidateBindingV4::PlayLand { object } => object,
+            ref other => panic!("expected a PlayLand binding, got {other:?}"),
+        };
+        let response = mtgml_decision::DecisionResponseV3 {
+            schema_version: mtgml_decision::DECISION_RESPONSE_V3_SCHEMA.to_owned(),
+            player_decision_id: request.player_decision_id,
+            view_sequence: request.view_sequence,
+            answer: mtgml_decision::DecisionAnswerV2::SelectOne {
+                candidate_id: mtgml_model::CandidateIdV1(1),
+            },
+        };
+        let transition = crate::execute_basic_land_response_v4(
+            &admission,
+            &pending_state,
+            PlayerId(1),
+            &response,
+            &EpisodeStatus::Running,
+        )
+        .unwrap();
+        assert!(matches!(
+            crate::S1QueryAuthority::for_object(&admission, &transition.next_state, old_object),
+            Err(crate::S1QueryError::StaleObjectIncarnation(id)) if id == old_object
+        ));
+
+        let mut face_down = successor_state_with_two_lands();
+        let object_id = *face_down
+            .predecessor_v5
+            .zones
+            .objects
+            .keys()
+            .next()
+            .unwrap();
+        face_down
+            .predecessor_v5
+            .zones
+            .objects
+            .get_mut(&object_id)
+            .unwrap()
+            .face_down = true;
+        assert!(matches!(
+            crate::S1QueryAuthority::for_object(&admission, &face_down, object_id),
+            Err(crate::S1QueryError::FaceDownCharacteristicsUnsupported(id)) if id == object_id
+        ));
+    }
 }
