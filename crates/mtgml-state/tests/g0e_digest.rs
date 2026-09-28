@@ -831,6 +831,16 @@ fn state_delta_v3_rejects_duplicate_cast_occurrences_for_one_stack_creation() {
         cost_facts: Default::default(),
     };
     let operations = vec![
+        mtgml_state::SemanticDeltaOperationV3::Existing {
+            operation: Box::new(mtgml_state::SemanticDeltaOperationV2::ObjectEntered {
+                old_object: None,
+                new_object: GameObjectId(50),
+                from_zone: ZoneKind::Hand,
+                to_zone: ZoneKind::Stack,
+                tapped: false,
+                face: 0,
+            }),
+        },
         mtgml_state::SemanticDeltaOperationV3::StackItemCreated {
             stack_object: StackObjectId(1),
             payload: Box::new(payload),
@@ -841,6 +851,49 @@ fn state_delta_v3_rejects_duplicate_cast_occurrences_for_one_stack_creation() {
         },
         spell(),
         spell(),
+    ];
+    assert_eq!(
+        StateDeltaV3::between(&before, &after, operations),
+        Err(mtgml_state::DeltaApplicationV3Error::UncoveredMutation)
+    );
+}
+
+#[test]
+fn state_delta_v3_requires_a_cast_operation_for_a_new_spell_stack_item() {
+    let before = state();
+    let mut after = before.clone();
+    insert_spell(&mut after, 50, 1);
+    after
+        .predecessor_v5
+        .zones
+        .stack_order
+        .push(StackObjectId(1));
+    after.predecessor_v5.revision =
+        mtgml_model::StateRevision(before.predecessor_v5.revision.0.checked_add(1).unwrap());
+    after.validate().unwrap();
+    let payload = after.predecessor_v5.zones.stack_records[&StackObjectId(1)]
+        .payload
+        .clone()
+        .unwrap();
+    let operations = vec![
+        mtgml_state::SemanticDeltaOperationV3::Existing {
+            operation: Box::new(mtgml_state::SemanticDeltaOperationV2::ObjectEntered {
+                old_object: None,
+                new_object: GameObjectId(50),
+                from_zone: ZoneKind::Hand,
+                to_zone: ZoneKind::Stack,
+                tapped: false,
+                face: 0,
+            }),
+        },
+        mtgml_state::SemanticDeltaOperationV3::StackItemCreated {
+            stack_object: StackObjectId(1),
+            payload: Box::new(payload),
+        },
+        mtgml_state::SemanticDeltaOperationV3::StackOrderChanged {
+            from: vec![],
+            to: vec![StackObjectId(1)],
+        },
     ];
     assert_eq!(
         StateDeltaV3::between(&before, &after, operations),

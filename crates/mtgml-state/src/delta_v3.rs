@@ -348,14 +348,48 @@ fn validate_delta_operation_coverage(
         }
     }
     for (id, new_record) in &old_after.zones.stack_records {
-        if !old_before.zones.stack_records.contains_key(id)
-            && !has_v3(&|operation| {
+        if !old_before.zones.stack_records.contains_key(id) {
+            if !has_v3(&|operation| {
                 matches!(operation,
                 V3::StackItemCreated { stack_object, payload }
                     if stack_object == id && new_record.payload.as_ref() == Some(payload.as_ref()))
-            })
-        {
-            return uncovered();
+            }) {
+                return uncovered();
+            }
+            let matching_action_count = operations
+                .iter()
+                .filter(
+                    |operation| match (new_record.payload.as_ref(), *operation) {
+                        (
+                            Some(StackItemPayload::Spell { .. }),
+                            V3::SpellCast { stack_object, .. },
+                        ) => *stack_object == *id,
+                        (
+                            Some(StackItemPayload::ActivatedAbility { .. }),
+                            V3::AbilityActivated { stack_object, .. },
+                        ) => *stack_object == *id,
+                        (
+                            Some(StackItemPayload::TriggeredAbility {
+                                originating_trigger,
+                                ..
+                            }),
+                            V3::TriggerPlaced {
+                                trigger,
+                                stack_object,
+                                payload,
+                            },
+                        ) => {
+                            *stack_object == *id
+                                && trigger == originating_trigger
+                                && new_record.payload.as_ref() == Some(payload.as_ref())
+                        }
+                        _ => false,
+                    },
+                )
+                .count();
+            if matching_action_count != 1 {
+                return uncovered();
+            }
         }
     }
     for (id, old_object) in &old_before.zones.objects {
