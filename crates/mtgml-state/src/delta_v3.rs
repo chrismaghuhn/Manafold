@@ -349,11 +349,15 @@ fn validate_delta_operation_coverage(
     }
     for (id, new_record) in &old_after.zones.stack_records {
         if !old_before.zones.stack_records.contains_key(id) {
-            if !has_v3(&|operation| {
-                matches!(operation,
-                V3::StackItemCreated { stack_object, payload }
-                    if stack_object == id && new_record.payload.as_ref() == Some(payload.as_ref()))
-            }) {
+            let exact_creation_count = operations
+                .iter()
+                .filter(|operation| {
+                    matches!(operation,
+                        V3::StackItemCreated { stack_object, payload }
+                            if stack_object == id && new_record.payload.as_ref() == Some(payload.as_ref()))
+                })
+                .count();
+            if exact_creation_count != 1 {
                 return uncovered();
             }
             let matching_action_count = operations

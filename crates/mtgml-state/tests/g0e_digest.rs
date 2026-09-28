@@ -900,3 +900,88 @@ fn state_delta_v3_requires_a_cast_operation_for_a_new_spell_stack_item() {
         Err(mtgml_state::DeltaApplicationV3Error::UncoveredMutation)
     );
 }
+
+#[test]
+fn state_delta_v3_rejects_duplicate_stack_creation_for_triggered_payload() {
+    let mut before = state();
+    before.predecessor_v5.allocators.next_object_id = GameObjectId(4);
+    before.predecessor_v5.allocators.next_ability_id = mtgml_model::AbilityInstanceId(2);
+    before.predecessor_v5.allocators.next_trigger_id = mtgml_model::TriggerInstanceId(2);
+    let payload = StackItemPayload::TriggeredAbility {
+        originating_trigger: mtgml_model::TriggerInstanceId(1),
+        source_context: mtgml_state::AbilitySourceContext {
+            source: mtgml_state::SourceContext {
+                snapshot: mtgml_state::ObjectSnapshot {
+                    object: GameObjectId(3),
+                    physical_card: Some(PhysicalCardId(3)),
+                    card_definition: CardDefinitionId(3),
+                    owner: PlayerId(1),
+                    controller: PlayerId(1),
+                    tapped: false,
+                    face_down: false,
+                    location: ZoneLocation {
+                        zone: ZoneKind::Graveyard,
+                        player: Some(PlayerId(1)),
+                        position: ZonePosition::Unordered,
+                        visibility: VisibilityPartition::Public,
+                        partition: None,
+                    },
+                },
+                face_key: FaceKey(0),
+                semantic_profile_id: CardSemanticProfileId::parse("test/trigger@1.0.0").unwrap(),
+            },
+            ability_instance_id: mtgml_model::AbilityInstanceId(1),
+            ability_key: mtgml_card_ir::AbilityKey(4),
+        },
+        captured_trigger_context: Box::new(mtgml_state::TriggerEventSnapshot::CardDrawn {
+            player: PlayerId(1),
+        }),
+        targets: vec![],
+    };
+    before.validate().unwrap();
+
+    let mut after = before.clone();
+    after.predecessor_v5.allocators.next_stack_object_id = StackObjectId(2);
+    after.predecessor_v5.zones.stack_records.insert(
+        StackObjectId(1),
+        StackRecord {
+            id: StackObjectId(1),
+            controller: PlayerId(1),
+            source_object: None,
+            source_ability: None,
+            payload: Some(payload.clone()),
+        },
+    );
+    after
+        .predecessor_v5
+        .zones
+        .stack_order
+        .push(StackObjectId(1));
+    after.predecessor_v5.revision =
+        mtgml_model::StateRevision(before.predecessor_v5.revision.0.checked_add(1).unwrap());
+    after.validate().unwrap();
+
+    let operations = vec![
+        mtgml_state::SemanticDeltaOperationV3::StackItemCreated {
+            stack_object: StackObjectId(1),
+            payload: Box::new(payload.clone()),
+        },
+        mtgml_state::SemanticDeltaOperationV3::StackItemCreated {
+            stack_object: StackObjectId(1),
+            payload: Box::new(payload.clone()),
+        },
+        mtgml_state::SemanticDeltaOperationV3::TriggerPlaced {
+            trigger: mtgml_model::TriggerInstanceId(1),
+            stack_object: StackObjectId(1),
+            payload: Box::new(payload),
+        },
+        mtgml_state::SemanticDeltaOperationV3::StackOrderChanged {
+            from: vec![],
+            to: vec![StackObjectId(1)],
+        },
+    ];
+    assert_eq!(
+        StateDeltaV3::between(&before, &after, operations),
+        Err(mtgml_state::DeltaApplicationV3Error::UncoveredMutation)
+    );
+}
