@@ -1,7 +1,7 @@
 # M4 Shared G0 — Contract-Growth Implementation Plan
 
 **Task:** `M4_SHARED_G0_CONTRACT_GROWTH_SPEC_AND_IMPLEMENTATION_PLAN`
-**Status:** G0B, all bounded payload/stage amendments ACCEPTED at Exact-Head, and CostRoute V4 descriptor reconciliation ACCEPTED; actor-only route visibility and immutable-profile symbol binding amendment PROPOSED pending independent review; latest accepted Spec amendment Exact-Head `69cb222dcb8d9e50861322e2536a7e12103bf014`; detached implementation baseline remains `f5c1ed2aa0719edaebd95f80f7c1c5c38b3dea3d`; current-writer activation remains gated on G0j
+**Status:** G0B, all bounded payload/stage amendments ACCEPTED at Exact-Head, and CostRoute V4 descriptor reconciliation ACCEPTED; actor-only route visibility and immutable-profile symbol binding amendment ACCEPTED at independent Exact-Head PASS `3bfbb2d5bdbfc2eb31f85b1c14b47d2dcccb4bba`; latest accepted Spec amendment Exact-Head `3bfbb2d5bdbfc2eb31f85b1c14b47d2dcccb4bba`; detached implementation baseline remains `f5c1ed2aa0719edaebd95f80f7c1c5c38b3dea3d`; current-writer activation remains gated on G0j
 **Derived from:** [`2026-09-27-m4-shared-g0-contract-growth.md`](../specs/2026-09-27-m4-shared-g0-contract-growth.md)
 **Exact design baseline:** `85f967f641528e43772c63be14679af398dcac86`
 **Implementation authorized:** YES — detached G0c–G0i work only; G0j is the single activation cut
