@@ -299,6 +299,18 @@
     {
       "contract": "observed-event-envelope.v4",
       "path": "observed-event-v4-mana-emptied.json"
+    },
+    {
+      "contract": "replay-manifest.v8",
+      "path": "replay-manifest-v8.json"
+    },
+    {
+      "contract": "replay-step.v8",
+      "path": "replay-step-v8.json"
+    },
+    {
+      "contract": "authoritative-replay.v8",
+      "path": "authoritative-replay-v8.json"
     }
   ]
 }

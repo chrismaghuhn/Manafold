@@ -1,0 +1,29 @@
+{
+  "accepted": false,
+  "actor": "1",
+  "checkpoint_digest_after": "8888888888888888888888888888888888888888888888888888888888888888",
+  "checkpoint_digest_before": "8888888888888888888888888888888888888888888888888888888888888888",
+  "environment_limit_counters_after": {
+    "accepted_transitions": 0,
+    "decisions_submitted": 0,
+    "resource_units_consumed": 0,
+    "rule_events_emitted": 0,
+    "wall_clock_elapsed_millis": 0
+  },
+  "episode_status_after": {
+    "kind": "running"
+  },
+  "full_state_digest_after": "7777777777777777777777777777777777777777777777777777777777777777",
+  "response": {
+    "answer": {
+      "candidate_id": 4294967295,
+      "kind": "select_one"
+    },
+    "player_decision_id": "1",
+    "schema_version": "decision-response.v3",
+    "view_sequence": "5"
+  },
+  "state_revision_after": "2",
+  "state_revision_before": "2",
+  "step_index": 0
+}

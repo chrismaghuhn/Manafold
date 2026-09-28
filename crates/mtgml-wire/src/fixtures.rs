@@ -13,9 +13,9 @@ use mtgml_observation::{
 };
 use mtgml_replay::{
     AuthoritativeReplayV1, AuthoritativeReplayV2, AuthoritativeReplayV3, AuthoritativeReplayV4,
-    AuthoritativeReplayV5, AuthoritativeReplayV6, AuthoritativeReplayV7, ReplayManifestV1,
-    ReplayManifestV2, ReplayManifestV3, ReplayManifestV4, ReplayManifestV5, ReplayManifestV6,
-    ReplayManifestV7,
+    AuthoritativeReplayV5, AuthoritativeReplayV6, AuthoritativeReplayV7, AuthoritativeReplayV8,
+    ReplayManifestV1, ReplayManifestV2, ReplayManifestV3, ReplayManifestV4, ReplayManifestV5,
+    ReplayManifestV6, ReplayManifestV7, ReplayManifestV8, ReplayStepV8,
 };
 use serde::Deserialize;
 use std::{fs, path::Path};
@@ -144,6 +144,9 @@ fn decode_named(contract: &str, bytes: &[u8]) -> Result<(), WireError> {
         "authoritative-replay.v6" => decode_canonical::<AuthoritativeReplayV6>(bytes).map(drop),
         "replay-manifest.v7" => decode_canonical::<ReplayManifestV7>(bytes).map(drop),
         "authoritative-replay.v7" => decode_canonical::<AuthoritativeReplayV7>(bytes).map(drop),
+        "replay-manifest.v8" => decode_canonical::<ReplayManifestV8>(bytes).map(drop),
+        "replay-step.v8" => decode_canonical::<ReplayStepV8>(bytes).map(drop),
+        "authoritative-replay.v8" => decode_canonical::<AuthoritativeReplayV8>(bytes).map(drop),
         "synthetic-m3-observation.v1" => decode_canonical::<SyntheticObservation>(bytes).map(drop),
         "magic-m3-observation.v1" => decode_canonical::<MagicObservation>(bytes).map(drop),
         "magic-combat-observation.v2" => decode_canonical::<MagicObservationV2>(bytes).map(drop),

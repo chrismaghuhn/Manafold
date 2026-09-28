@@ -16,6 +16,7 @@
     "authoritative-replay.v5.schema.json",
     "authoritative-replay.v6.schema.json",
     "authoritative-replay.v7.schema.json",
+    "authoritative-replay.v8.schema.json",
     "decision-response.v1.schema.json",
     "decision-response.v2.schema.json",
     "decision-response.v3.schema.json",
@@ -50,6 +51,8 @@
     "replay-manifest.v5.schema.json",
     "replay-manifest.v6.schema.json",
     "replay-manifest.v7.schema.json",
+    "replay-manifest.v8.schema.json",
+    "replay-step.v8.schema.json",
     "synthetic-m3-observation.v1.schema.json"
   ]
 }

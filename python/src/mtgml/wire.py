@@ -52,6 +52,7 @@ from .replay import (
     AuthoritativeReplayV5,
     AuthoritativeReplayV6,
     AuthoritativeReplayV7,
+    AuthoritativeReplayV8,
     ReplayManifestV1,
     ReplayManifestV2,
     ReplayManifestV3,
@@ -59,6 +60,8 @@ from .replay import (
     ReplayManifestV5,
     ReplayManifestV6,
     ReplayManifestV7,
+    ReplayManifestV8,
+    ReplayStepV8,
 )
 
 T = TypeVar("T")
@@ -107,6 +110,9 @@ _DECODERS: dict[str, Callable[[object], object]] = {
     "authoritative-replay.v6": AuthoritativeReplayV6.from_wire,
     "replay-manifest.v7": ReplayManifestV7.from_wire,
     "authoritative-replay.v7": AuthoritativeReplayV7.from_wire,
+    "replay-manifest.v8": ReplayManifestV8.from_wire,
+    "replay-step.v8": ReplayStepV8.from_wire,
+    "authoritative-replay.v8": AuthoritativeReplayV8.from_wire,
 }
 
 

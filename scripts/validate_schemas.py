@@ -51,7 +51,10 @@ WIRE_MAPPING = {
     "replay-manifest.v6": "replay-manifest.v6.schema.json",
     "authoritative-replay.v6": "authoritative-replay.v6.schema.json",
     "replay-manifest.v7": "replay-manifest.v7.schema.json",
+    "replay-manifest.v8": "replay-manifest.v8.schema.json",
     "authoritative-replay.v7": "authoritative-replay.v7.schema.json",
+    "authoritative-replay.v8": "authoritative-replay.v8.schema.json",
+    "replay-step.v8": "replay-step.v8.schema.json",
 }
 ARTIFACT_CASES = [
     ("capability-registry.v1.schema.json", "cards/capabilities/registry.json"),
@@ -83,6 +86,14 @@ ARTIFACT_CASES = [
     ("golden-path-index.v1.schema.json", "examples/golden-path/index.json"),
 ]
 SCHEMA_NEGATIVE_CASES = [
+    (
+        "replay-manifest.v8.schema.json",
+        "schemas/negative/replay-manifest-v8-old-response-identity.json",
+    ),
+    (
+        "authoritative-replay.v8.schema.json",
+        "schemas/negative/authoritative-replay-v8-wrong-version.json",
+    ),
     (
         "observed-event-envelope.v4.schema.json",
         "schemas/negative/observed-event-v4-global-revision.json",
@@ -237,6 +248,9 @@ SCHEMA_NEGATIVE_CASES = [
     ),
 ]
 SCHEMA_POSITIVE_CASES = [
+    ("replay-manifest.v8.schema.json", "schemas/examples/replay-manifest-v8.json"),
+    ("replay-step.v8.schema.json", "schemas/examples/replay-step-v8.json"),
+    ("authoritative-replay.v8.schema.json", "schemas/examples/authoritative-replay-v8.json"),
     (
         "magic-shared-execution-observation.v1.schema.json",
         "schemas/examples/magic-shared-execution-observation-v1.json",
