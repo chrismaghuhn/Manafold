@@ -69,6 +69,7 @@ fn typed_stack_payload_keeps_source_context_without_generic_resolution_blob() {
 
     let activated = StackItemPayload::ActivatedAbility {
         source_context: ability_source(),
+        modes: vec![],
         targets: vec![],
         cost_facts: CostFacts {
             selected_route: Some(CostRoute::Alternative {

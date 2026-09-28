@@ -867,6 +867,10 @@ fn activated_stack_payload_keeps_lki_after_its_source_has_left() {
             source_ability: None,
             payload: Some(StackItemPayload::ActivatedAbility {
                 source_context,
+                modes: vec![mtgml_state::ModeBinding {
+                    mode_slot: 0,
+                    selected_mode: 1,
+                }],
                 targets: vec![],
                 cost_facts: Default::default(),
             }),
@@ -878,6 +882,11 @@ fn activated_stack_payload_keeps_lki_after_its_source_has_left() {
         .stack_order
         .push(StackObjectId(1));
     state.validate().unwrap();
+    assert!(matches!(
+        &state.predecessor_v5.zones.stack_records[&StackObjectId(1)].payload,
+        Some(StackItemPayload::ActivatedAbility { modes, .. })
+            if modes == &[mtgml_state::ModeBinding { mode_slot: 0, selected_mode: 1 }]
+    ));
 }
 
 #[test]
@@ -1044,6 +1053,7 @@ fn typed_stack_payload_cannot_be_serialized_through_the_legacy_serde_shape() {
             ability_instance_id: mtgml_model::AbilityInstanceId(1),
             ability_key: mtgml_card_ir::AbilityKey(1),
         },
+        modes: vec![],
         targets: vec![],
         cost_facts: Default::default(),
     };

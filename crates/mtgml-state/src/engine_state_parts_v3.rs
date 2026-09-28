@@ -135,11 +135,12 @@ impl EngineStatePartsV3 {
             }
             StackItemPayload::ActivatedAbility {
                 source_context,
+                modes,
                 targets,
                 cost_facts,
             } => {
                 self.validate_ability_source_context(source_context, players)?;
-                self.validate_modes_targets(&[], targets, players)?;
+                self.validate_modes_targets(modes, targets, players)?;
                 Self::validate_cost_facts(cost_facts)?;
             }
             StackItemPayload::TriggeredAbility {

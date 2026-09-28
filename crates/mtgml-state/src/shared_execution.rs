@@ -246,6 +246,7 @@ pub enum StackItemPayload {
     },
     ActivatedAbility {
         source_context: AbilitySourceContext,
+        modes: Vec<ModeBinding>,
         targets: Vec<TargetBinding>,
         cost_facts: CostFacts,
     },
