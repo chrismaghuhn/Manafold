@@ -57,22 +57,6 @@ impl FullStateDigestInputV7 {
         Ok(Self(state_value_validated(state)?))
     }
 
-    pub fn from_successor_with_profile_domain_context(
-        state: &EngineStatePartsV3,
-        context: &mtgml_decision::ProfileDecisionDomainContextV1,
-        active_execution_identity: &mtgml_model::ExecutionIdentityV1,
-        active_rules_contract_id: &mtgml_model::RulesContractIdV1,
-    ) -> Result<Self, crate::StateDigestError> {
-        state
-            .validate_with_profile_domain_context(
-                context,
-                active_execution_identity,
-                active_rules_contract_id,
-            )
-            .map_err(|_| crate::StateDigestError::StateInvariant)?;
-        Ok(Self(state_value_validated(state)?))
-    }
-
     pub fn canonical_value(&self) -> &Value {
         &self.0
     }

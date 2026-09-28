@@ -167,52 +167,6 @@ impl StateDeltaV3 {
         })
     }
 
-    pub fn between_with_profile_domain_context(
-        before: &EngineStatePartsV3,
-        before_context: Option<&mtgml_decision::ProfileDecisionDomainContextV1>,
-        after: &EngineStatePartsV3,
-        after_context: Option<&mtgml_decision::ProfileDecisionDomainContextV1>,
-        operations: Vec<SemanticDeltaOperationV3>,
-        active_execution_identity: &mtgml_model::ExecutionIdentityV1,
-        active_rules_contract_id: &mtgml_model::RulesContractIdV1,
-    ) -> Result<Self, DeltaApplicationV3Error> {
-        validate_admission(
-            before,
-            before_context,
-            active_execution_identity,
-            active_rules_contract_id,
-        )?;
-        validate_admission(
-            after,
-            after_context,
-            active_execution_identity,
-            active_rules_contract_id,
-        )?;
-        validate_revision_step(
-            before.predecessor_v5.revision,
-            after.predecessor_v5.revision,
-        )?;
-        validate_delta_operation_coverage(before, after, &operations)?;
-        Ok(Self {
-            before_revision: before.predecessor_v5.revision,
-            after_revision: after.predecessor_v5.revision,
-            before_digest: digest_with_admission(
-                before,
-                before_context,
-                active_execution_identity,
-                active_rules_contract_id,
-            )?,
-            after_digest: digest_with_admission(
-                after,
-                after_context,
-                active_execution_identity,
-                active_rules_contract_id,
-            )?,
-            replacement: after.clone(),
-            operations,
-        })
-    }
-
     pub fn apply(
         &self,
         before: &EngineStatePartsV3,
@@ -233,110 +187,10 @@ impl StateDeltaV3 {
         }
         Ok(self.replacement.clone())
     }
-
-    pub fn apply_with_profile_domain_context(
-        &self,
-        before: &EngineStatePartsV3,
-        before_context: Option<&mtgml_decision::ProfileDecisionDomainContextV1>,
-        replacement_context: Option<&mtgml_decision::ProfileDecisionDomainContextV1>,
-        active_execution_identity: &mtgml_model::ExecutionIdentityV1,
-        active_rules_contract_id: &mtgml_model::RulesContractIdV1,
-    ) -> Result<EngineStatePartsV3, DeltaApplicationV3Error> {
-        validate_admission(
-            before,
-            before_context,
-            active_execution_identity,
-            active_rules_contract_id,
-        )?;
-        if before.predecessor_v5.revision != self.before_revision
-            || digest_with_admission(
-                before,
-                before_context,
-                active_execution_identity,
-                active_rules_contract_id,
-            )? != self.before_digest
-        {
-            return Err(DeltaApplicationV3Error::BeforeMismatch);
-        }
-        validate_admission(
-            &self.replacement,
-            replacement_context,
-            active_execution_identity,
-            active_rules_contract_id,
-        )?;
-        validate_revision_step(self.before_revision, self.after_revision)?;
-        validate_delta_operation_coverage(before, &self.replacement, &self.operations)?;
-        if self.replacement.predecessor_v5.revision != self.after_revision
-            || digest_with_admission(
-                &self.replacement,
-                replacement_context,
-                active_execution_identity,
-                active_rules_contract_id,
-            )? != self.after_digest
-        {
-            return Err(DeltaApplicationV3Error::AfterMismatch);
-        }
-        Ok(self.replacement.clone())
-    }
 }
 
 fn digest(state: &EngineStatePartsV3) -> Result<FullStateDigestV7, DeltaApplicationV3Error> {
     calculate_full_state_digest_v7(state).map_err(|_| DeltaApplicationV3Error::DigestCalculation)
-}
-
-fn validate_admission(
-    state: &EngineStatePartsV3,
-    context: Option<&mtgml_decision::ProfileDecisionDomainContextV1>,
-    active_execution_identity: &mtgml_model::ExecutionIdentityV1,
-    active_rules_contract_id: &mtgml_model::RulesContractIdV1,
-) -> Result<(), DeltaApplicationV3Error> {
-    match context {
-        Some(context) => state.validate_with_profile_domain_context(
-            context,
-            active_execution_identity,
-            active_rules_contract_id,
-        )?,
-        None => state.validate()?,
-    }
-    Ok(())
-}
-
-fn digest_with_admission(
-    state: &EngineStatePartsV3,
-    context: Option<&mtgml_decision::ProfileDecisionDomainContextV1>,
-    active_execution_identity: &mtgml_model::ExecutionIdentityV1,
-    active_rules_contract_id: &mtgml_model::RulesContractIdV1,
-) -> Result<FullStateDigestV7, DeltaApplicationV3Error> {
-    validate_admission(
-        state,
-        context,
-        active_execution_identity,
-        active_rules_contract_id,
-    )?;
-    match context {
-        Some(context) => mtgml_state_digest_with_context(
-            state,
-            context,
-            active_execution_identity,
-            active_rules_contract_id,
-        ),
-        None => digest(state),
-    }
-}
-
-fn mtgml_state_digest_with_context(
-    state: &EngineStatePartsV3,
-    context: &mtgml_decision::ProfileDecisionDomainContextV1,
-    active_execution_identity: &mtgml_model::ExecutionIdentityV1,
-    active_rules_contract_id: &mtgml_model::RulesContractIdV1,
-) -> Result<FullStateDigestV7, DeltaApplicationV3Error> {
-    crate::calculate_full_state_digest_v7_with_profile_domain_context(
-        state,
-        context,
-        active_execution_identity,
-        active_rules_contract_id,
-    )
-    .map_err(|_| DeltaApplicationV3Error::DigestCalculation)
 }
 
 fn validate_revision_step(

@@ -33,61 +33,17 @@ impl EngineStatePartsV3 {
         Ok(value)
     }
 
-    pub fn new_with_profile_domain_context(
-        predecessor_v5: EngineStateParts,
-        execution_v4: ExecutionStateV4,
-        card_rules_state: CardRulesAuthoritativeStateV1,
-        context: &mtgml_decision::ProfileDecisionDomainContextV1,
-        active_execution_identity: &mtgml_model::ExecutionIdentityV1,
-        active_rules_contract_id: &mtgml_model::RulesContractIdV1,
-    ) -> Result<Self, EngineStatePartsV3Error> {
-        let value = Self {
-            predecessor_v5,
-            execution_v4,
-            card_rules_state,
-        };
-        value.validate_with_profile_domain_context(
-            context,
-            active_execution_identity,
-            active_rules_contract_id,
-        )?;
-        Ok(value)
-    }
-
     pub fn validate(&self) -> Result<(), EngineStatePartsV3Error> {
         self.validate_components()?;
         if self
             .execution_v4
             .pending_decision
             .as_ref()
-            .is_some_and(|request| request.purpose.requires_profile_domain_context())
+            .is_some_and(|request| request.purpose.is_profile_dependent())
         {
-            return Err(EngineStatePartsV3Error::ProfileDomainContextRequired);
+            return Err(EngineStatePartsV3Error::ProfileDependentDecisionNotAdmitted);
         }
         Ok(())
-    }
-
-    /// Validates the complete successor state while admitting a pending
-    /// profile-dependent request against the RulesKernel's independently
-    /// rederived exact domain and active content identities.
-    pub fn validate_with_profile_domain_context(
-        &self,
-        context: &mtgml_decision::ProfileDecisionDomainContextV1,
-        active_execution_identity: &mtgml_model::ExecutionIdentityV1,
-        active_rules_contract_id: &mtgml_model::RulesContractIdV1,
-    ) -> Result<(), EngineStatePartsV3Error> {
-        self.validate_components()?;
-        let request = self
-            .execution_v4
-            .pending_decision
-            .as_ref()
-            .ok_or(EngineStatePartsV3Error::ProfileDomainContextMismatch)?;
-        if !request.purpose.requires_profile_domain_context() {
-            return Err(EngineStatePartsV3Error::ProfileDomainContextMismatch);
-        }
-        context
-            .validate_for(active_execution_identity, active_rules_contract_id, request)
-            .map_err(|_| EngineStatePartsV3Error::ProfileDomainContextMismatch)
     }
 
     fn validate_components(&self) -> Result<(), EngineStatePartsV3Error> {
@@ -119,22 +75,6 @@ impl EngineStatePartsV3 {
         response: &mtgml_decision::DecisionResponseV3,
     ) -> Result<Vec<&mtgml_decision::EngineCandidateBindingV4>, EngineStatePartsV3Error> {
         self.validate()?;
-        self.selected_bindings_v4_validated(actor, response)
-    }
-
-    pub fn selected_bindings_v4_with_profile_domain_context(
-        &self,
-        actor: mtgml_model::PlayerId,
-        response: &mtgml_decision::DecisionResponseV3,
-        context: &mtgml_decision::ProfileDecisionDomainContextV1,
-        active_execution_identity: &mtgml_model::ExecutionIdentityV1,
-        active_rules_contract_id: &mtgml_model::RulesContractIdV1,
-    ) -> Result<Vec<&mtgml_decision::EngineCandidateBindingV4>, EngineStatePartsV3Error> {
-        self.validate_with_profile_domain_context(
-            context,
-            active_execution_identity,
-            active_rules_contract_id,
-        )?;
         self.selected_bindings_v4_validated(actor, response)
     }
 
@@ -2010,12 +1950,8 @@ pub enum EngineStatePartsV3Error {
     TemporaryEffectExpiry,
     #[error("pending decision is invalid for successor state")]
     PendingDecision,
-    #[error("profile-dependent pending request requires Rules-owned domain admission context")]
-    ProfileDomainContextRequired,
-    #[error(
-        "profile-domain admission context does not match the active program or pending request"
-    )]
-    ProfileDomainContextMismatch,
+    #[error("profile-dependent pending decision is not admissible in the G0 runtime boundary")]
+    ProfileDependentDecisionNotAdmitted,
     #[error("decision response does not match the exact pending V4 request")]
     PendingDecisionResponse,
     #[error("pending request points to a missing continuation")]
