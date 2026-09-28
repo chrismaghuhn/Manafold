@@ -5,11 +5,13 @@
 //! supplied by the current RulesKernel path.
 
 use mtgml_card_ir::{
-    BasicLandProfileV1, CardSemanticBindingV1, ExecutableProfileAdmissionV1, FaceDefinitionV1,
-    FaceKey, VerifiedContentCatalogV1, BASIC_LAND_PROFILE_ID_V1,
+    BaseCharacteristicsV1, BasicLandProfileV1, CardSemanticBindingV1, ExecutableProfileAdmissionV1,
+    FaceDefinitionV1, FaceKey, ManaColorV1, PrintedManaSymbolV1, VerifiedContentCatalogV1,
+    BASIC_LAND_PROFILE_ID_V1,
 };
 use mtgml_model::{CardDefinitionId, ExecutionIdentityV1, GameObjectId, PlayerId, ZoneKind};
 use mtgml_state::{EngineStatePartsV3, EngineStatePartsV3Error, GameObject, ZoneLocation};
+use std::collections::BTreeSet;
 use thiserror::Error;
 
 /// Trusted object facts joined by S1-A. This remains internal to the rules
@@ -22,6 +24,18 @@ pub(crate) struct QueriedObjectV1 {
     pub(crate) controller: PlayerId,
     pub(crate) zone: ZoneKind,
     pub(crate) face_key: FaceKey,
+}
+
+/// Bounded base-stage result. It deliberately contains no counter-adjusted or
+/// source/effect-derived values, which belong to later S1 batches.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct S1BaseCharacteristicsV1 {
+    pub(crate) queried: QueriedObjectV1,
+    pub(crate) supertypes: Vec<String>,
+    pub(crate) card_types: Vec<String>,
+    pub(crate) subtypes: Vec<String>,
+    pub(crate) colors: BTreeSet<ManaColorV1>,
+    pub(crate) base_power_toughness: Option<(i64, i64)>,
 }
 
 /// Borrowed, object-scoped authority for one admitted RulesKernel query.
@@ -144,6 +158,66 @@ impl<'a> S1QueryAuthority<'a> {
     pub(crate) fn execution_identity(&self) -> &ExecutionIdentityV1 {
         self.admission.execution_identity()
     }
+
+    // The current admitted M4.2 Basic Land transition does not need to branch
+    // on these base facts. Keep this internal RulesKernel query available for
+    // the Shared consumers that follow S1-B; the real admission path and unit
+    // witnesses exercise it without adding a second public endpoint.
+    #[allow(dead_code)]
+    pub(crate) fn derive_base_characteristics(&self) -> S1BaseCharacteristicsV1 {
+        derive_base_characteristics(self.queried, &self._face.base_characteristics)
+    }
+}
+
+// Pure and profile-independent: callers provide one face already obtained
+// from their verified content authority. Executable-profile admission stays
+// outside this mapper, so later admitted profiles reuse the same semantics.
+fn derive_base_characteristics(
+    queried: QueriedObjectV1,
+    face: &BaseCharacteristicsV1,
+) -> S1BaseCharacteristicsV1 {
+    let mut colors = face
+        .color_indicator
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>();
+    if let Some(mana_cost) = &face.mana_cost {
+        for symbol in mana_cost {
+            match symbol {
+                PrintedManaSymbolV1::White => {
+                    colors.insert(ManaColorV1::White);
+                }
+                PrintedManaSymbolV1::Blue => {
+                    colors.insert(ManaColorV1::Blue);
+                }
+                PrintedManaSymbolV1::Black => {
+                    colors.insert(ManaColorV1::Black);
+                }
+                PrintedManaSymbolV1::Red => {
+                    colors.insert(ManaColorV1::Red);
+                }
+                PrintedManaSymbolV1::Green => {
+                    colors.insert(ManaColorV1::Green);
+                }
+                PrintedManaSymbolV1::Hybrid(first, second) => {
+                    colors.insert(*first);
+                    colors.insert(*second);
+                }
+                PrintedManaSymbolV1::Generic(_) | PrintedManaSymbolV1::Colorless => {}
+            }
+        }
+    }
+
+    S1BaseCharacteristicsV1 {
+        queried,
+        supertypes: face.type_line.supertypes.clone(),
+        card_types: face.type_line.card_types.clone(),
+        subtypes: face.type_line.subtypes.clone(),
+        colors,
+        base_power_toughness: face
+            .power_toughness
+            .map(|(power, toughness)| (i64::from(power), i64::from(toughness))),
+    }
 }
 
 fn validate_admission_binding(
@@ -234,4 +308,440 @@ pub(crate) enum ContributorKind {
     StaticSource,
     TemporaryEffect,
     ProfileAbility,
+}
+
+#[cfg(test)]
+mod s1_b_detached_tests {
+    use super::{
+        derive_base_characteristics, QueriedObjectV1, S1BaseCharacteristicsV1, S1QueryError,
+    };
+    use mtgml_card_ir::{
+        encode_content_manifest_v1, encode_provenance_catalog_v1, BaseCharacteristicsV1,
+        CardDefinitionEnvelopeV1, CardSemanticBindingV1, ContentContractManifestV1,
+        DefinitionProvenanceRecordV1, FaceDefinitionV1, FaceKey, ManaColorV1, PrintedManaSymbolV1,
+        ProvenanceCatalogV1, SourceProvenanceV1, TypeLineV1, VerifiedContentCatalogV1,
+    };
+    use mtgml_model::{CardDefinitionId, GameObjectId};
+    use mtgml_persistence::content_contract_digest::calculate_content_contract_id_v1;
+    use mtgml_state::EngineStatePartsV3;
+    use std::collections::BTreeSet;
+
+    struct DetachedFixture {
+        id: CardDefinitionId,
+        faces: Vec<FaceDefinitionV1>,
+    }
+
+    fn face(
+        key: u32,
+        name: &str,
+        mana_cost: Option<Vec<PrintedManaSymbolV1>>,
+        color_indicator: Vec<ManaColorV1>,
+        type_line: TypeLineV1,
+        power_toughness: Option<(i32, i32)>,
+    ) -> FaceDefinitionV1 {
+        FaceDefinitionV1 {
+            face_key: FaceKey(key),
+            base_characteristics: BaseCharacteristicsV1 {
+                name: name.to_owned(),
+                mana_cost,
+                color_indicator,
+                type_line,
+                power_toughness,
+                loyalty: None,
+                defense: None,
+            },
+        }
+    }
+
+    fn type_line(supertypes: &[&str], card_types: &[&str], subtypes: &[&str]) -> TypeLineV1 {
+        TypeLineV1 {
+            supertypes: supertypes.iter().map(|value| (*value).to_owned()).collect(),
+            card_types: card_types.iter().map(|value| (*value).to_owned()).collect(),
+            subtypes: subtypes.iter().map(|value| (*value).to_owned()).collect(),
+        }
+    }
+
+    fn verified_catalog(fixtures: &[DetachedFixture]) -> VerifiedContentCatalogV1 {
+        let manifest = ContentContractManifestV1 {
+            schema_version: "content-contract-manifest.v1".to_owned(),
+            definitions: fixtures
+                .iter()
+                .map(|fixture| CardDefinitionEnvelopeV1 {
+                    envelope_version: "card-definition-envelope.v1".to_owned(),
+                    card_definition_id: fixture.id,
+                    faces: fixture.faces.clone(),
+                    ability_identities: vec![],
+                    semantic_binding: CardSemanticBindingV1::UnprofiledV1,
+                    definition_references: vec![],
+                    explicit_additional_requirements: vec![],
+                })
+                .collect(),
+        };
+        let content_bytes = encode_content_manifest_v1(&manifest).unwrap();
+        let content_id = calculate_content_contract_id_v1(&content_bytes).unwrap();
+        let provenance = ProvenanceCatalogV1 {
+            schema_version: "definition-provenance-catalog.v1".to_owned(),
+            records: fixtures
+                .iter()
+                .map(|fixture| DefinitionProvenanceRecordV1 {
+                    content_contract_id: content_id.clone(),
+                    card_definition_id: fixture.id,
+                    source_provenance: SourceProvenanceV1 {
+                        source_snapshot_id: "s1-b-detached-fixture.v1".to_owned(),
+                        source_record_id: format!("fixture/{}", fixture.id.0),
+                        source_record_codec_id: "s1-b-characteristics-fixture.v1".to_owned(),
+                        source_record_digest: [0x5a; 32],
+                    },
+                })
+                .collect(),
+        };
+        let provenance_bytes = encode_provenance_catalog_v1(&provenance).unwrap();
+        VerifiedContentCatalogV1::build_from_bytes(&content_bytes, &content_id, &provenance_bytes)
+            .unwrap()
+    }
+
+    // This fixture-only join is compiled only in the Rules unit-test module.
+    // It exercises the pure mapper on canonical, provenance-verified but
+    // deliberately UnprofiledV1 content; it cannot construct production
+    // S1QueryAuthority or pass executable-profile admission.
+    fn detached_result(
+        catalog: &VerifiedContentCatalogV1,
+        state: &EngineStatePartsV3,
+        object_id: GameObjectId,
+    ) -> Result<S1BaseCharacteristicsV1, S1QueryError> {
+        state
+            .validate_structure()
+            .map_err(S1QueryError::InconsistentState)?;
+        let object = state
+            .predecessor_v5
+            .zones
+            .objects
+            .get(&object_id)
+            .ok_or(S1QueryError::UnknownObject(object_id))?;
+        let location = state
+            .predecessor_v5
+            .zones
+            .locations
+            .get(&object_id)
+            .ok_or(S1QueryError::MissingZoneLocation(object_id))?;
+        if object.face_down {
+            return Err(S1QueryError::FaceDownCharacteristicsUnsupported(object_id));
+        }
+        let definition = catalog
+            .get(catalog.content_contract_id(), object.card_definition)
+            .map_err(|_| S1QueryError::MissingCardDefinition(object.card_definition))?;
+        let face_key = state
+            .card_rules_state
+            .faces
+            .faces
+            .get(&object_id)
+            .copied()
+            .ok_or(S1QueryError::FaceStateMissing(object_id))?;
+        let selected_face = definition
+            .faces
+            .iter()
+            .find(|face| face.face_key.0 == face_key)
+            .ok_or(S1QueryError::UnknownFace {
+                definition: object.card_definition,
+                face_key: FaceKey(face_key),
+            })?;
+        let queried = QueriedObjectV1 {
+            object: object_id,
+            card_definition: object.card_definition,
+            owner: object.owner,
+            controller: object.controller,
+            zone: location.zone,
+            face_key: FaceKey(face_key),
+        };
+        Ok(derive_base_characteristics(
+            queried,
+            &selected_face.base_characteristics,
+        ))
+    }
+
+    fn detached_state(
+        definition: CardDefinitionId,
+        face_key: u32,
+    ) -> (EngineStatePartsV3, GameObjectId) {
+        let state_v2 = crate::basic_land::s1_b_state_with_two_lands_fixture();
+        let mut state = EngineStatePartsV3::new(
+            state_v2.predecessor_v5,
+            Default::default(),
+            state_v2.card_rules_state,
+        )
+        .unwrap();
+        let object_id = *state.predecessor_v5.zones.objects.keys().next().unwrap();
+        state
+            .predecessor_v5
+            .zones
+            .objects
+            .get_mut(&object_id)
+            .unwrap()
+            .card_definition = definition;
+        state
+            .card_rules_state
+            .faces
+            .faces
+            .insert(object_id, face_key);
+        for (player, identity) in &state.predecessor_v5.perspective_identities.players {
+            if let Some(opaque) = identity.object_to_opaque.get(&object_id) {
+                if let Some(record) = state
+                    .predecessor_v5
+                    .knowledge
+                    .players
+                    .get_mut(player)
+                    .and_then(|knowledge| knowledge.active.get_mut(opaque))
+                {
+                    record.card_definition = Some(definition);
+                }
+            }
+        }
+        state.validate_structure().unwrap();
+        (state, object_id)
+    }
+
+    fn fixtures() -> Vec<DetachedFixture> {
+        use ManaColorV1::{Blue, White};
+        use PrintedManaSymbolV1::{Colorless, Generic, Hybrid};
+        // Ojer's front-face values below are hand-authored from the pinned
+        // Oracle/CR witness cited by S1 Spec §9. The fixture catalog's
+        // provenance intentionally identifies these bytes as test data, not
+        // as a production Oracle record or executable profile.
+        vec![
+            DetachedFixture {
+                id: CardDefinitionId(9001),
+                faces: vec![face(
+                    0,
+                    "Ojer Axonil, Deepest Might",
+                    Some(vec![
+                        Generic(2),
+                        PrintedManaSymbolV1::Red,
+                        PrintedManaSymbolV1::Red,
+                    ]),
+                    vec![],
+                    type_line(&["Legendary"], &["Creature"], &["God"]),
+                    Some((4, 4)),
+                )],
+            },
+            DetachedFixture {
+                id: CardDefinitionId(9002),
+                faces: vec![face(
+                    0,
+                    "Hybrid Fixture",
+                    Some(vec![Hybrid(White, Blue)]),
+                    vec![],
+                    type_line(&[], &["Creature"], &["Fixture"]),
+                    Some((0, 1)),
+                )],
+            },
+            DetachedFixture {
+                id: CardDefinitionId(9003),
+                faces: vec![face(
+                    0,
+                    "Two Color Fixture",
+                    Some(vec![PrintedManaSymbolV1::White, PrintedManaSymbolV1::Blue]),
+                    vec![],
+                    type_line(&[], &["Sorcery"], &[]),
+                    None,
+                )],
+            },
+            DetachedFixture {
+                id: CardDefinitionId(9004),
+                faces: vec![face(
+                    0,
+                    "Indicator Fixture",
+                    None,
+                    vec![Blue],
+                    type_line(&[], &["Creature"], &[]),
+                    Some((1, 1)),
+                )],
+            },
+            DetachedFixture {
+                id: CardDefinitionId(9005),
+                faces: vec![face(
+                    0,
+                    "Generic Fixture",
+                    Some(vec![Generic(2)]),
+                    vec![],
+                    type_line(&[], &["Artifact"], &[]),
+                    None,
+                )],
+            },
+            DetachedFixture {
+                id: CardDefinitionId(9006),
+                faces: vec![face(
+                    0,
+                    "Colorless Symbol Fixture",
+                    Some(vec![Colorless]),
+                    vec![],
+                    type_line(&[], &["Artifact"], &[]),
+                    None,
+                )],
+            },
+            DetachedFixture {
+                id: CardDefinitionId(9007),
+                faces: vec![face(
+                    0,
+                    "Indicator And Cost Fixture",
+                    Some(vec![PrintedManaSymbolV1::Green]),
+                    vec![Blue],
+                    type_line(&[], &["Creature"], &[]),
+                    Some((i32::MIN, i32::MAX)),
+                )],
+            },
+            DetachedFixture {
+                id: CardDefinitionId(9008),
+                faces: vec![
+                    face(
+                        0,
+                        "Front Fixture",
+                        Some(vec![PrintedManaSymbolV1::Blue]),
+                        vec![],
+                        type_line(&["Legendary"], &["Instant"], &["Front"]),
+                        None,
+                    ),
+                    face(
+                        1,
+                        "Back Fixture",
+                        Some(vec![PrintedManaSymbolV1::Green]),
+                        vec![],
+                        type_line(&[], &["Creature"], &["Back"]),
+                        Some((0, 1)),
+                    ),
+                ],
+            },
+        ]
+    }
+
+    fn colors(values: &[ManaColorV1]) -> BTreeSet<ManaColorV1> {
+        values.iter().copied().collect()
+    }
+
+    #[test]
+    fn detached_unprofiled_faces_derive_independent_base_facts() {
+        let fixtures = fixtures();
+        let catalog = verified_catalog(&fixtures);
+        let cases = [
+            (
+                CardDefinitionId(9001),
+                0,
+                colors(&[ManaColorV1::Red]),
+                vec!["Legendary"],
+                vec!["Creature"],
+                vec!["God"],
+                Some((4, 4)),
+            ),
+            (
+                CardDefinitionId(9002),
+                0,
+                colors(&[ManaColorV1::White, ManaColorV1::Blue]),
+                vec![],
+                vec!["Creature"],
+                vec!["Fixture"],
+                Some((0, 1)),
+            ),
+            (
+                CardDefinitionId(9003),
+                0,
+                colors(&[ManaColorV1::White, ManaColorV1::Blue]),
+                vec![],
+                vec!["Sorcery"],
+                vec![],
+                None,
+            ),
+            (
+                CardDefinitionId(9004),
+                0,
+                colors(&[ManaColorV1::Blue]),
+                vec![],
+                vec!["Creature"],
+                vec![],
+                Some((1, 1)),
+            ),
+            (
+                CardDefinitionId(9005),
+                0,
+                colors(&[]),
+                vec![],
+                vec!["Artifact"],
+                vec![],
+                None,
+            ),
+            (
+                CardDefinitionId(9006),
+                0,
+                colors(&[]),
+                vec![],
+                vec!["Artifact"],
+                vec![],
+                None,
+            ),
+            (
+                CardDefinitionId(9007),
+                0,
+                colors(&[ManaColorV1::Blue, ManaColorV1::Green]),
+                vec![],
+                vec!["Creature"],
+                vec![],
+                Some((i64::from(i32::MIN), i64::from(i32::MAX))),
+            ),
+        ];
+        for (definition, face_key, expected_colors, supertypes, card_types, subtypes, pt) in cases {
+            let (state, object) = detached_state(definition, face_key);
+            let before = state.clone();
+            let actual = detached_result(&catalog, &state, object).unwrap();
+            assert_eq!(actual, detached_result(&catalog, &state, object).unwrap());
+            assert_eq!(actual.queried.face_key.0, face_key);
+            assert_eq!(actual.colors, expected_colors, "definition {definition:?}");
+            assert_eq!(
+                actual.supertypes,
+                supertypes
+                    .into_iter()
+                    .map(str::to_owned)
+                    .collect::<Vec<_>>()
+            );
+            assert_eq!(
+                actual.card_types,
+                card_types
+                    .into_iter()
+                    .map(str::to_owned)
+                    .collect::<Vec<_>>()
+            );
+            assert_eq!(
+                actual.subtypes,
+                subtypes.into_iter().map(str::to_owned).collect::<Vec<_>>()
+            );
+            assert_eq!(actual.base_power_toughness, pt);
+            assert_eq!(state, before);
+        }
+    }
+
+    #[test]
+    fn detached_face_query_uses_exact_state_face_and_rejects_unknown_face() {
+        let fixtures = fixtures();
+        let catalog = verified_catalog(&fixtures);
+        let (front_state, object) = detached_state(CardDefinitionId(9008), 0);
+        let front = detached_result(&catalog, &front_state, object).unwrap();
+        assert_eq!(front.queried.face_key, FaceKey(0));
+        assert_eq!(front.colors, colors(&[ManaColorV1::Blue]));
+        assert_eq!(front.card_types, vec!["Instant"]);
+        assert_eq!(front.subtypes, vec!["Front"]);
+        assert_eq!(front.base_power_toughness, None);
+
+        let (back_state, object) = detached_state(CardDefinitionId(9008), 1);
+        let back = detached_result(&catalog, &back_state, object).unwrap();
+        assert_eq!(back.queried.face_key, FaceKey(1));
+        assert_eq!(back.colors, colors(&[ManaColorV1::Green]));
+        assert_eq!(back.card_types, vec!["Creature"]);
+        assert_eq!(back.subtypes, vec!["Back"]);
+        assert_eq!(back.base_power_toughness, Some((0, 1)));
+
+        let (unknown_state, object) = detached_state(CardDefinitionId(9008), u32::MAX);
+        let before = unknown_state.clone();
+        assert!(matches!(
+            detached_result(&catalog, &unknown_state, object),
+            Err(S1QueryError::UnknownFace { face_key, .. }) if face_key.0 == u32::MAX
+        ));
+        assert_eq!(unknown_state, before);
+    }
 }

@@ -1417,6 +1417,11 @@ pub fn selected_successor_decision(
 }
 
 #[cfg(test)]
+pub(crate) fn s1_b_state_with_two_lands_fixture() -> EngineStatePartsV2 {
+    tests::state_with_two_lands()
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use mtgml_card_ir::{
@@ -1482,7 +1487,7 @@ mod tests {
             .unwrap()
     }
 
-    fn state_with_two_lands() -> EngineStatePartsV2 {
+    pub(super) fn state_with_two_lands() -> EngineStatePartsV2 {
         let admission = admission();
         let manifest = decode_content_manifest_v1(MANIFEST).unwrap();
         let mountain = manifest
@@ -2783,6 +2788,57 @@ mod tests {
             authority.execution_identity(),
             admission.execution_identity()
         );
+        assert_eq!(state, before);
+    }
+
+    #[test]
+    fn s1_b_admitted_mountain_and_plains_have_empty_colors_and_no_pt() {
+        let admission = admission();
+        let state = successor_state_with_two_lands();
+        let before = state.clone();
+        let mut seen_mountain = false;
+        let mut seen_plains = false;
+
+        for (object_id, object) in &state.predecessor_v5.zones.objects {
+            // The shared synthetic setup also contains a face-down object.
+            // S1-B production positives cover only the admitted face-up land
+            // objects; face-down rejection remains an S1-A negative case.
+            if object.face_down {
+                continue;
+            }
+            let definition = admission
+                .verified_catalog()
+                .get(admission.content_contract_id(), object.card_definition)
+                .unwrap();
+            let subtype = match &definition.semantic_binding {
+                CardSemanticBindingV1::ProfiledV1 { body, .. } => body.subtype,
+                CardSemanticBindingV1::UnprofiledV1 => panic!("expected admitted Basic Land"),
+            };
+            let authority =
+                crate::S1QueryAuthority::for_object(&admission, &state, *object_id).unwrap();
+            let result = authority.derive_base_characteristics();
+            assert_eq!(result, authority.derive_base_characteristics());
+
+            assert!(result.colors.is_empty());
+            assert_eq!(result.base_power_toughness, None);
+            assert_eq!(result.queried.card_definition, object.card_definition);
+            assert_eq!(result.queried.face_key.0, 0);
+            match subtype {
+                mtgml_card_ir::BasicLandSubtypeV1::Mountain => {
+                    assert_eq!(result.supertypes, ["Basic"]);
+                    assert_eq!(result.card_types, ["Land"]);
+                    assert_eq!(result.subtypes, ["Mountain"]);
+                    seen_mountain = true;
+                }
+                mtgml_card_ir::BasicLandSubtypeV1::Plains => {
+                    assert_eq!(result.supertypes, ["Basic"]);
+                    assert_eq!(result.card_types, ["Land"]);
+                    assert_eq!(result.subtypes, ["Plains"]);
+                    seen_plains = true;
+                }
+            }
+        }
+        assert!(seen_mountain && seen_plains);
         assert_eq!(state, before);
     }
 
