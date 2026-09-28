@@ -691,6 +691,31 @@ fn validate_delta_operation_coverage(
         return uncovered();
     }
     for operation in operations {
+        let action_stack = match operation {
+            V3::SpellCast { stack_object, .. } | V3::AbilityActivated { stack_object, .. } => {
+                Some(*stack_object)
+            }
+            _ => None,
+        };
+        if let Some(stack_object) = action_stack {
+            let action_occurrences = operations
+                .iter()
+                .filter(|candidate| match candidate {
+                    V3::SpellCast {
+                        stack_object: candidate_stack,
+                        ..
+                    }
+                    | V3::AbilityActivated {
+                        stack_object: candidate_stack,
+                        ..
+                    } => *candidate_stack == stack_object,
+                    _ => false,
+                })
+                .count();
+            if action_occurrences != 1 {
+                return uncovered();
+            }
+        }
         match operation {
             V3::SpellCast {
                 stack_object,

@@ -789,3 +789,61 @@ fn state_delta_v3_rejects_cast_event_against_preexisting_stack_item() {
         Err(mtgml_state::DeltaApplicationV3Error::UncoveredMutation)
     );
 }
+
+#[test]
+fn state_delta_v3_rejects_duplicate_cast_occurrences_for_one_stack_creation() {
+    let before = state();
+    let mut after = before.clone();
+    insert_spell(&mut after, 50, 1);
+    after
+        .predecessor_v5
+        .zones
+        .stack_order
+        .push(StackObjectId(1));
+    after.predecessor_v5.revision =
+        mtgml_model::StateRevision(before.predecessor_v5.revision.0.checked_add(1).unwrap());
+    after
+        .card_rules_state
+        .turn_history
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap()
+        .spells_cast_total = 2;
+    after
+        .card_rules_state
+        .turn_history
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap()
+        .noncreature_spells_cast = 2;
+    after.validate().unwrap();
+    let payload = after.predecessor_v5.zones.stack_records[&StackObjectId(1)]
+        .payload
+        .clone()
+        .unwrap();
+    let spell = || mtgml_state::SemanticDeltaOperationV3::SpellCast {
+        stack_object: StackObjectId(1),
+        spell_object: GameObjectId(50),
+        card_definition: CardDefinitionId(50),
+        face_key: FaceKey(0),
+        semantic_profile_id: CardSemanticProfileId::parse("test/spell@1.0.0").unwrap(),
+        is_creature_spell: false,
+        cost_facts: Default::default(),
+    };
+    let operations = vec![
+        mtgml_state::SemanticDeltaOperationV3::StackItemCreated {
+            stack_object: StackObjectId(1),
+            payload: Box::new(payload),
+        },
+        mtgml_state::SemanticDeltaOperationV3::StackOrderChanged {
+            from: vec![],
+            to: vec![StackObjectId(1)],
+        },
+        spell(),
+        spell(),
+    ];
+    assert_eq!(
+        StateDeltaV3::between(&before, &after, operations),
+        Err(mtgml_state::DeltaApplicationV3Error::UncoveredMutation)
+    );
+}

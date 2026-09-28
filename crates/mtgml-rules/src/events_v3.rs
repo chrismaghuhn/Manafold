@@ -1821,6 +1821,55 @@ mod tests {
         let once_delta = StateDeltaV3::between(&before, &once_after, once_operations).unwrap();
         validate_event_delta_state_v3(&before, &once_after, &once_events, &once_delta).unwrap();
 
+        let mut mismatched_once_after = once_after.clone();
+        mismatched_once_after
+            .card_rules_state
+            .turn_history
+            .once_ability_used
+            .remove(&once_key);
+        mismatched_once_after
+            .card_rules_state
+            .turn_history
+            .once_ability_used
+            .insert((GameObjectId(1), 9));
+        mismatched_once_after.validate().unwrap();
+        let mismatched_once_operations = once_events
+            .iter()
+            .flat_map(AuthoritativeRuleEventV3::semantic_operations)
+            .chain([SemanticDeltaOperationV3::StackOrderChanged {
+                from: vec![],
+                to: vec![StackObjectId(1)],
+            }])
+            .collect();
+        assert!(
+            StateDeltaV3::between(&before, &mismatched_once_after, mismatched_once_operations)
+                .is_err()
+        );
+
+        let mut duplicate_receipt_operations = once_events
+            .iter()
+            .flat_map(AuthoritativeRuleEventV3::semantic_operations)
+            .collect::<Vec<_>>();
+        let once_operation = duplicate_receipt_operations
+            .iter()
+            .find(|operation| {
+                matches!(
+                    operation,
+                    SemanticDeltaOperationV3::AbilityActivated {
+                        once_per_turn_use_committed: true,
+                        ..
+                    }
+                )
+            })
+            .unwrap()
+            .clone();
+        duplicate_receipt_operations.push(once_operation);
+        duplicate_receipt_operations.push(SemanticDeltaOperationV3::StackOrderChanged {
+            from: vec![],
+            to: vec![StackObjectId(1)],
+        });
+        assert!(StateDeltaV3::between(&before, &once_after, duplicate_receipt_operations).is_err());
+
         let false_receipt_operations = events
             .iter()
             .flat_map(AuthoritativeRuleEventV3::semantic_operations)
