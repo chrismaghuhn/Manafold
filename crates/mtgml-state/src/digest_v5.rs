@@ -193,7 +193,7 @@ fn core_value(state: &EngineState) -> Value {
     ])
 }
 
-fn turn_position_value(position: TurnPosition) -> Value {
+pub(crate) fn turn_position_value(position: TurnPosition) -> Value {
     match position {
         TurnPosition::Beginning { step } => array([text("beginning"), text(beginning_step(step))]),
         TurnPosition::PrecombatMain => array([text("precombat_main"), Value::Null]),
@@ -367,7 +367,7 @@ fn zones_value(state: &EngineState) -> Result<Value, StateDigestError> {
     ]))
 }
 
-fn zone_key_value(key: &ZoneKey) -> Value {
+pub(crate) fn zone_key_value(key: &ZoneKey) -> Value {
     array([
         text(zone_kind(key.zone)),
         optional(key.player.map(|player| u(player.0))),
@@ -376,7 +376,7 @@ fn zone_key_value(key: &ZoneKey) -> Value {
     ])
 }
 
-fn zone_location_value(location: &ZoneLocation) -> Value {
+pub(crate) fn zone_location_value(location: &ZoneLocation) -> Value {
     array([
         text(zone_kind(location.zone)),
         optional(location.player.map(|player| u(player.0))),

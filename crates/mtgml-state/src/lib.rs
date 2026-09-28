@@ -8,11 +8,13 @@ mod core;
 mod damage;
 mod delta;
 mod delta_v2;
+mod delta_v3;
 mod digest;
 mod digest_v3;
 mod digest_v4;
 mod digest_v5;
 mod digest_v6;
+mod digest_v7;
 mod engine;
 mod engine_state_parts_v2;
 mod engine_state_parts_v3;
@@ -23,6 +25,7 @@ mod identity;
 mod knowledge;
 mod lifecycle;
 mod persisted_v6;
+mod persisted_v7;
 mod semantic_mutations;
 mod shared_execution;
 mod validation;
@@ -45,6 +48,10 @@ pub use core::{
 pub use damage::{DamageAssignmentV1, DamageRecipientV1};
 pub use delta::{DeltaApplicationError, SemanticDeltaOperation, StateDelta};
 pub use delta_v2::{DeltaApplicationV2Error, SemanticDeltaOperationV2, StateDeltaV2};
+pub use delta_v3::{
+    CostCommitActionV1, DeltaApplicationV3Error, ManaPoolChangeCauseV1, SemanticDeltaOperationV3,
+    StackItemEndKindV1, StateDeltaV3,
+};
 pub use digest::StateDigestError;
 pub use digest_v4::{
     calculate_full_state_digest_v4_historical, canonical_state_bytes_v4_historical,
@@ -54,6 +61,10 @@ pub use digest_v6::{
     calculate_full_state_digest_v6, calculate_full_state_digest_v6_with_execution_v3,
     canonical_state_bytes_v6, canonical_state_bytes_v6_with_execution_v3,
     verify_full_state_digest_v6, FULL_STATE_DIGEST_DOMAIN_V6, FULL_STATE_DIGEST_INPUT_SCHEMA_V6,
+};
+pub use digest_v7::{
+    calculate_full_state_digest_v7, calculate_full_state_digest_v7_payload,
+    canonical_state_bytes_v7, verify_full_state_digest_v7,
 };
 pub use engine::{EngineState, EngineStateParts, FULL_STATE_DIGEST_INPUT_SCHEMA};
 pub use engine_state_parts_v2::{EngineStatePartsV2, EngineStatePartsV2Error};
@@ -84,6 +95,7 @@ pub use persisted_v6::{
     FullStateDigestInputV6, ManaColorV1, ManaPoolV1, ManaRestrictionV1, ManaStateV1,
     PersistedExecutionV3, PersistedV6Error, PlayerTurnHistoryV1, TurnHistoryStateV1,
 };
+pub use persisted_v7::FullStateDigestInputV7;
 pub use semantic_mutations::{
     AttachmentChangeV1, CounterAnnihilationChangeV1, RoleAttachmentRetirementV1,
     StateFamilyMutationError,

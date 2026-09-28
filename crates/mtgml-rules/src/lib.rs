@@ -7,6 +7,7 @@ mod contract;
 mod decision_stage;
 mod errors;
 mod events;
+mod events_v3;
 #[cfg(feature = "synthetic-conformance-fixtures")]
 pub mod fixture_support;
 mod magic;
@@ -37,6 +38,11 @@ pub use errors::{KernelExecutionError, ZoneIncarnationError};
 pub use events::{
     AuthoritativeRuleEvent, AuthoritativeRuleEventKind, OccurrencePairingError,
     PerspectiveObservationPolicyV1,
+};
+pub use events_v3::{
+    allocate_rule_events_v3, validate_event_delta_parity_v3, validate_event_delta_state_v3,
+    validate_rule_event_cursor_v3, AuthoritativeRuleEventKindV3, AuthoritativeRuleEventV3,
+    EventDeltaV3Error, RuleEventCursorV3Error,
 };
 pub use program_kernel::{
     validate_runtime_state, validate_runtime_state_for_contract, ProgramKernelConstructionErrorV1,
