@@ -154,6 +154,7 @@ class SchemaParityTests(unittest.TestCase):
             "decision-response.v1": "decision-response.v1.schema.json",
             "player-decision-request.v2": "player-decision-request.v2.schema.json",
             "decision-response.v2": "decision-response.v2.schema.json",
+            "player-decision-request.v4": "player-decision-request.v4.schema.json",
             "episode-status.v1": "episode-status.v1.schema.json",
             "observed-event-envelope.v1": "observed-event-envelope.v1.schema.json",
             "observation-envelope.v1": "observation-envelope.v1.schema.json",

@@ -45,7 +45,13 @@ from .decision import (
     VisibleCandidateV2,
 )
 from .decision_v3 import CandidateIntentV3, PlayerDecisionRequestV3, VisibleCandidateV3
-from .decision_v4 import CandidateIntentV4, PlayerDecisionRequestV4, VisibleCandidateV4
+from .decision_v4 import (
+    CandidateIntentV4,
+    CostRouteDescriptorV1,
+    PlayerDecisionRequestV4,
+    PrintedManaSymbolsV1,
+    VisibleCandidateV4,
+)
 from .episode import (
     EpisodeStatus,
     PlayerOutcome,
@@ -165,6 +171,7 @@ __all__ = [
     "CheckpointCodecIdentityV3",
     "CheckpointCodecIdentityV4",
     "ContentContractMaterialV1",
+    "CostRouteDescriptorV1",
     "CounterObservationV1",
     "DecisionAnswerV2",
     "DecisionResponse",
@@ -225,6 +232,7 @@ __all__ = [
     "PlayerStepV2",
     "PlayerStepV3",
     "PlayerStepV4",
+    "PrintedManaSymbolsV1",
     "ReplayManifestV1",
     "ReplayManifestV2",
     "ReplayManifestV3",

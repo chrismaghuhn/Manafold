@@ -1,0 +1,58 @@
+{
+  "actor": "0",
+  "candidates": [
+    {
+      "candidate_id": 0,
+      "intent": {
+        "descriptor": {
+          "printed_mana_symbols": {
+            "colored_wubrg_counts": [
+              0,
+              0,
+              0,
+              1,
+              0
+            ],
+            "colorless_count": 0,
+            "generic_count": 3
+          },
+          "profile_local_option_ordinal": 7,
+          "route_class": "alternative"
+        },
+        "kind": "select_cost_route"
+      }
+    },
+    {
+      "candidate_id": 1,
+      "intent": {
+        "descriptor": {
+          "printed_mana_symbols": {
+            "colored_wubrg_counts": [
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "colorless_count": 0,
+            "generic_count": 3
+          },
+          "profile_local_option_ordinal": 7,
+          "route_class": "alternative"
+        },
+        "kind": "select_cost_route"
+      }
+    }
+  ],
+  "decision_domain_v2": {
+    "kind": "choose_one"
+  },
+  "parent_player_decision_id": null,
+  "player_decision_id": "2",
+  "purpose": {
+    "kind": "cast_cost_route"
+  },
+  "schema_version": "player-decision-request.v4",
+  "view_sequence": "4",
+  "visibility": "public"
+}

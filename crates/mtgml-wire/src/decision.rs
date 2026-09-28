@@ -2,7 +2,8 @@ use crate::canonical_json::decode_canonical_shape;
 use crate::contract::WireContract;
 use crate::error::WireError;
 use mtgml_decision::{
-    DecisionResponse, DecisionResponseV2, PlayerDecisionRequest, PlayerDecisionRequestV2,
+    DecisionResponse, DecisionResponseV2, DecisionResponseV3, PlayerDecisionRequest,
+    PlayerDecisionRequestV2, PlayerDecisionRequestV4,
 };
 
 impl WireContract for PlayerDecisionRequest {
@@ -27,6 +28,20 @@ impl WireContract for PlayerDecisionRequestV2 {
 }
 
 impl WireContract for DecisionResponseV2 {
+    fn validate_wire(&self) -> Result<(), WireError> {
+        self.validate()
+            .map_err(|error| WireError::new("semantic.decision_response", error.to_string()))
+    }
+}
+
+impl WireContract for PlayerDecisionRequestV4 {
+    fn validate_wire(&self) -> Result<(), WireError> {
+        self.validate()
+            .map_err(|error| WireError::new("semantic.decision", error.to_string()))
+    }
+}
+
+impl WireContract for DecisionResponseV3 {
     fn validate_wire(&self) -> Result<(), WireError> {
         self.validate()
             .map_err(|error| WireError::new("semantic.decision_response", error.to_string()))

@@ -38,6 +38,8 @@ pub enum DecisionValidationError {
     DuplicateOrderingKey,
     #[error("visible candidate and trusted binding variants differ")]
     BindingVariantMismatch,
+    #[error("visible cost-route descriptor differs from its trusted route key")]
+    CostRouteMismatch,
     #[error("player decision identity does not match the request")]
     DecisionIdentityMismatch,
     #[error("state revision does not match the request")]

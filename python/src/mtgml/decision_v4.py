@@ -258,6 +258,103 @@ class CostFactsV1:
 
 
 @dataclass(frozen=True, slots=True)
+class PrintedManaSymbolsV1:
+    colored_wubrg_counts: tuple[int, int, int, int, int]
+    colorless_count: int
+    generic_count: int
+
+    @classmethod
+    def from_wire(cls, value: object) -> PrintedManaSymbolsV1:
+        obj = require_exact_keys(
+            value,
+            {"colored_wubrg_counts", "colorless_count", "generic_count"},
+        )
+        colors = tuple(
+            _u32(item, "colored_wubrg_count")
+            for item in _array(obj["colored_wubrg_counts"], "colored_wubrg_counts")
+        )
+        if len(colors) != 5:
+            raise WireError(
+                "decode.invalid_json", "colored W/U/B/R/G counts must have five entries"
+            )
+        return cls(
+            colors,  # type: ignore[arg-type]
+            _u32(obj["colorless_count"], "colorless_count"),
+            _u32(obj["generic_count"], "generic_count"),
+        )
+
+    def to_wire(self) -> dict[str, object]:
+        colors = tuple(_u32(item, "colored_wubrg_count") for item in self.colored_wubrg_counts)
+        if len(colors) != 5:
+            raise WireError(
+                "encode.serialization", "colored W/U/B/R/G counts must have five entries"
+            )
+        return {
+            "colored_wubrg_counts": list(colors),
+            "colorless_count": _u32(self.colorless_count, "colorless_count"),
+            "generic_count": _u32(self.generic_count, "generic_count"),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class CostRouteDescriptorV1:
+    route_class: str
+    printed_mana_symbols: PrintedManaSymbolsV1
+    profile_local_option_ordinal: int | None
+
+    @classmethod
+    def from_wire(cls, value: object) -> CostRouteDescriptorV1:
+        obj = require_exact_keys(
+            value,
+            {"route_class", "printed_mana_symbols", "profile_local_option_ordinal"},
+        )
+        route_class = obj["route_class"]
+        if not isinstance(route_class, str):
+            raise WireError("decode.invalid_json", "unknown cost route class")
+        ordinal = (
+            None
+            if obj["profile_local_option_ordinal"] is None
+            else _u32(obj["profile_local_option_ordinal"], "profile_local_option_ordinal")
+        )
+        if route_class not in {"normal", "alternative"}:
+            raise WireError("decode.invalid_json", "unknown cost route class")
+        result = cls(
+            route_class,
+            PrintedManaSymbolsV1.from_wire(obj["printed_mana_symbols"]),
+            ordinal,
+        )
+        result.validate()
+        return result
+
+    def validate(self) -> None:
+        if not isinstance(self.route_class, str) or self.route_class not in {
+            "normal",
+            "alternative",
+        }:
+            raise WireError("semantic.decision", "unknown cost route class")
+        if (self.route_class == "normal") != (self.profile_local_option_ordinal is None):
+            raise WireError("semantic.decision", "cost route class and ordinal disagree")
+        if self.profile_local_option_ordinal is not None:
+            _u32(self.profile_local_option_ordinal, "profile_local_option_ordinal")
+        self.printed_mana_symbols.to_wire()
+
+    def ordering_key(self) -> tuple[int, int]:
+        self.validate()
+        if self.route_class == "normal":
+            return 0, 0
+        assert self.profile_local_option_ordinal is not None
+        return 1, self.profile_local_option_ordinal
+
+    def to_wire(self) -> dict[str, object]:
+        self.validate()
+        return {
+            "route_class": self.route_class,
+            "printed_mana_symbols": self.printed_mana_symbols.to_wire(),
+            "profile_local_option_ordinal": self.profile_local_option_ordinal,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class AttackerFactV1:
     attacker: int
     defending_player: int
@@ -747,7 +844,7 @@ class CandidateIntentV4:
     mode_index: int | None = None
     boolean_value: bool | None = None
     number_value: int | None = None
-    route_id: int | None = None
+    cost_route_descriptor: CostRouteDescriptorV1 | None = None
     source_object_id: int | None = None
     source_ability_id: int | None = None
     produced_buckets: tuple[int, ...] | None = None
@@ -756,7 +853,11 @@ class CandidateIntentV4:
 
     @classmethod
     def from_wire(cls, value: object) -> CandidateIntentV4:
-        if not isinstance(value, dict) or value.get("kind") not in _CANDIDATE_RANK:
+        if (
+            not isinstance(value, dict)
+            or not isinstance(value.get("kind"), str)
+            or value["kind"] not in _CANDIDATE_RANK
+        ):
             raise WireError("decode.invalid_json", "unknown candidate V4 intent")
         kind = value["kind"]
         fields = {
@@ -770,7 +871,7 @@ class CandidateIntentV4:
             "choose_boolean": {"value"},
             "declare_number": {"value"},
             "confirm": set(),
-            "select_cost_route": {"route_id"},
+            "select_cost_route": {"descriptor"},
             "select_mana_source": {"source", "ability", "produced_buckets"},
             "finalize_mana_production": set(),
             "select_mana_payment": {"spent_buckets"},
@@ -792,7 +893,10 @@ class CandidateIntentV4:
         if kind == "declare_number":
             return cls(kind, number_value=_i64(obj["value"], "value"))
         if kind == "select_cost_route":
-            return cls(kind, route_id=_u32(obj["route_id"], "route_id"))
+            return cls(
+                kind,
+                cost_route_descriptor=CostRouteDescriptorV1.from_wire(obj["descriptor"]),
+            )
         if kind == "select_mana_source":
             buckets = tuple(
                 _u32(item, "produced_buckets")
@@ -829,7 +933,6 @@ class CandidateIntentV4:
             "select_mode": ("mode_index", self.mode_index),
             "choose_boolean": ("value", self.boolean_value),
             "declare_number": ("value", self.number_value),
-            "select_cost_route": ("route_id", self.route_id),
             "select_mana_source": ("source", self.source_object_id),
         }
         if self.kind in fields:
@@ -839,6 +942,10 @@ class CandidateIntentV4:
             result[field] = (
                 uint_wire(value) if field in {"object", "ability", "player", "source"} else value
             )
+        if self.kind == "select_cost_route":
+            if self.cost_route_descriptor is None:
+                raise WireError("encode.serialization", "cost route descriptor is absent")
+            result["descriptor"] = self.cost_route_descriptor.to_wire()
         if self.kind == "select_mana_source":
             if self.source_ability_id is None or self.produced_buckets is None:
                 raise WireError("encode.serialization", "mana source payload is incomplete")
@@ -880,7 +987,9 @@ class CandidateIntentV4:
                 raise WireError("semantic.decision", "candidate number is absent")
             value = _i64(self.number_value, "number_value")
         elif self.kind == "select_cost_route":
-            value = _u32(self.route_id, "route_id")
+            if self.cost_route_descriptor is None:
+                raise WireError("semantic.decision", "cost route descriptor is absent")
+            value = self.cost_route_descriptor.ordering_key()
         elif self.kind == "select_mana_source":
             if (
                 self.source_object_id is None

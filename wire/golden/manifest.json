@@ -311,6 +311,10 @@
     {
       "contract": "authoritative-replay.v8",
       "path": "authoritative-replay-v8.json"
+    },
+    {
+      "contract": "player-decision-request.v4",
+      "path": "player-decision-request-v4-cost-route.json"
     }
   ]
 }

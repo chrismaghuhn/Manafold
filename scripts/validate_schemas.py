@@ -87,6 +87,16 @@ ARTIFACT_CASES = [
 ]
 SCHEMA_NEGATIVE_CASES = [
     (
+        "player-decision-request.v4.schema.json",
+        "schemas/negative/"
+        "player-decision-request-v4-cost-route-normal-with-ordinal.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/negative/"
+        "player-decision-request-v4-cost-route-alternative-without-ordinal.json",
+    ),
+    (
         "replay-manifest.v8.schema.json",
         "schemas/negative/replay-manifest-v8-program-authority-mismatch.json",
     ),
@@ -256,6 +266,10 @@ SCHEMA_NEGATIVE_CASES = [
     ),
 ]
 SCHEMA_POSITIVE_CASES = [
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/examples/player-decision-request-v4-cost-route.json",
+    ),
     ("replay-manifest.v8.schema.json", "schemas/examples/replay-manifest-v8.json"),
     ("replay-step.v8.schema.json", "schemas/examples/replay-step-v8.json"),
     ("authoritative-replay.v8.schema.json", "schemas/examples/authoritative-replay-v8.json"),

@@ -1,7 +1,8 @@
 use crate::canonical_json::decode_canonical;
 use crate::error::WireError;
 use mtgml_decision::{
-    DecisionResponse, DecisionResponseV2, PlayerDecisionRequest, PlayerDecisionRequestV2,
+    DecisionResponse, DecisionResponseV2, DecisionResponseV3, PlayerDecisionRequest,
+    PlayerDecisionRequestV2, PlayerDecisionRequestV4,
 };
 use mtgml_model::EpisodeStatus;
 use mtgml_observation::{
@@ -104,6 +105,10 @@ fn decode_named(contract: &str, bytes: &[u8]) -> Result<(), WireError> {
             decode_canonical::<PlayerDecisionRequestV2>(bytes).map(drop)
         }
         "decision-response.v2" => decode_canonical::<DecisionResponseV2>(bytes).map(drop),
+        "player-decision-request.v4" => {
+            decode_canonical::<PlayerDecisionRequestV4>(bytes).map(drop)
+        }
+        "decision-response.v3" => decode_canonical::<DecisionResponseV3>(bytes).map(drop),
         "observation-envelope.v1" => decode_canonical::<ObservationEnvelope>(bytes).map(drop),
         "observation-envelope.v2" => decode_canonical::<ObservationEnvelopeV2>(bytes).map(drop),
         "information-state-envelope.v1" => {

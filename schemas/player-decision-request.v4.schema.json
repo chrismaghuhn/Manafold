@@ -61,10 +61,87 @@
       ],
       "type": "object"
     },
+    "cost_route_descriptor": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "printed_mana_symbols": {
+              "$ref": "#/$defs/printed_mana_symbols"
+            },
+            "profile_local_option_ordinal": {
+              "type": "null"
+            },
+            "route_class": {
+              "const": "normal"
+            }
+          },
+          "required": [
+            "route_class",
+            "printed_mana_symbols",
+            "profile_local_option_ordinal"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "printed_mana_symbols": {
+              "$ref": "#/$defs/printed_mana_symbols"
+            },
+            "profile_local_option_ordinal": {
+              "maximum": 4294967295,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "route_class": {
+              "const": "alternative"
+            }
+          },
+          "required": [
+            "route_class",
+            "printed_mana_symbols",
+            "profile_local_option_ordinal"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "i64": {
       "maximum": 9223372036854775807,
       "minimum": -9223372036854775808,
       "type": "integer"
+    },
+    "printed_mana_symbols": {
+      "additionalProperties": false,
+      "properties": {
+        "colored_wubrg_counts": {
+          "items": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "maxItems": 5,
+          "minItems": 5,
+          "type": "array"
+        },
+        "colorless_count": {
+          "maximum": 4294967295,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "generic_count": {
+          "maximum": 4294967295,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "colored_wubrg_counts",
+        "colorless_count",
+        "generic_count"
+      ],
+      "type": "object"
     },
     "safe_target_descriptor": {
       "oneOf": [
@@ -2376,16 +2453,16 @@
               {
                 "additionalProperties": false,
                 "properties": {
+                  "descriptor": {
+                    "$ref": "#/$defs/cost_route_descriptor"
+                  },
                   "kind": {
                     "const": "select_cost_route"
-                  },
-                  "route_id": {
-                    "$ref": "#/$defs/u32_number"
                   }
                 },
                 "required": [
                   "kind",
-                  "route_id"
+                  "descriptor"
                 ],
                 "type": "object"
               },

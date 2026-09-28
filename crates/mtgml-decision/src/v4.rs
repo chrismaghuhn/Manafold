@@ -317,6 +317,63 @@ impl CostFactsV1 {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CostRouteClassV1 {
+    Normal,
+    Alternative,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PrintedManaSymbolsV1 {
+    pub colored_wubrg_counts: [u32; 5],
+    pub colorless_count: u32,
+    pub generic_count: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CostRouteDescriptorV1 {
+    pub route_class: CostRouteClassV1,
+    pub printed_mana_symbols: PrintedManaSymbolsV1,
+    #[serde(deserialize_with = "deserialize_required_option")]
+    pub profile_local_option_ordinal: Option<u32>,
+}
+
+impl CostRouteDescriptorV1 {
+    fn validate(&self) -> Result<(), DecisionValidationError> {
+        match (self.route_class, self.profile_local_option_ordinal) {
+            (CostRouteClassV1::Normal, None) | (CostRouteClassV1::Alternative, Some(_)) => Ok(()),
+            _ => Err(DecisionValidationError::CostRouteMismatch),
+        }
+    }
+
+    fn matches_route_key(&self, route: &CostRouteV1) -> bool {
+        matches!(
+            (self.route_class, self.profile_local_option_ordinal, route),
+            (CostRouteClassV1::Normal, None, CostRouteV1::Normal)
+                | (
+                    CostRouteClassV1::Alternative,
+                    Some(_),
+                    CostRouteV1::Alternative { .. }
+                )
+        ) && match (self.profile_local_option_ordinal, route) {
+            (None, CostRouteV1::Normal) => true,
+            (Some(ordinal), CostRouteV1::Alternative { route_id }) => ordinal == *route_id,
+            _ => false,
+        }
+    }
+
+    fn ordering_key(&self) -> (u8, u32) {
+        match (self.route_class, self.profile_local_option_ordinal) {
+            (CostRouteClassV1::Normal, None) => (0, 0),
+            (CostRouteClassV1::Alternative, Some(ordinal)) => (1, ordinal),
+            _ => (u8::MAX, u32::MAX),
+        }
+    }
+}
+
 fn cost_route_key(route: &Option<CostRouteV1>) -> (u8, u32) {
     match route {
         None => (0, 0),
@@ -765,7 +822,7 @@ pub enum CandidateIntentV4 {
     },
     Confirm,
     SelectCostRoute {
-        route_id: u32,
+        descriptor: CostRouteDescriptorV1,
     },
     SelectManaSource {
         source: OpaqueObjectId,
@@ -805,6 +862,7 @@ impl CandidateIntentV4 {
     fn validate(&self) -> Result<(), DecisionValidationError> {
         match self {
             Self::SelectTrigger { trigger } => trigger.validate(),
+            Self::SelectCostRoute { descriptor } => descriptor.validate(),
             _ => Ok(()),
         }
     }
@@ -828,9 +886,10 @@ impl CandidateIntentV4 {
                 }
                 (Self::ChooseBoolean { value: a }, Self::ChooseBoolean { value: b }) => a.cmp(b),
                 (Self::DeclareNumber { value: a }, Self::DeclareNumber { value: b }) => a.cmp(b),
-                (Self::SelectCostRoute { route_id: a }, Self::SelectCostRoute { route_id: b }) => {
-                    a.cmp(b)
-                }
+                (
+                    Self::SelectCostRoute { descriptor: a },
+                    Self::SelectCostRoute { descriptor: b },
+                ) => a.ordering_key().cmp(&b.ordering_key()),
                 (
                     Self::SelectManaSource {
                         source: a_source,
@@ -896,7 +955,7 @@ pub enum EngineCandidateBindingV4 {
     },
     Confirm,
     SelectCostRoute {
-        route_id: u32,
+        route: CostRouteV1,
     },
     SelectManaSource {
         source: GameObjectId,
@@ -990,6 +1049,15 @@ impl AuthoritativeCandidateV4 {
         self.visible_intent.validate()?;
         if !self.trusted_binding.same_variant_as(&self.visible_intent) {
             return Err(DecisionValidationError::BindingVariantMismatch);
+        }
+        if let (
+            CandidateIntentV4::SelectCostRoute { descriptor },
+            EngineCandidateBindingV4::SelectCostRoute { route },
+        ) = (&self.visible_intent, &self.trusted_binding)
+        {
+            if !descriptor.matches_route_key(route) {
+                return Err(DecisionValidationError::CostRouteMismatch);
+            }
         }
         Ok(())
     }
@@ -1319,8 +1387,20 @@ mod tests {
         };
         let cases = [
             (
-                EngineCandidateBindingV4::SelectCostRoute { route_id: 1 },
-                CandidateIntentV4::SelectCostRoute { route_id: 1 },
+                EngineCandidateBindingV4::SelectCostRoute {
+                    route: CostRouteV1::Alternative { route_id: 1 },
+                },
+                CandidateIntentV4::SelectCostRoute {
+                    descriptor: CostRouteDescriptorV1 {
+                        route_class: CostRouteClassV1::Alternative,
+                        printed_mana_symbols: PrintedManaSymbolsV1 {
+                            colored_wubrg_counts: [0, 0, 0, 1, 0],
+                            colorless_count: 0,
+                            generic_count: 3,
+                        },
+                        profile_local_option_ordinal: Some(1),
+                    },
+                },
             ),
             (
                 EngineCandidateBindingV4::SelectManaSource {
@@ -1361,6 +1441,64 @@ mod tests {
         for (binding, intent) in cases {
             assert!(binding.same_variant_as(&intent));
         }
+    }
+
+    #[test]
+    fn cost_route_descriptor_binds_route_key_and_rejects_duplicate_public_keys() {
+        let descriptor = CostRouteDescriptorV1 {
+            route_class: CostRouteClassV1::Alternative,
+            printed_mana_symbols: PrintedManaSymbolsV1 {
+                colored_wubrg_counts: [0, 0, 0, 1, 0],
+                colorless_count: 0,
+                generic_count: 3,
+            },
+            profile_local_option_ordinal: Some(4),
+        };
+        let visible = CandidateIntentV4::SelectCostRoute { descriptor };
+        let candidate = AuthoritativeCandidateV4 {
+            candidate_id: CandidateIdV1(0),
+            visible_intent: visible.clone(),
+            trusted_binding: EngineCandidateBindingV4::SelectCostRoute {
+                route: CostRouteV1::Alternative { route_id: 4 },
+            },
+        };
+        candidate.validate_shape().unwrap();
+
+        let mismatched = AuthoritativeCandidateV4 {
+            trusted_binding: EngineCandidateBindingV4::SelectCostRoute {
+                route: CostRouteV1::Alternative { route_id: 5 },
+            },
+            ..candidate
+        };
+        assert_eq!(
+            mismatched.validate_shape(),
+            Err(DecisionValidationError::CostRouteMismatch)
+        );
+
+        let another_cost = CandidateIntentV4::SelectCostRoute {
+            descriptor: CostRouteDescriptorV1 {
+                route_class: CostRouteClassV1::Alternative,
+                printed_mana_symbols: PrintedManaSymbolsV1 {
+                    colored_wubrg_counts: [0, 0, 0, 0, 1],
+                    colorless_count: 0,
+                    generic_count: 3,
+                },
+                profile_local_option_ordinal: Some(4),
+            },
+        };
+        assert_eq!(
+            CandidateOrderingV3::validate_public(&[
+                VisibleCandidateV4 {
+                    candidate_id: CandidateIdV1(0),
+                    intent: visible,
+                },
+                VisibleCandidateV4 {
+                    candidate_id: CandidateIdV1(1),
+                    intent: another_cost,
+                },
+            ]),
+            Err(DecisionValidationError::NoncanonicalCandidateOrder)
+        );
     }
 
     #[test]
@@ -1465,7 +1603,17 @@ mod tests {
             CandidateIntentV4::ChooseBoolean { value: false },
             CandidateIntentV4::DeclareNumber { value: -1 },
             CandidateIntentV4::Confirm,
-            CandidateIntentV4::SelectCostRoute { route_id: 0 },
+            CandidateIntentV4::SelectCostRoute {
+                descriptor: CostRouteDescriptorV1 {
+                    route_class: CostRouteClassV1::Normal,
+                    printed_mana_symbols: PrintedManaSymbolsV1 {
+                        colored_wubrg_counts: [1, 0, 0, 0, 0],
+                        colorless_count: 0,
+                        generic_count: 0,
+                    },
+                    profile_local_option_ordinal: None,
+                },
+            },
             CandidateIntentV4::SelectManaSource {
                 source: OpaqueObjectId(4),
                 ability: OpaqueAbilityId(2),
