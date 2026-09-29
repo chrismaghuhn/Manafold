@@ -1,0 +1,2730 @@
+{
+  "authorization": "VALIDATION_ONLY",
+  "candidates": [
+    {
+      "ability_identities": 0,
+      "card_definition_id": 1,
+      "card_name": "Fanatical Firebrand",
+      "deck": "R1",
+      "faces": [
+        {
+          "face_key": 0,
+          "mana_cost": [
+            "red"
+          ],
+          "name": "Fanatical Firebrand",
+          "power_toughness": [
+            1,
+            1
+          ],
+          "type_line": {
+            "card_types": [
+              "Creature"
+            ],
+            "subtypes": [
+              "Goblin",
+              "Pirate"
+            ],
+            "supertypes": []
+          }
+        }
+      ],
+      "forge_path": "forge-gui/res/cardsfolder/f/fanatical_firebrand.txt",
+      "forge_source_revision": "17c1ba92149b84127749bf84c231ed75107df1a2",
+      "issue_alias": null,
+      "other_source_fields": [
+        {
+          "face_key": 0,
+          "field": "DeckHas",
+          "line": 7,
+          "raw_value": "Ability$Sacrifice"
+        }
+      ],
+      "semantic_binding": "unprofiled-v1",
+      "source_record_digest_sha256": "9ad9b6d9576aecd94de3040e547e0fa7bc7cf5d9e6575bca4d0c97a7dd38fd3f",
+      "unlowered_constructs": [
+        {
+          "face_key": 0,
+          "field": "K",
+          "line": 5,
+          "raw_value": "Haste",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "A",
+          "line": 6,
+          "raw_value": "AB$ DealDamage | Cost$ T Sac<1/CARDNAME> | ValidTgts$ Any | NumDmg$ 1 | SpellDescription$ It deals 1 damage to any target.",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": {
+            "category": "DealDamage",
+            "parameters": [
+              {
+                "key": "Cost",
+                "value": "T Sac<1/CARDNAME>"
+              },
+              {
+                "key": "ValidTgts",
+                "value": "Any"
+              },
+              {
+                "key": "NumDmg",
+                "value": "1"
+              },
+              {
+                "key": "SpellDescription",
+                "value": "It deals 1 damage to any target."
+              }
+            ],
+            "prefix": "AB"
+          }
+        }
+      ]
+    },
+    {
+      "ability_identities": 0,
+      "card_definition_id": 2,
+      "card_name": "Hired Claw",
+      "deck": "R1",
+      "faces": [
+        {
+          "face_key": 0,
+          "mana_cost": [
+            "red"
+          ],
+          "name": "Hired Claw",
+          "power_toughness": [
+            1,
+            2
+          ],
+          "type_line": {
+            "card_types": [
+              "Creature"
+            ],
+            "subtypes": [
+              "Lizard",
+              "Mercenary"
+            ],
+            "supertypes": []
+          }
+        }
+      ],
+      "forge_path": "forge-gui/res/cardsfolder/h/hired_claw.txt",
+      "forge_source_revision": "17c1ba92149b84127749bf84c231ed75107df1a2",
+      "issue_alias": null,
+      "other_source_fields": [],
+      "semantic_binding": "unprofiled-v1",
+      "source_record_digest_sha256": "c7bd217017bb40364c2d186a9ec1cf082862d3df450ef7c0452e03b66635ceda",
+      "unlowered_constructs": [
+        {
+          "face_key": 0,
+          "field": "T",
+          "line": 5,
+          "raw_value": "Mode$ AttackersDeclared | ValidAttackers$ Lizard.YouCtrl | TriggerZones$ Battlefield | Execute$ TrigDealDamage | TriggerDescription$ Whenever you attack with one or more Lizards, CARDNAME deals 1 damage to target opponent.",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": {
+            "category": "AttackersDeclared",
+            "parameters": [
+              {
+                "key": "ValidAttackers",
+                "value": "Lizard.YouCtrl"
+              },
+              {
+                "key": "TriggerZones",
+                "value": "Battlefield"
+              },
+              {
+                "key": "Execute",
+                "value": "TrigDealDamage"
+              },
+              {
+                "key": "TriggerDescription",
+                "value": "Whenever you attack with one or more Lizards, CARDNAME deals 1 damage to target opponent."
+              }
+            ],
+            "prefix": "Mode"
+          }
+        },
+        {
+          "face_key": 0,
+          "field": "SVar",
+          "line": 6,
+          "raw_value": "TrigDealDamage:DB$ DealDamage | ValidTgts$ Opponent | NumDmg$ 1",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "A",
+          "line": 7,
+          "raw_value": "AB$ PutCounter | Cost$ 1 R | CounterType$ P1P1 | CounterNum$ 1 | CheckSVar$ X | ActivationLimit$ 1 | SpellDescription$ Put a +1/+1 counter on CARDNAME. Activate only if an opponent lost life this turn and only once each turn.",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": {
+            "category": "PutCounter",
+            "parameters": [
+              {
+                "key": "Cost",
+                "value": "1 R"
+              },
+              {
+                "key": "CounterType",
+                "value": "P1P1"
+              },
+              {
+                "key": "CounterNum",
+                "value": "1"
+              },
+              {
+                "key": "CheckSVar",
+                "value": "X"
+              },
+              {
+                "key": "ActivationLimit",
+                "value": "1"
+              },
+              {
+                "key": "SpellDescription",
+                "value": "Put a +1/+1 counter on CARDNAME. Activate only if an opponent lost life this turn and only once each turn."
+              }
+            ],
+            "prefix": "AB"
+          }
+        },
+        {
+          "face_key": 0,
+          "field": "SVar",
+          "line": 8,
+          "raw_value": "X:Count$LifeOppsLostThisTurn",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        }
+      ]
+    },
+    {
+      "ability_identities": 0,
+      "card_definition_id": 3,
+      "card_name": "Magebane Lizard",
+      "deck": "R1",
+      "faces": [
+        {
+          "face_key": 0,
+          "mana_cost": [
+            {
+              "generic": 1
+            },
+            "red"
+          ],
+          "name": "Magebane Lizard",
+          "power_toughness": [
+            1,
+            4
+          ],
+          "type_line": {
+            "card_types": [
+              "Creature"
+            ],
+            "subtypes": [
+              "Lizard"
+            ],
+            "supertypes": []
+          }
+        }
+      ],
+      "forge_path": "forge-gui/res/cardsfolder/m/magebane_lizard.txt",
+      "forge_source_revision": "17c1ba92149b84127749bf84c231ed75107df1a2",
+      "issue_alias": null,
+      "other_source_fields": [],
+      "semantic_binding": "unprofiled-v1",
+      "source_record_digest_sha256": "8d826bdf809dd0343d7ce3ee3e8ddb21595e0fdd96617743cbca606f86dac663",
+      "unlowered_constructs": [
+        {
+          "face_key": 0,
+          "field": "T",
+          "line": 5,
+          "raw_value": "Mode$ SpellCast | TriggerZones$ Battlefield | ValidCard$ Card.nonCreature | ValidActivatingPlayer$ Player | Execute$ TrigDmg | TriggerDescription$ Whenever a player casts a noncreature spell, CARDNAME deals damage to that player equal to the number of noncreature spells they've cast this turn.",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": {
+            "category": "SpellCast",
+            "parameters": [
+              {
+                "key": "TriggerZones",
+                "value": "Battlefield"
+              },
+              {
+                "key": "ValidCard",
+                "value": "Card.nonCreature"
+              },
+              {
+                "key": "ValidActivatingPlayer",
+                "value": "Player"
+              },
+              {
+                "key": "Execute",
+                "value": "TrigDmg"
+              },
+              {
+                "key": "TriggerDescription",
+                "value": "Whenever a player casts a noncreature spell, CARDNAME deals damage to that player equal to the number of noncreature spells they've cast this turn."
+              }
+            ],
+            "prefix": "Mode"
+          }
+        },
+        {
+          "face_key": 0,
+          "field": "SVar",
+          "line": 6,
+          "raw_value": "TrigDmg:DB$ DealDamage | Defined$ TriggeredActivator | NumDmg$ X",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "SVar",
+          "line": 7,
+          "raw_value": "X:Count$ThisTurnCast_Card.nonCreature+ControlledBy TriggeredActivator",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        }
+      ]
+    },
+    {
+      "ability_identities": 0,
+      "card_definition_id": 4,
+      "card_name": "Emberheart Challenger",
+      "deck": "R1",
+      "faces": [
+        {
+          "face_key": 0,
+          "mana_cost": [
+            {
+              "generic": 1
+            },
+            "red"
+          ],
+          "name": "Emberheart Challenger",
+          "power_toughness": [
+            2,
+            2
+          ],
+          "type_line": {
+            "card_types": [
+              "Creature"
+            ],
+            "subtypes": [
+              "Mouse",
+              "Warrior"
+            ],
+            "supertypes": []
+          }
+        }
+      ],
+      "forge_path": "forge-gui/res/cardsfolder/e/emberheart_challenger.txt",
+      "forge_source_revision": "17c1ba92149b84127749bf84c231ed75107df1a2",
+      "issue_alias": null,
+      "other_source_fields": [],
+      "semantic_binding": "unprofiled-v1",
+      "source_record_digest_sha256": "4fb05e44d6c47b40aa8a7ff84481c2e69721ff14e6e457def6cb878485e3a7a9",
+      "unlowered_constructs": [
+        {
+          "face_key": 0,
+          "field": "K",
+          "line": 5,
+          "raw_value": "Haste",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "K",
+          "line": 6,
+          "raw_value": "Prowess",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "T",
+          "line": 7,
+          "raw_value": "Mode$ BecomesTarget | ValidTarget$ Card.Self | ValidSource$ SpellAbility.YouCtrl | TriggerZones$ Battlefield | Valiant$ True | Execute$ TrigExile | TriggerDescription$ Valiant — Whenever CARDNAME becomes the target of a spell or ability you control for the first time each turn, exile the top card of your library. Until end of turn, you may play that card.",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": {
+            "category": "BecomesTarget",
+            "parameters": [
+              {
+                "key": "ValidTarget",
+                "value": "Card.Self"
+              },
+              {
+                "key": "ValidSource",
+                "value": "SpellAbility.YouCtrl"
+              },
+              {
+                "key": "TriggerZones",
+                "value": "Battlefield"
+              },
+              {
+                "key": "Valiant",
+                "value": "True"
+              },
+              {
+                "key": "Execute",
+                "value": "TrigExile"
+              },
+              {
+                "key": "TriggerDescription",
+                "value": "Valiant — Whenever CARDNAME becomes the target of a spell or ability you control for the first time each turn, exile the top card of your library. Until end of turn, you may play that card."
+              }
+            ],
+            "prefix": "Mode"
+          }
+        },
+        {
+          "face_key": 0,
+          "field": "SVar",
+          "line": 8,
+          "raw_value": "TrigExile:DB$ Dig | Defined$ You | DigNum$ 1 | ChangeNum$ All | DestinationZone$ Exile | RememberChanged$ True | SubAbility$ DBEffect",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "SVar",
+          "line": 9,
+          "raw_value": "DBEffect:DB$ Effect | RememberObjects$ RememberedCard | StaticAbilities$ Play | SubAbility$ DBCleanup | ExileOnMoved$ Exile",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "SVar",
+          "line": 10,
+          "raw_value": "Play:Mode$ Continuous | MayPlay$ True | Affected$ Card.IsRemembered | AffectedZone$ Exile | Description$ You may play remembered card.",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "SVar",
+          "line": 11,
+          "raw_value": "DBCleanup:DB$ Cleanup | ClearRemembered$ True",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        }
+      ]
+    },
+    {
+      "ability_identities": 0,
+      "card_definition_id": 5,
+      "card_name": "Razorkin Needlehead",
+      "deck": "R1",
+      "faces": [
+        {
+          "face_key": 0,
+          "mana_cost": [
+            "red",
+            "red"
+          ],
+          "name": "Razorkin Needlehead",
+          "power_toughness": [
+            2,
+            2
+          ],
+          "type_line": {
+            "card_types": [
+              "Creature"
+            ],
+            "subtypes": [
+              "Human",
+              "Assassin"
+            ],
+            "supertypes": []
+          }
+        }
+      ],
+      "forge_path": "forge-gui/res/cardsfolder/r/razorkin_needlehead.txt",
+      "forge_source_revision": "17c1ba92149b84127749bf84c231ed75107df1a2",
+      "issue_alias": null,
+      "other_source_fields": [],
+      "semantic_binding": "unprofiled-v1",
+      "source_record_digest_sha256": "59bdc1283eff1085f2b6b680d506dcdccfe6ec960e2a24b7ad107e934bdcbd28",
+      "unlowered_constructs": [
+        {
+          "face_key": 0,
+          "field": "S",
+          "line": 5,
+          "raw_value": "Mode$ Continuous | AffectedDefined$ Self | AddKeyword$ First Strike | Condition$ PlayerTurn | Description$ CARDNAME has first strike during your turn.",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": {
+            "category": "Continuous",
+            "parameters": [
+              {
+                "key": "AffectedDefined",
+                "value": "Self"
+              },
+              {
+                "key": "AddKeyword",
+                "value": "First Strike"
+              },
+              {
+                "key": "Condition",
+                "value": "PlayerTurn"
+              },
+              {
+                "key": "Description",
+                "value": "CARDNAME has first strike during your turn."
+              }
+            ],
+            "prefix": "Mode"
+          }
+        },
+        {
+          "face_key": 0,
+          "field": "T",
+          "line": 6,
+          "raw_value": "Mode$ Drawn | ValidCard$ Card.OppOwn | TriggerZones$ Battlefield | Execute$ TrigDamage | TriggerDescription$ Whenever an opponent draws a card, CARDNAME deals 1 damage to them.",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": {
+            "category": "Drawn",
+            "parameters": [
+              {
+                "key": "ValidCard",
+                "value": "Card.OppOwn"
+              },
+              {
+                "key": "TriggerZones",
+                "value": "Battlefield"
+              },
+              {
+                "key": "Execute",
+                "value": "TrigDamage"
+              },
+              {
+                "key": "TriggerDescription",
+                "value": "Whenever an opponent draws a card, CARDNAME deals 1 damage to them."
+              }
+            ],
+            "prefix": "Mode"
+          }
+        },
+        {
+          "face_key": 0,
+          "field": "SVar",
+          "line": 7,
+          "raw_value": "TrigDamage:DB$ DealDamage | Defined$ TriggeredPlayer | NumDmg$ 1",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        }
+      ]
+    },
+    {
+      "ability_identities": 0,
+      "card_definition_id": 6,
+      "card_name": "Hearthborn Battler",
+      "deck": "R1",
+      "faces": [
+        {
+          "face_key": 0,
+          "mana_cost": [
+            {
+              "generic": 2
+            },
+            "red"
+          ],
+          "name": "Hearthborn Battler",
+          "power_toughness": [
+            2,
+            3
+          ],
+          "type_line": {
+            "card_types": [
+              "Creature"
+            ],
+            "subtypes": [
+              "Lizard",
+              "Warlock"
+            ],
+            "supertypes": []
+          }
+        }
+      ],
+      "forge_path": "forge-gui/res/cardsfolder/h/hearthborn_battler.txt",
+      "forge_source_revision": "17c1ba92149b84127749bf84c231ed75107df1a2",
+      "issue_alias": null,
+      "other_source_fields": [],
+      "semantic_binding": "unprofiled-v1",
+      "source_record_digest_sha256": "b28baaf499d626b64b078aa16f433c7a73eff9afb839cee7faca4d8351dc8351",
+      "unlowered_constructs": [
+        {
+          "face_key": 0,
+          "field": "K",
+          "line": 5,
+          "raw_value": "Haste",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "T",
+          "line": 6,
+          "raw_value": "Mode$ SpellCast | ValidActivatingPlayer$ Player | ActivatorThisTurnCast$ EQ2 | TriggerZones$ Battlefield | Execute$ TrigDamage | TriggerDescription$ Whenever a player casts their second spell each turn, CARDNAME deals 2 damage to target opponent.",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": {
+            "category": "SpellCast",
+            "parameters": [
+              {
+                "key": "ValidActivatingPlayer",
+                "value": "Player"
+              },
+              {
+                "key": "ActivatorThisTurnCast",
+                "value": "EQ2"
+              },
+              {
+                "key": "TriggerZones",
+                "value": "Battlefield"
+              },
+              {
+                "key": "Execute",
+                "value": "TrigDamage"
+              },
+              {
+                "key": "TriggerDescription",
+                "value": "Whenever a player casts their second spell each turn, CARDNAME deals 2 damage to target opponent."
+              }
+            ],
+            "prefix": "Mode"
+          }
+        },
+        {
+          "face_key": 0,
+          "field": "SVar",
+          "line": 7,
+          "raw_value": "TrigDamage:DB$ DealDamage | ValidTgts$ Player.Opponent | NumDmg$ 2",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        }
+      ]
+    },
+    {
+      "ability_identities": 0,
+      "card_definition_id": 7,
+      "card_name": "Ojer Axonil, Deepest Might",
+      "deck": "R1",
+      "faces": [
+        {
+          "face_key": 0,
+          "mana_cost": [
+            {
+              "generic": 2
+            },
+            "red",
+            "red"
+          ],
+          "name": "Ojer Axonil, Deepest Might",
+          "power_toughness": [
+            4,
+            4
+          ],
+          "type_line": {
+            "card_types": [
+              "Creature"
+            ],
+            "subtypes": [
+              "God"
+            ],
+            "supertypes": [
+              "Legendary"
+            ]
+          }
+        },
+        {
+          "face_key": 1,
+          "mana_cost": null,
+          "name": "Temple of Power",
+          "power_toughness": null,
+          "type_line": {
+            "card_types": [
+              "Land"
+            ],
+            "subtypes": [],
+            "supertypes": []
+          }
+        }
+      ],
+      "forge_path": "forge-gui/res/cardsfolder/o/ojer_axonil_deepest_might_temple_of_power.txt",
+      "forge_source_revision": "17c1ba92149b84127749bf84c231ed75107df1a2",
+      "issue_alias": null,
+      "other_source_fields": [
+        {
+          "face_key": 0,
+          "field": "AlternateMode",
+          "line": 11,
+          "raw_value": "DoubleFaced"
+        }
+      ],
+      "semantic_binding": "unprofiled-v1",
+      "source_record_digest_sha256": "108f245e4e9c5f1a6099f631c267cbe76a6b4c23a16e7af7dd308b4f96661b1f",
+      "unlowered_constructs": [
+        {
+          "face_key": 0,
+          "field": "K",
+          "line": 5,
+          "raw_value": "Trample",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "R",
+          "line": 6,
+          "raw_value": "Event$ DamageDone | ActiveZones$ Battlefield | DamageAmount$ LTX | ValidSource$ Card.RedSource+YouCtrl | IsCombat$ False | ValidTarget$ Opponent | ReplaceWith$ DmgPlus | Description$ If a red source you control would deal an amount of noncombat damage less than NICKNAME's power to an opponent, that source deals damage equal to NICKNAME's power instead.",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": {
+            "category": "DamageDone",
+            "parameters": [
+              {
+                "key": "ActiveZones",
+                "value": "Battlefield"
+              },
+              {
+                "key": "DamageAmount",
+                "value": "LTX"
+              },
+              {
+                "key": "ValidSource",
+                "value": "Card.RedSource+YouCtrl"
+              },
+              {
+                "key": "IsCombat",
+                "value": "False"
+              },
+              {
+                "key": "ValidTarget",
+                "value": "Opponent"
+              },
+              {
+                "key": "ReplaceWith",
+                "value": "DmgPlus"
+              },
+              {
+                "key": "Description",
+                "value": "If a red source you control would deal an amount of noncombat damage less than NICKNAME's power to an opponent, that source deals damage equal to NICKNAME's power instead."
+              }
+            ],
+            "prefix": "Event"
+          }
+        },
+        {
+          "face_key": 0,
+          "field": "SVar",
+          "line": 7,
+          "raw_value": "DmgPlus:DB$ ReplaceEffect | VarName$ DamageAmount | VarValue$ X",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "SVar",
+          "line": 8,
+          "raw_value": "X:Count$CardPower",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "T",
+          "line": 9,
+          "raw_value": "Mode$ ChangesZone | Origin$ Battlefield | Destination$ Graveyard | ValidCard$ Card.Self | Execute$ TrigTransform | TriggerDescription$ When NICKNAME dies, return it to the battlefield tapped and transformed under its owner's control.",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": {
+            "category": "ChangesZone",
+            "parameters": [
+              {
+                "key": "Origin",
+                "value": "Battlefield"
+              },
+              {
+                "key": "Destination",
+                "value": "Graveyard"
+              },
+              {
+                "key": "ValidCard",
+                "value": "Card.Self"
+              },
+              {
+                "key": "Execute",
+                "value": "TrigTransform"
+              },
+              {
+                "key": "TriggerDescription",
+                "value": "When NICKNAME dies, return it to the battlefield tapped and transformed under its owner's control."
+              }
+            ],
+            "prefix": "Mode"
+          }
+        },
+        {
+          "face_key": 0,
+          "field": "SVar",
+          "line": 10,
+          "raw_value": "TrigTransform:DB$ ChangeZone | Defined$ TriggeredCard | Origin$ Graveyard | Destination$ Battlefield | Transformed$ True | Tapped$ True",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 1,
+          "field": "A",
+          "line": 19,
+          "raw_value": "AB$ Mana | Cost$ T | Produced$ R | SpellDescription$ Add {R}.",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": {
+            "category": "Mana",
+            "parameters": [
+              {
+                "key": "Cost",
+                "value": "T"
+              },
+              {
+                "key": "Produced",
+                "value": "R"
+              },
+              {
+                "key": "SpellDescription",
+                "value": "Add {R}."
+              }
+            ],
+            "prefix": "AB"
+          }
+        },
+        {
+          "face_key": 1,
+          "field": "A",
+          "line": 20,
+          "raw_value": "AB$ SetState | Cost$ 2 R T | CheckSVar$ X | SVarCompare$ GE4 | Defined$ Self | Mode$ Transform | SorcerySpeed$ True | SpellDescription$ Transform CARDNAME. Activate only if red sources you controlled dealt 4 or more noncombat damage this turn and only as a sorcery.",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": {
+            "category": "SetState",
+            "parameters": [
+              {
+                "key": "Cost",
+                "value": "2 R T"
+              },
+              {
+                "key": "CheckSVar",
+                "value": "X"
+              },
+              {
+                "key": "SVarCompare",
+                "value": "GE4"
+              },
+              {
+                "key": "Defined",
+                "value": "Self"
+              },
+              {
+                "key": "Mode",
+                "value": "Transform"
+              },
+              {
+                "key": "SorcerySpeed",
+                "value": "True"
+              },
+              {
+                "key": "SpellDescription",
+                "value": "Transform CARDNAME. Activate only if red sources you controlled dealt 4 or more noncombat damage this turn and only as a sorcery."
+              }
+            ],
+            "prefix": "AB"
+          }
+        },
+        {
+          "face_key": 1,
+          "field": "SVar",
+          "line": 21,
+          "raw_value": "X:Count$NonCombatDamageThisTurn Card.Red+YouCtrl Any",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        }
+      ]
+    },
+    {
+      "ability_identities": 0,
+      "card_definition_id": 8,
+      "card_name": "Nova Hellkite",
+      "deck": "R1",
+      "faces": [
+        {
+          "face_key": 0,
+          "mana_cost": [
+            {
+              "generic": 3
+            },
+            "red",
+            "red"
+          ],
+          "name": "Nova Hellkite",
+          "power_toughness": [
+            4,
+            5
+          ],
+          "type_line": {
+            "card_types": [
+              "Creature"
+            ],
+            "subtypes": [
+              "Dragon"
+            ],
+            "supertypes": []
+          }
+        }
+      ],
+      "forge_path": "forge-gui/res/cardsfolder/n/nova_hellkite.txt",
+      "forge_source_revision": "17c1ba92149b84127749bf84c231ed75107df1a2",
+      "issue_alias": null,
+      "other_source_fields": [],
+      "semantic_binding": "unprofiled-v1",
+      "source_record_digest_sha256": "d374098d06afb8158b1fc160532da31c151406e5a0b2e1b77241a8e8bd71d1cd",
+      "unlowered_constructs": [
+        {
+          "face_key": 0,
+          "field": "K",
+          "line": 5,
+          "raw_value": "Flying",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "K",
+          "line": 6,
+          "raw_value": "Haste",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "T",
+          "line": 7,
+          "raw_value": "Mode$ ChangesZone | Origin$ Any | Destination$ Battlefield | ValidCard$ Card.Self | Execute$ TrigDamage | TriggerDescription$ When this creature enters, it deals 1 damage to target creature an opponent controls.",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": {
+            "category": "ChangesZone",
+            "parameters": [
+              {
+                "key": "Origin",
+                "value": "Any"
+              },
+              {
+                "key": "Destination",
+                "value": "Battlefield"
+              },
+              {
+                "key": "ValidCard",
+                "value": "Card.Self"
+              },
+              {
+                "key": "Execute",
+                "value": "TrigDamage"
+              },
+              {
+                "key": "TriggerDescription",
+                "value": "When this creature enters, it deals 1 damage to target creature an opponent controls."
+              }
+            ],
+            "prefix": "Mode"
+          }
+        },
+        {
+          "face_key": 0,
+          "field": "SVar",
+          "line": 8,
+          "raw_value": "TrigDamage:DB$ DealDamage | ValidTgts$ Creature.OppCtrl | TgtPrompt$ Select target creature an opponent controls | NumDmg$ 1",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "K",
+          "line": 9,
+          "raw_value": "Warp:2 R",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        }
+      ]
+    },
+    {
+      "ability_identities": 0,
+      "card_definition_id": 9,
+      "card_name": "Burst Lightning",
+      "deck": "R1",
+      "faces": [
+        {
+          "face_key": 0,
+          "mana_cost": [
+            "red"
+          ],
+          "name": "Burst Lightning",
+          "power_toughness": null,
+          "type_line": {
+            "card_types": [
+              "Instant"
+            ],
+            "subtypes": [],
+            "supertypes": []
+          }
+        }
+      ],
+      "forge_path": "forge-gui/res/cardsfolder/b/burst_lightning.txt",
+      "forge_source_revision": "17c1ba92149b84127749bf84c231ed75107df1a2",
+      "issue_alias": null,
+      "other_source_fields": [],
+      "semantic_binding": "unprofiled-v1",
+      "source_record_digest_sha256": "624afb26dcad18bb0d43129cb04a2856cc6d83372a27a8452501e63862afe294",
+      "unlowered_constructs": [
+        {
+          "face_key": 0,
+          "field": "K",
+          "line": 4,
+          "raw_value": "Kicker:4",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "A",
+          "line": 5,
+          "raw_value": "SP$ DealDamage | ValidTgts$ Any | NumDmg$ WasKicked | SpellDescription$ CARDNAME deals 2 damage to any target. If CARDNAME was kicked, it deals 4 damage instead.",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": {
+            "category": "DealDamage",
+            "parameters": [
+              {
+                "key": "ValidTgts",
+                "value": "Any"
+              },
+              {
+                "key": "NumDmg",
+                "value": "WasKicked"
+              },
+              {
+                "key": "SpellDescription",
+                "value": "CARDNAME deals 2 damage to any target. If CARDNAME was kicked, it deals 4 damage instead."
+              }
+            ],
+            "prefix": "SP"
+          }
+        },
+        {
+          "face_key": 0,
+          "field": "SVar",
+          "line": 6,
+          "raw_value": "WasKicked:Count$Kicked.4.2",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        }
+      ]
+    },
+    {
+      "ability_identities": 0,
+      "card_definition_id": 10,
+      "card_name": "Lightning Strike",
+      "deck": "R1",
+      "faces": [
+        {
+          "face_key": 0,
+          "mana_cost": [
+            {
+              "generic": 1
+            },
+            "red"
+          ],
+          "name": "Lightning Strike",
+          "power_toughness": null,
+          "type_line": {
+            "card_types": [
+              "Instant"
+            ],
+            "subtypes": [],
+            "supertypes": []
+          }
+        }
+      ],
+      "forge_path": "forge-gui/res/cardsfolder/l/lightning_strike.txt",
+      "forge_source_revision": "17c1ba92149b84127749bf84c231ed75107df1a2",
+      "issue_alias": null,
+      "other_source_fields": [],
+      "semantic_binding": "unprofiled-v1",
+      "source_record_digest_sha256": "5d8bfc1ea0a60a74609fb36e55d5c1a5e758e1b6293f1a8c0553b8edfeea70ad",
+      "unlowered_constructs": [
+        {
+          "face_key": 0,
+          "field": "A",
+          "line": 4,
+          "raw_value": "SP$ DealDamage | ValidTgts$ Any | NumDmg$ 3 | SpellDescription$ CARDNAME deals 3 damage to any target.",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": {
+            "category": "DealDamage",
+            "parameters": [
+              {
+                "key": "ValidTgts",
+                "value": "Any"
+              },
+              {
+                "key": "NumDmg",
+                "value": "3"
+              },
+              {
+                "key": "SpellDescription",
+                "value": "CARDNAME deals 3 damage to any target."
+              }
+            ],
+            "prefix": "SP"
+          }
+        }
+      ]
+    },
+    {
+      "ability_identities": 0,
+      "card_definition_id": 11,
+      "card_name": "Mountain",
+      "deck": "R1",
+      "faces": [
+        {
+          "face_key": 0,
+          "mana_cost": null,
+          "name": "Mountain",
+          "power_toughness": null,
+          "type_line": {
+            "card_types": [
+              "Land"
+            ],
+            "subtypes": [
+              "Mountain"
+            ],
+            "supertypes": [
+              "Basic"
+            ]
+          }
+        }
+      ],
+      "forge_path": "forge-gui/res/cardsfolder/m/mountain.txt",
+      "forge_source_revision": "17c1ba92149b84127749bf84c231ed75107df1a2",
+      "issue_alias": null,
+      "other_source_fields": [],
+      "semantic_binding": "unprofiled-v1",
+      "source_record_digest_sha256": "d421d9639d7b7f2a8c4ed04fa2fa8526cbc768733a92b0a1a453535ee99a3799",
+      "unlowered_constructs": []
+    },
+    {
+      "ability_identities": 0,
+      "card_definition_id": 12,
+      "card_name": "Rockface Village",
+      "deck": "R1",
+      "faces": [
+        {
+          "face_key": 0,
+          "mana_cost": null,
+          "name": "Rockface Village",
+          "power_toughness": null,
+          "type_line": {
+            "card_types": [
+              "Land"
+            ],
+            "subtypes": [],
+            "supertypes": []
+          }
+        }
+      ],
+      "forge_path": "forge-gui/res/cardsfolder/r/rockface_village.txt",
+      "forge_source_revision": "17c1ba92149b84127749bf84c231ed75107df1a2",
+      "issue_alias": null,
+      "other_source_fields": [],
+      "semantic_binding": "unprofiled-v1",
+      "source_record_digest_sha256": "e2911975bd3ec1a99ced096a08069513db143907919cec8e5a2748d0f6de1545",
+      "unlowered_constructs": [
+        {
+          "face_key": 0,
+          "field": "A",
+          "line": 4,
+          "raw_value": "AB$ Mana | Cost$ T | Produced$ C | SpellDescription$ Add {C}.",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": {
+            "category": "Mana",
+            "parameters": [
+              {
+                "key": "Cost",
+                "value": "T"
+              },
+              {
+                "key": "Produced",
+                "value": "C"
+              },
+              {
+                "key": "SpellDescription",
+                "value": "Add {C}."
+              }
+            ],
+            "prefix": "AB"
+          }
+        },
+        {
+          "face_key": 0,
+          "field": "A",
+          "line": 5,
+          "raw_value": "AB$ Mana | Cost$ T | Produced$ R | RestrictValid$ Spell.Creature | SpellDescription$ Add {R}. Spend this mana only to cast a creature spell.",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": {
+            "category": "Mana",
+            "parameters": [
+              {
+                "key": "Cost",
+                "value": "T"
+              },
+              {
+                "key": "Produced",
+                "value": "R"
+              },
+              {
+                "key": "RestrictValid",
+                "value": "Spell.Creature"
+              },
+              {
+                "key": "SpellDescription",
+                "value": "Add {R}. Spend this mana only to cast a creature spell."
+              }
+            ],
+            "prefix": "AB"
+          }
+        },
+        {
+          "face_key": 0,
+          "field": "A",
+          "line": 6,
+          "raw_value": "AB$ Pump | Cost$ R T | ValidTgts$ Lizard.YouCtrl,Mouse.YouCtrl,Otter.YouCtrl,Raccoon.YouCtrl | TgtPrompt$ Select target Lizard, Mouse, Otter, or Raccoon you control | NumAtt$ +1 | KW$ Haste | SorcerySpeed$ True | SpellDescription$ Target Lizard, Mouse, Otter, or Raccoon you control gets +1/+0 and gains haste until end of turn. Activate only as a sorcery.",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": {
+            "category": "Pump",
+            "parameters": [
+              {
+                "key": "Cost",
+                "value": "R T"
+              },
+              {
+                "key": "ValidTgts",
+                "value": "Lizard.YouCtrl,Mouse.YouCtrl,Otter.YouCtrl,Raccoon.YouCtrl"
+              },
+              {
+                "key": "TgtPrompt",
+                "value": "Select target Lizard, Mouse, Otter, or Raccoon you control"
+              },
+              {
+                "key": "NumAtt",
+                "value": "+1"
+              },
+              {
+                "key": "KW",
+                "value": "Haste"
+              },
+              {
+                "key": "SorcerySpeed",
+                "value": "True"
+              },
+              {
+                "key": "SpellDescription",
+                "value": "Target Lizard, Mouse, Otter, or Raccoon you control gets +1/+0 and gains haste until end of turn. Activate only as a sorcery."
+              }
+            ],
+            "prefix": "AB"
+          }
+        }
+      ]
+    },
+    {
+      "ability_identities": 0,
+      "card_definition_id": 13,
+      "card_name": "Plains",
+      "deck": "W1",
+      "faces": [
+        {
+          "face_key": 0,
+          "mana_cost": null,
+          "name": "Plains",
+          "power_toughness": null,
+          "type_line": {
+            "card_types": [
+              "Land"
+            ],
+            "subtypes": [
+              "Plains"
+            ],
+            "supertypes": [
+              "Basic"
+            ]
+          }
+        }
+      ],
+      "forge_path": "forge-gui/res/cardsfolder/p/plains.txt",
+      "forge_source_revision": "17c1ba92149b84127749bf84c231ed75107df1a2",
+      "issue_alias": null,
+      "other_source_fields": [],
+      "semantic_binding": "unprofiled-v1",
+      "source_record_digest_sha256": "7b72280280cf668427e25283026a88ebcf3c67963e1097eda39ed6433c228f9c",
+      "unlowered_constructs": []
+    },
+    {
+      "ability_identities": 0,
+      "card_definition_id": 14,
+      "card_name": "Ethereal Armor",
+      "deck": "W1",
+      "faces": [
+        {
+          "face_key": 0,
+          "mana_cost": [
+            "white"
+          ],
+          "name": "Ethereal Armor",
+          "power_toughness": null,
+          "type_line": {
+            "card_types": [
+              "Enchantment"
+            ],
+            "subtypes": [
+              "Aura"
+            ],
+            "supertypes": []
+          }
+        }
+      ],
+      "forge_path": "forge-gui/res/cardsfolder/e/ethereal_armor.txt",
+      "forge_source_revision": "17c1ba92149b84127749bf84c231ed75107df1a2",
+      "issue_alias": null,
+      "other_source_fields": [
+        {
+          "face_key": 0,
+          "field": "DeckHints",
+          "line": 9,
+          "raw_value": "Type$Enchantment"
+        }
+      ],
+      "semantic_binding": "unprofiled-v1",
+      "source_record_digest_sha256": "437e208d84040e7fb9e6f62f5919a3a23f749620700768d03fe88344e4aff63e",
+      "unlowered_constructs": [
+        {
+          "face_key": 0,
+          "field": "K",
+          "line": 4,
+          "raw_value": "Enchant:Creature",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "SVar",
+          "line": 5,
+          "raw_value": "AttachAILogic:Pump",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "S",
+          "line": 6,
+          "raw_value": "Mode$ Continuous | AffectedDefined$ Enchanted | Affected$ Creature | AddPower$ X | AddToughness$ X | AddKeyword$ First Strike | Description$ Enchanted creature gets +1/+1 for each enchantment you control and has first strike.",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": {
+            "category": "Continuous",
+            "parameters": [
+              {
+                "key": "AffectedDefined",
+                "value": "Enchanted"
+              },
+              {
+                "key": "Affected",
+                "value": "Creature"
+              },
+              {
+                "key": "AddPower",
+                "value": "X"
+              },
+              {
+                "key": "AddToughness",
+                "value": "X"
+              },
+              {
+                "key": "AddKeyword",
+                "value": "First Strike"
+              },
+              {
+                "key": "Description",
+                "value": "Enchanted creature gets +1/+1 for each enchantment you control and has first strike."
+              }
+            ],
+            "prefix": "Mode"
+          }
+        },
+        {
+          "face_key": 0,
+          "field": "SVar",
+          "line": 7,
+          "raw_value": "X:Count$Valid Enchantment.YouCtrl",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "SVar",
+          "line": 8,
+          "raw_value": "BuffedBy:Enchantment",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        }
+      ]
+    },
+    {
+      "ability_identities": 0,
+      "card_definition_id": 15,
+      "card_name": "Spellbook Vendor",
+      "deck": "W1",
+      "faces": [
+        {
+          "face_key": 0,
+          "mana_cost": [
+            {
+              "generic": 1
+            },
+            "white"
+          ],
+          "name": "Spellbook Vendor",
+          "power_toughness": [
+            2,
+            2
+          ],
+          "type_line": {
+            "card_types": [
+              "Creature"
+            ],
+            "subtypes": [
+              "Human",
+              "Peasant"
+            ],
+            "supertypes": []
+          }
+        }
+      ],
+      "forge_path": "forge-gui/res/cardsfolder/s/spellbook_vendor.txt",
+      "forge_source_revision": "17c1ba92149b84127749bf84c231ed75107df1a2",
+      "issue_alias": null,
+      "other_source_fields": [
+        {
+          "face_key": 0,
+          "field": "DeckHas",
+          "line": 9,
+          "raw_value": "Ability$Token & Type$Role|Aura"
+        }
+      ],
+      "semantic_binding": "unprofiled-v1",
+      "source_record_digest_sha256": "1554befbf37ab84dc97a7ec1e260c4e4c5e577e0137fe881e087f418f3bcb045",
+      "unlowered_constructs": [
+        {
+          "face_key": 0,
+          "field": "K",
+          "line": 5,
+          "raw_value": "Vigilance",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "T",
+          "line": 6,
+          "raw_value": "Mode$ Phase | Phase$ BeginCombat | ValidPlayer$ You | Execute$ TrigImmediate | TriggerZones$ Battlefield | TriggerDescription$ At the beginning of combat on your turn, you may pay {1}. When you do, create a Sorcerer Role token attached to target creature you control. (If you control another Role on it, put that one into the graveyard. Enchanted creature gets +1/+1 and has \"Whenever this creature attacks, scry 1.\")",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": {
+            "category": "Phase",
+            "parameters": [
+              {
+                "key": "Phase",
+                "value": "BeginCombat"
+              },
+              {
+                "key": "ValidPlayer",
+                "value": "You"
+              },
+              {
+                "key": "Execute",
+                "value": "TrigImmediate"
+              },
+              {
+                "key": "TriggerZones",
+                "value": "Battlefield"
+              },
+              {
+                "key": "TriggerDescription",
+                "value": "At the beginning of combat on your turn, you may pay {1}. When you do, create a Sorcerer Role token attached to target creature you control. (If you control another Role on it, put that one into the graveyard. Enchanted creature gets +1/+1 and has \"Whenever this creature attacks, scry 1.\")"
+              }
+            ],
+            "prefix": "Mode"
+          }
+        },
+        {
+          "face_key": 0,
+          "field": "SVar",
+          "line": 7,
+          "raw_value": "TrigImmediate:AB$ ImmediateTrigger | Cost$ 1 | Execute$ TrigToken | TriggerDescription$ When you do, create a Sorcerer Role token attached to target creature you control. (If you control another Role on it, put that one into the graveyard. Enchanted creature gets +1/+1 and has \"Whenever this creature attacks, scry 1.\")",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "SVar",
+          "line": 8,
+          "raw_value": "TrigToken:DB$ Token | TokenScript$ role_sorcerer | TokenOwner$ You | AttachedTo$ Targeted | ValidTgts$ Creature.YouCtrl | TgtPrompt$ Select target creature you control",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        }
+      ]
+    },
+    {
+      "ability_identities": 0,
+      "card_definition_id": 16,
+      "card_name": "Ruin-Lurker Bat",
+      "deck": "W1",
+      "faces": [
+        {
+          "face_key": 0,
+          "mana_cost": [
+            "white"
+          ],
+          "name": "Ruin-Lurker Bat",
+          "power_toughness": [
+            1,
+            1
+          ],
+          "type_line": {
+            "card_types": [
+              "Creature"
+            ],
+            "subtypes": [
+              "Bat"
+            ],
+            "supertypes": []
+          }
+        }
+      ],
+      "forge_path": "forge-gui/res/cardsfolder/r/ruin_lurker_bat.txt",
+      "forge_source_revision": "17c1ba92149b84127749bf84c231ed75107df1a2",
+      "issue_alias": null,
+      "other_source_fields": [
+        {
+          "face_key": 0,
+          "field": "DeckHints",
+          "line": 9,
+          "raw_value": "Ability$Discard|Mill|Graveyard"
+        },
+        {
+          "face_key": 0,
+          "field": "DeckHas",
+          "line": 10,
+          "raw_value": "Ability$LifeGain"
+        }
+      ],
+      "semantic_binding": "unprofiled-v1",
+      "source_record_digest_sha256": "a4d91233d8f3a9b10e06c44e3a2fd1e8566169ce6fbb863e4577b1b2527a93d7",
+      "unlowered_constructs": [
+        {
+          "face_key": 0,
+          "field": "K",
+          "line": 5,
+          "raw_value": "Flying",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "K",
+          "line": 6,
+          "raw_value": "Lifelink",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "T",
+          "line": 7,
+          "raw_value": "Mode$ Phase | Phase$ End of Turn | ValidPlayer$ You.descended | TriggerZones$ Battlefield | Execute$ TrigScry | TriggerDescription$ At the beginning of your end step, if you descended this turn, scry 1. (You descended if a permanent card was put into your graveyard from anywhere.)",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": {
+            "category": "Phase",
+            "parameters": [
+              {
+                "key": "Phase",
+                "value": "End of Turn"
+              },
+              {
+                "key": "ValidPlayer",
+                "value": "You.descended"
+              },
+              {
+                "key": "TriggerZones",
+                "value": "Battlefield"
+              },
+              {
+                "key": "Execute",
+                "value": "TrigScry"
+              },
+              {
+                "key": "TriggerDescription",
+                "value": "At the beginning of your end step, if you descended this turn, scry 1. (You descended if a permanent card was put into your graveyard from anywhere.)"
+              }
+            ],
+            "prefix": "Mode"
+          }
+        },
+        {
+          "face_key": 0,
+          "field": "SVar",
+          "line": 8,
+          "raw_value": "TrigScry:DB$ Scry | ScryNum$ 1",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        }
+      ]
+    },
+    {
+      "ability_identities": 0,
+      "card_definition_id": 17,
+      "card_name": "Feather of Flight",
+      "deck": "W1",
+      "faces": [
+        {
+          "face_key": 0,
+          "mana_cost": [
+            {
+              "generic": 1
+            },
+            "white"
+          ],
+          "name": "Feather of Flight",
+          "power_toughness": null,
+          "type_line": {
+            "card_types": [
+              "Enchantment"
+            ],
+            "subtypes": [
+              "Aura"
+            ],
+            "supertypes": []
+          }
+        }
+      ],
+      "forge_path": "forge-gui/res/cardsfolder/f/feather_of_flight.txt",
+      "forge_source_revision": "17c1ba92149b84127749bf84c231ed75107df1a2",
+      "issue_alias": null,
+      "other_source_fields": [],
+      "semantic_binding": "unprofiled-v1",
+      "source_record_digest_sha256": "498bb817ed9de692c679bfcc192d52230796efd349e07c401bf1e3eaa2117246",
+      "unlowered_constructs": [
+        {
+          "face_key": 0,
+          "field": "K",
+          "line": 4,
+          "raw_value": "Flash",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "K",
+          "line": 5,
+          "raw_value": "Enchant:Creature",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "SVar",
+          "line": 6,
+          "raw_value": "AttachAILogic:Pump",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "T",
+          "line": 7,
+          "raw_value": "Mode$ ChangesZone | Origin$ Any | Destination$ Battlefield | ValidCard$ Card.Self | Execute$ TrigDraw | TriggerDescription$ When CARDNAME enters, draw a card.",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": {
+            "category": "ChangesZone",
+            "parameters": [
+              {
+                "key": "Origin",
+                "value": "Any"
+              },
+              {
+                "key": "Destination",
+                "value": "Battlefield"
+              },
+              {
+                "key": "ValidCard",
+                "value": "Card.Self"
+              },
+              {
+                "key": "Execute",
+                "value": "TrigDraw"
+              },
+              {
+                "key": "TriggerDescription",
+                "value": "When CARDNAME enters, draw a card."
+              }
+            ],
+            "prefix": "Mode"
+          }
+        },
+        {
+          "face_key": 0,
+          "field": "SVar",
+          "line": 8,
+          "raw_value": "TrigDraw:DB$ Draw | Defined$ You | NumCards$ 1",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "S",
+          "line": 9,
+          "raw_value": "Mode$ Continuous | AffectedDefined$ Enchanted | Affected$ Creature | AddPower$ 1 | AddKeyword$ Flying | Description$ Enchanted creature gets +1/+0 and has flying.",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": {
+            "category": "Continuous",
+            "parameters": [
+              {
+                "key": "AffectedDefined",
+                "value": "Enchanted"
+              },
+              {
+                "key": "Affected",
+                "value": "Creature"
+              },
+              {
+                "key": "AddPower",
+                "value": "1"
+              },
+              {
+                "key": "AddKeyword",
+                "value": "Flying"
+              },
+              {
+                "key": "Description",
+                "value": "Enchanted creature gets +1/+0 and has flying."
+              }
+            ],
+            "prefix": "Mode"
+          }
+        }
+      ]
+    },
+    {
+      "ability_identities": 0,
+      "card_definition_id": 18,
+      "card_name": "Optimistic Scavenger",
+      "deck": "W1",
+      "faces": [
+        {
+          "face_key": 0,
+          "mana_cost": [
+            "white"
+          ],
+          "name": "Optimistic Scavenger",
+          "power_toughness": [
+            1,
+            1
+          ],
+          "type_line": {
+            "card_types": [
+              "Creature"
+            ],
+            "subtypes": [
+              "Human",
+              "Scout"
+            ],
+            "supertypes": []
+          }
+        }
+      ],
+      "forge_path": "forge-gui/res/cardsfolder/o/optimistic_scavenger.txt",
+      "forge_source_revision": "17c1ba92149b84127749bf84c231ed75107df1a2",
+      "issue_alias": null,
+      "other_source_fields": [
+        {
+          "face_key": 0,
+          "field": "DeckHas",
+          "line": 8,
+          "raw_value": "Ability$Counters"
+        },
+        {
+          "face_key": 0,
+          "field": "DeckNeeds",
+          "line": 9,
+          "raw_value": "Type$Enchantment"
+        }
+      ],
+      "semantic_binding": "unprofiled-v1",
+      "source_record_digest_sha256": "f98c24f6a96a32ccc2949528d6239651bf67998bb8a9d81418c1620712d77fec",
+      "unlowered_constructs": [
+        {
+          "face_key": 0,
+          "field": "T",
+          "line": 5,
+          "raw_value": "Mode$ ChangesZone | Origin$ Any | Destination$ Battlefield | ValidCard$ Enchantment.YouCtrl | TriggerZones$ Battlefield | Execute$ TrigPutCounter | TriggerDescription$ Eerie — Whenever an enchantment you control enters and whenever you fully unlock a Room, put a +1/+1 counter on target creature.",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": {
+            "category": "ChangesZone",
+            "parameters": [
+              {
+                "key": "Origin",
+                "value": "Any"
+              },
+              {
+                "key": "Destination",
+                "value": "Battlefield"
+              },
+              {
+                "key": "ValidCard",
+                "value": "Enchantment.YouCtrl"
+              },
+              {
+                "key": "TriggerZones",
+                "value": "Battlefield"
+              },
+              {
+                "key": "Execute",
+                "value": "TrigPutCounter"
+              },
+              {
+                "key": "TriggerDescription",
+                "value": "Eerie — Whenever an enchantment you control enters and whenever you fully unlock a Room, put a +1/+1 counter on target creature."
+              }
+            ],
+            "prefix": "Mode"
+          }
+        },
+        {
+          "face_key": 0,
+          "field": "T",
+          "line": 6,
+          "raw_value": "Mode$ FullyUnlock | ValidCard$ Card.Room | ValidPlayer$ You | Secondary$ True | Execute$ TrigPutCounter | TriggerZones$ Battlefield | TriggerDescription$ Eerie — Whenever an enchantment you control enters and whenever you fully unlock a Room, put a +1/+1 counter on target creature.",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": {
+            "category": "FullyUnlock",
+            "parameters": [
+              {
+                "key": "ValidCard",
+                "value": "Card.Room"
+              },
+              {
+                "key": "ValidPlayer",
+                "value": "You"
+              },
+              {
+                "key": "Secondary",
+                "value": "True"
+              },
+              {
+                "key": "Execute",
+                "value": "TrigPutCounter"
+              },
+              {
+                "key": "TriggerZones",
+                "value": "Battlefield"
+              },
+              {
+                "key": "TriggerDescription",
+                "value": "Eerie — Whenever an enchantment you control enters and whenever you fully unlock a Room, put a +1/+1 counter on target creature."
+              }
+            ],
+            "prefix": "Mode"
+          }
+        },
+        {
+          "face_key": 0,
+          "field": "SVar",
+          "line": 7,
+          "raw_value": "TrigPutCounter:DB$ PutCounter | ValidTgts$ Creature | CounterType$ P1P1 | CounterNum$ 1",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        }
+      ]
+    },
+    {
+      "ability_identities": 0,
+      "card_definition_id": 19,
+      "card_name": "Shardmage's Rescue",
+      "deck": "W1",
+      "faces": [
+        {
+          "face_key": 0,
+          "mana_cost": [
+            "white"
+          ],
+          "name": "Shardmage's Rescue",
+          "power_toughness": null,
+          "type_line": {
+            "card_types": [
+              "Enchantment"
+            ],
+            "subtypes": [
+              "Aura"
+            ],
+            "supertypes": []
+          }
+        }
+      ],
+      "forge_path": "forge-gui/res/cardsfolder/s/shardmages_rescue.txt",
+      "forge_source_revision": "17c1ba92149b84127749bf84c231ed75107df1a2",
+      "issue_alias": null,
+      "other_source_fields": [],
+      "semantic_binding": "unprofiled-v1",
+      "source_record_digest_sha256": "1c5a87de11b07764e5ca2b50e02d8eb46f1ded01d19da043923b356b06d78243",
+      "unlowered_constructs": [
+        {
+          "face_key": 0,
+          "field": "K",
+          "line": 4,
+          "raw_value": "Flash",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "K",
+          "line": 5,
+          "raw_value": "Enchant:Creature.YouCtrl:creature you control",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "SVar",
+          "line": 6,
+          "raw_value": "AttachAILogic:Pump",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "S",
+          "line": 7,
+          "raw_value": "Mode$ Continuous | IsPresent$ Card.Self+ThisTurnEntered | AffectedDefined$ Enchanted | Affected$ Creature | AddKeyword$ Hexproof | Description$ As long as CARDNAME entered this turn, enchanted creature has hexproof.",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": {
+            "category": "Continuous",
+            "parameters": [
+              {
+                "key": "IsPresent",
+                "value": "Card.Self+ThisTurnEntered"
+              },
+              {
+                "key": "AffectedDefined",
+                "value": "Enchanted"
+              },
+              {
+                "key": "Affected",
+                "value": "Creature"
+              },
+              {
+                "key": "AddKeyword",
+                "value": "Hexproof"
+              },
+              {
+                "key": "Description",
+                "value": "As long as CARDNAME entered this turn, enchanted creature has hexproof."
+              }
+            ],
+            "prefix": "Mode"
+          }
+        },
+        {
+          "face_key": 0,
+          "field": "S",
+          "line": 8,
+          "raw_value": "Mode$ Continuous | AffectedDefined$ Enchanted | Affected$ Creature | AddPower$ 1 | AddToughness$ 1 | Description$ Enchanted creature gets +1/+1.",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": {
+            "category": "Continuous",
+            "parameters": [
+              {
+                "key": "AffectedDefined",
+                "value": "Enchanted"
+              },
+              {
+                "key": "Affected",
+                "value": "Creature"
+              },
+              {
+                "key": "AddPower",
+                "value": "1"
+              },
+              {
+                "key": "AddToughness",
+                "value": "1"
+              },
+              {
+                "key": "Description",
+                "value": "Enchanted creature gets +1/+1."
+              }
+            ],
+            "prefix": "Mode"
+          }
+        }
+      ]
+    },
+    {
+      "ability_identities": 0,
+      "card_definition_id": 20,
+      "card_name": "Sheltered by Ghosts",
+      "deck": "W1",
+      "faces": [
+        {
+          "face_key": 0,
+          "mana_cost": [
+            {
+              "generic": 1
+            },
+            "white"
+          ],
+          "name": "Sheltered by Ghosts",
+          "power_toughness": null,
+          "type_line": {
+            "card_types": [
+              "Enchantment"
+            ],
+            "subtypes": [
+              "Aura"
+            ],
+            "supertypes": []
+          }
+        }
+      ],
+      "forge_path": "forge-gui/res/cardsfolder/s/sheltered_by_ghosts.txt",
+      "forge_source_revision": "17c1ba92149b84127749bf84c231ed75107df1a2",
+      "issue_alias": null,
+      "other_source_fields": [],
+      "semantic_binding": "unprofiled-v1",
+      "source_record_digest_sha256": "f2b70e71b1373f8bd21f1ce0e94bab3a91f7e2c3336e288a9eb091399099e116",
+      "unlowered_constructs": [
+        {
+          "face_key": 0,
+          "field": "K",
+          "line": 4,
+          "raw_value": "Enchant:Creature.YouCtrl:creature you control",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "SVar",
+          "line": 5,
+          "raw_value": "AttachAILogic:Pump",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "T",
+          "line": 6,
+          "raw_value": "Mode$ ChangesZone | Origin$ Any | Destination$ Battlefield | ValidCard$ Card.Self | Execute$ TrigExile | TriggerDescription$ When CARDNAME enters, exile target nonland permanent an opponent controls until CARDNAME leaves the battlefield.",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": {
+            "category": "ChangesZone",
+            "parameters": [
+              {
+                "key": "Origin",
+                "value": "Any"
+              },
+              {
+                "key": "Destination",
+                "value": "Battlefield"
+              },
+              {
+                "key": "ValidCard",
+                "value": "Card.Self"
+              },
+              {
+                "key": "Execute",
+                "value": "TrigExile"
+              },
+              {
+                "key": "TriggerDescription",
+                "value": "When CARDNAME enters, exile target nonland permanent an opponent controls until CARDNAME leaves the battlefield."
+              }
+            ],
+            "prefix": "Mode"
+          }
+        },
+        {
+          "face_key": 0,
+          "field": "SVar",
+          "line": 7,
+          "raw_value": "TrigExile:DB$ ChangeZone | Origin$ Battlefield | Destination$ Exile | ValidTgts$ Permanent.nonLand+OppCtrl | TgtPrompt$ Select target nonland permanent an opponent controls | Duration$ UntilHostLeavesPlay",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "S",
+          "line": 8,
+          "raw_value": "Mode$ Continuous | AffectedDefined$ Enchanted | Affected$ Creature | AddPower$ 1 | AddKeyword$ Lifelink & Ward:2 | Description$ Enchanted creature gets +1/+0 and has lifelink and ward {2}.",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": {
+            "category": "Continuous",
+            "parameters": [
+              {
+                "key": "AffectedDefined",
+                "value": "Enchanted"
+              },
+              {
+                "key": "Affected",
+                "value": "Creature"
+              },
+              {
+                "key": "AddPower",
+                "value": "1"
+              },
+              {
+                "key": "AddKeyword",
+                "value": "Lifelink & Ward:2"
+              },
+              {
+                "key": "Description",
+                "value": "Enchanted creature gets +1/+0 and has lifelink and ward {2}."
+              }
+            ],
+            "prefix": "Mode"
+          }
+        }
+      ]
+    },
+    {
+      "ability_identities": 0,
+      "card_definition_id": 21,
+      "card_name": "Seam Rip",
+      "deck": "W1",
+      "faces": [
+        {
+          "face_key": 0,
+          "mana_cost": [
+            "white"
+          ],
+          "name": "Seam Rip",
+          "power_toughness": null,
+          "type_line": {
+            "card_types": [
+              "Enchantment"
+            ],
+            "subtypes": [],
+            "supertypes": []
+          }
+        }
+      ],
+      "forge_path": "forge-gui/res/cardsfolder/s/seam_rip.txt",
+      "forge_source_revision": "17c1ba92149b84127749bf84c231ed75107df1a2",
+      "issue_alias": null,
+      "other_source_fields": [],
+      "semantic_binding": "unprofiled-v1",
+      "source_record_digest_sha256": "b228712eea9bc664cc42194e901ed0a70f7f09497758883ba55de4657a032750",
+      "unlowered_constructs": [
+        {
+          "face_key": 0,
+          "field": "T",
+          "line": 4,
+          "raw_value": "Mode$ ChangesZone | Origin$ Any | Destination$ Battlefield | ValidCard$ Card.Self | Execute$ TrigExile | TriggerDescription$ When this enchantment enters, exile target nonland permanent an opponent controls with mana value 2 or less until this enchantment leaves the battlefield.",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": {
+            "category": "ChangesZone",
+            "parameters": [
+              {
+                "key": "Origin",
+                "value": "Any"
+              },
+              {
+                "key": "Destination",
+                "value": "Battlefield"
+              },
+              {
+                "key": "ValidCard",
+                "value": "Card.Self"
+              },
+              {
+                "key": "Execute",
+                "value": "TrigExile"
+              },
+              {
+                "key": "TriggerDescription",
+                "value": "When this enchantment enters, exile target nonland permanent an opponent controls with mana value 2 or less until this enchantment leaves the battlefield."
+              }
+            ],
+            "prefix": "Mode"
+          }
+        },
+        {
+          "face_key": 0,
+          "field": "SVar",
+          "line": 5,
+          "raw_value": "TrigExile:DB$ ChangeZone | Origin$ Battlefield | Destination$ Exile | ValidTgts$ Permanent.nonLand+OppCtrl+cmcLE2 | TgtPrompt$ Select target nonland permanent an opponent controls with mana value 2 or less | Duration$ UntilHostLeavesPlay",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "SVar",
+          "line": 6,
+          "raw_value": "PlayMain1:TRUE",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "SVar",
+          "line": 7,
+          "raw_value": "OblivionRing:TRUE",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        }
+      ]
+    },
+    {
+      "ability_identities": 0,
+      "card_definition_id": 22,
+      "card_name": "Origin of Spider-Man",
+      "deck": "W1",
+      "faces": [
+        {
+          "face_key": 0,
+          "mana_cost": [
+            {
+              "generic": 1
+            },
+            "white"
+          ],
+          "name": "Origin of Spider-Man",
+          "power_toughness": null,
+          "type_line": {
+            "card_types": [
+              "Enchantment"
+            ],
+            "subtypes": [
+              "Saga"
+            ],
+            "supertypes": []
+          }
+        }
+      ],
+      "forge_path": "forge-gui/res/cardsfolder/o/origin_of_spider_man.txt",
+      "forge_source_revision": "17c1ba92149b84127749bf84c231ed75107df1a2",
+      "issue_alias": "A Most Helpful Weaver",
+      "other_source_fields": [
+        {
+          "face_key": 0,
+          "field": "Variant",
+          "line": 2,
+          "raw_value": "UniversesWithin:FlavorName:A Most Helpful Weaver"
+        },
+        {
+          "face_key": 0,
+          "field": "DeckHas",
+          "line": 10,
+          "raw_value": "Ability$Token & Type$Legendary|Spider|Hero"
+        }
+      ],
+      "semantic_binding": "unprofiled-v1",
+      "source_record_digest_sha256": "da76c72b988920d35c84b5a5aab5367b8f73f572d72d4e1caaf90338c37f447e",
+      "unlowered_constructs": [
+        {
+          "face_key": 0,
+          "field": "K",
+          "line": 5,
+          "raw_value": "Chapter:3:DBToken,DBPutCounter,DBPump",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "SVar",
+          "line": 6,
+          "raw_value": "DBToken:DB$ Token | TokenScript$ g_2_1_spider_reach | TokenOwner$ You | SpellDescription$ Create a 2/1 green Spider creature token with reach.",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "SVar",
+          "line": 7,
+          "raw_value": "DBPutCounter:DB$ PutCounter | ValidTgts$ Creature.YouCtrl | TgtPrompt$ Select target creature you control | CounterType$ P1P1 | CounterNum$ 1 | SubAbility$ DBAnimate | SpellDescription$ Put a +1/+1 counter on target creature you control. It becomes a legendary Spider Hero in addition to its other types.",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "SVar",
+          "line": 8,
+          "raw_value": "DBAnimate:DB$ Animate | Defined$ ParentTarget | Types$ Legendary,Spider,Hero | Duration$ Permanent",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "SVar",
+          "line": 9,
+          "raw_value": "DBPump:DB$ Pump | ValidTgts$ Creature.YouCtrl | TgtPrompt$ Select target creature you control | KW$ Double Strike | SpellDescription$ Target creature you control gains double strike until end of turn.",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        }
+      ]
+    },
+    {
+      "ability_identities": 0,
+      "card_definition_id": 23,
+      "card_name": "Skyward Spider",
+      "deck": "W1",
+      "faces": [
+        {
+          "face_key": 0,
+          "mana_cost": [
+            {
+              "hybrid": [
+                "white",
+                "blue"
+              ]
+            },
+            {
+              "hybrid": [
+                "white",
+                "blue"
+              ]
+            }
+          ],
+          "name": "Skyward Spider",
+          "power_toughness": [
+            2,
+            2
+          ],
+          "type_line": {
+            "card_types": [
+              "Creature"
+            ],
+            "subtypes": [
+              "Spider",
+              "Human",
+              "Hero"
+            ],
+            "supertypes": []
+          }
+        }
+      ],
+      "forge_path": "forge-gui/res/cardsfolder/s/skyward_spider.txt",
+      "forge_source_revision": "17c1ba92149b84127749bf84c231ed75107df1a2",
+      "issue_alias": "Wonderweave Aerialist",
+      "other_source_fields": [
+        {
+          "face_key": 0,
+          "field": "Variant",
+          "line": 2,
+          "raw_value": "UniversesWithin:FlavorName:Wonderweave Aerialist"
+        }
+      ],
+      "semantic_binding": "unprofiled-v1",
+      "source_record_digest_sha256": "4b732ea1517caecbe4da7630dceda145404c41443d9c0a6e43210005c05f3fb8",
+      "unlowered_constructs": [
+        {
+          "face_key": 0,
+          "field": "K",
+          "line": 6,
+          "raw_value": "Ward:2",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "S",
+          "line": 7,
+          "raw_value": "Mode$ Continuous | AffectedDefined$ Self | Affected$ Card.modified | AddKeyword$ Flying | Description$ CARDNAME has flying as long as it's modified. (Equipment, Auras you control, and counters are modifications.)",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": {
+            "category": "Continuous",
+            "parameters": [
+              {
+                "key": "AffectedDefined",
+                "value": "Self"
+              },
+              {
+                "key": "Affected",
+                "value": "Card.modified"
+              },
+              {
+                "key": "AddKeyword",
+                "value": "Flying"
+              },
+              {
+                "key": "Description",
+                "value": "CARDNAME has flying as long as it's modified. (Equipment, Auras you control, and counters are modifications.)"
+              }
+            ],
+            "prefix": "Mode"
+          }
+        }
+      ]
+    },
+    {
+      "ability_identities": 0,
+      "card_definition_id": 24,
+      "card_name": "Abandoned Air Temple",
+      "deck": "W1",
+      "faces": [
+        {
+          "face_key": 0,
+          "mana_cost": null,
+          "name": "Abandoned Air Temple",
+          "power_toughness": null,
+          "type_line": {
+            "card_types": [
+              "Land"
+            ],
+            "subtypes": [],
+            "supertypes": []
+          }
+        }
+      ],
+      "forge_path": "forge-gui/res/cardsfolder/a/abandoned_air_temple.txt",
+      "forge_source_revision": "17c1ba92149b84127749bf84c231ed75107df1a2",
+      "issue_alias": null,
+      "other_source_fields": [],
+      "semantic_binding": "unprofiled-v1",
+      "source_record_digest_sha256": "81e0087944fd77da182befefa0cd0eee67d3df761fc0ce4505f2c42d473de1c8",
+      "unlowered_constructs": [
+        {
+          "face_key": 0,
+          "field": "R",
+          "line": 4,
+          "raw_value": "Event$ Moved | ValidCard$ Card.Self | Destination$ Battlefield | ReplaceWith$ LandTapped | ReplacementResult$ Updated | Description$ This land enters tapped unless you control a basic land.",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": {
+            "category": "Moved",
+            "parameters": [
+              {
+                "key": "ValidCard",
+                "value": "Card.Self"
+              },
+              {
+                "key": "Destination",
+                "value": "Battlefield"
+              },
+              {
+                "key": "ReplaceWith",
+                "value": "LandTapped"
+              },
+              {
+                "key": "ReplacementResult",
+                "value": "Updated"
+              },
+              {
+                "key": "Description",
+                "value": "This land enters tapped unless you control a basic land."
+              }
+            ],
+            "prefix": "Event"
+          }
+        },
+        {
+          "face_key": 0,
+          "field": "SVar",
+          "line": 5,
+          "raw_value": "LandTapped:DB$ Tap | Defined$ Self | ETB$ True | ConditionPresent$ Land.Basic+YouCtrl | ConditionCompare$ EQ0",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "A",
+          "line": 6,
+          "raw_value": "AB$ Mana | Cost$ T | Produced$ W | SpellDescription$ Add {W}.",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": {
+            "category": "Mana",
+            "parameters": [
+              {
+                "key": "Cost",
+                "value": "T"
+              },
+              {
+                "key": "Produced",
+                "value": "W"
+              },
+              {
+                "key": "SpellDescription",
+                "value": "Add {W}."
+              }
+            ],
+            "prefix": "AB"
+          }
+        },
+        {
+          "face_key": 0,
+          "field": "A",
+          "line": 7,
+          "raw_value": "AB$ PutCounterAll | Cost$ 3 W T | ValidCards$ Creature.YouCtrl | CounterType$ P1P1 | CounterNum$ 1 | AILogic$ AtEOTOrBlock | SpellDescription$ Put a +1/+1 counter on each creature you control.",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": {
+            "category": "PutCounterAll",
+            "parameters": [
+              {
+                "key": "Cost",
+                "value": "3 W T"
+              },
+              {
+                "key": "ValidCards",
+                "value": "Creature.YouCtrl"
+              },
+              {
+                "key": "CounterType",
+                "value": "P1P1"
+              },
+              {
+                "key": "CounterNum",
+                "value": "1"
+              },
+              {
+                "key": "AILogic",
+                "value": "AtEOTOrBlock"
+              },
+              {
+                "key": "SpellDescription",
+                "value": "Put a +1/+1 counter on each creature you control."
+              }
+            ],
+            "prefix": "AB"
+          }
+        }
+      ]
+    },
+    {
+      "ability_identities": 0,
+      "card_definition_id": 25,
+      "card_name": "Evershrike's Gift",
+      "deck": "W1",
+      "faces": [
+        {
+          "face_key": 0,
+          "mana_cost": [
+            "white"
+          ],
+          "name": "Evershrike's Gift",
+          "power_toughness": null,
+          "type_line": {
+            "card_types": [
+              "Enchantment"
+            ],
+            "subtypes": [
+              "Aura"
+            ],
+            "supertypes": []
+          }
+        }
+      ],
+      "forge_path": "forge-gui/res/cardsfolder/e/evershrikes_gift.txt",
+      "forge_source_revision": "17c1ba92149b84127749bf84c231ed75107df1a2",
+      "issue_alias": null,
+      "other_source_fields": [],
+      "semantic_binding": "unprofiled-v1",
+      "source_record_digest_sha256": "1761385293e7b4163d21c8b5a91c50dd30da7fac7e2c1214a744d355aa2b0859",
+      "unlowered_constructs": [
+        {
+          "face_key": 0,
+          "field": "K",
+          "line": 4,
+          "raw_value": "Enchant:Creature",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "SVar",
+          "line": 5,
+          "raw_value": "AttachAILogic:Pump",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        },
+        {
+          "face_key": 0,
+          "field": "S",
+          "line": 6,
+          "raw_value": "Mode$ Continuous | AffectedDefined$ Enchanted | Affected$ Creature | AddPower$ 1 | AddKeyword$ Flying | Description$ Enchanted creature gets +1/+0 and has flying.",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": {
+            "category": "Continuous",
+            "parameters": [
+              {
+                "key": "AffectedDefined",
+                "value": "Enchanted"
+              },
+              {
+                "key": "Affected",
+                "value": "Creature"
+              },
+              {
+                "key": "AddPower",
+                "value": "1"
+              },
+              {
+                "key": "AddKeyword",
+                "value": "Flying"
+              },
+              {
+                "key": "Description",
+                "value": "Enchanted creature gets +1/+0 and has flying."
+              }
+            ],
+            "prefix": "Mode"
+          }
+        },
+        {
+          "face_key": 0,
+          "field": "A",
+          "line": 7,
+          "raw_value": "AB$ ChangeZone | Cost$ 1 W Blight<2> | Origin$ Graveyard | Destination$ Hand | ActivationZone$ Graveyard | SorcerySpeed$ True | SpellDescription$ Return this card from your graveyard to your hand. Activate only as a sorcery.",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": {
+            "category": "ChangeZone",
+            "parameters": [
+              {
+                "key": "Cost",
+                "value": "1 W Blight<2>"
+              },
+              {
+                "key": "Origin",
+                "value": "Graveyard"
+              },
+              {
+                "key": "Destination",
+                "value": "Hand"
+              },
+              {
+                "key": "ActivationZone",
+                "value": "Graveyard"
+              },
+              {
+                "key": "SorcerySpeed",
+                "value": "True"
+              },
+              {
+                "key": "SpellDescription",
+                "value": "Return this card from your graveyard to your hand. Activate only as a sorcery."
+              }
+            ],
+            "prefix": "AB"
+          }
+        }
+      ]
+    },
+    {
+      "ability_identities": 0,
+      "card_definition_id": 26,
+      "card_name": "Dryad Militant",
+      "deck": "W1",
+      "faces": [
+        {
+          "face_key": 0,
+          "mana_cost": [
+            {
+              "hybrid": [
+                "green",
+                "white"
+              ]
+            }
+          ],
+          "name": "Dryad Militant",
+          "power_toughness": [
+            2,
+            1
+          ],
+          "type_line": {
+            "card_types": [
+              "Creature"
+            ],
+            "subtypes": [
+              "Dryad",
+              "Soldier"
+            ],
+            "supertypes": []
+          }
+        }
+      ],
+      "forge_path": "forge-gui/res/cardsfolder/d/dryad_militant.txt",
+      "forge_source_revision": "17c1ba92149b84127749bf84c231ed75107df1a2",
+      "issue_alias": null,
+      "other_source_fields": [],
+      "semantic_binding": "unprofiled-v1",
+      "source_record_digest_sha256": "51903738402f917da4c747b901e1bfaa48d803c4746140587e40a1037816a734",
+      "unlowered_constructs": [
+        {
+          "face_key": 0,
+          "field": "R",
+          "line": 5,
+          "raw_value": "Event$ Moved | ActiveZones$ Battlefield | Destination$ Graveyard | ValidCard$ Instant,Sorcery | ReplaceWith$ Exile | Description$ If an instant or sorcery would be put in a graveyard from anywhere, exile it instead.",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": {
+            "category": "Moved",
+            "parameters": [
+              {
+                "key": "ActiveZones",
+                "value": "Battlefield"
+              },
+              {
+                "key": "Destination",
+                "value": "Graveyard"
+              },
+              {
+                "key": "ValidCard",
+                "value": "Instant,Sorcery"
+              },
+              {
+                "key": "ReplaceWith",
+                "value": "Exile"
+              },
+              {
+                "key": "Description",
+                "value": "If an instant or sorcery would be put in a graveyard from anywhere, exile it instead."
+              }
+            ],
+            "prefix": "Event"
+          }
+        },
+        {
+          "face_key": 0,
+          "field": "SVar",
+          "line": 6,
+          "raw_value": "Exile:DB$ ChangeZone | Hidden$ True | Origin$ All | Destination$ Exile | Defined$ ReplacedCard",
+          "semantic_lowering": "NOT_IMPLEMENTED",
+          "syntax": null
+        }
+      ]
+    }
+  ],
+  "card_support_claim": "NONE",
+  "content_contract_id": "f60ab9a105fdcaff495af0c52b2158ed075519bf1da46937893f013eeef27126",
+  "forge_source_revision": "17c1ba92149b84127749bf84c231ed75107df1a2",
+  "schema_version": "forge-card-ir-lowering-metadata.v1",
+  "type_vocabulary_snapshot": "wotc-cr-2026-09-25-txt-20260925-sha256-8d860e451f20f38865b725b42d82feb714c725373dd8f3b32b8652b3eeb070ca",
+  "unlowered_construct_counts": {
+    "A": 12,
+    "K": 21,
+    "R": 3,
+    "S": 8,
+    "SVar": 38,
+    "T": 14
+  },
+  "unlowered_construct_total": 96,
+  "validation": "STRUCTURAL_CONTENT_VALIDATION_ONLY"
+}
