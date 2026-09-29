@@ -60,6 +60,18 @@ pub fn parse_card_script(source: &str) -> Result<ForgeCardScript, ParseError> {
             continue;
         }
 
+        // Forge uses this standalone separator inside double-faced card files.
+        // Keep it in order so parsing the complete source never drops a face.
+        if line == "ALTERNATE" {
+            fields.push(ScriptField {
+                name: line.to_owned(),
+                value: String::new(),
+                line: line_number,
+                ability: None,
+            });
+            continue;
+        }
+
         let Some((name, remainder)) = line.split_once(':') else {
             return Err(ParseError {
                 line: line_number,
@@ -188,5 +200,18 @@ mod tests {
         assert_eq!(error.line, 2);
         assert!(error.to_string().contains("line 2"));
         assert!(parse_card_script("SVar:missing-value").is_err());
+    }
+
+    #[test]
+    fn preserves_alternate_face_separator_and_parses_following_fields() {
+        let parsed = parse_card_script(
+            "Name:Front Face\nOracle:Front text.\n\nALTERNATE\n\nName:Back Face\nA:AB$ Mana | Cost$ T | Produced$ R",
+        )
+        .unwrap();
+        assert_eq!(parsed.fields[2].name, "ALTERNATE");
+        assert_eq!(parsed.fields[2].value, "");
+        assert_eq!(parsed.fields[3].name, "Name");
+        assert_eq!(parsed.fields[3].value, "Back Face");
+        assert_eq!(parsed.fields[4].ability.as_ref().unwrap().category, "Mana");
     }
 }
