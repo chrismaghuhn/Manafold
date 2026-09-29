@@ -33,6 +33,12 @@ not another deck candidate. `ManaCost:no cost` maps to absent printed mana cost
 Candidate-local definition IDs 1–26 follow the tool manifest order (R1, then
 W1).
 
+The lowerer's `ManaCost:0` case represents an explicit zero-symbol printed
+cost as `Some([])`, matching the accepted Card IR contract's zero-cost encoding;
+it never emits `Generic(0)`. `ManaCost:no cost` remains `None`. A regression
+test validates both cases against the existing Card IR validator. None of the
+26 selected source scripts uses `ManaCost:0`.
+
 All definitions bind to `UnprofiledV1`, have no ability identities, references,
 or capability requirements, and passed existing structural content validation
 with `ValidationOnly` authorization. This run adds no Basic Land admission and

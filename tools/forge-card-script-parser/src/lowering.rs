@@ -1141,6 +1141,30 @@ mod tests {
     }
 
     #[test]
+    fn distinguishes_explicit_zero_mana_cost_from_no_mana_cost() {
+        let explicit_zero = lower("Name:Explicit Zero\nManaCost:0\nTypes:Artifact").unwrap();
+        let no_cost = lower("Name:No Cost\nManaCost:no cost\nTypes:Land").unwrap();
+        assert_eq!(
+            explicit_zero.definition.faces[0]
+                .base_characteristics
+                .mana_cost,
+            Some(Vec::new())
+        );
+        assert_eq!(
+            no_cost.definition.faces[0].base_characteristics.mana_cost,
+            None
+        );
+
+        for candidate in [explicit_zero, no_cost] {
+            let manifest = ContentContractManifestV1 {
+                schema_version: CONTENT_CONTRACT_MANIFEST_V1.to_owned(),
+                definitions: vec![candidate.definition],
+            };
+            encode_content_manifest_v1(&manifest).expect("both printed-cost forms are valid V1");
+        }
+    }
+
+    #[test]
     fn keeps_multiface_order_in_one_definition() {
         let candidate = lower(
             "Name:Ojer Axonil, Deepest Might\nManaCost:2 R R\nTypes:Legendary Creature God\nPT:4/4\nALTERNATE\nName:Temple of Power\nManaCost:no cost\nTypes:Land",
