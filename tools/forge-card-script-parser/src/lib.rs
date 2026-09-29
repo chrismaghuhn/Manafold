@@ -4,6 +4,8 @@
 
 use std::fmt;
 
+pub mod lowering;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ForgeCardScript {
     /// Fields in their original order. Repeated and unknown fields are kept.
