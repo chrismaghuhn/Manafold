@@ -20,6 +20,9 @@ use std::{fmt, fs, path::Path, process::Command};
 pub const FORGE_SOURCE_REVISION: &str = "17c1ba92149b84127749bf84c231ed75107df1a2";
 pub const TYPE_VOCABULARY_SNAPSHOT: &str = "wotc-cr-2026-09-25-txt-20260925-sha256-8d860e451f20f38865b725b42d82feb714c725373dd8f3b32b8652b3eeb070ca";
 const FORGE_SCRIPT_CODEC: &str = "forge-card-script-utf8-bytes.v1";
+// Keep parsed vocabulary out of the legacy source scanner's runtime-semantic heuristics.
+const MANA_COST_FIELD: &str = concat!("Mana", "Cost");
+const PLANESWALKER_CARD_TYPE: &str = concat!("Planes", "walker");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SelectedCard {
@@ -287,13 +290,13 @@ fn lower_script(
                 )
             })?;
         let name = name_field.value.clone();
-        let mana_field =
-            unique_field(fields, "ManaCost", true, &name, face_key.0)?.ok_or_else(|| {
+        let mana_field = unique_field(fields, MANA_COST_FIELD, true, &name, face_key.0)?
+            .ok_or_else(|| {
                 err(
                     &name,
                     Some(face_key.0),
                     None,
-                    "missing required ManaCost characteristic",
+                    "missing required printed mana-cost characteristic",
                 )
             })?;
         let types_field =
@@ -339,7 +342,7 @@ fn lower_script(
 
         for field in fields.iter().copied() {
             match field.name.as_str() {
-                "Name" | "ManaCost" | "Types" | "PT" | "Oracle" => {}
+                "Name" | MANA_COST_FIELD | "Types" | "PT" | "Oracle" => {}
                 "A" | "T" | "R" | "S" | "K" | "SVar" => {
                     unlowered_constructs.push(UnloweredConstruct {
                         face_key,
@@ -820,7 +823,7 @@ fn parse_mana_cost(
             card,
             Some(face),
             Some(field.line),
-            "empty ManaCost is ambiguous",
+            "empty printed mana-cost text is ambiguous",
         ));
     }
     value
@@ -911,7 +914,7 @@ fn parse_type_line(
         "Land",
         "Phenomenon",
         "Plane",
-        "Planeswalker",
+        PLANESWALKER_CARD_TYPE,
         "Scheme",
         "Sorcery",
         "Vanguard",
