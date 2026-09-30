@@ -11,8 +11,9 @@
 
 use mtgml_card_ir::ExecutableProfileAdmissionV1;
 use mtgml_decision::{
-    AuthoritativeDecisionRequestV4, DecisionAnswerV2, DecisionDomainV2, DecisionPurposeV4,
-    DecisionResponseV3, DecisionVisibility,
+    AuthoritativeCandidateV4, AuthoritativeDecisionRequestV4, CandidateIntentV4, DecisionAnswerV2,
+    DecisionDomainV2, DecisionPurposeV4, DecisionResponseV3, DecisionVisibility,
+    EngineCandidateBindingV4,
 };
 use mtgml_model::{
     DecisionId, EpisodeStatus, GameObjectId, PlayerDecisionIdV1, PlayerId, RuleEventId,
@@ -74,6 +75,25 @@ pub fn execute_magic_response_v4(
                 _ => return Err(Error::TurnProgressUnsupported),
             }
         }
+        DecisionPurposeV4::HandSizeDiscard => {
+            validate_magic_pending_request_v4(admission, state, status)
+                .map_err(|_| Error::InvalidSelection)?;
+            let DecisionAnswerV2::SelectMany { candidate_ids } = &response.answer else {
+                return Err(Error::InvalidSelection);
+            };
+            let [chosen] = candidate_ids.as_slice() else {
+                return Err(Error::InvalidSelection);
+            };
+            match request
+                .candidates
+                .iter()
+                .find(|candidate| candidate.candidate_id == *chosen)
+                .map(|candidate| &candidate.trusted_binding)
+            {
+                Some(EngineCandidateBindingV4::SelectObject { object }) => Answer::Discard(*object),
+                _ => return Err(Error::InvalidSelection),
+            }
+        }
         _ => return Err(Error::InvalidSelection),
     };
     if !matches!(status, EpisodeStatus::Running) {
@@ -94,26 +114,23 @@ pub fn validate_magic_pending_request_v4(
         .execution_v4
         .pending_decision
         .as_ref()
-        .filter(|request| request.purpose == DecisionPurposeV4::AttackerDeclaration)
+        .filter(|request| {
+            matches!(
+                request.purpose,
+                DecisionPurposeV4::AttackerDeclaration | DecisionPurposeV4::HandSizeDiscard
+            )
+        })
     else {
         return crate::validate_basic_land_pending_request_v4(admission, state, status);
     };
+    if request.purpose == DecisionPurposeV4::HandSizeDiscard {
+        return validate_discard_request(admission, state, request, status);
+    }
     state
         .validate_structure()
         .map_err(|_| BasicLandCandidateError::InvalidState)?;
     validate_slice(admission, state).map_err(|_| BasicLandCandidateError::InvalidState)?;
     let parts = &state.predecessor_v5;
-    let view_sequence = parts
-        .knowledge
-        .players
-        .get(&request.actor)
-        .ok_or(BasicLandCandidateError::InvalidState)?
-        .next_visible_sequence;
-    let identity = parts
-        .perspective_identities
-        .players
-        .get(&request.actor)
-        .ok_or(BasicLandCandidateError::InvalidState)?;
     if !matches!(status, EpisodeStatus::Running)
         || parts.core.position
             != (TurnPosition::Combat {
@@ -121,21 +138,13 @@ pub fn validate_magic_pending_request_v4(
             })
         || parts.combat.is_some()
         || parts.core.priority != PriorityState::None
-        || request.actor != parts.core.active_player
-        || request.decision_id.0.checked_add(1) != Some(parts.allocators.next_decision_id.0)
-        || request.player_decision_id.0.checked_add(1) != Some(identity.next_player_decision_id.0)
-        || request.state_revision != parts.revision
-        || request.view_sequence != view_sequence
-        || request.visibility != DecisionVisibility::ActingPlayerOnly
         || request.decision_domain_v2
             != (DecisionDomainV2::ChooseMany {
                 minimum: 0,
                 maximum: 0,
             })
         || !request.candidates.is_empty()
-        || request.parent_player_decision_id.is_some()
-        || request.continuation_id.is_some()
-        || request.project_player_request().is_err()
+        || !actor_only_request_matches(state, request)
     {
         return Err(BasicLandCandidateError::PendingCandidateSetMismatch);
     }
@@ -145,11 +154,13 @@ pub fn validate_magic_pending_request_v4(
 enum Answer {
     Pass,
     NoAttackers,
+    Discard(GameObjectId),
 }
 
 enum NextDecision {
     Priority(PlayerId),
     Attackers,
+    Discard,
 }
 
 /// What changed during the transition beyond the endpoint fields.
@@ -159,7 +170,7 @@ struct Facts {
     attackers_declared: bool,
     combat_skipped: bool,
     combat_ended: bool,
-    draw_events: Vec<crate::AuthoritativeRuleEvent>,
+    zone_events: Vec<crate::AuthoritativeRuleEvent>,
 }
 
 /// The land-only slice (D13): exactly two players, only admitted basic lands
@@ -279,6 +290,23 @@ fn progress(
             };
             NextDecision::Priority(active)
         }
+        // CR 514.1: the discard ends cleanup; the turn then ends (CR 514.3).
+        Answer::Discard(object) => {
+            move_card(
+                &mut next,
+                object,
+                crate::zone_incarnation::SelectedZoneTransitionKind::HandToOwnerGraveyard,
+                ZoneLocation {
+                    zone: ZoneKind::Graveyard,
+                    player: Some(active),
+                    position: ZonePosition::Top { offset: 0 },
+                    visibility: VisibilityPartition::Public,
+                    partition: None,
+                },
+                &mut facts,
+            )?;
+            advance(admission, &mut next, &mut facts)?
+        }
     };
     finish(admission, before, request, next, facts, next_decision)
 }
@@ -360,8 +388,8 @@ fn advance(
             TurnPosition::Combat {
                 step: CombatStep::DeclareBlockers | CombatStep::CombatDamage,
             } => return Err(Error::TurnProgressUnsupported),
-            // CR 514.1-514.3: discard to hand size (not yet admitted in this
-            // slice), then the turn ends without priority.
+            // CR 514.1-514.3: the active player discards to maximum hand
+            // size, then the turn ends without priority.
             TurnPosition::Ending {
                 step: EndingStep::Cleanup,
             } => {
@@ -375,8 +403,12 @@ fn advance(
                         location.zone == ZoneKind::Hand && location.player == Some(active)
                     })
                     .count();
-                if hand > crate::turn_structure::ORDINARY_MAXIMUM_HAND_SIZE {
-                    return Err(Error::TurnProgressUnsupported);
+                match hand.checked_sub(crate::turn_structure::ORDINARY_MAXIMUM_HAND_SIZE) {
+                    None | Some(0) => {}
+                    Some(1) => return Ok(NextDecision::Discard),
+                    // Two or more simultaneous discards need the owner's
+                    // graveyard order, which this slice does not offer.
+                    Some(_) => return Err(Error::TurnProgressUnsupported),
                 }
             }
         }
@@ -447,21 +479,46 @@ fn draw(next: &mut EngineStatePartsV3, owner: PlayerId, facts: &mut Facts) -> Re
         .and_then(|objects| objects.first())
         .copied()
         .ok_or(Error::TurnProgressUnsupported)?;
+    move_card(
+        next,
+        top,
+        crate::zone_incarnation::SelectedZoneTransitionKind::LibraryTopToOwnerHand,
+        ZoneLocation {
+            zone: ZoneKind::Hand,
+            player: Some(owner),
+            position: ZonePosition::Unordered,
+            visibility: VisibilityPartition::OwnerOnly,
+            partition: None,
+        },
+        facts,
+    )
+}
+
+/// Moves one card through the shared zone-incarnation authority (new
+/// incarnation, knowledge and identity updates) and carries its face over.
+fn move_card(
+    next: &mut EngineStatePartsV3,
+    object: GameObjectId,
+    kind: crate::zone_incarnation::SelectedZoneTransitionKind,
+    claimed_to: ZoneLocation,
+    facts: &mut Facts,
+) -> Result<(), Error> {
+    let claimed_from = next
+        .predecessor_v5
+        .zones
+        .locations
+        .get(&object)
+        .cloned()
+        .ok_or(Error::InvalidResult)?;
     let mut engine: EngineState = next.predecessor_v5.clone().into();
     let mut events = Vec::new();
     crate::zone_incarnation::apply_selected_zone_transition_in_workspace(
         &mut engine,
         &crate::zone_incarnation::SelectedZoneTransitionRequest {
-            object: top,
-            kind: crate::zone_incarnation::SelectedZoneTransitionKind::LibraryTopToOwnerHand,
-            claimed_from: library,
-            claimed_to: ZoneLocation {
-                zone: ZoneKind::Hand,
-                player: Some(owner),
-                position: ZonePosition::Unordered,
-                visibility: VisibilityPartition::OwnerOnly,
-                partition: None,
-            },
+            object,
+            kind,
+            claimed_from,
+            claimed_to,
         },
         // Placeholder origin: `finish` numbers every event of the transition.
         RuleEventId(1),
@@ -486,7 +543,7 @@ fn draw(next: &mut EngineStatePartsV3, owner: PlayerId, facts: &mut Facts) -> Re
         }
     }
     next.predecessor_v5 = parts;
-    facts.draw_events.extend(events);
+    facts.zone_events.extend(events);
     Ok(())
 }
 
@@ -564,7 +621,7 @@ fn finish(
         pending.push(legacy(AuthoritativeRuleEventKind::CombatEnded));
     }
     let mut transition_index = None;
-    for event in facts.draw_events {
+    for event in facts.zone_events {
         match event.event {
             AuthoritativeRuleEventKind::PerspectiveOccurrence { lifecycle, .. } => {
                 pending.push(Pending::Occurrence {
@@ -605,6 +662,7 @@ fn finish(
                 .map_err(|_| Error::InvalidResult)?
         }
         NextDecision::Attackers => install_attacker_request(&mut next)?,
+        NextDecision::Discard => install_discard_request(&mut next)?,
     };
     pending.push(legacy(AuthoritativeRuleEventKind::DecisionCreated {
         decision: request.decision_id,
@@ -665,10 +723,142 @@ fn finish(
     })
 }
 
+/// The discard request's candidates: every card in the active player's
+/// hand, in canonical order of the player's opaque identities.
+fn discard_candidates(state: &EngineStatePartsV3) -> Result<Vec<AuthoritativeCandidateV4>, Error> {
+    let parts = &state.predecessor_v5;
+    let actor = parts.core.active_player;
+    let identity = parts
+        .perspective_identities
+        .players
+        .get(&actor)
+        .ok_or(Error::InvalidResult)?;
+    let mut cards = parts
+        .zones
+        .locations
+        .iter()
+        .filter(|(_, location)| location.zone == ZoneKind::Hand && location.player == Some(actor))
+        .map(|(object, _)| {
+            identity
+                .object_to_opaque
+                .get(object)
+                .map(|opaque| (*opaque, *object))
+                .ok_or(Error::InvalidResult)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    cards.sort();
+    Ok(cards
+        .into_iter()
+        .enumerate()
+        .map(|(index, (opaque, object))| AuthoritativeCandidateV4 {
+            candidate_id: mtgml_model::CandidateIdV1(index as u32),
+            visible_intent: CandidateIntentV4::SelectObject { object: opaque },
+            trusted_binding: EngineCandidateBindingV4::SelectObject { object },
+        })
+        .collect())
+}
+
+/// CR 514.1: the active player chooses the card to discard.
+fn install_discard_request(
+    next: &mut EngineStatePartsV3,
+) -> Result<AuthoritativeDecisionRequestV4, Error> {
+    let candidates = discard_candidates(next)?;
+    install_actor_only_request(
+        next,
+        DecisionPurposeV4::HandSizeDiscard,
+        DecisionDomainV2::ChooseMany {
+            minimum: 1,
+            maximum: 1,
+        },
+        candidates,
+    )
+}
+
+fn validate_discard_request(
+    admission: &ExecutableProfileAdmissionV1,
+    state: &EngineStatePartsV3,
+    request: &AuthoritativeDecisionRequestV4,
+    status: &EpisodeStatus,
+) -> Result<(), BasicLandCandidateError> {
+    state
+        .validate_structure()
+        .map_err(|_| BasicLandCandidateError::InvalidState)?;
+    validate_slice(admission, state).map_err(|_| BasicLandCandidateError::InvalidState)?;
+    let parts = &state.predecessor_v5;
+    let hand = parts
+        .zones
+        .locations
+        .values()
+        .filter(|location| {
+            location.zone == ZoneKind::Hand && location.player == Some(parts.core.active_player)
+        })
+        .count();
+    let expected = discard_candidates(state).map_err(|_| BasicLandCandidateError::InvalidState)?;
+    if !matches!(status, EpisodeStatus::Running)
+        || parts.core.position
+            != (TurnPosition::Ending {
+                step: EndingStep::Cleanup,
+            })
+        || parts.core.priority != PriorityState::None
+        || hand != crate::turn_structure::ORDINARY_MAXIMUM_HAND_SIZE + 1
+        || request.decision_domain_v2
+            != (DecisionDomainV2::ChooseMany {
+                minimum: 1,
+                maximum: 1,
+            })
+        || request.candidates != expected
+        || !actor_only_request_matches(state, request)
+    {
+        return Err(BasicLandCandidateError::PendingCandidateSetMismatch);
+    }
+    Ok(())
+}
+
+/// Identity, sequence and visibility fields every actor-only request shares.
+fn actor_only_request_matches(
+    state: &EngineStatePartsV3,
+    request: &AuthoritativeDecisionRequestV4,
+) -> bool {
+    let parts = &state.predecessor_v5;
+    let Some(knowledge) = parts.knowledge.players.get(&request.actor) else {
+        return false;
+    };
+    let Some(identity) = parts.perspective_identities.players.get(&request.actor) else {
+        return false;
+    };
+    request.actor == parts.core.active_player
+        && request.decision_id.0.checked_add(1) == Some(parts.allocators.next_decision_id.0)
+        && request.player_decision_id.0.checked_add(1) == Some(identity.next_player_decision_id.0)
+        && request.state_revision == parts.revision
+        && request.view_sequence == knowledge.next_visible_sequence
+        && request.visibility == DecisionVisibility::ActingPlayerOnly
+        && request.parent_player_decision_id.is_none()
+        && request.continuation_id.is_none()
+        && request.project_player_request().is_ok()
+}
+
 /// CR 508.1: the active player declares attackers. The land-only slice has
 /// no creatures, so the request offers no candidates, as the oracle does.
 fn install_attacker_request(
     next: &mut EngineStatePartsV3,
+) -> Result<AuthoritativeDecisionRequestV4, Error> {
+    install_actor_only_request(
+        next,
+        DecisionPurposeV4::AttackerDeclaration,
+        DecisionDomainV2::ChooseMany {
+            minimum: 0,
+            maximum: 0,
+        },
+        Vec::new(),
+    )
+}
+
+/// Allocates the next decision identity (D5) for an active-player request.
+fn install_actor_only_request(
+    next: &mut EngineStatePartsV3,
+    purpose: DecisionPurposeV4,
+    decision_domain_v2: DecisionDomainV2,
+    candidates: Vec<AuthoritativeCandidateV4>,
 ) -> Result<AuthoritativeDecisionRequestV4, Error> {
     let parts = &mut next.predecessor_v5;
     let actor = parts.core.active_player;
@@ -704,16 +894,13 @@ fn install_attacker_request(
         view_sequence,
         actor,
         visibility: DecisionVisibility::ActingPlayerOnly,
-        decision_domain_v2: DecisionDomainV2::ChooseMany {
-            minimum: 0,
-            maximum: 0,
-        },
-        purpose: DecisionPurposeV4::AttackerDeclaration,
+        decision_domain_v2,
+        purpose,
         parent_player_decision_id: None,
         continuation_id: None,
-        candidates: Vec::new(),
+        candidates,
     };
-    // Plan stop condition: a zero-candidate declaration must be representable.
+    // A zero-candidate attacker declaration must be representable too.
     request
         .project_player_request()
         .map_err(|_| Error::TurnProgressUnsupported)?;
@@ -799,12 +986,85 @@ mod tests {
         }
     }
 
+    /// Adds cards to `owner`'s hand that only the owner tracks, with the
+    /// owner's knowledge record, as a real game's opening hand has.
+    pub(super) fn add_hand_cards(state: &mut EngineStatePartsV3, owner: PlayerId, count: u64) {
+        let definition = state.predecessor_v5.zones.objects[&GameObjectId(2)].card_definition;
+        for _ in 0..count {
+            let parts = &mut state.predecessor_v5;
+            let id = parts.allocators.next_object_id;
+            parts.allocators.next_object_id = GameObjectId(id.0 + 1);
+            let location = ZoneLocation {
+                zone: ZoneKind::Hand,
+                player: Some(owner),
+                position: ZonePosition::Unordered,
+                visibility: VisibilityPartition::OwnerOnly,
+                partition: None,
+            };
+            let physical_card = Some(PhysicalCardId(2_000 + id.0));
+            parts.zones.objects.insert(
+                id,
+                GameObject {
+                    id,
+                    physical_card,
+                    card_definition: definition,
+                    owner,
+                    controller: owner,
+                    tapped: false,
+                    face_down: false,
+                },
+            );
+            parts.zones.locations.insert(id, location.clone());
+            let identity = parts
+                .perspective_identities
+                .players
+                .get_mut(&owner)
+                .unwrap();
+            let opaque = identity.next_opaque_object_id;
+            identity.next_opaque_object_id = mtgml_model::OpaqueObjectId(opaque.0 + 1);
+            identity.object_to_opaque.insert(id, opaque);
+            identity.opaque_to_object.insert(opaque, id);
+            parts
+                .knowledge
+                .players
+                .get_mut(&owner)
+                .unwrap()
+                .active
+                .insert(
+                    opaque,
+                    mtgml_state::KnowledgeRecordV2 {
+                        opaque_object: opaque,
+                        physical_card,
+                        card_definition: Some(definition),
+                        known_location: Some(mtgml_state::KnownLocationFactV2 {
+                            location,
+                            provenance:
+                                mtgml_state::KnowledgeAcquisitionReason::InitialConfiguration,
+                        }),
+                        acquisition: mtgml_state::KnowledgeAcquisitionReason::InitialConfiguration,
+                        historical_locations: Vec::new(),
+                    },
+                );
+            state.card_rules_state.faces.faces.insert(id, 0);
+        }
+    }
+
     /// Two players, P1 active with priority in precombat main, Mountain and
     /// Plains in P1's hand, one untapped Mountain with its mana ability on
     /// P1's battlefield and `library` face-down cards in each library.
     fn game_with(
         admission: ExecutableProfileAdmissionV1,
         library: u64,
+    ) -> (ExecutableProfileAdmissionV1, EngineStatePartsV3) {
+        game_with_hands(admission, library, 0, 0)
+    }
+
+    /// As `game_with`, with extra owner-tracked cards in each hand.
+    fn game_with_hands(
+        admission: ExecutableProfileAdmissionV1,
+        library: u64,
+        p1_extra: u64,
+        p2_extra: u64,
     ) -> (ExecutableProfileAdmissionV1, EngineStatePartsV3) {
         let v2 = crate::basic_land::s1_b_state_with_two_lands_fixture();
         let mut state =
@@ -813,6 +1073,8 @@ mod tests {
         make_synthetic_library_card_ordinary(&mut state);
         add_library_cards(&mut state, P1, library);
         add_library_cards(&mut state, P2, library);
+        add_hand_cards(&mut state, P1, p1_extra);
+        add_hand_cards(&mut state, P2, p2_extra);
         crate::install_basic_land_request_v4(&admission, &mut state, P1, &EpisodeStatus::Running)
             .unwrap();
         (admission, state)
@@ -1259,8 +1521,127 @@ mod tests {
         let state = pass_until(&admission, state, at(UPKEEP, 3));
         assert_eq!(state.predecessor_v5.core.active_player, P1);
     }
-}
 
+    fn discard_request(
+        admission: &ExecutableProfileAdmissionV1,
+        state: EngineStatePartsV3,
+    ) -> EngineStatePartsV3 {
+        let state = pass_until(admission, state, at(END_STEP, 1));
+        let state = pass(admission, &state).0;
+        pass(admission, &state).0
+    }
+
+    fn discard(
+        admission: &ExecutableProfileAdmissionV1,
+        state: &EngineStatePartsV3,
+        candidate_ids: Vec<mtgml_model::CandidateIdV1>,
+    ) -> Result<crate::BasicLandTransitionProductV4, crate::BasicLandTransitionError> {
+        submit(
+            admission,
+            state,
+            DecisionAnswerV2::SelectMany { candidate_ids },
+        )
+    }
+
+    fn last_candidate(state: &EngineStatePartsV3) -> mtgml_model::CandidateIdV1 {
+        pending(state).candidates.last().unwrap().candidate_id
+    }
+
+    #[test]
+    fn cleanup_with_eight_cards_asks_active_player_to_discard_one() {
+        let (admission, state) =
+            game_with_hands(crate::basic_land::basic_land_admission_fixture(), 3, 6, 0);
+        assert_eq!(zone_count(&state, P1, ZoneKind::Hand), 8);
+        let state = discard_request(&admission, state);
+
+        let request = pending(&state);
+        assert_eq!(request.purpose, DecisionPurposeV4::HandSizeDiscard);
+        assert_eq!(
+            request.decision_domain_v2,
+            DecisionDomainV2::ChooseMany {
+                minimum: 1,
+                maximum: 1
+            }
+        );
+        assert_eq!(request.candidates.len(), 8);
+        assert_eq!(request.actor, P1);
+        assert_eq!(
+            state.predecessor_v5.core.position,
+            TurnPosition::Ending {
+                step: EndingStep::Cleanup
+            }
+        );
+        assert_eq!(state.predecessor_v5.core.turn_number, 1);
+    }
+
+    #[test]
+    fn cleanup_with_more_than_eight_cards_fails_closed() {
+        // Discarding two or more cards at once needs the owner's graveyard
+        // order, which this slice does not offer yet.
+        let (admission, state) =
+            game_with_hands(crate::basic_land::basic_land_admission_fixture(), 3, 7, 0);
+        let state = pass_until(&admission, state, at(END_STEP, 1));
+        let state = pass(&admission, &state).0;
+
+        assert_eq!(
+            submit(&admission, &state, pass_answer(pending(&state))),
+            Err(crate::BasicLandTransitionError::TurnProgressUnsupported)
+        );
+    }
+
+    #[test]
+    fn discard_moves_chosen_card_then_next_turn_starts() {
+        let (admission, state) =
+            game_with_hands(crate::basic_land::basic_land_admission_fixture(), 3, 6, 0);
+        let state = discard_request(&admission, state);
+        let chosen = pending(&state)
+            .candidates
+            .last()
+            .map(|candidate| match candidate.trusted_binding {
+                EngineCandidateBindingV4::SelectObject { object } => object,
+                _ => unreachable!(),
+            })
+            .unwrap();
+        let product = discard(&admission, &state, vec![last_candidate(&state)]).unwrap();
+        let after = apply(&state, &product);
+
+        assert!(!after.predecessor_v5.zones.objects.contains_key(&chosen));
+        assert_eq!(zone_count(&after, P1, ZoneKind::Graveyard), 1);
+        assert_eq!(zone_count(&after, P1, ZoneKind::Hand), 7);
+        assert_eq!(after.predecessor_v5.core.turn_number, 2);
+        assert_eq!(after.predecessor_v5.core.active_player, P2);
+        assert_eq!(after.predecessor_v5.core.position, UPKEEP);
+        assert_eq!(pending(&after).actor, P2);
+    }
+
+    #[test]
+    fn discard_with_wrong_count_is_rejected() {
+        let (admission, state) =
+            game_with_hands(crate::basic_land::basic_land_admission_fixture(), 3, 6, 0);
+        let state = discard_request(&admission, state);
+        let first = pending(&state).candidates[0].candidate_id;
+
+        assert_eq!(
+            discard(&admission, &state, Vec::new()),
+            Err(crate::BasicLandTransitionError::InvalidSelection)
+        );
+        assert_eq!(
+            discard(&admission, &state, vec![first, last_candidate(&state)]),
+            Err(crate::BasicLandTransitionError::InvalidSelection)
+        );
+    }
+
+    #[test]
+    fn non_active_player_never_discards() {
+        let (admission, state) =
+            game_with_hands(crate::basic_land::basic_land_admission_fixture(), 3, 0, 8);
+        let after = discard_request(&admission, state);
+
+        assert_eq!(after.predecessor_v5.core.turn_number, 2);
+        assert_eq!(after.predecessor_v5.core.position, UPKEEP);
+        assert_eq!(pending(&after).purpose, DecisionPurposeV4::PriorityAction);
+    }
+}
 /// The old full-turn kernel as differential oracle (D11): it cannot run
 /// states with lands or mana abilities, so both sides start from the same
 /// land-free state and are driven by passing and empty attacks.

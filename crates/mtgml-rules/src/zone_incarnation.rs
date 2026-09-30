@@ -21,6 +21,8 @@ use mtgml_state::{
 pub(crate) enum SelectedZoneTransitionKind {
     BattlefieldToOwnerGraveyard,
     LibraryTopToOwnerHand,
+    /// A discard (CR 701.9a): hand to the top of the owner's public graveyard.
+    HandToOwnerGraveyard,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -248,6 +250,16 @@ fn apply_selected_zone_transition_in_workspace_with_reindex(
                 && actual_from.visibility == mtgml_state::VisibilityPartition::FaceDown
                 && actual_from.partition.is_none()
         }
+        SelectedZoneTransitionKind::HandToOwnerGraveyard => {
+            actual_from.zone == mtgml_model::ZoneKind::Hand
+                && actual_from.player == Some(old_object.owner)
+                && matches!(
+                    actual_from.position,
+                    ZonePosition::Unordered | ZonePosition::Top { .. }
+                )
+                && actual_from.visibility == mtgml_state::VisibilityPartition::OwnerOnly
+                && actual_from.partition.is_none()
+        }
     };
     if !source_family_matches {
         return Err(KernelExecutionError::ZoneIncarnation(
@@ -265,7 +277,8 @@ fn apply_selected_zone_transition_in_workspace_with_reindex(
     }
 
     let required_to = match request.kind {
-        SelectedZoneTransitionKind::BattlefieldToOwnerGraveyard => ZoneLocation {
+        SelectedZoneTransitionKind::BattlefieldToOwnerGraveyard
+        | SelectedZoneTransitionKind::HandToOwnerGraveyard => ZoneLocation {
             zone: mtgml_model::ZoneKind::Graveyard,
             player: Some(old_object.owner),
             position: ZonePosition::Top { offset: 0 },
@@ -300,6 +313,7 @@ fn apply_selected_zone_transition_in_workspace_with_reindex(
     if matches!(
         request.kind,
         SelectedZoneTransitionKind::BattlefieldToOwnerGraveyard
+            | SelectedZoneTransitionKind::HandToOwnerGraveyard
     ) {
         if let Some(existing) = state.zones.ordered_zones.get(&graveyard_key) {
             for member in existing {
@@ -348,8 +362,44 @@ fn apply_selected_zone_transition_in_workspace_with_reindex(
         ));
     }
 
+    if let (SelectedZoneTransitionKind::HandToOwnerGraveyard, ZonePosition::Top { offset }) =
+        (request.kind, actual_from.position)
+    {
+        // An ordered hand closes the gap the discarded card leaves.
+        let source_key = actual_from.key();
+        let ordered = next.zones.ordered_zones.get_mut(&source_key).ok_or(
+            KernelExecutionError::ZoneIncarnation(ZoneIncarnationError::UnadmittedSourceFamily),
+        )?;
+        let index = ordered
+            .iter()
+            .position(|member| *member == request.object)
+            .ok_or(KernelExecutionError::ZoneIncarnation(
+                ZoneIncarnationError::UnadmittedSourceFamily,
+            ))?;
+        ordered.remove(index);
+        let members = ordered.clone();
+        if members.is_empty() {
+            next.zones.ordered_zones.remove(&source_key);
+        }
+        for member in members {
+            let location = next.zones.locations.get_mut(&member).ok_or(
+                KernelExecutionError::ZoneIncarnation(ZoneIncarnationError::UnadmittedSourceFamily),
+            )?;
+            if let ZonePosition::Top {
+                offset: member_offset,
+            } = location.position
+            {
+                if member_offset > offset {
+                    location.position = ZonePosition::Top {
+                        offset: member_offset - 1,
+                    };
+                }
+            }
+        }
+    }
     match request.kind {
-        SelectedZoneTransitionKind::BattlefieldToOwnerGraveyard => {
+        SelectedZoneTransitionKind::BattlefieldToOwnerGraveyard
+        | SelectedZoneTransitionKind::HandToOwnerGraveyard => {
             next.foundation_sources.remove(&request.object);
             if let Some(existing) = next.zones.ordered_zones.get(&graveyard_key).cloned() {
                 for member in existing {
@@ -626,6 +676,99 @@ fn apply_selected_zone_transition_in_workspace_with_reindex(
                         },
                     )?;
                 }
+            }
+        }
+        SelectedZoneTransitionKind::HandToOwnerGraveyard => {
+            // The graveyard is public: every perspective learns the card. A
+            // perspective that tracked the hand card follows it; any other
+            // perspective sees it appear.
+            for perspective in state.core.players.keys().copied() {
+                let identity = state
+                    .perspective_identities
+                    .players
+                    .get(&perspective)
+                    .ok_or(KernelExecutionError::ZoneIncarnation(
+                        ZoneIncarnationError::PerspectiveKnowledgeMismatch,
+                    ))?;
+                let knowledge = state.knowledge.players.get(&perspective).ok_or(
+                    KernelExecutionError::ZoneIncarnation(
+                        ZoneIncarnationError::PerspectiveKnowledgeMismatch,
+                    ),
+                )?;
+                let sequence = knowledge.next_visible_sequence;
+                let provenance = KnowledgeAcquisitionReason::Observed {
+                    channel: KnowledgeHistoryChannel::Public,
+                    sequence,
+                    cause: KnowledgeAcquisitionCause::PublicEvent,
+                };
+                let (mutation, observation) =
+                    match identity.object_to_opaque.get(&request.object).copied() {
+                        Some(opaque) => {
+                            if !knowledge.active.contains_key(&opaque) {
+                                return Err(KernelExecutionError::ZoneIncarnation(
+                                    ZoneIncarnationError::PerspectiveKnowledgeMismatch,
+                                ));
+                            }
+                            (
+                                PerspectiveLifecycleMutationV1 {
+                                    identity: IdentityMutationV1::Remap {
+                                        opaque,
+                                        from_object: request.object,
+                                        to_object: new_object,
+                                    },
+                                    knowledge: Some(KnowledgeMutationV1::UpdateLocation {
+                                        opaque,
+                                        fact: KnownLocationFactV2 {
+                                            location: to_location.clone(),
+                                            provenance,
+                                        },
+                                    }),
+                                },
+                                crate::PerspectiveObservationPolicyV1::MovedInSight {
+                                    from_zone: transition.from.zone,
+                                    to_zone: transition.to.zone,
+                                    old_object: request.object,
+                                    new_object,
+                                    reveals_old: true,
+                                    reveals_new: true,
+                                },
+                            )
+                        }
+                        None => {
+                            let opaque = identity.next_opaque_object_id;
+                            (
+                                PerspectiveLifecycleMutationV1 {
+                                    identity: IdentityMutationV1::Allocate {
+                                        opaque,
+                                        object: new_object,
+                                    },
+                                    knowledge: Some(KnowledgeMutationV1::Acquire {
+                                        opaque,
+                                        definition: Some(old_object.card_definition),
+                                        location: Some(to_location.clone()),
+                                        acquisition: provenance,
+                                    }),
+                                },
+                                crate::PerspectiveObservationPolicyV1::Appeared {
+                                    from_zone: transition.from.zone,
+                                    to_zone: transition.to.zone,
+                                    new_object,
+                                },
+                            )
+                        }
+                    };
+                emit_perspective_occurrence(
+                    event_origin,
+                    events.len(),
+                    &mut next,
+                    &mut staged_events,
+                    PerspectiveLifecycleAuditV1 {
+                        perspective,
+                        sequence,
+                        mutation,
+                    },
+                    observation,
+                )?;
             }
         }
         SelectedZoneTransitionKind::LibraryTopToOwnerHand => {

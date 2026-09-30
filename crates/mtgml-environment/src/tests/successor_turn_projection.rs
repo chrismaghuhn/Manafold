@@ -304,3 +304,156 @@ fn attacker_declaration_request_projects_for_both_players() {
     assert!(steps[&P1].next_decision.is_some());
     assert!(steps[&P2].next_decision.is_none());
 }
+
+/// Adds cards with the given definitions to `owner`'s hand; only the owner
+/// tracks them, with the owner's knowledge record.
+fn add_hand_cards(
+    state: &mut EngineStatePartsV3,
+    owner: PlayerId,
+    definitions: &[CardDefinitionId],
+) {
+    for definition in definitions {
+        let parts = &mut state.predecessor_v5;
+        let id = parts.allocators.next_object_id;
+        parts.allocators.next_object_id = GameObjectId(id.0 + 1);
+        let location = ZoneLocation {
+            zone: ZoneKind::Hand,
+            player: Some(owner),
+            position: ZonePosition::Unordered,
+            visibility: VisibilityPartition::OwnerOnly,
+            partition: None,
+        };
+        let physical_card = Some(PhysicalCardId(2_000 + id.0));
+        parts.zones.objects.insert(
+            id,
+            GameObject {
+                id,
+                physical_card,
+                card_definition: *definition,
+                owner,
+                controller: owner,
+                tapped: false,
+                face_down: false,
+            },
+        );
+        parts.zones.locations.insert(id, location.clone());
+        let identity = parts
+            .perspective_identities
+            .players
+            .get_mut(&owner)
+            .unwrap();
+        let opaque = identity.next_opaque_object_id;
+        identity.next_opaque_object_id = mtgml_model::OpaqueObjectId(opaque.0 + 1);
+        identity.object_to_opaque.insert(id, opaque);
+        identity.opaque_to_object.insert(opaque, id);
+        parts
+            .knowledge
+            .players
+            .get_mut(&owner)
+            .unwrap()
+            .active
+            .insert(
+                opaque,
+                mtgml_state::KnowledgeRecordV2 {
+                    opaque_object: opaque,
+                    physical_card,
+                    card_definition: Some(*definition),
+                    known_location: Some(mtgml_state::KnownLocationFactV2 {
+                        location,
+                        provenance: mtgml_state::KnowledgeAcquisitionReason::InitialConfiguration,
+                    }),
+                    acquisition: mtgml_state::KnowledgeAcquisitionReason::InitialConfiguration,
+                    historical_locations: Vec::new(),
+                },
+            );
+        state.card_rules_state.faces.faces.insert(id, 0);
+    }
+}
+
+#[test]
+fn opponent_sees_discarded_card_but_not_kept_cards() {
+    let fixture = crate::basic_land_runtime_v8::fixtures::state_with_two_lands();
+    let mut definitions: Vec<CardDefinitionId> = fixture
+        .predecessor_v5
+        .zones
+        .objects
+        .values()
+        .filter(|object| fixture.predecessor_v5.zones.locations[&object.id].zone == ZoneKind::Hand)
+        .map(|object| object.card_definition)
+        .collect();
+    definitions.sort();
+    definitions.dedup();
+    let [mountain, plains] = definitions[..] else {
+        panic!("fixture hand holds Mountain and Plains");
+    };
+
+    let mut opponent_steps = Vec::new();
+    for kept in [mountain, plains] {
+        let admission = crate::basic_land_runtime_v8::fixtures::game_admission();
+        let mut state = crate::basic_land_runtime_v8::fixtures::state_with_two_lands();
+        state
+            .predecessor_v5
+            .zones
+            .objects
+            .get_mut(&GameObjectId(2))
+            .unwrap()
+            .face_down = false;
+        add_library_cards(&mut state, P1, 3);
+        add_library_cards(&mut state, P2, 3);
+        // Six more cards: the first is kept and differs between the two
+        // games; the last one (highest opaque id) is discarded.
+        add_hand_cards(
+            &mut state,
+            P1,
+            &[kept, mountain, mountain, mountain, mountain, mountain],
+        );
+        mtgml_rules::install_basic_land_request_v4(
+            &admission,
+            &mut state,
+            P1,
+            &EpisodeStatus::Running,
+        )
+        .unwrap();
+        let (_, entering_cleanup) = product_entering(
+            &admission,
+            state,
+            TurnPosition::Ending {
+                step: EndingStep::Cleanup,
+            },
+            1,
+        );
+        let before = entering_cleanup.next_state;
+        let request = before.execution_v4.pending_decision.as_ref().unwrap();
+        assert_eq!(request.purpose, DecisionPurposeV4::HandSizeDiscard);
+        let response = DecisionResponseV3 {
+            schema_version: DECISION_RESPONSE_V3_SCHEMA.to_owned(),
+            player_decision_id: request.player_decision_id,
+            view_sequence: request.view_sequence,
+            answer: DecisionAnswerV2::SelectMany {
+                candidate_ids: vec![request.candidates.last().unwrap().candidate_id],
+            },
+        };
+        let product = mtgml_rules::execute_magic_response_v4(
+            &admission,
+            &before,
+            P1,
+            &response,
+            &EpisodeStatus::Running,
+        )
+        .unwrap();
+        let mut steps = project(&admission, &before, &product);
+        let opponent = steps.remove(&P2).unwrap();
+        assert!(opponent.observed_events.iter().any(|envelope| matches!(
+            envelope.event,
+            ObservedEventKindV4::ObjectMoved {
+                old_object: None,
+                new_object: Some(_),
+                from: ZoneKind::Hand,
+                to: ZoneKind::Graveyard,
+                ..
+            }
+        )));
+        opponent_steps.push(opponent);
+    }
+    assert_eq!(opponent_steps[0], opponent_steps[1]);
+}
