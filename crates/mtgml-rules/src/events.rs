@@ -747,6 +747,7 @@ fn validate_event_delta_state_inner(
     for event in events {
         validate_event_projection_v3(before, after, &event.event)?;
     }
+    validate_zone_transition_chain(before, after, events)?;
     validate_damage_state_projection_v3(before, after, events)?;
     Ok(())
 }
@@ -1201,12 +1202,8 @@ fn validate_event_projection_v3(
     event: &AuthoritativeRuleEventKind,
 ) -> Result<(), EventDeltaError> {
     let valid = match event {
-        AuthoritativeRuleEventKind::ZoneTransition { transition } => {
-            object_snapshot_matches(before, &transition.last_known)
-                && !after.zones.objects.contains_key(&transition.old_object)
-                && object_snapshot_matches(after, &transition.new_snapshot)
-                && after.zones.locations.get(&transition.new_object) == Some(&transition.to)
-        }
+        // Checked as one chain by `validate_zone_transition_chain`.
+        AuthoritativeRuleEventKind::ZoneTransition { .. } => true,
         AuthoritativeRuleEventKind::ObjectCeasedToExist { object } => {
             before.zones.objects.contains_key(object) && !after.zones.objects.contains_key(object)
         }
@@ -1575,20 +1572,130 @@ fn validate_event_projection_v3(
     }
 }
 
-fn object_snapshot_matches(state: &EngineState, snapshot: &mtgml_state::ObjectSnapshot) -> bool {
-    state
-        .zones
-        .objects
-        .get(&snapshot.object)
-        .is_some_and(|object| {
-            object.physical_card == snapshot.physical_card
-                && object.card_definition == snapshot.card_definition
-                && object.owner == snapshot.owner
-                && object.controller == snapshot.controller
-                && object.tapped == snapshot.tapped
-                && object.face_down == snapshot.face_down
+/// Zone transitions compose (CR 400.7: every move makes a new object). They
+/// are replayed in event order over a copy of the before zones: each move must
+/// start from where its card lies at that moment, and the replay must end in
+/// the after zones for every object it created and every ordered zone it
+/// changed.
+fn validate_zone_transition_chain(
+    before: &EngineState,
+    after: &EngineState,
+    events: &[AuthoritativeRuleEvent],
+) -> Result<(), EventDeltaError> {
+    let mismatch = || EventDeltaError::Mismatch;
+    let mut zones = before.zones.clone();
+    let mut left = std::collections::BTreeSet::new();
+    let mut created = std::collections::BTreeSet::new();
+    let mut ordered = std::collections::BTreeSet::new();
+    for event in events {
+        let AuthoritativeRuleEventKind::ZoneTransition { transition } = &event.event else {
+            continue;
+        };
+        if transition.from != transition.last_known.location
+            || transition.to != transition.new_snapshot.location
+            || transition.last_known.object != transition.old_object
+            || transition.new_snapshot.object != transition.new_object
+            || !object_snapshot_matches(&zones, &transition.last_known)
+            || zones.objects.contains_key(&transition.new_object)
+        {
+            return Err(mismatch());
+        }
+        zones.objects.remove(&transition.old_object);
+        let from = zones
+            .locations
+            .remove(&transition.old_object)
+            .ok_or_else(mismatch)?;
+        if let Some(members) = zones.ordered_zones.get_mut(&from.key()) {
+            members.retain(|member| *member != transition.old_object);
+            ordered.insert(from.key());
+        }
+        let snapshot = &transition.new_snapshot;
+        zones.objects.insert(
+            transition.new_object,
+            mtgml_state::GameObject {
+                id: transition.new_object,
+                physical_card: snapshot.physical_card,
+                card_definition: snapshot.card_definition,
+                owner: snapshot.owner,
+                controller: snapshot.controller,
+                tapped: snapshot.tapped,
+                face_down: snapshot.face_down,
+            },
+        );
+        if let mtgml_state::ZonePosition::Top { offset } = transition.to.position {
+            let members = zones.ordered_zones.entry(transition.to.key()).or_default();
+            let index = usize::try_from(offset).map_err(|_| mismatch())?;
+            if index > members.len() {
+                return Err(mismatch());
+            }
+            members.insert(index, transition.new_object);
+            ordered.insert(transition.to.key());
+        }
+        zones
+            .locations
+            .insert(transition.new_object, transition.to.clone());
+        for key in [from.key(), transition.to.key()] {
+            rewitness_ordered_zone(&mut zones, &key)?;
+        }
+        if !created.remove(&transition.old_object) {
+            left.insert(transition.old_object);
+        }
+        created.insert(transition.new_object);
+    }
+    let objects_match = |id: &GameObjectId| {
+        after.zones.objects.get(id) == zones.objects.get(id)
+            && after.zones.locations.get(id) == zones.locations.get(id)
+    };
+    if left.iter().any(|id| after.zones.objects.contains_key(id))
+        || !created.iter().all(objects_match)
+        || ordered.iter().any(|key| {
+            let members = zones.ordered_zones.get(key);
+            after.zones.ordered_zones.get(key) != members
+                || !members.into_iter().flatten().all(objects_match)
         })
-        && state.zones.locations.get(&snapshot.object) == Some(&snapshot.location)
+    {
+        return Err(mismatch());
+    }
+    Ok(())
+}
+
+/// Every member of an ordered zone sits at `Top { offset }` equal to its
+/// index; an emptied zone has no entry.
+fn rewitness_ordered_zone(
+    zones: &mut mtgml_state::ZoneState,
+    key: &mtgml_state::ZoneKey,
+) -> Result<(), EventDeltaError> {
+    let Some(members) = zones.ordered_zones.get(key).cloned() else {
+        return Ok(());
+    };
+    if members.is_empty() {
+        zones.ordered_zones.remove(key);
+        return Ok(());
+    }
+    for (index, member) in members.iter().enumerate() {
+        let location = zones
+            .locations
+            .get_mut(member)
+            .ok_or(EventDeltaError::Mismatch)?;
+        location.position = mtgml_state::ZonePosition::Top {
+            offset: u32::try_from(index).map_err(|_| EventDeltaError::Mismatch)?,
+        };
+    }
+    Ok(())
+}
+
+fn object_snapshot_matches(
+    zones: &mtgml_state::ZoneState,
+    snapshot: &mtgml_state::ObjectSnapshot,
+) -> bool {
+    zones.objects.get(&snapshot.object).is_some_and(|object| {
+        object.physical_card == snapshot.physical_card
+            && object.card_definition == snapshot.card_definition
+            && object.owner == snapshot.owner
+            && object.controller == snapshot.controller
+            && object.tapped == snapshot.tapped
+            && object.face_down == snapshot.face_down
+    }) && zones.locations.get(&snapshot.object) == Some(&snapshot.location)
 }
 
 fn validate_cost_commit_projection(

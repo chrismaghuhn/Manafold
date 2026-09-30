@@ -1385,6 +1385,87 @@ mod tests {
         assert!(!has_play_land(&after));
     }
 
+    /// One transition in which the active player draws `count` cards, built
+    /// the way `progress` builds every transition.
+    fn draw_in_one_transition(
+        admission: &ExecutableProfileAdmissionV1,
+        state: &EngineState,
+        count: usize,
+    ) -> Result<crate::BasicLandTransitionProduct, Error> {
+        let request = pending(state).clone();
+        let mut next = state.clone();
+        next.execution.pending_decision = None;
+        next.revision = StateRevision(state.revision.0 + 1);
+        let active = next.core.active_player;
+        let mut facts = Facts::default();
+        for _ in 0..count {
+            draw(&mut next, active, &mut facts)?;
+        }
+        finish(
+            admission,
+            state,
+            &request,
+            next,
+            facts,
+            NextDecision::Priority(active),
+        )
+    }
+
+    #[test]
+    fn two_draws_in_one_transition_validate() {
+        let (admission, state) = game(3);
+        let state = pass_until(&admission, state, at(UPKEEP, 2));
+        let hand_before = zone_count(&state, P2, ZoneKind::Hand);
+        let product = draw_in_one_transition(&admission, &state, 2).unwrap();
+        let after = apply(&state, &product);
+        assert_eq!(zone_count(&after, P2, ZoneKind::Hand), hand_before + 2);
+    }
+
+    #[test]
+    fn a_stale_second_draw_location_is_rejected() {
+        let (admission, state) = game(3);
+        let state = pass_until(&admission, state, at(UPKEEP, 2));
+        let mut product = draw_in_one_transition(&admission, &state, 2).unwrap();
+        // The second draw claims the card was where it lay before the first
+        // draw moved it up: true of `before`, false when the draw happened.
+        let second = product
+            .events
+            .iter()
+            .filter_map(|event| match &event.event {
+                AuthoritativeRuleEventKind::ZoneTransition { transition } => {
+                    Some(transition.old_object)
+                }
+                _ => None,
+            })
+            .nth(1)
+            .unwrap();
+        let stale = state.zones.locations[&second].clone();
+        assert_ne!(stale.position, ZonePosition::Top { offset: 0 });
+        for event in &mut product.events {
+            if let AuthoritativeRuleEventKind::ZoneTransition { transition } = &mut event.event {
+                if transition.old_object == second {
+                    transition.last_known.location = stale.clone();
+                    transition.from = stale.clone();
+                }
+            }
+        }
+        for operation in &mut product.delta.operations {
+            if let SemanticDeltaOperation::ZoneTransition { transition } = operation {
+                if transition.old_object == second {
+                    transition.last_known.location = stale.clone();
+                    transition.from = stale.clone();
+                }
+            }
+        }
+        assert!(crate::events::validate_events_for_built_delta_v3(
+            &state,
+            &product.next_state,
+            &product.events,
+            &product.delta,
+        )
+        .is_err());
+    }
+
     #[test]
     fn built_delta_check_rejects_another_after_state() {
         let (admission, state) = game(3);
