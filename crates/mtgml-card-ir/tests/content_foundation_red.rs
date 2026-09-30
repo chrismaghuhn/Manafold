@@ -348,7 +348,7 @@ fn capability_registry_closure_uses_registered_versions_and_lifecycle() {
     manifest.definitions[0]
         .explicit_additional_requirements
         .push(mtgml_model::CapabilityRequirementV1 {
-            key: "rules/basic-priority".to_owned(),
+            key: "rules/draw-card".to_owned(),
             version: "0.1.0".to_owned(),
         });
     let bytes = encode_content_manifest_v1(&manifest).unwrap();
@@ -361,7 +361,7 @@ fn capability_registry_closure_uses_registered_versions_and_lifecycle() {
         mtgml_card_ir::RequiredCapabilityLifecycleV1::Covered,
     )
     .unwrap();
-    assert_eq!(report.resolved_capabilities.len(), 4);
+    assert_eq!(report.resolved_capabilities.len(), 3);
     assert!(report
         .resolved_capabilities
         .iter()

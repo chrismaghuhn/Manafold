@@ -33,22 +33,21 @@
       "benchmark_scenarios": [],
       "category": "core_rule",
       "conformance_cases": [
-        "basic_priority_first_pass_transfers_and_second_advances_one_step",
-        "production_basic_priority_active_priority_and_after_first_pass_restore_fork_and_replay",
-        "foundation_v2_exact_turn_composition_closes_through_p2_draw"
+        "first_pass_only_transfers_priority",
+        "acting_after_a_pass_restarts_the_pass_succession"
       ],
       "dependencies": [
         "rules/state-based-actions-combat",
         "rules/turn-structure"
       ],
       "implementation_paths": [
-        "crates/mtgml-rules/src/basic_priority.rs",
-        "crates/mtgml-rules/src/magic.rs"
+        "crates/mtgml-rules/src/turn_progression.rs",
+        "crates/mtgml-rules/src/basic_land_v4.rs"
       ],
       "information_risk": "medium",
       "key": "rules/basic-priority",
       "lifecycle": "covered",
-      "notes": "Covered for the bounded Foundation V2 M3 scope by the listed executable cases and cumulative interaction evidence. Unsupported behavior reaches a fail closed boundary. No certification, card, deck, format, Commander, broad Magic, or playability support is claimed.",
+      "notes": "Covered for two-player basic-land games on the native turn progression by the listed rules and production-endpoint cases. Priority passes with land plays and mana abilities as the only actions; no stack. No certification, card, deck, format, or playability support is claimed.",
       "owners": [
         "priority"
       ],
@@ -66,25 +65,19 @@
       "benchmark_scenarios": [],
       "category": "core_rule",
       "conformance_cases": [
-        "bounded_turn_cleanup_resets_marks_and_hands_off_through_next_upkeep",
-        "bounded_cleanup_restore_rejects_active_hand_eight_atomically",
-        "bounded_cleanup_restore_rejects_sba_unstable_state_without_clearing_damage",
-        "foundation_v2_exact_turn_composition_closes_through_p2_draw"
+        "cleanup_with_eight_cards_asks_active_player_to_discard_one",
+        "discard_moves_chosen_card_then_next_turn_starts"
       ],
       "dependencies": [
         "rules/turn-structure"
       ],
       "implementation_paths": [
-        "crates/mtgml-rules/src/magic.rs",
-        "crates/mtgml-rules/src/turn_structure.rs",
-        "crates/mtgml-rules/src/events.rs",
-        "crates/mtgml-rules/src/semantic_cursor.rs",
-        "crates/mtgml-rules/src/contract.rs"
+        "crates/mtgml-rules/src/turn_progression.rs"
       ],
       "information_risk": "high",
       "key": "rules/cleanup-reset",
       "lifecycle": "covered",
-      "notes": "Covered for the bounded Foundation V2 M3 scope by the listed executable cases and cumulative interaction evidence. Unsupported behavior reaches a fail closed boundary. No certification, card, deck, format, Commander, broad Magic, or playability support is claimed.",
+      "notes": "Covered for two-player basic-land games on the native turn progression by the listed rules and production-endpoint cases. Discard of one card to maximum hand size; there is no damage to reset in this slice. No certification, card, deck, format, or playability support is claimed.",
       "owners": [
         "turn"
       ],
@@ -100,32 +93,17 @@
       ],
       "benchmark_scenarios": [],
       "category": "core_rule",
-      "conformance_cases": [
-        "combat_damage_simultaneously_marks_and_performs_post_damage_sba",
-        "combat_damage_two_lethal_creatures_leave_from_one_sba_snapshot",
-        "combat_damage_multiple_and_mixed_attackers_are_complete_and_simultaneous",
-        "combat_damage_pending_checkpoint_restore_and_fork_reproduce_forced_product",
-        "foundation_v2_exact_turn_composition_closes_through_p2_draw"
-      ],
+      "conformance_cases": [],
       "dependencies": [
         "rules/declare-blockers",
         "rules/damage-and-life",
         "rules/state-based-actions-combat"
       ],
-      "implementation_paths": [
-        "crates/mtgml-rules/src/combat_damage.rs",
-        "crates/mtgml-rules/src/magic.rs",
-        "crates/mtgml-rules/src/events.rs",
-        "crates/mtgml-rules/src/semantic_cursor.rs",
-        "crates/mtgml-rules/src/contract.rs",
-        "crates/mtgml-environment/src/player_projection.rs",
-        "crates/mtgml-observation/src/magic_observation.rs",
-        "crates/mtgml-replay/src/v6.rs"
-      ],
+      "implementation_paths": [],
       "information_risk": "high",
       "key": "rules/combat-damage",
-      "lifecycle": "covered",
-      "notes": "Covered for the bounded Foundation V2 M3 scope by the listed executable cases and cumulative interaction evidence. Unsupported behavior reaches a fail closed boundary. No certification, card, deck, format, Commander, broad Magic, or playability support is claimed.",
+      "lifecycle": "specified",
+      "notes": "Specified only: the implementation was removed with the old rules kernel on 2026-09-30; see git history. No certification, card, deck, format, or playability support is claimed.",
       "owners": [
         "combat"
       ],
@@ -143,26 +121,20 @@
       "benchmark_scenarios": [],
       "category": "core_rule",
       "conformance_cases": [
-        "combat_phase_reaches_explicit_attacker_choice_and_commits_public_participation",
-        "explicit_empty_attack_skips_blockers_and_damage_then_ends_combat",
-        "foundation_v2_exact_turn_composition_closes_through_p2_draw"
+        "beginning_of_combat_passes_reach_empty_attacker_declaration",
+        "empty_attack_declaration_ends_combat_without_damage"
       ],
       "dependencies": [
         "rules/basic-priority",
         "rules/turn-structure"
       ],
       "implementation_paths": [
-        "crates/mtgml-rules/src/basic_priority.rs",
-        "crates/mtgml-rules/src/magic.rs",
-        "crates/mtgml-rules/src/semantic_cursor.rs",
-        "crates/mtgml-environment/src/player_projection.rs",
-        "crates/mtgml-observation/src/magic_observation.rs",
-        "crates/mtgml-replay/src/v6.rs"
+        "crates/mtgml-rules/src/turn_progression.rs"
       ],
       "information_risk": "medium",
       "key": "rules/combat-phase",
       "lifecycle": "covered",
-      "notes": "Covered for the bounded Foundation V2 M3 scope by the listed executable cases and cumulative interaction evidence. Unsupported behavior reaches a fail closed boundary. No certification, card, deck, format, Commander, broad Magic, or playability support is claimed.",
+      "notes": "Covered for two-player basic-land games on the native turn progression by the listed rules and production-endpoint cases. Beginning of combat to end of combat with no attackers; blockers and damage steps are skipped. No certification, card, deck, format, or playability support is claimed.",
       "owners": [
         "combat"
       ],
@@ -178,27 +150,13 @@
       ],
       "benchmark_scenarios": [],
       "category": "core_rule",
-      "conformance_cases": [
-        "combat_damage_unblocked_assignment_is_typed_public_and_replay_exact",
-        "combat_damage_simultaneously_marks_and_performs_post_damage_sba",
-        "zero_power_has_no_damage_event_and_lethal_player_damage_has_no_priority",
-        "foundation_v2_exact_turn_composition_closes_through_p2_draw"
-      ],
+      "conformance_cases": [],
       "dependencies": [],
-      "implementation_paths": [
-        "crates/mtgml-state/src/damage.rs",
-        "crates/mtgml-state/src/core.rs",
-        "crates/mtgml-state/src/delta.rs",
-        "crates/mtgml-rules/src/combat_damage.rs",
-        "crates/mtgml-rules/src/events.rs",
-        "crates/mtgml-rules/src/semantic_cursor.rs",
-        "crates/mtgml-environment/src/player_projection.rs",
-        "crates/mtgml-observation/src/magic_observation.rs"
-      ],
+      "implementation_paths": [],
       "information_risk": "high",
       "key": "rules/damage-and-life",
-      "lifecycle": "covered",
-      "notes": "Covered for the bounded Foundation V2 M3 scope by the listed executable cases and cumulative interaction evidence. Unsupported behavior reaches a fail closed boundary. No certification, card, deck, format, Commander, broad Magic, or playability support is claimed.",
+      "lifecycle": "specified",
+      "notes": "Specified only: the implementation was removed with the old rules kernel on 2026-09-30; see git history. No certification, card, deck, format, or playability support is claimed.",
       "owners": [
         "damage"
       ],
@@ -215,28 +173,18 @@
       "benchmark_scenarios": [],
       "category": "core_rule",
       "conformance_cases": [
-        "three_attacker_decision_represents_each_legal_subset_once",
-        "zero_eligible_attackers_still_require_an_explicit_empty_response",
-        "nine_eligible_attackers_fail_before_decision_without_mutation",
-        "foundation_v2_exact_turn_composition_closes_through_p2_draw"
+        "empty_attack_declaration_ends_combat_without_damage"
       ],
       "dependencies": [
         "rules/combat-phase"
       ],
       "implementation_paths": [
-        "crates/mtgml-rules/src/magic.rs",
-        "crates/mtgml-rules/src/events.rs",
-        "crates/mtgml-rules/src/semantic_cursor.rs",
-        "crates/mtgml-decision/src/v2.rs",
-        "crates/mtgml-environment/src/player_projection.rs",
-        "crates/mtgml-observation/src/magic_observation.rs",
-        "python/src/mtgml/_magic_combat_observation.py",
-        "crates/mtgml-replay/src/v6.rs"
+        "crates/mtgml-rules/src/turn_progression.rs"
       ],
       "information_risk": "high",
       "key": "rules/declare-attackers",
       "lifecycle": "covered",
-      "notes": "Covered for the bounded Foundation V2 M3 scope by the listed executable cases and cumulative interaction evidence. Unsupported behavior reaches a fail closed boundary. No certification, card, deck, format, Commander, broad Magic, or playability support is claimed.",
+      "notes": "Covered for two-player basic-land games on the native turn progression by the listed rules and production-endpoint cases. The empty declaration only; there are no creatures in this slice. No certification, card, deck, format, or playability support is claimed.",
       "owners": [
         "combat"
       ],
@@ -252,35 +200,15 @@
       ],
       "benchmark_scenarios": [],
       "category": "core_rule",
-      "conformance_cases": [
-        "one_blocker_three_attacker_choice_space_is_exactly_four_assignments",
-        "zero_eligible_blockers_uses_deterministic_empty_assignment_without_decision",
-        "more_than_one_eligible_blocker_rejects_before_decision_without_mutation",
-        "blocker_decision_restore_fork_and_replay_v6_are_exact",
-        "foundation_v2_exact_turn_composition_closes_through_p2_draw"
-      ],
+      "conformance_cases": [],
       "dependencies": [
         "rules/declare-attackers"
       ],
-      "implementation_paths": [
-        "crates/mtgml-state/src/core.rs",
-        "crates/mtgml-state/src/delta.rs",
-        "crates/mtgml-rules/src/basic_priority.rs",
-        "crates/mtgml-rules/src/events.rs",
-        "crates/mtgml-rules/src/magic.rs",
-        "crates/mtgml-rules/src/contract.rs",
-        "crates/mtgml-rules/src/semantic_cursor.rs",
-        "crates/mtgml-environment/src/player_projection.rs",
-        "crates/mtgml-observation/src/magic_observation.rs",
-        "crates/mtgml-replay/src/v6.rs",
-        "python/src/mtgml/_magic_combat_observation_v3.py",
-        "python/src/mtgml/_replay_v6.py",
-        "schemas/magic-combat-observation.v3.schema.json"
-      ],
+      "implementation_paths": [],
       "information_risk": "high",
       "key": "rules/declare-blockers",
-      "lifecycle": "covered",
-      "notes": "Covered for the bounded Foundation V2 M3 scope by the listed executable cases and cumulative interaction evidence. Unsupported behavior reaches a fail closed boundary. No certification, card, deck, format, Commander, broad Magic, or playability support is claimed.",
+      "lifecycle": "specified",
+      "notes": "Specified only: the implementation was removed with the old rules kernel on 2026-09-30; see git history. No certification, card, deck, format, or playability support is claimed.",
       "owners": [
         "combat"
       ],
@@ -297,24 +225,21 @@
       "benchmark_scenarios": [],
       "category": "core_rule",
       "conformance_cases": [
-        "m3.draw.upkeep-pass-s2-priority-replay",
-        "m3.draw.hidden-world-noninterference",
-        "m3.draw.rejection-atomicity",
-        "m3.draw.postdraw-order-restore-fork"
+        "upkeep_passes_draw_one_card_for_the_active_player",
+        "opponent_never_learns_drawn_cards_end_to_end"
       ],
       "dependencies": [
         "rules/turn-structure",
         "rules/zone-incarnation"
       ],
       "implementation_paths": [
-        "crates/mtgml-rules/src/magic.rs",
-        "crates/mtgml-rules/src/contract.rs",
-        "crates/mtgml-rules/src/product.rs"
+        "crates/mtgml-rules/src/turn_progression.rs",
+        "crates/mtgml-rules/src/zone_incarnation.rs"
       ],
       "information_risk": "high",
       "key": "rules/draw-card",
       "lifecycle": "covered",
-      "notes": "Covered for the bounded Foundation V2 M3 scope by the listed executable cases and cumulative interaction evidence. Unsupported behavior reaches a fail closed boundary. No certification, card, deck, format, Commander, broad Magic, or playability support is claimed.",
+      "notes": "Covered for two-player basic-land games on the native turn progression by the listed rules and production-endpoint cases. The draw-step draw; the empty-library loss is rules/state-based-actions-empty-library. No certification, card, deck, format, or playability support is claimed.",
       "owners": [
         "turn"
       ],
@@ -377,24 +302,15 @@
       ],
       "benchmark_scenarios": [],
       "category": "core_rule",
-      "conformance_cases": [
-        "production_state_based_actions_identity_is_distinct_and_executes_the_reviewed_sba_scope",
-        "task9b_no_order_post_damage_application_prunes_one_blocker_and_moves_it",
-        "task9b_one_player_loss_sets_has_lost_and_terminal_rules_loss",
-        "task9b_simultaneous_losses_set_both_flags_and_terminal_draw",
-        "foundation_v2_exact_turn_composition_closes_through_p2_draw"
-      ],
+      "conformance_cases": [],
       "dependencies": [
         "rules/zone-incarnation"
       ],
-      "implementation_paths": [
-        "crates/mtgml-rules/src/state_based_actions.rs",
-        "crates/mtgml-rules/src/zone_incarnation.rs"
-      ],
+      "implementation_paths": [],
       "information_risk": "high",
       "key": "rules/state-based-actions-combat",
-      "lifecycle": "covered",
-      "notes": "Covered for the bounded Foundation V2 M3 scope by the listed executable cases and cumulative interaction evidence. Unsupported behavior reaches a fail closed boundary. No certification, card, deck, format, Commander, broad Magic, or playability support is claimed.",
+      "lifecycle": "specified",
+      "notes": "Specified only: the implementation was removed with the old rules kernel on 2026-09-30; see git history. No certification, card, deck, format, or playability support is claimed.",
       "owners": [
         "state_based_actions"
       ],
@@ -439,45 +355,18 @@
       "benchmark_scenarios": [],
       "category": "core_rule",
       "conformance_cases": [
-        "s1.temporal.successor-table",
-        "s1.untap.to-upkeep",
-        "s1.cleanup.next-turn",
-        "s1.deterministic-rerun",
-        "s1.untap.one-active-tapped",
-        "s1.untap.multiple-active-tapped",
-        "s1.untap.already-untapped",
-        "s1.untap.nonactive-control",
-        "s1.untap.narrow-mutation",
-        "s1.admission.not-two-players",
-        "s1.admission.priority-held",
-        "s1.admission.unsupported-profile",
-        "s1.downstream.upkeep-priority",
-        "s1.downstream.draw",
-        "s1.downstream.combat",
-        "s1.cleanup.reset-required",
-        "s1.turn-number-overflow",
-        "s1.invalid-temporal-state",
-        "s1.fabricated-response",
-        "s1.catalog.exact-closure",
-        "s1.catalog.wrong-closure",
-        "s1.catalog.program-pairing",
-        "s1.observation.temporal-fields",
-        "s1.observation.public-untap",
-        "production_basic_priority_end_step_two_pass_reference_replay_closes_through_cleanup",
-        "complete_bounded_turn_runs_from_untap_through_cleanup_with_explicit_endpoints"
+        "end_step_passes_run_cleanup_and_open_next_upkeep",
+        "two_players_complete_a_turn_and_reach_the_next_upkeep"
       ],
       "dependencies": [],
       "implementation_paths": [
-        "crates/mtgml-rules/src/turn_structure.rs",
-        "crates/mtgml-rules/src/magic.rs",
-        "crates/mtgml-rules/src/contract.rs",
-        "crates/mtgml-rules/src/semantic_cursor.rs",
-        "crates/mtgml-rules/src/program_kernel.rs"
+        "crates/mtgml-rules/src/turn_progression.rs",
+        "crates/mtgml-rules/src/turn_structure.rs"
       ],
       "information_risk": "low",
       "key": "rules/turn-structure",
       "lifecycle": "covered",
-      "notes": "Covered for the bounded Foundation V2 M3 scope by the listed executable cases and cumulative interaction evidence. Unsupported behavior reaches a fail closed boundary. No certification, card, deck, format, Commander, broad Magic, or playability support is claimed.",
+      "notes": "Covered for two-player basic-land games on the native turn progression by the listed rules and production-endpoint cases. Every step from untap to cleanup and the turn change. No certification, card, deck, format, or playability support is claimed.",
       "owners": [
         "turn"
       ],
@@ -494,49 +383,19 @@
       "benchmark_scenarios": [],
       "category": "core_rule",
       "conformance_cases": [
-        "s2.zone.battlefield_graveyard",
-        "s2.zone.library_hand_top",
-        "s2.zone.graveyard_order",
-        "s2.zone.delta_reapplication",
-        "s2.identity.public_remap",
-        "s2.identity.owner_hand_private",
-        "s2.identity.old_reference_closure",
-        "s2.identity.foundation_source_cessation",
-        "s2.identity.destination_canonical_state",
-        "s2.observation.lifecycle_matrix",
-        "s2.observation.library_noninterference",
-        "s2.rejection.source_absent",
-        "s2.rejection.source_location",
-        "s2.rejection.unadmitted_family",
-        "s2.rejection.wrong_owner_destination",
-        "s2.rejection.unsupported_profile",
-        "s2.rejection.library_not_top",
-        "s2.rejection.stale_old_incarnation",
-        "s2.state.object_id_exhaustion",
-        "s2.state.invalid_before_state",
-        "s2.mutant.object_id_reuse",
-        "s2.mutant.physical_continuity",
-        "s2.mutant.snapshot_pairing",
-        "s2.mutant.lifecycle_pairing",
-        "s2.mutant.delta_pairing",
-        "s2.mutant.graveyard_order",
-        "s2.mutant.old_reference",
-        "s2.mutant.stale_old_lifecycle_occurrence",
-        "s2.replay.checkpoint_restore",
-        "s2.replay.fork",
-        "s2.replay.rerun"
+        "workspace_composes_two_moves_at_one_revision_and_reverse_inserts_order",
+        "second_discard_shifts_the_known_graveyard_card",
+        "upkeep_passes_draw_one_card_for_the_active_player"
       ],
       "dependencies": [],
       "implementation_paths": [
         "crates/mtgml-rules/src/zone_incarnation.rs",
-        "crates/mtgml-rules/src/contract.rs",
-        "crates/mtgml-rules/src/semantic_cursor.rs",
-        "crates/mtgml-state/src/identity.rs"
+        "crates/mtgml-rules/src/turn_progression.rs"
       ],
       "information_risk": "high",
       "key": "rules/zone-incarnation",
       "lifecycle": "covered",
-      "notes": "Covered for the bounded Foundation V2 M3 scope by the listed executable cases and cumulative interaction evidence. Unsupported behavior reaches a fail closed boundary. No certification, card, deck, format, Commander, broad Magic, or playability support is claimed.",
+      "notes": "Covered for two-player basic-land games on the native turn progression by the listed rules and production-endpoint cases. Library top to hand (draw) and hand to graveyard (discard); land play moves through the basic-land path. No certification, card, deck, format, or playability support is claimed.",
       "owners": [
         "zones_identity"
       ],

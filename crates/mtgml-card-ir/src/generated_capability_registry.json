@@ -36,8 +36,8 @@
         "rules/state-based-actions-combat"
       ],
       "key": "rules/combat-damage",
-      "lifecycle": "covered",
-      "lifecycle_rank": 3,
+      "lifecycle": "specified",
+      "lifecycle_rank": 1,
       "version": "0.1.0"
     },
     {
@@ -53,8 +53,8 @@
     {
       "dependencies": [],
       "key": "rules/damage-and-life",
-      "lifecycle": "covered",
-      "lifecycle_rank": 3,
+      "lifecycle": "specified",
+      "lifecycle_rank": 1,
       "version": "0.1.0"
     },
     {
@@ -71,8 +71,8 @@
         "rules/declare-attackers"
       ],
       "key": "rules/declare-blockers",
-      "lifecycle": "covered",
-      "lifecycle_rank": 3,
+      "lifecycle": "specified",
+      "lifecycle_rank": 1,
       "version": "0.1.0"
     },
     {
@@ -108,8 +108,8 @@
         "rules/zone-incarnation"
       ],
       "key": "rules/state-based-actions-combat",
-      "lifecycle": "covered",
-      "lifecycle_rank": 3,
+      "lifecycle": "specified",
+      "lifecycle_rank": 1,
       "version": "0.1.0"
     },
     {
