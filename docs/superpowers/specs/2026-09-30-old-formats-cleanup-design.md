@@ -1,6 +1,6 @@
 # Old Formats Cleanup (Stage 2) — Design
 
-**Status:** DRAFT for owner review, 2026-09-30. Design approved in conversation; this document awaits review before planning.
+**Status:** APPROVED by the owner, 2026-09-30. During planning, §4 was reordered so that every commit builds (consumers before what they consume); the content is unchanged.
 
 **Goal:** delete every historical format that no current type and no production path reaches, so that R1/W1 card work starts on a base where each format exists once.
 
@@ -52,15 +52,18 @@ This is stage 2 of three (`docs/superpowers/specs/2026-09-30-one-runtime-cleanup
 
 "Stays" names the current items kept in a mixed file.
 
-1. **Catalog and synthetic path (D3, D4).**
-   - First, the checkpoint V8 tests move to the basic-land admission.
-   - Then delete:
-     - `contracts/catalog/semantic-contracts.v1.json`
-     - `scripts/generate_semantic_contract_catalog.py`
-     - `crates/mtgml-environment/src/semantic_catalog_generated.rs` and `semantic_catalog_kat.rs`
-     - `python/tests/test_semantic_contract_catalog_generator.py`
-     - the synthetic variants and branches
-     - the two KAT cases
+Consumers are removed before what they consume, so every commit builds: replay uses the synthetic variants, historical digests and decision responses; checkpoint V7 tests use the catalog; player steps V1–V3 embed decision requests V1–V3.
+
+1. **Replay V1–V7.**
+   - Delete:
+     - `mtgml-replay` `v1.rs`, `v3.rs`, `v4.rs`, `v5.rs`, `v6.rs`, `manifest.rs`, `recorder.rs`, `src/tests.rs`
+     - `tests/gen_v5_fixtures`, `gen_v6_fixtures`, `p0_red`, `replay_v5_red`, `replay_v6_red`, `replay_v7_red`
+     - the replay-only items of `v2.rs` and `v7.rs`; stays: `RandomnessIdentityV2` and `deserialize_root_seed_hex` from `v2.rs`, and `ContentContractMaterialV1`, `SemanticContractMaterialV7` and their limits from `v7.rs`
+     - the V1/V4 items of `identity.rs`; stays: `KernelIdentityV1` and `DeckIdentityV1`
+     - `ReplayValidationError` variants nothing constructs afterwards
+     - the replay V1–V7 wire codecs, schemas, examples, negatives and wire fixtures
+     - the Python `_replay_v1` and `_replay_v3` modules, and the historical parts of `_replay_v2` and `_replay_v4`–`_replay_v7` (stays: what `_replay_v8` imports)
+     - their tests
 2. **Checkpoint V4–V7 and historical digests.**
    - Delete:
      - environment `checkpoint.rs` (V4–V6) and `checkpoint_v7.rs`
@@ -74,27 +77,16 @@ This is stage 2 of three (`docs/superpowers/specs/2026-09-30-one-runtime-cleanup
      - the V5–V7 checkpoint-digest and V6 state-digest KATs and negatives
      - the Python checkpoint-digest V3–V7 functions
      - the tests of all of these
-3. **Replay V1–V7.**
-   - Delete:
-     - `mtgml-replay` `v1.rs`, `v3.rs`, `v4.rs`, `v5.rs`, `v6.rs`, `manifest.rs`, `recorder.rs`, `src/tests.rs`
-     - `tests/gen_v5_fixtures`, `gen_v6_fixtures`, `p0_red`, `replay_v5_red`, `replay_v6_red`, `replay_v7_red`
-     - the replay-only items of `v2.rs` and `v7.rs`; stays: `RandomnessIdentityV2` and `deserialize_root_seed_hex` from `v2.rs`, and `ContentContractMaterialV1`, `SemanticContractMaterialV7` and their limits from `v7.rs`
-     - the V1/V4 items of `identity.rs`; stays: `KernelIdentityV1` and `DeckIdentityV1`
-     - `ReplayValidationError` variants nothing constructs afterwards
-     - the replay V1–V7 wire codecs, schemas, examples, negatives and wire fixtures
-     - the Python `_replay_v1` and `_replay_v3` modules, and the historical parts of `_replay_v2` and `_replay_v4`–`_replay_v7` (stays: what `_replay_v8` imports)
-     - their tests
-4. **Decision V1–V3, player-facing.**
-   - Delete:
-     - the player decision requests V1–V3 and the responses V1 and V2
-     - `AuthoritativeDecisionRequestV2/V3::project_player_request`
-     - `ExecutionStateV3::selected_bindings`
-     - the historical wire codecs, including `decision_response_v2`
-     - the schemas, examples, negatives and wire fixtures
-     - Python `decision_v3` and the historical parts of `decision.py`
-     - their tests
-   - Stays: response V3, request V4, and the V1/V2/V3 decision types that state, rules and V4 embed (`ActionCandidate`, `DecisionDomainV2`, `DecisionAnswerV2`, `VisibleCandidateV2`, the V3 candidate and authoritative request types).
-5. **Observation, steps and events V1–V3, and old observation payloads.**
+3. **Catalog and synthetic path (D3, D4).**
+   - First, the checkpoint V8 tests move to the basic-land admission.
+   - Then delete:
+     - `contracts/catalog/semantic-contracts.v1.json`
+     - `scripts/generate_semantic_contract_catalog.py`
+     - `crates/mtgml-environment/src/semantic_catalog_generated.rs` and `semantic_catalog_kat.rs`
+     - `python/tests/test_semantic_contract_catalog_generator.py`
+     - the synthetic variants and branches
+     - the two KAT cases
+4. **Observation, steps and events V1–V3, and old observation payloads.**
    - Delete:
      - `PlayerStep` (V1) and `PlayerStepV2`; `player_step_v3.rs`
      - `observed_event.rs` (V1/V2)
@@ -110,6 +102,16 @@ This is stage 2 of three (`docs/superpowers/specs/2026-09-30-one-runtime-cleanup
      - `PlayerStepSubmissionV1` and the submission and error codes
      - the V3 event leaf types that V4 events use (`ObservedCounterKindV3`, `ManaPoolAfterV1`, `ObservedFaceV1`)
      - the basic-land observation V1 parts and the synthetic step enums V4 uses
+5. **Decision V1–V3, player-facing.**
+   - Delete:
+     - the player decision requests V1–V3 and the responses V1 and V2
+     - `AuthoritativeDecisionRequestV2/V3::project_player_request`
+     - `ExecutionStateV3::selected_bindings`
+     - the historical wire codecs, including `decision_response_v2`
+     - the schemas, examples, negatives and wire fixtures
+     - Python `decision_v3` and the historical parts of `decision.py`
+     - their tests
+   - Stays: response V3, request V4, and the V1/V2/V3 decision types that state, rules and V4 embed (`ActionCandidate`, `DecisionDomainV2`, `DecisionAnswerV2`, `VisibleCandidateV2`, the V3 candidate and authoritative request types).
 6. **Documents (D6)**, the remaining gate adjustments, and final verification.
 
 ## 5. What stays for stage 3
