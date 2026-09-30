@@ -14,8 +14,6 @@ impl From<PlayerServiceErrorCodeV1> for PlayerEndpointError {
     }
 }
 
-use crate::checkpoint::CheckpointValidationError;
-use crate::checkpoint_v7::CheckpointV7Error;
 use crate::checkpoint_v8::CheckpointV8Error;
 
 #[derive(Debug, Error)]
@@ -38,18 +36,12 @@ pub enum ControllerError {
     UnknownPlayer,
     #[error("controller lock is poisoned")]
     Poisoned,
-    #[error("checkpoint validation failed: {0}")]
-    CheckpointValidation(#[from] CheckpointValidationError),
-    #[error("successor checkpoint validation failed: {0}")]
-    CheckpointV7(#[from] CheckpointV7Error),
     #[error("G0 checkpoint validation failed: {0}")]
     CheckpointV8(#[from] CheckpointV8Error),
     #[error("replay validation failed: {0}")]
     ReplayValidation(#[from] ReplayValidationError),
     #[error("replay execution failed: {0}")]
     ReplayExecution(#[from] ReplayExecutionError),
-    #[error("semantic contract is not supported by this runtime")]
-    SemanticContractUnsupported,
     #[error("backend failure: {0}")]
     Backend(String),
 }

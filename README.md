@@ -48,9 +48,8 @@ Decision request V4 / response V3, ObservedEvent V4, PlayerStep V4,
 ObservationEnvelope V2, PlayerInformationState V3 / InformationStateDigest
 V3, and `magic-shared-execution-observation.v1`. Its executable admission
 remains bounded to Mountain and Plains under `basic-land@1.0.0`; G0j preserves
-that M4.2 slice and adds no spell or deck support. It is the only runtime:
-older format versions (V7 and earlier) keep readers and fixtures until they
-are removed, but nothing writes or executes them. M4.2 is
+that M4.2 slice and adds no spell or deck support. It is the only runtime,
+and each format has only its current version; older versions were removed. M4.2 is
 `COMPLETE` only for the bounded Mountain/Plains slice; this does not claim
 broader card, deck, format, or playability support.
 

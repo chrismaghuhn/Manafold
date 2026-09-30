@@ -1,14 +1,5 @@
 {
   "catalog_version": "1.0.0",
-  "observed_event_kinds": [
-    "object_moved",
-    "object_ceased_to_exist",
-    "life_changed",
-    "object_tapped",
-    "decision_available",
-    "random_outcome_visible",
-    "public_outcome"
-  ],
   "player_results": [
     ["Win", "WIN", "win"],
     ["Loss", "LOSS", "loss"],
@@ -17,8 +8,7 @@
     ["Unresolved", "UNRESOLVED", "unresolved"]
   ],
   "schema_ids": {
-    "episode_status": "episode-status.v1",
-    "observed_event": "observed-event-envelope.v1"
+    "episode_status": "episode-status.v1"
   },
   "schema_version": "contract-vocabulary-catalog.v1",
   "scope": "mechanical_cross_language_vocabulary_only",
@@ -29,8 +19,6 @@
     "semantic.decision",
     "semantic.decision_response",
     "semantic.magic_m3_observation",
-    "semantic.magic_combat_observation",
-    "semantic.magic_combat_observation_v4",
     "semantic.magic_basic_land_observation_v1",
     "semantic.observation",
     "semantic.information_state",
@@ -39,7 +27,6 @@
     "semantic.episode_status",
     "semantic.replay_manifest",
     "semantic.replay",
-    "semantic.synthetic_m3_observation",
     "fixture.unknown_contract"
   ],
   "terminal_reasons": [

@@ -18,6 +18,17 @@ fn json_to_cbor(value: &serde_json::Value) -> Value {
     }
 }
 
+/// Decodes a V6 input payload the way FullStateDigestV7 validates its V6
+/// components: canonical CBOR, typed decode, and byte-identical re-encoding.
+fn decode_v6_payload(payload: &[u8]) -> Result<crate::FullStateDigestInputV6, ()> {
+    let value = mtgml_persistence::cbor::decode_canonical(payload).map_err(|_| ())?;
+    let input = crate::FullStateDigestInputV6::from_canonical_value(&value).map_err(|_| ())?;
+    if input.canonical_payload().map_err(|_| ())? != payload {
+        return Err(());
+    }
+    Ok(input)
+}
+
 fn phase2_v6_fixture() -> (serde_json::Value, crate::FullStateDigestInputV6) {
     let vector: serde_json::Value = serde_json::from_str(include_str!(
         "../../../../persistence/golden/full-state-digest-v6-kat.v1.json"
@@ -32,31 +43,15 @@ fn phase2_v6_fixture() -> (serde_json::Value, crate::FullStateDigestInputV6) {
     (vector, input)
 }
 
-#[test]
-fn full_state_digest_v6_matches_phase2_frozen_kat_and_verifies() {
-    let (vector, input) = phase2_v6_fixture();
-    let payload = input.canonical_payload().unwrap();
-    assert_eq!(hex(&payload), vector["canonical_payload_hex"].as_str().unwrap());
-    let digest = crate::digest_v6::calculate_full_state_digest_v6_payload(&payload).unwrap();
-    assert_eq!(digest.to_string(), vector["expected_digest"].as_str().unwrap());
-    crate::verify_full_state_digest_v6(&payload, &digest).unwrap();
-
-    let wrong_digest = mtgml_model::FullStateDigestV6::from_digest_bytes([0xa5; 32]);
-    assert!(crate::verify_full_state_digest_v6(&payload, &wrong_digest).is_err());
-}
 
 #[test]
 fn full_state_digest_v6_rejects_predecessor_and_noncanonical_fixtures() {
-    let (vector, input) = phase2_v6_fixture();
+    let (_, input) = phase2_v6_fixture();
     let payload = input.canonical_payload().unwrap();
-    let digest = mtgml_model::FullStateDigestV6::parse(
-        vector["expected_digest"].as_str().unwrap().to_owned(),
-    )
-    .unwrap();
     let predecessor = decode_hex(
         include_str!("../../tests/fixtures/magic-sba-graveyard-order-v5-input.hex").trim(),
     );
-    assert!(crate::verify_full_state_digest_v6(&predecessor, &digest).is_err());
+    assert!(decode_v6_payload(&predecessor).is_err());
 
     for path in [
         "../../persistence/negative/m4-v6-indefinite-array.cbor",
@@ -66,16 +61,15 @@ fn full_state_digest_v6_rejects_predecessor_and_noncanonical_fixtures() {
     ] {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(path);
         let invalid = std::fs::read(path).unwrap();
-        assert!(crate::verify_full_state_digest_v6(&invalid, &digest).is_err());
+        assert!(decode_v6_payload(&invalid).is_err());
     }
-    crate::verify_full_state_digest_v6(&payload, &digest).unwrap();
+    decode_v6_payload(&payload).unwrap();
 }
 
 #[test]
 fn full_state_digest_v6_rejects_unknown_legacy_component_variants() {
     let (_, input) = phase2_v6_fixture();
     let baseline = input.canonical_payload().unwrap();
-    let digest = crate::digest_v6::calculate_full_state_digest_v6_payload(&baseline).unwrap();
     type Mutation = (&'static str, Box<dyn Fn(&mut Value)>);
     let mutations: [Mutation; 5] = [
         (
@@ -140,7 +134,7 @@ fn full_state_digest_v6_rejects_unknown_legacy_component_variants() {
         mutate(&mut value);
         let payload = mtgml_persistence::cbor::encode_canonical(&value).unwrap();
         assert!(
-            crate::verify_full_state_digest_v6(&payload, &digest).is_err(),
+            decode_v6_payload(&payload).is_err(),
             "accepted malformed legacy component: {name}"
         );
     }
@@ -280,103 +274,14 @@ fn full_state_digest_v6_typed_producer_rejects_empty_counter_maps() {
     );
     assert!(state.validate().is_err());
     assert!(state.canonical_value().is_err());
-    assert!(crate::canonical_state_bytes_v6(&synthetic_state(), state).is_err());
+    assert!(crate::canonical_state_bytes_v6_with_execution_v3(
+        &synthetic_state(),
+        &crate::ExecutionStateV3::default(),
+        state
+    )
+    .is_err());
 }
 
-#[test]
-fn full_state_digest_v6_matches_all_valid_phase2_mutation_vectors() {
-    let (vector, baseline_input) = phase2_v6_fixture();
-    let base = &vector["card_rules_authoritative_state"];
-    let mutations = vector["mutation_digests"].as_object().unwrap();
-    let expected_invalid = [
-        "mana.player",
-        "history.target_object",
-        "counter.object",
-        "face.object",
-    ];
-    let mut covered = std::collections::BTreeSet::new();
-    for (name, expected) in mutations {
-        let mut family = base.clone();
-        match name.as_str() {
-            "mana.player" => family[1][0][0] = serde_json::json!(3),
-            "mana.restriction" => {
-                family[1][0][1][0] = serde_json::json!(2);
-                family[1][0][2][0] = serde_json::json!(0);
-            }
-            "mana.u32_boundary" => family[1][1][2][5] = serde_json::json!(u32::MAX - 1),
-            "mana.explicit_zero" => family[1][1][1][0] = serde_json::json!(1),
-            name if name.starts_with("mana.unrestricted.") => {
-                let color = ["white", "blue", "black", "red", "green", "colorless"]
-                    .iter()
-                    .position(|color| name.ends_with(color))
-                    .unwrap();
-                family[1][0][1][color] = serde_json::json!(2);
-            }
-            name if name.starts_with("mana.creature_spell_only.") => {
-                let color = ["white", "blue", "black", "red", "green", "colorless"]
-                    .iter()
-                    .position(|color| name.ends_with(color))
-                    .unwrap();
-                family[1][0][2][color] = serde_json::json!(2);
-            }
-            "history.turn_number" => family[2][0] = serde_json::json!(2),
-            "history.land_plays_used" => family[2][1][0][1] = serde_json::json!(0),
-            "history.spells_cast_total" => family[2][1][0][2] = serde_json::json!(3),
-            "history.noncreature_spells_cast" => family[2][1][0][3] = serde_json::json!(2),
-            "history.lost_life" => family[2][1][0][4] = serde_json::json!(false),
-            "history.red_noncombat_damage" => family[2][1][0][5] = serde_json::json!(4),
-            "history.permanent_to_graveyard" => family[2][1][0][6] = serde_json::json!(false),
-            "history.target_object" => family[2][2][0][0] = serde_json::json!(3),
-            "history.target_controller" => family[2][2][0][1] = serde_json::json!(1),
-            "history.once_ability_object" => family[2][3][0][0] = serde_json::json!(2),
-            "history.once_ability_key" => family[2][3][0][1] = serde_json::json!(1),
-            "counter.object" => family[3][0][0] = serde_json::json!(2),
-            "counter.kind" => family[3][0][1][0][0] = serde_json::json!(1),
-            "counter.count" => family[3][0][1][0][1] = serde_json::json!(3),
-            "attachment.source" => family[4][0][0] = serde_json::json!(4),
-            "attachment.target" => family[4][0][1] = serde_json::json!(2),
-            "attachment.timestamp_revision" => family[4][0][2] = serde_json::json!(3),
-            "attachment.timestamp_operation" => family[4][0][3] = serde_json::json!(1),
-            "face.object" => family[5][0][0] = serde_json::json!(2),
-            "face.key" => family[5][0][1] = serde_json::json!(1),
-            "ability.instance" => family[6][0][0] = serde_json::json!(2),
-            "ability.source" => family[6][0][1] = serde_json::json!(2),
-            "ability.key" => family[6][0][2] = serde_json::json!(1),
-            unknown => panic!("unhandled Phase-2 mutation KAT: {unknown}"),
-        }
-        covered.insert(name.as_str());
-        let raw_state = json_to_cbor(&family);
-        let mut raw_input = mtgml_persistence::cbor::decode_canonical(
-            &baseline_input.canonical_payload().unwrap(),
-        )
-        .unwrap();
-        let Value::Array(raw_fields) = &mut raw_input else {
-            unreachable!();
-        };
-        raw_fields[13] = raw_state.clone();
-        let raw_payload = mtgml_persistence::cbor::encode_canonical(&raw_input).unwrap();
-        let raw_digest = crate::digest_v6::calculate_full_state_digest_v6_payload(&raw_payload)
-            .unwrap();
-        assert_eq!(raw_digest.to_string(), expected.as_str().unwrap(), "raw KAT {name}");
-
-        let typed = crate::CardRulesAuthoritativeStateV1::from_value(&raw_state);
-        if expected_invalid.contains(&name.as_str()) {
-            assert!(typed.is_err(), "invalid mutation unexpectedly became valid: {name}");
-            continue;
-        }
-        let mut input = baseline_input.clone();
-        input.card_rules_state = typed.unwrap();
-        let payload = input.canonical_payload().unwrap();
-        assert_eq!(payload, raw_payload, "typed encoder bytes for mutation {name}");
-        let digest = crate::digest_v6::calculate_full_state_digest_v6_payload(&payload).unwrap();
-        assert_eq!(
-            digest.to_string(),
-            expected.as_str().unwrap(),
-            "mutation vector {name}"
-        );
-    }
-    assert_eq!(covered.len(), mutations.len());
-}
 
 #[test]
 fn full_state_digest_v6_typed_collection_insertion_order_is_irrelevant() {
@@ -436,16 +341,6 @@ fn full_state_digest_v6_typed_collection_insertion_order_is_irrelevant() {
     assert_eq!(baseline, reordered.canonical_payload().unwrap());
 }
 
-#[test]
-fn full_state_digest_v6_is_explicit_and_does_not_change_current_v5_digest() {
-    let state = synthetic_state();
-    let v5_before = state.digest().unwrap();
-    let card_rules = crate::CardRulesAuthoritativeStateV1::default();
-    let payload = crate::canonical_state_bytes_v6(&state, card_rules.clone()).unwrap();
-    let v6 = crate::calculate_full_state_digest_v6(&state, card_rules).unwrap();
-    crate::verify_full_state_digest_v6(&payload, &v6).unwrap();
-    assert_eq!(state.digest().unwrap(), v5_before);
-}
 
 #[test]
 fn execution_v3_persists_play_land_without_adding_current_decision_runtime() {
@@ -479,8 +374,7 @@ fn execution_v3_persists_play_land_without_adding_current_decision_runtime() {
     let mut input = input;
     input.execution_v3 = crate::PersistedExecutionV3::from_value(execution).unwrap();
     let payload = input.canonical_payload().unwrap();
-    let digest = crate::digest_v6::calculate_full_state_digest_v6_payload(&payload).unwrap();
-    crate::verify_full_state_digest_v6(&payload, &digest).unwrap();
+    decode_v6_payload(&payload).unwrap();
 
     let mut out_of_order = input.execution_v3.canonical_value().clone();
     let Value::Array(execution_fields) = &mut out_of_order else {
@@ -620,13 +514,7 @@ fn full_state_digest_v6_uses_typed_v3_execution_and_rejects_a_v2_duplicate() {
     let value = mtgml_persistence::cbor::decode_canonical(&payload).unwrap();
     let Value::Array(fields) = value else { unreachable!() };
     assert_eq!(fields[6], execution.canonical_value().unwrap());
-    let digest = crate::calculate_full_state_digest_v6_with_execution_v3(
-        &state,
-        &execution,
-        card_state,
-    )
-    .unwrap();
-    crate::verify_full_state_digest_v6(&payload, &digest).unwrap();
+    decode_v6_payload(&payload).unwrap();
 
     state.execution.pending_decision = Some(crate::PendingDecisionRecordV2 {
         request: mtgml_decision::AuthoritativeDecisionRequestV2 {
@@ -900,77 +788,7 @@ fn execution_v3_binds_assembly_continuation_to_its_exact_decision_stage() {
     assert!(crate::PersistedExecutionV3::from_value(wrong_order_range).is_err());
 }
 
-/// Frozen historical V4 known answer for the canonical synthetic reset state.
-/// V4 bytes are evaluated only through the detached historical verifier.
-#[test]
-fn full_state_digest_v4_known_answer() {
-    let state = synthetic_state();
-    let payload = crate::canonical_state_bytes_v4_historical(&state).unwrap();
-    const EXPECTED_PAYLOAD_HEX: &str = "8d781a66756c6c2d73746174652d6469676573742d696e7075742e7634781a6d74676d6c2e66756c6c2d73746174652d6469676573742e763400858283011828f483021828f401018269626567696e6e696e6765756e74617082646e6f6e65f68582870101010101f4f4870202020202f4f5828201856b626174746c656669656c64f68269756e6f726465726564f6667075626c6963f6820285676c696272617279028263746f700069666163655f646f776ef6818284676c6962726172790269666163655f646f776ef681028080880301010101020101858801010001667075626c6963826a63686f6f73655f6f6e65f6818300826d73656c6563745f6f626a65637401826d73656c6563745f6f626a65637401f680808080836c6d74676d6c2e726e672e763158201111111111111111111111111111111111111111111111111111111111111111818244010001000082840101818601010182856b626174746c656669656c64f68269756e6f726465726564f6667075626c6963f68275696e697469616c5f636f6e66696775726174696f6ef6808275696e697469616c5f636f6e66696775726174696f6ef680840201828601010182856b626174746c656669656c64f68269756e6f726465726564f6667075626c6963f68275696e697469616c5f636f6e66696775726174696f6ef6808275696e697469616c5f636f6e66696775726174696f6ef6860202028285676c696272617279028263746f700069666163655f646f776ef68275696e697469616c5f636f6e66696775726174696f6ef6808275696e697469616c5f636f6e66696775726174696f6ef68082880181820101800201028080880282820101820202800301028080f68082646e6f6e65f6";
-    const EXPECTED_DIGEST_HEX: &str =
-        "24fe3ab44864b6e3e7e75e55a62fba7fed6c94be3198ae5e93c1c196c1527227";
-    assert_eq!(hex(&payload), EXPECTED_PAYLOAD_HEX);
-    let digest = crate::calculate_full_state_digest_v4_historical(&state).unwrap();
-    assert_eq!(digest.to_string(), EXPECTED_DIGEST_HEX);
-    assert_eq!(digest.raw_bytes().len(), 32);
-    assert_eq!(
-        digest,
-        crate::calculate_full_state_digest_v4_historical(&state).unwrap()
-    );
 
-    // The payload is exactly the thirteen declared top-level fields, and each
-    // knowledge entry is the fixed four-element per-player record.
-    let decoded = mtgml_persistence::cbor::decode_canonical(&payload).unwrap();
-    let Value::Array(fields) = &decoded else {
-        panic!("V4 payload must be an array");
-    };
-    assert_eq!(fields.len(), 13);
-    assert_eq!(fields[0], Value::Text("full-state-digest-input.v4".into()));
-    assert_eq!(fields[1], Value::Text("mtgml.full-state-digest.v4".into()));
-    let Value::Array(knowledge_players) = &fields[8] else {
-        panic!("knowledge_v2 must be an array");
-    };
-    for player_entry in knowledge_players {
-        let Value::Array(entry) = player_entry else {
-            panic!("knowledge_v2 entries must be arrays");
-        };
-        assert_eq!(entry.len(), 4, "knowledge_v2 per-player layout changed");
-    }
-}
-
-#[test]
-fn full_state_digest_v3_historical_known_answer_is_detached() {
-    const HISTORICAL_V3_PAYLOAD_HEX: &str = concat!(
-        "8b781a66756c6c2d73746174652d6469676573742d696e7075742e7633781a6d74676d6c2e66756c6c2d73746174652d",
-        "6469676573742e763300848283011828f483021828f40101018582870101010101f4f4870202020202f4f5828201856b",
-        "626174746c656669656c64f68269756e6f726465726564f6667075626c6963f6820285676c696272617279028263746f",
-        "700069666163655f646f776ef6818284676c6962726172790269666163655f646f776ef6810280808803010101010201",
-        "01858801010001667075626c6963826a63686f6f73655f6f6e65f6818300826d73656c6563745f6f626a65637401826d",
-        "73656c6563745f6f626a65637401f680808080836c6d74676d6c2e726e672e7631582011111111111111111111111111",
-        "11111111111111111111111111111111111111818244010001000082840101818601010182856b626174746c65666965",
-        "6c64f68269756e6f726465726564f6667075626c6963f68275696e697469616c5f636f6e66696775726174696f6ef680",
-        "8275696e697469616c5f636f6e66696775726174696f6ef680840201828601010182856b626174746c656669656c64f6",
-        "8269756e6f726465726564f6667075626c6963f68275696e697469616c5f636f6e66696775726174696f6ef680827569",
-        "6e697469616c5f636f6e66696775726174696f6ef6860202028285676c696272617279028263746f700069666163655f",
-        "646f776ef68275696e697469616c5f636f6e66696775726174696f6ef6808275696e697469616c5f636f6e6669677572",
-        "6174696f6ef6808288018182010180020102808088028282010182020280030102808082646e6f6e65f6",
-    );
-    let payload = decode_hex(HISTORICAL_V3_PAYLOAD_HEX);
-    let envelope = mtgml_persistence::envelope::encode_envelope(
-        "mtgml.full-state-digest.v3",
-        "full-state-digest-input.v3",
-        &payload,
-    )
-    .unwrap();
-    let digest = mtgml_model::FullStateDigestV3::from_digest_bytes(
-        mtgml_persistence::envelope::hash_envelope(&envelope),
-    );
-
-    assert_eq!(
-        digest.to_string(),
-        "680120895f69a0cea14399e53a80cc6bf3b10f167d7f9b21c5e2d38ebddf164a"
-    );
-}
 
 #[test]
 fn m3_p0_full_state_digest_v5_mutation_matrix() {
@@ -1399,29 +1217,6 @@ fn m3_p0_full_state_digest_v5_mutation_matrix() {
     }
 }
 
-#[test]
-fn m3_p0_full_state_digest_v4_mutation_matrix() {
-    let baseline = synthetic_state();
-    let baseline_digest = crate::calculate_full_state_digest_v4_historical(&baseline).unwrap();
-    let mutations: [fn(&mut EngineState); 3] = [
-        |state| state.core.players.get_mut(&PlayerId(1)).unwrap().life += 1,
-        |state| {
-            state.core.position = TurnPosition::Beginning {
-                step: BeginningStep::Upkeep,
-            }
-        },
-        |state| state.zones.objects.get_mut(&GameObjectId(1)).unwrap().tapped = true,
-    ];
-    for mutate in mutations {
-        let mut changed = synthetic_state();
-        mutate(&mut changed);
-        validate_engine_state(&changed).unwrap();
-        assert_ne!(
-            baseline_digest,
-            crate::calculate_full_state_digest_v4_historical(&changed).unwrap()
-        );
-    }
-}
 
 fn state_with_foundation_source() -> EngineState {
     let mut state = synthetic_state();
@@ -1552,50 +1347,6 @@ fn knowledge_history_is_digested_without_a_player_level_aggregate() {
     assert_ne!(with_history, stripped.digest().unwrap());
 }
 
-#[test]
-fn state_delta_uses_full_state_digest_v5() {
-    let before = synthetic_state();
-    let mut after = before.clone();
-    after.core.players.get_mut(&PlayerId(1)).unwrap().life = 39;
-    let graveyard = ZoneLocation {
-        zone: ZoneKind::Graveyard,
-        ..public_location()
-    };
-    after
-        .zones
-        .locations
-        .insert(GameObjectId(1), graveyard.clone());
-    for knowledge in after.knowledge.players.values_mut() {
-        if let Some(record) = knowledge.active.get_mut(&OpaqueObjectId(1)) {
-            if let Some(current) = record.known_location.as_mut() {
-                current.location = graveyard.clone();
-            }
-        }
-    }
-    let knowledge = after.knowledge.players.get_mut(&PlayerId(1)).unwrap();
-    knowledge.next_visible_sequence = VisibleSequence(2);
-    after
-        .random
-        .set_cursor(
-            &RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1),
-            RandomStreamCursorV1 { next_raw_u64: 1 },
-        )
-        .unwrap();
-    after.allocators.next_object_id = GameObjectId(4);
-
-    let delta = StateDelta::between(&before, &after, vec![]).unwrap();
-    assert_eq!(delta.before_digest, before.digest().unwrap());
-    assert_eq!(delta.after_digest, after.digest().unwrap());
-    let reapplied = delta.apply(&before).unwrap();
-    assert_eq!(reapplied, after);
-    assert_eq!(reapplied.digest().unwrap(), delta.after_digest);
-
-    let unrelated = empty_shell();
-    assert!(matches!(
-        delta.apply(&unrelated),
-        Err(DeltaApplicationError::BeforeMismatch)
-    ));
-}
 
 #[test]
 fn v5_digest_payload_is_nonempty_canonical_cbor() {

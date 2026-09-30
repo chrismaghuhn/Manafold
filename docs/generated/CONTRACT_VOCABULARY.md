@@ -20,10 +20,6 @@ The catalog owns only mechanically duplicated public vocabulary. It does **not**
 
 `library`, `hand`, `battlefield`, `graveyard`, `exile`, `stack`, `command`, `ante`, `outside`
 
-## Observed-event kinds
-
-`object_moved`, `object_ceased_to_exist`, `life_changed`, `object_tapped`, `decision_available`, `random_outcome_visible`, `public_outcome`
-
 ## Stable wire error codes owned by this catalog
 
 - `decode.invalid_json`
@@ -32,8 +28,6 @@ The catalog owns only mechanically duplicated public vocabulary. It does **not**
 - `semantic.decision`
 - `semantic.decision_response`
 - `semantic.magic_m3_observation`
-- `semantic.magic_combat_observation`
-- `semantic.magic_combat_observation_v4`
 - `semantic.magic_basic_land_observation_v1`
 - `semantic.observation`
 - `semantic.information_state`
@@ -42,5 +36,4 @@ The catalog owns only mechanically duplicated public vocabulary. It does **not**
 - `semantic.episode_status`
 - `semantic.replay_manifest`
 - `semantic.replay`
-- `semantic.synthetic_m3_observation`
 - `fixture.unknown_contract`

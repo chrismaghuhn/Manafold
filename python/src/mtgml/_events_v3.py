@@ -6,7 +6,6 @@ from ._generated_contract_vocab import ZONE_KINDS
 from .canonical import parse_u64_number, parse_uint, require_exact_keys, uint_wire
 from .errors import WireError
 
-OBSERVED_EVENT_SCHEMA_V3 = "observed-event-envelope.v3"
 EVENT_KINDS_V3 = frozenset(
     {
         "object_moved",
@@ -22,7 +21,11 @@ EVENT_KINDS_V3 = frozenset(
         "object_face_changed",
     }
 )
+
+
 COUNTER_KINDS_V3 = ("plus_one_plus_one", "minus_one_minus_one", "lore")
+
+
 FACE_VALUES_V1 = ("front", "back")
 
 
@@ -175,31 +178,3 @@ class ObservedEventV3:
                 result[key] = value
         ObservedEventV3.from_wire(result)
         return result
-
-
-@dataclass(frozen=True, slots=True)
-class ObservedEventEnvelopeV3:
-    schema_version: str
-    sequence: int
-    state_revision: int
-    event: ObservedEventV3
-
-    @classmethod
-    def from_wire(cls, value: object) -> ObservedEventEnvelopeV3:
-        obj = require_exact_keys(value, {"schema_version", "sequence", "state_revision", "event"})
-        if obj["schema_version"] != OBSERVED_EVENT_SCHEMA_V3:
-            raise WireError("decode.invalid_json", "unsupported observed event V3")
-        return cls(
-            OBSERVED_EVENT_SCHEMA_V3,
-            parse_uint(obj["sequence"]),
-            parse_uint(obj["state_revision"]),
-            ObservedEventV3.from_wire(obj["event"]),
-        )
-
-    def to_wire(self) -> dict[str, object]:
-        return {
-            "event": self.event.to_wire(),
-            "schema_version": OBSERVED_EVENT_SCHEMA_V3,
-            "sequence": uint_wire(self.sequence),
-            "state_revision": uint_wire(self.state_revision),
-        }

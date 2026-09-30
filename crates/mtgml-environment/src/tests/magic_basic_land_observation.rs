@@ -6,17 +6,13 @@ use mtgml_card_ir::{
     ProvenanceCatalogV1, SourceProvenanceV1, TypeLineV1, VerifiedContentCatalogV1,
     BASIC_LAND_PROFILE_ID_V1,
 };
-use mtgml_decision::{
-    CandidateIntentV3, DecisionDomainV2, DecisionVisibility, PlayerDecisionRequestV3,
-    VisibleCandidateV3, PLAYER_DECISION_REQUEST_V3_SCHEMA,
-};
 use mtgml_model::{
-    CandidateIdV1, CapabilityRequirementV1, CardDefinitionId, ExecutionIdentityV1,
-    ExecutionProgramV1, InformationStateDigestV2, PlayerDecisionIdV1, RulesAuthorityV1,
-    RulesContractManifestV1, SemanticContractManifestV1, VisibleSequence,
+    CapabilityRequirementV1, CardDefinitionId, ExecutionIdentityV1, ExecutionProgramV1,
+    InformationStateDigestV2, RulesAuthorityV1, RulesContractManifestV1,
+    SemanticContractManifestV1, VisibleSequence,
 };
 use mtgml_observation::{
-    MagicSharedExecutionObservationV1, ObservationEnvelope, PlayerInformationStateV2, PlayerStepV3,
+    MagicSharedExecutionObservationV1, ObservationEnvelope, PlayerInformationStateV2,
     INFORMATION_STATE_SCHEMA_V2,
 };
 use mtgml_state::{
@@ -959,50 +955,6 @@ fn verified_catalog_rejects_ability_key_missing_from_the_selected_face() {
 }
 
 #[test]
-fn verified_catalog_rejects_attachment_without_admitted_profile_semantics() {
-    let mut parts = basic_land_parts(seed());
-    let battlefield: Vec<_> = parts
-        .predecessor_v5
-        .zones
-        .locations
-        .iter()
-        .filter(|(_, location)| location.zone == mtgml_model::ZoneKind::Battlefield)
-        .map(|(object, _)| *object)
-        .collect();
-    let Some(source) = battlefield.first() else {
-        panic!("fixture must have a battlefield object");
-    };
-    parts.card_rules_state.attachments.by_source.insert(
-        *source,
-        mtgml_state::AttachmentV1 {
-            target: *source,
-            timestamp: mtgml_state::AttachmentTimestampV1 {
-                revision: parts.predecessor_v5.revision,
-                operation_ordinal: 0,
-            },
-        },
-    );
-    parts.validate().unwrap();
-
-    let catalog = catalog_for(&[1, 2]);
-    let (identity, semantic, rules) = execution_authority(&catalog);
-    let checkpoint = EnvironmentCheckpointV7::new(
-        parts,
-        EpisodeStatus::Running,
-        EnvironmentLimitCounters::default(),
-        identity,
-    )
-    .unwrap();
-    // The state/checkpoint digests were freshly computed and validate; the
-    // rejection belongs to content/profile admission, not stale identity bytes.
-    checkpoint.validate().unwrap();
-    assert_eq!(
-        checkpoint.restore_with_verified_contracts(&semantic, &rules, Some(&catalog)),
-        Err(crate::CheckpointV7Error::ContractBinding)
-    );
-}
-
-#[test]
 fn hidden_rng_change_preserves_basic_land_observation_bytes_and_digest() {
     let a = basic_land_parts(seed());
     let other_seed = mtgml_random::RootSeed256::from_lower_hex(&"99".repeat(32)).unwrap();
@@ -1050,31 +1002,6 @@ fn hidden_rng_change_preserves_basic_land_observation_bytes_and_digest() {
     assert_eq!(
         mtgml_wire::encode_canonical(&left_information).unwrap(),
         mtgml_wire::encode_canonical(&right_information).unwrap()
-    );
-
-    // Candidate legality is deliberately outside this projection. Two
-    // independently decoded, already supplied V3 requests with equivalent
-    // public semantics remain equal when composed into paired PlayerSteps.
-    let mut step_a: PlayerStepV3 = serde_json::from_str(include_str!(
-        "../../../../schemas/examples/player-step-v3-event-next-decision.json"
-    ))
-    .unwrap();
-    let mut step_b = step_a.clone();
-    for (step, information) in [
-        (&mut step_a, left_information),
-        (&mut step_b, right_information),
-    ] {
-        step.information_state = information;
-        step.observed_events.clear();
-        let decision = step.next_decision.as_mut().unwrap();
-        decision.actor = PlayerId(1);
-        decision.state_revision = step.information_state.state_revision;
-        step.validate().unwrap();
-    }
-    assert_eq!(step_a.next_decision, step_b.next_decision);
-    assert_eq!(
-        mtgml_wire::encode_canonical(&step_a).unwrap(),
-        mtgml_wire::encode_canonical(&step_b).unwrap()
     );
 }
 
@@ -1210,45 +1137,5 @@ fn trusted_game_object_renaming_preserves_public_observation_and_information_byt
     assert_eq!(
         mtgml_wire::encode_canonical(&original_information).unwrap(),
         mtgml_wire::encode_canonical(&renamed_information).unwrap()
-    );
-
-    let request_for = |parts: &EngineStatePartsV2, object: mtgml_model::GameObjectId| {
-        let state = parts.materialize();
-        let opaque = state.perspective_identities.players[&PlayerId(1)].object_to_opaque[&object];
-        let request = PlayerDecisionRequestV3 {
-            schema_version: PLAYER_DECISION_REQUEST_V3_SCHEMA.into(),
-            player_decision_id: PlayerDecisionIdV1(1),
-            state_revision: state.revision,
-            actor: PlayerId(1),
-            visibility: DecisionVisibility::Public,
-            decision: DecisionDomainV2::ChooseOne,
-            candidates: vec![VisibleCandidateV3 {
-                candidate_id: CandidateIdV1(0),
-                intent: CandidateIntentV3::SelectObject { object: opaque },
-            }],
-        };
-        request.validate().unwrap();
-        request
-    };
-    let request_a = request_for(&original, old_id);
-    let request_b = request_for(&renamed, new_id);
-    assert_eq!(request_a, request_b);
-
-    let mut step_a: PlayerStepV3 = serde_json::from_str(include_str!(
-        "../../../../schemas/examples/player-step-v3-event-next-decision.json"
-    ))
-    .unwrap();
-    let mut step_b = step_a.clone();
-    step_a.information_state = original_information;
-    step_b.information_state = renamed_information;
-    step_a.observed_events.clear();
-    step_b.observed_events.clear();
-    step_a.next_decision = Some(request_a);
-    step_b.next_decision = Some(request_b);
-    step_a.validate().unwrap();
-    step_b.validate().unwrap();
-    assert_eq!(
-        mtgml_wire::encode_canonical(&step_a).unwrap(),
-        mtgml_wire::encode_canonical(&step_b).unwrap()
     );
 }

@@ -180,12 +180,10 @@ impl ReplayManifestV8 {
         {
             return Err(ReplayValidationError::SemanticContractMismatch);
         }
-        if let RulesAuthorityV1::ComprehensiveRules { snapshot_id } =
-            &self.semantic_contract.rules_manifest.rules_authority
-        {
-            if self.rules_snapshot != *snapshot_id {
-                return Err(ReplayValidationError::RulesSnapshotMismatch);
-            }
+        let RulesAuthorityV1::ComprehensiveRules { snapshot_id } =
+            &self.semantic_contract.rules_manifest.rules_authority;
+        if self.rules_snapshot != *snapshot_id {
+            return Err(ReplayValidationError::RulesSnapshotMismatch);
         }
         self.initial_identity.validate()
     }

@@ -43,13 +43,6 @@ def load_kat_vectors() -> list[dict[str, object]]:
     return document["vectors"]
 
 
-def synthetic_rules_manifest() -> dict[str, object]:
-    return {
-        "rules_authority": {"variant": "synthetic_legacy"},
-        "capability_closure": None,
-    }
-
-
 def minimal_comprehensive_manifest() -> dict[str, object]:
     return {
         "rules_authority": {
@@ -72,7 +65,7 @@ def rules_manifest_from(vector: dict[str, object]) -> dict[str, object]:
 class SharedKatFixtureTests(unittest.TestCase):
     def test_shared_kat_vectors_reproduce_frozen_ids(self) -> None:
         vectors = load_kat_vectors()
-        self.assertGreaterEqual(len(vectors), 5)
+        self.assertGreaterEqual(len(vectors), 3)
 
         rules_ids: dict[str, str] = {}
         for vector in vectors:
@@ -110,6 +103,14 @@ class SharedKatFixtureTests(unittest.TestCase):
 
 
 class RulesContractDigestTests(unittest.TestCase):
+    def test_synthetic_legacy_rules_authority_is_rejected(self) -> None:
+        with self.assertRaises(PersistenceError) as caught:
+            calculate_rules_contract_id_v1(
+                {"rules_authority": {"variant": "synthetic_legacy"}, "capability_closure": None}
+            )
+        self.assertEqual(caught.exception.code, "semantic_validation")
+        self.assertIn("rules authority variant is unknown", str(caught.exception))
+
     def test_invalid_manifests_fail_closed(self) -> None:
         unsorted = {
             "rules_authority": {
@@ -124,17 +125,14 @@ class RulesContractDigestTests(unittest.TestCase):
         with self.assertRaises(PersistenceError):
             calculate_rules_contract_id_v1(unsorted)
 
-        synthetic_with_closure = {
-            "rules_authority": {"variant": "synthetic_legacy"},
-            "capability_closure": [{"key": "rules/synthetic-transition", "version": "1.0.0"}],
-        }
-        with self.assertRaises(PersistenceError):
-            calculate_rules_contract_id_v1(synthetic_with_closure)
-
     def test_distinct_manifests_produce_distinct_ids(self) -> None:
-        synthetic = calculate_rules_contract_id_v1(synthetic_rules_manifest())
         comprehensive = calculate_rules_contract_id_v1(minimal_comprehensive_manifest())
-        self.assertNotEqual(synthetic, comprehensive)
+        other_snapshot = minimal_comprehensive_manifest()
+        other_snapshot["rules_authority"] = {
+            "variant": "comprehensive_rules",
+            "snapshot_id": "CR-OTHER",
+        }
+        self.assertNotEqual(calculate_rules_contract_id_v1(other_snapshot), comprehensive)
 
 
 class SemanticContractDigestTests(unittest.TestCase):
@@ -218,7 +216,7 @@ class SemanticContractDigestTests(unittest.TestCase):
         self.assertNotEqual(wrong_reference["semantic_domain"], RULES_CONTRACT_DOMAIN)
         self.assertNotEqual(wrong_reference["input_schema_id"], RULES_CONTRACT_INPUT_SCHEMA)
         self.assertNotEqual(
-            calculate_rules_contract_id_v1(synthetic_rules_manifest()),
+            calculate_rules_contract_id_v1(minimal_comprehensive_manifest()),
             hashlib.sha256(disagreeing_envelope).hexdigest(),
         )
 

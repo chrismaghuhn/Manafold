@@ -201,6 +201,8 @@ This task deletes checks only; no engine code changes. After it, no gate require
 
 ### Task 5: Remove the old rules kernel (D2, D3, D4 rules part)
 
+> The semantic catalog was deferred to stage 2 and deleted there (`docs/superpowers/plans/2026-09-30-old-formats-cleanup.md`).
+
 **Files:**
 - **Delete** (`crates/mtgml-rules/src/`):
   - `magic.rs`, `program_kernel.rs`

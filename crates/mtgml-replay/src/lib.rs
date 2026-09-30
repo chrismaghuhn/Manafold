@@ -1,66 +1,17 @@
-//! Normative replay wire contracts and internal replay identity.
-//!
-//! Historical support classification (docs/REPLAY_AND_DETERMINISM.md): Replay
-//! V2 is `READABLE_VERIFIABLE_ONLY`. There is no current V2 writer on the
-//! public API; the detached V2 recorder survives only as historical-evidence
-//! tooling for the immutable M1 regression tests.
+//! Normative replay wire contracts: Replay V8 and the identities it embeds.
 
 mod identity;
-mod manifest;
-#[cfg(test)]
-mod recorder;
-mod v1;
 mod v2;
-mod v3;
-mod v4;
-mod v5;
-mod v6;
 mod v7;
 mod v8;
 mod validation;
 
-#[cfg(test)]
-mod tests;
-
-pub use identity::{
-    DeckIdentityV1, KernelIdentityV1, RandomnessIdentityV1, ReplayIdentity, ReplaySchemaVersionsV1,
-    ReplaySchemaVersionsV4,
-};
-pub use manifest::ReplayManifestV1;
-pub use v1::{AuthoritativeReplayV1, ReplayStepV1};
-pub use v2::{AuthoritativeReplayV2, RandomnessIdentityV2, ReplayManifestV2, ReplayStepV2};
-pub use v3::{
-    AuthoritativeReplayV3, InitialEnvironmentIdentityV3, ReplayManifestV3, ReplayRecorderV3,
-    ReplayStepV3, REPLAY_FILE_SCHEMA_V3, REPLAY_MANIFEST_SCHEMA_V3, REPLAY_STEP_SCHEMA_V3,
-};
-pub use v4::{
-    AuthoritativeReplayV4, InitialEnvironmentIdentityV4, ReplayManifestV4, ReplayRecorderV4,
-    ReplayStepV4, REPLAY_FILE_SCHEMA_V4, REPLAY_MANIFEST_SCHEMA_V4, REPLAY_STEP_SCHEMA_V4,
-};
-pub use v5::{
-    AuthoritativeReplayV5, InitialEnvironmentIdentityV5, ReplayManifestV5, ReplayRecorderV5,
-    ReplaySchemaVersionsV5, ReplayStepV5, SemanticContractMaterialV5, REPLAY_FILE_SCHEMA_V5,
-    REPLAY_MANIFEST_SCHEMA_V5, REPLAY_STEP_SCHEMA_V5,
-};
-pub use v6::{
-    AuthoritativeReplayV6, InitialEnvironmentIdentityV6, ReplayManifestV6, ReplayRecorderV6,
-    ReplaySchemaVersionsV6, ReplayStepV6, REPLAY_FILE_SCHEMA_V6, REPLAY_MANIFEST_SCHEMA_V6,
-    REPLAY_STEP_SCHEMA_V6,
-};
-pub use v7::{
-    AuthoritativeReplayV7, ContentContractMaterialV1, InitialEnvironmentIdentityV7,
-    ReplayManifestV7, ReplayRecorderV7, ReplaySchemaVersionsV7, ReplayStepV7,
-    SemanticContractMaterialV7, REPLAY_FILE_SCHEMA_V7, REPLAY_MANIFEST_SCHEMA_V7,
-    REPLAY_STEP_SCHEMA_V7,
-};
+pub use identity::{DeckIdentityV1, KernelIdentityV1};
+pub use v2::RandomnessIdentityV2;
+pub use v7::{ContentContractMaterialV1, SemanticContractMaterialV7};
 pub use v8::{
     AuthoritativeReplayV8, InitialEnvironmentIdentityV8, ReplayManifestV8, ReplayRecorderV8,
     ReplaySchemaVersionsV8, ReplayStepV8, REPLAY_FILE_SCHEMA_V8, REPLAY_MANIFEST_SCHEMA_V8,
     REPLAY_STEP_SCHEMA_V8,
 };
 pub use validation::ReplayValidationError;
-
-pub const REPLAY_MANIFEST_SCHEMA: &str = manifest::REPLAY_MANIFEST_SCHEMA;
-pub const REPLAY_FILE_SCHEMA: &str = v1::REPLAY_FILE_SCHEMA;
-pub const REPLAY_MANIFEST_SCHEMA_V2: &str = v2::REPLAY_MANIFEST_SCHEMA_V2;
-pub const REPLAY_FILE_SCHEMA_V2: &str = v2::REPLAY_FILE_SCHEMA_V2;

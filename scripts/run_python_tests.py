@@ -17,7 +17,6 @@ DEFAULT_PROFILE = "full"
 # default and only enter Smoke after an intentional maintainer decision.
 SMOKE_TESTS = (
     "test_constructive_producers",
-    "test_m2_b_staging_fixtures",
     "test_persistence_codec",
     "test_python_test_profiles",
     "test_schema_parity",

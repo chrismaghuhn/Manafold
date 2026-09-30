@@ -12,7 +12,6 @@ sys.path.insert(0, str(ROOT / "python" / "src"))
 from mtgml.canonical import canonical_json_bytes
 from mtgml.errors import WireError
 from mtgml.observation import (
-    INFORMATION_STATE_SCHEMA,
     OBSERVATION_SCHEMA,
     ObservationEnvelope,
 )
@@ -66,35 +65,6 @@ class ObservationDigestBindingTests(unittest.TestCase):
             "90845308617867fd703c6c4f37ede7908da24420053821f89190ad36236dfca3",
         )
         self.assertNotEqual(digest_for_test(b"{}"), digest_for_test(b"e30="))
-
-    def test_nested_information_and_player_step_paths_reuse_observation_decode(self) -> None:
-        observation = observation_wire(b"{}", b'{"x":1}')
-        information_state = {
-            "current_observation": observation,
-            "digest": "0" * 64,
-            "perspective": "1",
-            "private_history_length": 0,
-            "public_history_length": 0,
-            "schema_version": INFORMATION_STATE_SCHEMA,
-            "state_revision": "0",
-        }
-        cases = (
-            ("information-state-envelope.v1", information_state),
-            (
-                "player-step.v1",
-                {
-                    "information_state": information_state,
-                    "observed_events": [],
-                    "schema_version": "player-step.v1",
-                    "status": {"kind": "running"},
-                },
-            ),
-        )
-        for contract, value in cases:
-            with self.subTest(contract=contract):
-                with self.assertRaises(WireError) as caught:
-                    decode_canonical(contract, canonical_json_bytes(value))
-                self.assertEqual(caught.exception.code, "semantic.observation")
 
 
 if __name__ == "__main__":

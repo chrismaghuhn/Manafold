@@ -1,15 +1,9 @@
 # Decision Protocol
 
-**Status:** accepted M2 contract freeze candidate  
-**Stability:** provisional-public semantic contract; M2 V2 values remain experimental until executable M2 closure
+**Status:** accepted; the current player-facing family is request V4 / response V3  
+**Stability:** provisional-public semantic contract; changed in place (AGENTS.md §4)
 
 Every player-influenced choice uses one closed request/response protocol. No callback, card executor, UI prompt, adapter, or random fallback completes a choice on behalf of the player.
-
-## M1 historical surface
-
-The executable M1 shell uses `PlayerDecisionRequest` / `DecisionResponse` V1, internal `DecisionId` on the player request, string candidate IDs and semantic keys, an assignment list with optional ordinals, and a separate authoritative candidate-binding map. Those values retain their M1 meaning but are not the M2 public contract.
-
-M2 introduces new V2 player/trusted decision shapes rather than reinterpreting V1.
 
 ## Authoritative and player forms
 
@@ -30,13 +24,13 @@ Each authoritative candidate co-locates:
 - the exact visible intent/payload;
 - the exact trusted binding.
 
-The endpoint bound to the actor projects a `PlayerDecisionRequestV2`. It contains no internal `DecisionId`, `ContinuationId`, authoritative binding, allocation history, hidden context, or mandatory semantic action key. Other endpoints receive no private request.
+The endpoint bound to the actor projects a `PlayerDecisionRequestV4`. It contains no internal `DecisionId`, `ContinuationId`, authoritative binding, allocation history, hidden context, or mandatory semantic action key. Other endpoints receive no private request.
 
-`DecisionResponseV2` carries only:
+`DecisionResponseV3` carries only:
 
 - schema identity;
 - `PlayerDecisionIdV1`;
-- expected state revision;
+- the expected visible sequence (`view_sequence`);
 - one closed answer variant.
 
 The endpoint supplies its bound actor. Clients cannot impersonate another player.
@@ -167,7 +161,7 @@ second resolver check.
 2. typed response-local validation;
 3. endpoint episode state and visible-request availability;
 4. perspective-local player-decision identity;
-5. expected state revision;
+5. expected visible sequence (`view_sequence`);
 6. answer variant matches decision domain;
 7. candidate membership and uniqueness;
 8. canonical set/order representation;
@@ -203,11 +197,11 @@ soundness:    every emitted/reachable player choice is legal
 completeness : every legal player choice in the declared scope is representable/reachable
 ```
 
-Production legality remains in Rust rules. An independent bounded oracle exists only in conformance tooling and can never be imported as production legality.
+Production legality remains in Rust rules.
 
 ## Semantic keys
 
-OD-011 remains open. `PlayerDecisionRequestV2` does not expose a mandatory semantic action key.
+OD-011 remains open. `PlayerDecisionRequestV4` does not expose a mandatory semantic action key.
 
 Future dataset/action-key work is independently versioned and must pass paired-state noninterference. Request-local IDs never become semantic labels.
 
@@ -229,23 +223,7 @@ A typed semantic rejection preserves:
 
 Wire-decode failure is earlier than this semantic rejection contract.
 
-## Historical PlayLand request successor (PR #248)
-
-The accepted M4 state-cut Semantic Spec allocates
-`AuthoritativeDecisionRequestV3` / `PlayerDecisionRequestV3`,
-`CandidateIntentV3`, and `EngineCandidateBindingV3`, with wire identity
-`player-decision-request.v3` and `CandidateOrderingV2`. V3 adds only the
-distinct visible intent `PlayLand { object: OpaqueObjectId }` and trusted
-binding to the exact current hand `GameObjectId`; it is not represented as
-CastSpell, SelectObject, Confirm, or a generic action. Ordering ranks
-`pass_priority`, then `play_land`, then the existing intent families in the
-exact order in the accepted Semantic Spec. The V2 response remains unchanged.
-
-V2 request bytes and semantics remain historical and are never relabeled V3.
-PR #248 activated the V3 request for the bounded M4.2 slice; G0j supersedes it
-while preserving its exact meaning.
-
-## Current G0 Decision family (G0j)
+## Current decision family
 
 The bounded current endpoint uses AuthoritativeDecisionRequestV4 /
 PlayerDecisionRequestV4, CandidateIntentV4, EngineCandidateBindingV4,

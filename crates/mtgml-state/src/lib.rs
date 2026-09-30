@@ -10,8 +10,6 @@ mod delta;
 mod delta_v2;
 mod delta_v3;
 mod digest;
-mod digest_v3;
-mod digest_v4;
 mod digest_v5;
 mod digest_v6;
 mod digest_v7;
@@ -46,21 +44,17 @@ pub use core::{
     PlayerState, PriorityState, TurnPosition,
 };
 pub use damage::{DamageAssignmentV1, DamageRecipientV1};
-pub use delta::{DeltaApplicationError, SemanticDeltaOperation, StateDelta};
-pub use delta_v2::{DeltaApplicationV2Error, SemanticDeltaOperationV2, StateDeltaV2};
+pub use delta::SemanticDeltaOperation;
+pub use delta_v2::SemanticDeltaOperationV2;
 pub use delta_v3::{
     CostCommitActionV1, DeltaApplicationV3Error, ManaPoolChangeCauseV1, SemanticDeltaOperationV3,
     StackItemEndKindV1, StateDeltaV3,
 };
 pub use digest::StateDigestError;
-pub use digest_v4::{
-    calculate_full_state_digest_v4_historical, canonical_state_bytes_v4_historical,
-};
 pub use digest_v5::{FULL_STATE_DIGEST_DOMAIN_V5, FULL_STATE_DIGEST_INPUT_SCHEMA_V5};
 pub use digest_v6::{
-    calculate_full_state_digest_v6, calculate_full_state_digest_v6_with_execution_v3,
-    canonical_state_bytes_v6, canonical_state_bytes_v6_with_execution_v3,
-    verify_full_state_digest_v6, FULL_STATE_DIGEST_DOMAIN_V6, FULL_STATE_DIGEST_INPUT_SCHEMA_V6,
+    canonical_state_bytes_v6_with_execution_v3, FULL_STATE_DIGEST_DOMAIN_V6,
+    FULL_STATE_DIGEST_INPUT_SCHEMA_V6,
 };
 pub use digest_v7::{
     calculate_full_state_digest_v7, calculate_full_state_digest_v7_payload,
@@ -78,7 +72,7 @@ pub use engine_state_shape::{
     SYNTHETIC_COUNT_MAX, SYNTHETIC_COUNT_MIN,
 };
 pub use execution::{EffectRecord, ExecutionState, TriggerRecord};
-pub use execution::{ExecutionStateV3, ExecutionStateV4, SuccessorDecisionError};
+pub use execution::{ExecutionStateV3, ExecutionStateV4};
 pub use format::{CommanderState, FormatState};
 pub use identity::{IdentityAllocationError, IdentityAllocatorState};
 pub use knowledge::{

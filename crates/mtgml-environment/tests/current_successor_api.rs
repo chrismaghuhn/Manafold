@@ -30,26 +30,26 @@ impl EnvironmentBackend for ProductionAliasProbe {
     }
 
     fn checkpoint(&self) -> Result<EnvironmentCheckpointV8, ControllerError> {
-        Err(ControllerError::SemanticContractUnsupported)
+        Err(ControllerError::Backend("probe backend".to_owned()))
     }
 
     fn restore(&mut self, _: EnvironmentCheckpointV8) -> Result<(), ControllerError> {
-        Err(ControllerError::SemanticContractUnsupported)
+        Err(ControllerError::Backend("probe backend".to_owned()))
     }
 
     fn fork_boxed(&self) -> Result<Box<dyn EnvironmentBackend>, ControllerError> {
-        Err(ControllerError::SemanticContractUnsupported)
+        Err(ControllerError::Backend("probe backend".to_owned()))
     }
 
     fn export_replay(&self) -> Result<AuthoritativeReplayV8, ControllerError> {
-        Err(ControllerError::SemanticContractUnsupported)
+        Err(ControllerError::Backend("probe backend".to_owned()))
     }
 
     fn execute_replay(
         &self,
         _: AuthoritativeReplayV8,
     ) -> Result<BasicLandReplayV8ExecutionReport, ControllerError> {
-        Err(ControllerError::SemanticContractUnsupported)
+        Err(ControllerError::Backend("probe backend".to_owned()))
     }
 
     fn player_observation(

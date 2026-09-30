@@ -69,6 +69,8 @@ The cleanup is split into three stages. Each gets its own spec, plan and PR.
 
 ## 4. What is deleted (inventory)
 
+> The semantic catalog was deferred to stage 2 and deleted there (`docs/superpowers/specs/2026-09-30-old-formats-cleanup-design.md`).
+
 Sizes from the 2026-09-30 inventory at `9cfd35b`.
 
 - **`crates/mtgml-environment`**

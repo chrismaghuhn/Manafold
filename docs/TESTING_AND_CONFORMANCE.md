@@ -47,29 +47,15 @@ and every bounded stage of the synthetic continuation chain.
 
 Set and sequence semantics are distinct. `ChooseMany` has one canonical ordered representation of a semantic set; `Order` list order is semantic.
 
-## M2 legal-space proof
+## Legal-space proof
 
 Production rules remain the sole legality authority.
 
-`mtgml-conformance` may contain an independent bounded synthetic legal-space oracle used only for proof. It must not call production candidate generation as its reference and production crates cannot import it.
-
-The harness compares canonical complete choice sets:
-
-```text
-soundness:    reachable ⊆ reference-legal
-completeness: reference-legal ⊆ reachable
-```
-
-M2 prefers exactly one canonical protocol path per synthetic legal choice and detects:
-
-- missing choices;
-- illegal extras;
-- duplicate equivalent paths;
-- unsatisfiable requests;
-- continuation paths omitted/added;
-- hidden-dependent candidate ordering.
-
-Deliberate test-only mutants must demonstrate that the harness detects omissions, extras and duplicate paths.
+The independent bounded synthetic legal-space oracle and its harness lived in
+the `mtgml-conformance` crate, which was removed with the old runtime
+(`docs/superpowers/specs/2026-09-30-one-runtime-cleanup-design.md`). Until a new
+proof exists, legal-space soundness and completeness rest on the rules tests
+and the random-vs-random smoke games; they are not proven by an oracle.
 
 ## M2 information proof
 

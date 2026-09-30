@@ -1021,7 +1021,6 @@ fn typed_spell_stack_payload_matches_the_live_stack_card_incarnation() {
     );
     let legacy: mtgml_state::EngineState = state.predecessor_v5.clone().into();
     assert!(legacy.digest().is_err());
-    assert!(mtgml_state::calculate_full_state_digest_v4_historical(&legacy).is_err());
     let old_v6 = EngineStatePartsV2::from_state(&legacy, state.card_rules_state.clone());
     assert_eq!(
         old_v6.validate(),

@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .canonical import parse_uint, require_digest, require_exact_keys, require_nonempty, uint_wire
-from .errors import WireError
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,84 +26,6 @@ class KernelIdentityV1:
             "build_profile": require_nonempty(self.build_profile, "build_profile"),
             "implementation_id": require_nonempty(self.implementation_id, "implementation_id"),
             "semantic_version": require_nonempty(self.semantic_version, "semantic_version"),
-        }
-
-
-@dataclass(frozen=True, slots=True)
-class ReplaySchemaVersionsV1:
-    observation: str
-    information_state: str
-    decision: str
-    decision_response: str
-    observed_event: str
-    player_step: str
-    replay_step: str
-
-    @classmethod
-    def from_wire(cls, value: object) -> ReplaySchemaVersionsV1:
-        keys = {
-            "observation",
-            "information_state",
-            "decision",
-            "decision_response",
-            "observed_event",
-            "player_step",
-            "replay_step",
-        }
-        obj = require_exact_keys(value, keys)
-        return cls(**{key: require_nonempty(obj[key], key) for key in keys})
-
-    def to_wire(self) -> dict[str, object]:
-        return {
-            key: require_nonempty(getattr(self, key), key)
-            for key in (
-                "decision",
-                "decision_response",
-                "information_state",
-                "observation",
-                "observed_event",
-                "player_step",
-                "replay_step",
-            )
-        }
-
-
-@dataclass(frozen=True, slots=True)
-class RandomnessIdentityV1:
-    algorithm_id: str
-    derivation_version: str
-    root_seed_hex: str
-
-    @classmethod
-    def from_wire(cls, value: object) -> RandomnessIdentityV1:
-        obj = require_exact_keys(value, {"algorithm_id", "derivation_version", "root_seed_hex"})
-        seed = obj["root_seed_hex"]
-        if (
-            not isinstance(seed, str)
-            or len(seed) != 64
-            or any(ch not in "0123456789abcdef" for ch in seed)
-        ):
-            raise WireError("semantic.replay_manifest", "root seed is not canonical hex")
-        return cls(
-            require_nonempty(obj["algorithm_id"], "algorithm_id"),
-            require_nonempty(obj["derivation_version"], "derivation_version"),
-            seed,
-        )
-
-    def to_wire(self) -> dict[str, object]:
-        return RandomnessIdentityV1.from_wire(
-            {
-                "algorithm_id": self.algorithm_id,
-                "derivation_version": self.derivation_version,
-                "root_seed_hex": self.root_seed_hex,
-            }
-        )._raw()
-
-    def _raw(self) -> dict[str, object]:
-        return {
-            "algorithm_id": self.algorithm_id,
-            "derivation_version": self.derivation_version,
-            "root_seed_hex": self.root_seed_hex,
         }
 
 

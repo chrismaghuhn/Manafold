@@ -1150,6 +1150,13 @@
     {
       "change_process": "process-pr",
       "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-09-30-old-formats-cleanup-design.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
       "path": "docs/superpowers/specs/2026-09-30-one-runtime-cleanup-design.md",
       "role": "process",
       "stability": "provisional"
@@ -1165,6 +1172,13 @@
       "change_process": "process-pr",
       "owner_role": "maintainer",
       "path": "docs/superpowers/plans/2026-09-30-production-full-turn.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/plans/2026-09-30-old-formats-cleanup.md",
       "role": "process",
       "stability": "provisional"
     },

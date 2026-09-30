@@ -53,16 +53,6 @@ impl EngineStatePartsV2 {
         self.predecessor_v5.clone().into()
     }
 
-    pub fn full_state_digest_v6(
-        &self,
-    ) -> Result<mtgml_model::FullStateDigestV6, crate::StateDigestError> {
-        crate::calculate_full_state_digest_v6_with_execution_v3(
-            &self.materialize(),
-            &self.execution_v3,
-            self.card_rules_state.clone(),
-        )
-    }
-
     /// Registers currently existing ability identities in canonical
     /// `(source GameObjectId, AbilityKey)` order using the existing allocator.
     /// The registry and allocator commit together only after full state
@@ -445,20 +435,6 @@ mod tests {
         assert_eq!(
             target.validate(),
             Err(EngineStatePartsV2Error::HistoryReference)
-        );
-
-        let before = parts();
-        let mut invalid_delta = crate::StateDeltaV2::between(&before, &before, Vec::new()).unwrap();
-        invalid_delta
-            .replacement
-            .card_rules_state
-            .turn_history
-            .target_occurrences = BTreeSet::from([(GameObjectId(999), PlayerId(1))]);
-        assert_eq!(
-            invalid_delta.apply(&before),
-            Err(crate::DeltaApplicationV2Error::InvalidReplacement(
-                EngineStatePartsV2Error::HistoryReference
-            ))
         );
 
         let mut used = parts();

@@ -7,9 +7,7 @@ use crate::authoritative::PerspectiveIdentityResolver;
 use crate::common::{CandidateIntent, DecisionVisibility};
 use crate::error::{CandidateBindingError, DecisionValidationError};
 use crate::ordering::CandidateOrderingV2;
-use crate::v2::{
-    DecisionAnswerV2, DecisionDomainV2, DecisionResponseV2, DECISION_RESPONSE_V2_SCHEMA,
-};
+use crate::v2::{DecisionAnswerV2, DecisionDomainV2};
 use crate::{AuthoritativeDecisionRequestV2, EngineCandidateBinding};
 use mtgml_model::{
     AbilityInstanceId, CandidateIdV1, ContinuationId, DecisionId, GameObjectId, OpaqueAbilityId,
@@ -17,7 +15,6 @@ use mtgml_model::{
 };
 use serde::{Deserialize, Serialize};
 
-pub const PLAYER_DECISION_REQUEST_V3_SCHEMA: &str = "player-decision-request.v3";
 pub const DECISION_RESPONSE_V3_SCHEMA: &str = "decision-response.v3";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -121,52 +118,6 @@ pub struct AuthoritativeCandidateV3 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct PlayerDecisionRequestV3 {
-    pub schema_version: String,
-    pub player_decision_id: PlayerDecisionIdV1,
-    pub state_revision: StateRevision,
-    pub actor: PlayerId,
-    pub visibility: DecisionVisibility,
-    pub decision: DecisionDomainV2,
-    pub candidates: Vec<VisibleCandidateV3>,
-}
-
-impl PlayerDecisionRequestV3 {
-    pub fn validate(&self) -> Result<(), DecisionValidationError> {
-        if self.schema_version != PLAYER_DECISION_REQUEST_V3_SCHEMA {
-            return Err(DecisionValidationError::SchemaVersion);
-        }
-        self.decision.validate_candidates(self.candidates.len())?;
-        CandidateOrderingV2::validate_public(&self.candidates)
-    }
-
-    /// V3 changes the request vocabulary only. The unchanged V2 response is
-    /// checked against the V3 request's domain and request-local candidate IDs.
-    pub fn validate_response(
-        &self,
-        response: &DecisionResponseV2,
-    ) -> Result<(), DecisionValidationError> {
-        if response.schema_version != DECISION_RESPONSE_V2_SCHEMA {
-            return Err(DecisionValidationError::SchemaVersion);
-        }
-        if response.player_decision_id != self.player_decision_id {
-            return Err(DecisionValidationError::DecisionIdentityMismatch);
-        }
-        if response.state_revision != self.state_revision {
-            return Err(DecisionValidationError::StateRevisionMismatch);
-        }
-        self.validate()?;
-        let ids = self
-            .candidates
-            .iter()
-            .map(|candidate| candidate.candidate_id)
-            .collect::<Vec<_>>();
-        DecisionAnswerV2::validate_for_candidate_ids(&response.answer, &self.decision, &ids)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct AuthoritativeDecisionRequestV3 {
     pub decision_id: DecisionId,
     pub player_decision_id: PlayerDecisionIdV1,
@@ -257,28 +208,6 @@ impl AuthoritativeDecisionRequestV3 {
         Ok(())
     }
 
-    pub fn project_player_request(
-        &self,
-    ) -> Result<PlayerDecisionRequestV3, DecisionValidationError> {
-        self.validate()?;
-        Ok(PlayerDecisionRequestV3 {
-            schema_version: PLAYER_DECISION_REQUEST_V3_SCHEMA.to_owned(),
-            player_decision_id: self.player_decision_id,
-            state_revision: self.state_revision,
-            actor: self.actor,
-            visibility: self.visibility,
-            decision: self.decision.clone(),
-            candidates: self
-                .candidates
-                .iter()
-                .map(|candidate| VisibleCandidateV3 {
-                    candidate_id: candidate.candidate_id,
-                    intent: candidate.visible_intent.clone(),
-                })
-                .collect(),
-        })
-    }
-
     pub fn validate_bindings(
         &self,
         identities: &impl PerspectiveIdentityResolver,
@@ -353,7 +282,6 @@ pub fn validate_candidate_binding_v3(
 mod tests {
     use super::*;
     use crate::ordering::CandidateOrderingV2;
-    use crate::v2::DecisionResponseV2;
     use mtgml_model::{
         CandidateIdV1, PlayerDecisionIdV1, PlayerId, StateRevision, VisibleSequence,
     };
@@ -581,31 +509,6 @@ mod tests {
     }
 
     #[test]
-    fn v2_select_one_response_selects_v3_play_land_candidate_unchanged() {
-        let request = PlayerDecisionRequestV3 {
-            schema_version: PLAYER_DECISION_REQUEST_V3_SCHEMA.to_owned(),
-            player_decision_id: PlayerDecisionIdV1(7),
-            state_revision: StateRevision(12),
-            actor: PlayerId(1),
-            visibility: DecisionVisibility::ActingPlayerOnly,
-            decision: DecisionDomainV2::ChooseOne,
-            candidates: vec![visible(CandidateIntentV3::PlayLand {
-                object: OpaqueObjectId(5),
-            })],
-        };
-        let response = DecisionResponseV2 {
-            schema_version: DECISION_RESPONSE_V2_SCHEMA.to_owned(),
-            player_decision_id: PlayerDecisionIdV1(7),
-            state_revision: StateRevision(12),
-            answer: DecisionAnswerV2::SelectOne {
-                candidate_id: CandidateIdV1(0),
-            },
-        };
-        assert_eq!(request.validate_response(&response), Ok(()));
-        assert_eq!(response.schema_version, "decision-response.v2");
-    }
-
-    #[test]
     fn play_land_binding_requires_exact_perspective_object_mapping() {
         let candidate = visible(CandidateIntentV3::PlayLand {
             object: OpaqueObjectId(5),
@@ -652,85 +555,5 @@ mod tests {
             continuation_id: None,
         };
         assert_eq!(request.validate_bindings(&identities), Ok(()));
-    }
-
-    #[test]
-    fn request_rejects_wrong_schema_and_response_identity_or_revision() {
-        let mut request = PlayerDecisionRequestV3 {
-            schema_version: PLAYER_DECISION_REQUEST_V3_SCHEMA.to_owned(),
-            player_decision_id: PlayerDecisionIdV1(7),
-            state_revision: StateRevision(12),
-            actor: PlayerId(1),
-            visibility: DecisionVisibility::ActingPlayerOnly,
-            decision: DecisionDomainV2::ChooseOne,
-            candidates: vec![visible(CandidateIntentV3::PlayLand {
-                object: OpaqueObjectId(5),
-            })],
-        };
-        assert_eq!(request.validate(), Ok(()));
-        request.schema_version = "player-decision-request.v2".to_owned();
-        assert_eq!(
-            request.validate(),
-            Err(DecisionValidationError::SchemaVersion)
-        );
-        request.schema_version = PLAYER_DECISION_REQUEST_V3_SCHEMA.to_owned();
-        let mut response = DecisionResponseV2 {
-            schema_version: DECISION_RESPONSE_V2_SCHEMA.to_owned(),
-            player_decision_id: PlayerDecisionIdV1(8),
-            state_revision: StateRevision(11),
-            answer: DecisionAnswerV2::SelectOne {
-                candidate_id: CandidateIdV1(0),
-            },
-        };
-        assert_eq!(
-            request.validate_response(&response),
-            Err(DecisionValidationError::DecisionIdentityMismatch)
-        );
-        response.player_decision_id = request.player_decision_id;
-        assert_eq!(
-            request.validate_response(&response),
-            Err(DecisionValidationError::StateRevisionMismatch)
-        );
-    }
-
-    #[test]
-    fn frozen_phase_two_play_land_wire_fixture_matches_rust_dto() {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../schemas/examples/player-decision-request-v3-ordering.json");
-        let raw = std::fs::read(path).unwrap();
-        let request: PlayerDecisionRequestV3 = serde_json::from_slice(&raw).unwrap();
-        request.validate().unwrap();
-        let reencoded = serde_json::to_value(&request).unwrap();
-        let expected: serde_json::Value = serde_json::from_slice(&raw).unwrap();
-        assert_eq!(reencoded, expected);
-    }
-
-    #[test]
-    fn authoritative_projection_strips_trusted_play_land_binding() {
-        let request = AuthoritativeDecisionRequestV3 {
-            decision_id: DecisionId(3),
-            player_decision_id: PlayerDecisionIdV1(7),
-            state_revision: StateRevision(12),
-            actor: PlayerId(1),
-            visibility: DecisionVisibility::ActingPlayerOnly,
-            decision: DecisionDomainV2::ChooseOne,
-            candidates: vec![AuthoritativeCandidateV3 {
-                candidate_id: CandidateIdV1(0),
-                visible_intent: CandidateIntentV3::PlayLand {
-                    object: OpaqueObjectId(5),
-                },
-                trusted_binding: EngineCandidateBindingV3::PlayLand {
-                    object: GameObjectId(50),
-                },
-            }],
-            continuation_id: None,
-        };
-        let projected = request.project_player_request().unwrap();
-        let value = serde_json::to_value(projected).unwrap();
-        assert_eq!(value["candidates"][0]["intent"]["object"], "5");
-        assert!(value["candidates"][0].get("trusted_binding").is_none());
-        assert!(serde_json::to_string(&request)
-            .unwrap()
-            .contains("\"object\":\"50\""));
     }
 }

@@ -22,16 +22,12 @@ pub enum ReplayValidationError {
     Response,
     #[error("final replay identity does not match its steps")]
     FinalIdentity,
-    #[error("an empty replay must end at its initial identity")]
-    EmptyReplayIdentity,
     #[error("unsupported RNG contract in replay")]
     UnsupportedRngContract,
     #[error("replay-step schema identity is invalid")]
     ReplayStepIdentity,
     #[error("replay checkpoint identity does not recompute")]
     CheckpointIdentity,
-    #[error("replay step actor identity is invalid")]
-    Actor,
     #[error("accepted replay step counter progression is not deterministic")]
     CounterProgression,
     #[error("V3 replay keyed array is not in canonical order")]

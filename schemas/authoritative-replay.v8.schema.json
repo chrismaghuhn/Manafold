@@ -180,7 +180,6 @@
       "properties": {
         "program_kind": {
           "enum": [
-            "synthetic_rules_compat",
             "magic_rules"
           ]
         },
@@ -475,18 +474,6 @@
     },
     "rules_authority": {
       "anyOf": [
-        {
-          "additionalProperties": false,
-          "properties": {
-            "variant": {
-              "const": "synthetic_legacy"
-            }
-          },
-          "required": [
-            "variant"
-          ],
-          "type": "object"
-        },
         {
           "additionalProperties": false,
           "properties": {
@@ -853,70 +840,6 @@
                         "properties": {
                           "variant": {
                             "const": "comprehensive_rules"
-                          }
-                        },
-                        "required": [
-                          "variant"
-                        ]
-                      }
-                    },
-                    "required": [
-                      "rules_authority"
-                    ]
-                  }
-                },
-                "required": [
-                  "rules_manifest"
-                ]
-              }
-            },
-            "required": [
-              "semantic_contract"
-            ]
-          }
-        },
-        "required": [
-          "manifest"
-        ]
-      }
-    },
-    {
-      "if": {
-        "properties": {
-          "manifest": {
-            "properties": {
-              "execution_identity": {
-                "properties": {
-                  "program_kind": {
-                    "const": "synthetic_rules_compat"
-                  }
-                },
-                "required": [
-                  "program_kind"
-                ]
-              }
-            },
-            "required": [
-              "execution_identity"
-            ]
-          }
-        },
-        "required": [
-          "manifest"
-        ]
-      },
-      "then": {
-        "properties": {
-          "manifest": {
-            "properties": {
-              "semantic_contract": {
-                "properties": {
-                  "rules_manifest": {
-                    "properties": {
-                      "rules_authority": {
-                        "properties": {
-                          "variant": {
-                            "const": "synthetic_legacy"
                           }
                         },
                         "required": [

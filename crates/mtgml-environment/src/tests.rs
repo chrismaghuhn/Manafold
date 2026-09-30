@@ -1,7 +1,7 @@
 //! Unit tests of the production runtime's projections.
 
 use super::*;
-use mtgml_model::{EpisodeStatus, PlayerId};
+use mtgml_model::PlayerId;
 use mtgml_random::RootSeed256;
 
 mod magic_basic_land_observation;

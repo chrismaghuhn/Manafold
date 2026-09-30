@@ -19,7 +19,7 @@ from mtgml.persistence import (
     MAX_PAYLOAD_BYTES,
     MAX_TEXT_BYTES,
     PersistenceError,
-    calculate_checkpoint_digest_v3,
+    calculate_checkpoint_digest_v8,
     decode_canonical,
     decode_envelope,
     encode_canonical,
@@ -69,25 +69,6 @@ class PersistenceCodecTests(unittest.TestCase):
                         decode_envelope(payload)
                 self.assertEqual(caught.exception.code, entry["expected_error_code"])
 
-    def test_checkpoint_digest_known_answer_matches_rust(self) -> None:
-        counters = {
-            "decisions_submitted": 0,
-            "accepted_transitions": 0,
-            "rule_events_emitted": 0,
-            "resource_units_consumed": 0,
-            "wall_clock_elapsed_millis": 0,
-        }
-        self.assertEqual(
-            calculate_checkpoint_digest_v3(
-                "07" * 32,
-                EpisodeStatus.running(),
-                counters,
-                "mtgml.canonical-cbor.v1",
-                "v3",
-            ),
-            "b0cf94e1f49fb58feb6ebc07d88b2a7e226be78c1ca92ee7b9772d4f51290f6c",
-        )
-
     def test_fnd_017a_rejects_local_checkpoint_identity_inputs(self) -> None:
         valid_counters = {
             "decisions_submitted": 0,
@@ -96,19 +77,26 @@ class PersistenceCodecTests(unittest.TestCase):
             "resource_units_consumed": 0,
             "wall_clock_elapsed_millis": 0,
         }
+
+        def digest(counters: dict[str, int], codec_id: str, semantic_version: str) -> str:
+            return calculate_checkpoint_digest_v8(
+                "07" * 32,
+                EpisodeStatus.running(),
+                counters,
+                codec_id,
+                semantic_version,
+                "magic_rules",
+                "11" * 32,
+            )
+
+        digest(valid_counters, "in-memory-reference", "8")
         for codec_id, semantic_version, expected_label in (
-            ("", "3", "empty codec id"),
+            ("", "8", "empty codec id"),
             ("in-memory-reference", "", "empty semantic version"),
         ):
             with self.subTest(expected_label=expected_label):
                 with self.assertRaises(PersistenceError) as caught:
-                    calculate_checkpoint_digest_v3(
-                        "07" * 32,
-                        EpisodeStatus.running(),
-                        valid_counters,
-                        codec_id,
-                        semantic_version,
-                    )
+                    digest(valid_counters, codec_id, semantic_version)
                 self.assertEqual(caught.exception.code, "semantic_validation")
 
         invalid_counters = {
@@ -116,13 +104,7 @@ class PersistenceCodecTests(unittest.TestCase):
             "accepted_transitions": 1,
         }
         with self.assertRaises(PersistenceError) as caught:
-            calculate_checkpoint_digest_v3(
-                "07" * 32,
-                EpisodeStatus.running(),
-                invalid_counters,
-                "in-memory-reference",
-                "3",
-            )
+            digest(invalid_counters, "in-memory-reference", "8")
         self.assertEqual(caught.exception.code, "semantic_validation")
 
     def test_persistence_resource_boundaries_match_rust_contract(self) -> None:

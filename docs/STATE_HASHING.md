@@ -1,32 +1,21 @@
 # State and Artifact Hashing
 
-**Status:** FullStateDigestV7 / Checkpoint V8 / Replay V8 are current after the G0j activation cut for the bounded M4.2 slice; V6/V7 predecessor identities retain their exact historical meanings
+**Status:** FullStateDigestV7 / CheckpointDigestV8 / Replay V8 are the only persisted identities; FullStateDigestV7 is still computed through the V6 and V5 input layers described below. Earlier identities were removed (docs/superpowers/specs/2026-09-30-old-formats-cleanup-design.md)
 **Stability:** normative identity separation and ADR-0038 persistence-codec specification
 
 ## Digest domains
 
 Distinct semantic domains use distinct Rust types and identities. Digests from different domains are never compared directly.
 
-Current/historical families include:
-
 | Digest | Meaning |
 |---|---|
-| `FullStateDigest` | historical V1 full state under placeholder RNG semantics |
-| `FullStateDigestV2` | M1 full state under typed `mtgml.rng.v1` semantics |
-| `FullStateDigestV3` | M2 full authoritative state with typed continuation/information/perspective-local visible identity semantics |
-| `FullStateDigestV4` | historical M3 state meaning; detached exact verifier only after S3.P0 |
-| `FullStateDigestV5` | predecessor complete EngineState identity; exact historical verification only after PR #248 |
-| `FullStateDigestV6` | complete EngineStatePartsV2 identity; exact historical M4.2 predecessor after G0j |
-| `FullStateDigestV7` | complete EngineStatePartsV3 identity; current writer for the bounded M4.2 slice after G0j |
-| `InformationStateDigest` | historical M1 information-state digest (`mtgml.information-state-digest.v1`) |
-| `InformationStateDigestV2` | M2 perspective-safe current observation + retained knowledge (`mtgml.information-state-digest.v2`) |
+| `FullStateDigestV5` | the V5 input layer that FullStateDigestV7 builds on; the V5 digest itself serves only as a test probe (`EngineState::digest`) |
+| `FullStateDigestV6` | the V6 input layer (V5 components plus the card-rules record) that FullStateDigestV7 builds on |
+| `FullStateDigestV7` | complete `EngineStatePartsV3` identity; the current writer |
+| `InformationStateDigestV2` | perspective-safe current observation + retained knowledge (`mtgml.information-state-digest.v2`) |
 | `ObservationDigest` | exact current observation bytes |
 | `CandidateSetDigest` | ordered visible candidates/constraints only |
-| `CheckpointDigestV2/V3` | complete trusted checkpoint identity for the corresponding state version |
-| `CheckpointDigestV5` | historical execution-identity checkpoint digest; detached exact verifier only after S3.P0 |
-| `CheckpointDigestV6` | predecessor checkpoint identity binding `FullStateDigestV5` and `ExecutionIdentityV1`; exact historical verification only after PR #248 |
-| `CheckpointDigestV7` | checkpoint identity binding `FullStateDigestV6` and `ExecutionIdentityV1`; exact historical M4.2 predecessor after G0j |
-| `CheckpointDigestV8` | checkpoint identity binding `FullStateDigestV7` and `ExecutionIdentityV1`; current for the bounded M4.2 slice after G0j |
+| `CheckpointDigestV8` | checkpoint identity binding `FullStateDigestV7` and `ExecutionIdentityV1`; the current checkpoint digest |
 
 Digest identity provides content identity/divergence detection, not authenticity.
 
@@ -38,39 +27,28 @@ successor aggregate. Its fixed canonical input is
 `mtgml.full-state-digest.v7`. The input includes the accepted `zones_v2` and
 `execution_v4` child identities and their closed typed records. Canonical
 encoding remains explicit restricted CBOR; arbitrary Serde output is never
-hashed. `FullStateDigestV6` known-answer vectors remain immutable historical
-evidence and are checked under their own V6 domain.
+hashed.
 
 `EnvironmentCheckpointV8` binds this digest with the V8 checkpoint identity.
 The V8 replay and observation families bind the same successor identities.
 This cut preserves only the accepted Mountain/Plains `basic-land@1.0.0`
 execution scope.
 
-## FullStateDigestV6 historical identity
+## FullStateDigestV6 input layer
 
-PR #248 activated the explicit `FullStateDigestV6` identity for complete
-`EngineStatePartsV2` for the bounded M4.2 slice. G0j supersedes it as the
-current writer while retaining its exact historical meaning. The predecessor
-`EngineState::digest()` and V5 bytes remain unchanged for exact historical
-verification; it is a read/verifier-only identity after G0j. Its envelope uses domain
-`mtgml.full-state-digest.v6`, input schema `full-state-digest-input.v6`,
-`mtgml.canonical-cbor.v1`, and SHA-256. The canonical preimage is the fixed
-14-element array in the accepted M4 semantic specification: the unchanged V5
-positional components under the V6 header, followed by the closed
-`card-rules-authoritative-state.v1` record.
+FullStateDigestV7 validates its unchanged V6 components with the V6 input
+decoder. The V6 input uses domain `mtgml.full-state-digest.v6`, input schema
+`full-state-digest-input.v6`, `mtgml.canonical-cbor.v1`, and SHA-256. The
+canonical preimage is the fixed 14-element array in the accepted M4 semantic
+specification: the unchanged V5 positional components under the V6 header,
+followed by the closed `card-rules-authoritative-state.v1` record.
 
 That record contains typed Mana, TurnHistory, Counter, Attachment,
 Face, and AbilityAuthority state. Validation rejects noncanonical ordering,
 duplicates, invalid fixed tags, malformed record lengths, integer range/domain
 errors, and any `land_plays_used` value outside `{0,1}`. Its bytes use the
-shared canonical-CBOR and digest-envelope implementations. The verifier checks
-canonical decode/re-encode equality and the V6 digest identity. Historical
-V7 checkpoints bind it; the V8 runtime does not restore V7 checkpoints.
-
-V5 was the runtime identity before the Phase 13 activation. After PR #248 it
-is historical verification only. Historical V5 artifacts and vectors retain
-their exact bytes and meaning; no migration or reinterpretation is introduced
-by the V6 implementation.
+shared canonical-CBOR and digest-envelope implementations. The decoder checks
+canonical decode/re-encode equality.
 
 ## Immutable content identity V1
 
@@ -181,70 +159,9 @@ requires byte equality before identity verification. Resource bounds and
 codec error precedence remain those already specified by this document and
 ADR-0038.
 
-## Historical V1 and V2
-
-> **Superseded by AGENTS.md §4.** Formats now have one current version that is changed in place, and the old code path is deleted in the same change. Where this section requires a new version identity per change, it no longer applies.
-
-### V1
-
-V1 used canonical JSON and placeholder RNG semantics. There is no current-engine V1 producer. Historical bytes/fixtures remain immutable evidence.
-
-### V2
-
-M1 currently computes `FullStateDigestV2` from `FullStateDigestInputV2` and canonical JSON. `EnvironmentCheckpointV2` directly embeds the then-current unversioned `EngineState`.
-
-M2 changes the semantic meaning and structure of:
-
-- execution/pending decision;
-- continuations;
-- knowledge;
-- perspective identity and player-visible allocators;
-- perspective-visible sequence state.
-
-Therefore, once the M2 state cut lands:
-
-```text
-FullStateDigestV2        no current-engine producer
-EnvironmentCheckpointV2 no current executable runtime meaning
-Replay V2               historical support only as explicitly classified
-```
-
-Do not reinterpret V2 using the new `EngineState`, and do not create a legacy `EngineStateV2` solely to keep a historical in-memory checkpoint type executable.
-
-Historical V2 meaning remains immutable. After the M2 state cut the current-engine support matrix is fixed:
-
-| V2 surface | writer | reader | verifier | semantic execution | migration | classification |
-|---|---:|---:|---:|---:|---:|---|
-| `FullStateDigestV2` / detached V2 digest evidence | no | reference parsing only | yes, immutable V2 vectors/domain evidence | n/a | n/a | `READABLE_VERIFIABLE_ONLY` |
-| `EnvironmentCheckpointV2` | no | no current-runtime checkpoint reader | detached checkpoint-digest/contract evidence only | no; archived matching M1 engine required | none | `UNSUPPORTED` by the current engine |
-| Replay V2 | no | detached/version-specific V2 DTO only | yes, V2 structural/identity validation | no current-engine execution | none | `READABLE_VERIFIABLE_ONLY` |
-
-`EnvironmentCheckpointV2` has no durable detached historical state codec; it must never be "read" by deserializing into the changed M2 `EngineState`. No V2→V3 migration is defined by M2.A.
-
-## V3 requirement
-
-M2 introduces:
-
-```text
-full-state-digest-input.v3
-mtgml.full-state-digest.v3
-environment-checkpoint-digest-input.v3
-mtgml.checkpoint-digest.v3
-```
-
-V3 is the first new persisted semantic identity after ADR 0038 and therefore uses:
-
-- SHA-256;
-- the common digest envelope below;
-- detached versioned semantic input;
-- `mtgml.canonical-cbor.v1`;
-- shared golden and negative fixtures.
-
-No V3 digest hashes arbitrary runtime Serde output.
-
 # ADR-0038 persistence codec specification
 
-This section is the separately reviewed byte-level specification required by ADR 0038 for the V3 semantic digest identities. Runtime layout/library choices are implementation details.
+This section is the separately reviewed byte-level specification required by ADR 0038 for the persisted semantic digest identities. Runtime layout/library choices are implementation details.
 
 ## Common digest envelope V1
 
@@ -446,36 +363,11 @@ It excludes `EpisodeStatus`, environment counters, trusted IDs, another player's
 
 `ObservationDigest` remains V1 because `ObservationEnvelopeV1` already binds an independently versioned payload codec; M2 uses `synthetic-m2-observation.v1` without reinterpreting the envelope/digest domain.
 
-# FullStateDigestInputV3
+# State components
 
-Envelope fields:
-
-```text
-algorithm_id      = sha-256
-semantic_domain   = mtgml.full-state-digest.v3
-payload_codec_id  = mtgml.canonical-cbor.v1
-input_schema_id   = full-state-digest-input.v3
-```
-
-The canonical payload is the fixed 11-element array:
-
-```text
-[
-  "full-state-digest-input.v3",
-  "mtgml.full-state-digest.v3",
-  revision,
-  core_v1,
-  zones_v1,
-  allocators_v3,
-  execution_v2,
-  random_v1,
-  knowledge_v2,
-  perspective_identities_v2,
-  format_v1
-]
-```
-
-The first two payload fields intentionally duplicate schema/domain identity for diagnostics and migration validation; disagreement with the envelope is rejected.
+These component encodings are still produced by FullStateDigestV7 through its
+V6/V5 layers. They were introduced with the V3 input and keep their V3-era
+names.
 
 ## `core_v1`
 
@@ -753,7 +645,7 @@ waiting_triggers = []
 delayed_effects  = []
 ```
 
-Any non-empty value is rejected as `semantic_validation` / unsupported M2 state before persistence. This avoids making free-form M1 `label: String` runtime fields part of historical V3 meaning. The first later milestone that needs non-empty effect/trigger state must define an explicit detached schema and allocate a new full-state semantic input/domain version if state identity meaning changes.
+Any non-empty value is rejected as `semantic_validation` / unsupported M2 state before persistence. This avoids making free-form runtime `label: String` fields part of the state identity. The first later work that needs non-empty effect/trigger state must define an explicit detached schema for it.
 
 ## `random_v1`
 
@@ -929,13 +821,11 @@ player damage entry = [player_id, damage_u32]
 
 The presence of this historical structural field does not claim executable Commander semantics in M2.
 
-# Historical FullStateDigestV5 (current at the S3.P0 cut)
+# FullStateDigestV5 input layer
 
-S3.P0 made `FullStateDigestV5` the current full-state identity because the
-typed Magic SBA Graveyard-order continuation is new authoritative
-`EngineState`. Block 6 extends its combat component with durable blocked
-history and a completed-damage-step fact. It uses SHA-256, the V1 digest
-envelope, canonical CBOR, and these identities:
+The V5 input is the positional state layer that the V6 input, and through it
+FullStateDigestV7, builds on. It uses SHA-256, the V1 digest envelope,
+canonical CBOR, and these identities:
 
 ```text
 semantic_domain = mtgml.full-state-digest.v5
@@ -1027,142 +917,6 @@ blocked history and whether the mandatory damage action has already run.
 Existing FullStateDigestV5 identities for prior combat states therefore keep
 their bytes, while Block 6 restore states remain distinct.
 
-`FullStateDigestV4` remains an immutable historical identity. Its KAT bytes
-are unchanged, and its detached historical encoder rejects the Magic
-continuation rather than assigning it a V4 representation. No V4-to-V5
-automatic migration exists.
-
-# CheckpointDigestV3
-
-Envelope fields:
-
-```text
-algorithm_id      = sha-256
-semantic_domain   = mtgml.checkpoint-digest.v3
-payload_codec_id  = mtgml.canonical-cbor.v1
-input_schema_id   = environment-checkpoint-digest-input.v3
-```
-
-Canonical payload:
-
-```text
-[
-  "environment-checkpoint-digest-input.v3",
-  "mtgml.checkpoint-digest.v3",
-  full_state_digest_reference_v1,
-  episode_status,
-  environment_limit_counters,
-  checkpoint_codec_identity
-]
-```
-
-`episode_status` is exactly:
-
-```text
-["running", null]
-["terminal", [terminal_reason, player_outcomes[]]]
-["truncated", [truncation_reason, player_outcomes[]]]
-
-player outcome = [player_id, player_result]
-```
-
-`player_outcomes` is semantically keyed by player and is encoded sorted by `PlayerId`, duplicate-free. The checkpoint digest helper retains this defensive canonical sort when it encodes a supplied status. V3-authoritative checkpoint and replay boundaries must reject a noncanonical outcome order before accepting the status as authoritative; the shared `EpisodeStatus` model validator does not acquire a new global ordering rule from this V3 boundary requirement. Stable strings are exactly:
-
-```text
-terminal_reason = rules_loss | concession | simultaneous_outcome | rules_draw | specified_loop
-truncation_reason = decision_limit | rule_event_limit | wall_clock_limit | resource_limit | external_stop
-player_result = win | loss | draw | eliminated | unresolved
-```
-
-`environment_limit_counters` is the fixed array:
-
-```text
-[
-  decisions_submitted,
-  accepted_transitions,
-  rule_events_emitted,
-  resource_units_consumed,
-  wall_clock_elapsed_millis
-]
-```
-
-Checkpoint codec identity:
-
-```text
-[codec_id, semantic_version]
-```
-
-Both strings are non-empty exact UTF-8 values declared by the checkpoint contract.
-
-The checkpoint digest binds the complete `FullStateDigestV3` identity, not merely its 32 digest bytes.
-
-# Historical CheckpointDigestV6 (current before PR #248)
-
-`EnvironmentCheckpointV6` used `FullStateDigestV5` and the checkpoint
-identity family current before PR #248:
-
-```text
-semantic_domain = mtgml.checkpoint-digest.v6
-input_schema_id = environment-checkpoint-digest-input.v6
-codec identity = ["in-memory-reference", "6"]
-```
-
-Its canonical payload is the fixed seven-element execution-bound form:
-
-```text
-[
-  "environment-checkpoint-digest-input.v6",
-  "mtgml.checkpoint-digest.v6",
-  full_state_digest_reference_v1_for_v5,
-  episode_status,
-  environment_limit_counters,
-  ["in-memory-reference", "6"],
-  [[execution_program_variant, null], semantic_contract_id_32bytes]
-]
-```
-
-The V5 full-state reference must identify
-`mtgml.full-state-digest.v5` / `full-state-digest-input.v5`. Status and
-counters use the already declared closed encodings; the entire
-`ExecutionIdentityV1` is bound. Rust and Python use the same canonical
-preimage and known-answer fixture. `CheckpointDigestV5` retains its exact V5
-preimage over a V4 full-state reference and codec `/5`; it is never re-bound
-to V5 state or codec `/6`.
-
-## M4 successor identity contract
-
-> **Superseded by AGENTS.md §4.** Formats now have one current version that is changed in place, and the old code path is deleted in the same change. Where this section requires a new version identity per change, it no longer applies.
-
-The accepted M4 Semantic Spec allocates `FullStateDigestV6` with input schema
-`full-state-digest-input.v6` and domain `mtgml.full-state-digest.v6`. It
-preserves the V5 top-level semantic order and adds one fixed
-`card-rules-authoritative-state.v1` element containing the closed Mana,
-TurnHistory, Counter, Attachment, Face, and AbilityAuthority records. Their
-exact typed fields, ordering, ranges, and canonical CBOR arrays are specified
-in the [accepted M4 state-cut Semantic Spec](superpowers/specs/2026-09-26-m4-unified-state-cut-semantic-spec.md).
-The V6 DTO, canonical encoder, digest producer, and verifier are implemented.
-They were first executable on the Phase-10 integration branch and became the
-current `master` writer after PR #248. `EngineState::digest()` and V5 artifacts
-retain exact historical verification only; the current M4.2 runtime is bounded
-to Mountain and Plains.
-
-The same accepted design allocates `EnvironmentCheckpointV7` and
-`CheckpointDigestV7`, with `environment-checkpoint-digest-input.v7`,
-`mtgml.checkpoint-digest.v7`, and codec identity
-`["in-memory-reference", "7"]`. Its seven-element canonical payload binds
-the FullStateDigestV6 reference, status, environment counters, codec identity,
-and complete ExecutionIdentityV1. The exact payload and historical V6
-disposition are in the accepted Semantic Spec. These successor identities do
-not change historical V5/V6 bytes.
-
-The detached `StateDeltaV2` and `EnvironmentCheckpointV7` value types are
-implemented over `EngineStatePartsV2`. V7 checkpoint validation recomputes the
-complete V6 state identity and V7 checkpoint identity before returning a
-detached snapshot. Contract-binding admission can additionally verify the
-semantic manifest, rules manifest, and optional verified content catalog.
-The Phase-10 integration branch first introduced the V7 restore path; PR #248
-activated that path on `master`. V6 remains exact historical verification only.
-
 # Conversion and reader rules
 
 Runtime `EngineState` converts fallibly into the detached V3 semantic input.
@@ -1187,25 +941,9 @@ A persisted reader MUST:
 6. construct detached versioned values;
 7. only then convert through Rust-authoritative validation to the current runtime type where that historical support state permits it.
 
-# Evidence obligations
+# Evidence
 
-M2.B must add executable evidence for:
-
-- standard SHA-256 test vectors;
-- exact envelope framing vectors;
-- canonical CBOR primitive/boundary vectors and every decoder resource-bound boundary/overflow case;
-- every enum/unit/optional/leaf payload encoding rule, including visible/trusted candidate payloads, provenance, Commander structural entries, and EpisodeStatus;
-- every `PersistenceDecodeErrorV1` category/precedence case;
-- nonempty structured unordered collections;
-- insertion-order independence;
-- duplicate and noncanonical-order rejection;
-- shortest-integer/length rejection;
-- disallowed maps/floats/tags/indefinite values/trailing bytes;
-- full-state V3 golden known-answer digest;
-- mutation of every authoritative M2 component changing the V3 digest;
-- checkpoint V3 known-answer digest;
-- InformationStateDigestV2 known-answer and mutation/exclusion vectors;
-- Rust and trusted Python mechanical byte/digest parity where the persisted codec tooling is implemented;
-- immutable V1/V2 fixture preservation and explicit historical support classification.
-
-No M2 gate is `PASS` because this byte-level specification exists. M2.B must implement and execute the evidence.
+The known-answer and negative vectors under `persistence/golden` and
+`persistence/negative` pin these encodings. The Rust tests check them; the
+Python client recomputes only the V8 checkpoint digest and the contract
+identities.

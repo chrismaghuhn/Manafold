@@ -11,6 +11,40 @@ sys.path.insert(0, str(ROOT / "python" / "src"))
 from mtgml.errors import WireError
 from mtgml.wire import decode_canonical, encode_canonical
 
+DELETED_CONTRACTS: tuple[str, ...] = (
+    *(
+        f"{name}.v{version}"
+        for name in ("replay-manifest", "authoritative-replay")
+        for version in range(1, 8)
+    ),
+    "observed-event-envelope.v1",
+    "observed-event-envelope.v2",
+    "observed-event-envelope.v3",
+    "player-step.v1",
+    "player-step.v2",
+    "player-step.v3",
+    "information-state-envelope.v1",
+    "magic-m3-observation.v1",
+    "magic-combat-observation.v2",
+    "magic-combat-observation.v3",
+    "magic-combat-observation.v4",
+    "synthetic-m3-observation.v1",
+    "player-decision-request.v1",
+    "player-decision-request.v2",
+    "player-decision-request.v3",
+    "decision-response.v1",
+    "decision-response.v2",
+)
+
+
+class DeletedContractTests(unittest.TestCase):
+    def test_deleted_contracts_are_unknown(self) -> None:
+        for contract in DELETED_CONTRACTS:
+            with self.subTest(contract=contract):
+                with self.assertRaises(WireError) as caught:
+                    decode_canonical(contract, b"{}")
+                self.assertEqual(caught.exception.code, "fixture.unknown_contract")
+
 
 class SharedFixtureTests(unittest.TestCase):
     def test_every_golden_fixture_roundtrips_to_identical_bytes(self) -> None:

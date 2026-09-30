@@ -43,18 +43,6 @@ ZONE_KINDS = frozenset(
     )
 )
 
-OBSERVED_EVENT_KINDS = frozenset(
-    (
-        "object_moved",
-        "object_ceased_to_exist",
-        "life_changed",
-        "object_tapped",
-        "decision_available",
-        "random_outcome_visible",
-        "public_outcome",
-    )
-)
-
 STABLE_WIRE_ERROR_CODES = frozenset(
     (
         "decode.invalid_json",
@@ -63,8 +51,6 @@ STABLE_WIRE_ERROR_CODES = frozenset(
         "semantic.decision",
         "semantic.decision_response",
         "semantic.magic_m3_observation",
-        "semantic.magic_combat_observation",
-        "semantic.magic_combat_observation_v4",
         "semantic.magic_basic_land_observation_v1",
         "semantic.observation",
         "semantic.information_state",
@@ -73,10 +59,8 @@ STABLE_WIRE_ERROR_CODES = frozenset(
         "semantic.episode_status",
         "semantic.replay_manifest",
         "semantic.replay",
-        "semantic.synthetic_m3_observation",
         "fixture.unknown_contract",
     )
 )
 
 EPISODE_STATUS_SCHEMA = "episode-status.v1"
-OBSERVED_EVENT_SCHEMA = "observed-event-envelope.v1"

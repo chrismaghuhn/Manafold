@@ -1,20 +1,13 @@
-use mtgml_decision::{
-    CandidateIntent, DecisionAnswerV2, DecisionDomainV2, DecisionResponseV2, DecisionVisibility,
-    PlayerDecisionRequestV2, VisibleCandidateV2, DECISION_RESPONSE_V2_SCHEMA,
-    PLAYER_DECISION_REQUEST_V2_SCHEMA,
-};
 use mtgml_model::{
-    CandidateIdV1, CardDefinitionId, EpisodeStatus, InformationStateDigestV2, ObservationDigest,
-    OpaqueObjectId, PlayerDecisionIdV1, PlayerId, PlayerOutcome, PlayerResult, StateRevision,
-    TerminalReason, VisibleSequence, ZoneKind,
+    CardDefinitionId, EpisodeStatus, InformationStateDigestV2, ObservationDigest, OpaqueObjectId,
+    PlayerId, PlayerOutcome, PlayerResult, StateRevision, TerminalReason, VisibleSequence,
+    ZoneKind,
 };
 use mtgml_observation::{
-    ObservationEnvelope, ObservedEventEnvelopeV2, ObservedEventKindV2, PlayerInformationStateV2,
-    PlayerKnowledgeCauseV1, PlayerKnowledgeChannelV1, PlayerKnowledgeInvalidationReasonV1,
-    PlayerKnowledgeInvalidationV1, PlayerKnowledgeProvenanceV1, PlayerKnownLocationFactV1,
-    PlayerKnownLocationV1, PlayerKnownObjectV1, PlayerStepSubmissionV1, PlayerStepV2,
-    INFORMATION_STATE_SCHEMA_V2, OBSERVATION_SCHEMA, OBSERVED_EVENT_SCHEMA_V2,
-    PLAYER_STEP_SCHEMA_V2,
+    ObservationEnvelope, PlayerInformationStateV2, PlayerKnowledgeCauseV1,
+    PlayerKnowledgeChannelV1, PlayerKnowledgeInvalidationReasonV1, PlayerKnowledgeInvalidationV1,
+    PlayerKnowledgeProvenanceV1, PlayerKnownLocationFactV1, PlayerKnownLocationV1,
+    PlayerKnownObjectV1, INFORMATION_STATE_SCHEMA_V2, OBSERVATION_SCHEMA,
 };
 
 use crate::encode_canonical;
@@ -129,35 +122,6 @@ fn information_state_envelope_v2_constructs_the_golden_bytes() {
     );
 }
 
-fn constructed_choose_one_request_v2() -> PlayerDecisionRequestV2 {
-    PlayerDecisionRequestV2 {
-        schema_version: PLAYER_DECISION_REQUEST_V2_SCHEMA.to_owned(),
-        player_decision_id: PlayerDecisionIdV1(1),
-        state_revision: StateRevision(0),
-        actor: PlayerId(1),
-        visibility: DecisionVisibility::Public,
-        decision: DecisionDomainV2::ChooseOne,
-        candidates: vec![
-            VisibleCandidateV2 {
-                candidate_id: CandidateIdV1(0),
-                intent: CandidateIntent::ChooseBoolean { value: false },
-            },
-            VisibleCandidateV2 {
-                candidate_id: CandidateIdV1(1),
-                intent: CandidateIntent::ChooseBoolean { value: true },
-            },
-        ],
-    }
-}
-
-#[test]
-fn player_decision_request_v2_constructs_the_golden_bytes() {
-    assert_eq!(
-        encode_canonical(&constructed_choose_one_request_v2()).unwrap(),
-        golden_fixture("player-decision-request.v2.json")
-    );
-}
-
 #[test]
 fn observation_envelope_v1_constructs_the_golden_bytes() {
     let value = ObservationEnvelope {
@@ -171,57 +135,6 @@ fn observation_envelope_v1_constructs_the_golden_bytes() {
     assert_eq!(
         encode_canonical(&value).unwrap(),
         golden_fixture("observation-envelope.v1.json")
-    );
-}
-
-#[test]
-fn observed_event_envelope_v2_object_moved_constructs_the_golden_bytes() {
-    let value = ObservedEventEnvelopeV2 {
-        schema_version: OBSERVED_EVENT_SCHEMA_V2.to_owned(),
-        sequence: VisibleSequence(1),
-        state_revision: StateRevision(0),
-        event: ObservedEventKindV2::ObjectMoved {
-            old_object: Some(OpaqueObjectId(3)),
-            new_object: Some(OpaqueObjectId(11)),
-            from: ZoneKind::Hand,
-            to: ZoneKind::Battlefield,
-        },
-    };
-    assert_eq!(
-        encode_canonical(&value).unwrap(),
-        golden_fixture("observed-event-v2-object-moved.json")
-    );
-}
-
-#[test]
-fn decision_response_v2_select_one_constructs_the_golden_bytes() {
-    let value = DecisionResponseV2 {
-        schema_version: DECISION_RESPONSE_V2_SCHEMA.to_owned(),
-        player_decision_id: PlayerDecisionIdV1(1),
-        state_revision: StateRevision(0),
-        answer: DecisionAnswerV2::SelectOne {
-            candidate_id: CandidateIdV1(1),
-        },
-    };
-    assert_eq!(
-        encode_canonical(&value).unwrap(),
-        golden_fixture("decision-response.v2-select-one.json")
-    );
-}
-
-#[test]
-fn player_step_v2_constructs_the_golden_bytes() {
-    let value = PlayerStepV2 {
-        schema_version: PLAYER_STEP_SCHEMA_V2.to_owned(),
-        information_state: constructed_information_state_v2(),
-        observed_events: Vec::new(),
-        next_decision: Some(constructed_choose_one_request_v2()),
-        status: EpisodeStatus::Running,
-        submission: PlayerStepSubmissionV1::Accepted,
-    };
-    assert_eq!(
-        encode_canonical(&value).unwrap(),
-        golden_fixture("player-step.v2.json")
     );
 }
 

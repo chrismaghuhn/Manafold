@@ -18,13 +18,6 @@ fn entry(key: &str, version: &str) -> CapabilityRequirementV1 {
     }
 }
 
-fn synthetic_manifest_json() -> serde_json::Value {
-    serde_json::json!({
-        "rules_authority": { "variant": "synthetic_legacy" },
-        "capability_closure": null
-    })
-}
-
 fn comprehensive_manifest_json(closure: serde_json::Value) -> serde_json::Value {
     serde_json::json!({
         "rules_authority": {
@@ -33,30 +26,6 @@ fn comprehensive_manifest_json(closure: serde_json::Value) -> serde_json::Value 
         },
         "capability_closure": closure
     })
-}
-
-#[test]
-fn synthetic_legacy_with_null_closure_is_valid() {
-    let manifest: RulesContractManifestV1 =
-        serde_json::from_value(synthetic_manifest_json()).unwrap();
-    assert_eq!(manifest.rules_authority, RulesAuthorityV1::SyntheticLegacy);
-    assert!(manifest.capability_closure.is_none());
-    manifest.validate().unwrap();
-}
-
-#[test]
-fn synthetic_legacy_with_capability_closure_rejects() {
-    for closure in [
-        serde_json::json!([]),
-        serde_json::json!([{ "key": "rules/synthetic-transition", "version": "1.0.0" }]),
-    ] {
-        let value = serde_json::json!({
-            "rules_authority": { "variant": "synthetic_legacy" },
-            "capability_closure": closure
-        });
-        let manifest: RulesContractManifestV1 = serde_json::from_value(value).unwrap();
-        assert!(manifest.validate().is_err());
-    }
 }
 
 #[test]
@@ -82,15 +51,6 @@ fn comprehensive_rules_empty_snapshot_rejects() {
 fn comprehensive_rules_missing_snapshot_rejects_at_decode() {
     let value = serde_json::json!({
         "rules_authority": { "variant": "comprehensive_rules" },
-        "capability_closure": null
-    });
-    assert!(serde_json::from_value::<RulesContractManifestV1>(value).is_err());
-}
-
-#[test]
-fn synthetic_legacy_snapshot_payload_rejects_at_decode() {
-    let value = serde_json::json!({
-        "rules_authority": { "variant": "synthetic_legacy", "snapshot_id": "x" },
         "capability_closure": null
     });
     assert!(serde_json::from_value::<RulesContractManifestV1>(value).is_err());
@@ -250,7 +210,7 @@ fn unknown_rules_authority_variant_rejects_at_decode() {
 #[test]
 fn rules_manifest_rejects_unknown_fields() {
     let value = serde_json::json!({
-        "rules_authority": { "variant": "synthetic_legacy" },
+        "rules_authority": { "variant": "comprehensive_rules", "snapshot_id": "CR-2026-09-19" },
         "capability_closure": null,
         "provenance": "extra"
     });
@@ -269,7 +229,7 @@ fn rules_manifest_rejects_missing_fields() {
     assert!(serde_json::from_value::<RulesContractManifestV1>(missing_authority).is_err());
 
     let missing_closure = serde_json::json!({
-        "rules_authority": { "variant": "synthetic_legacy" }
+        "rules_authority": { "variant": "comprehensive_rules", "snapshot_id": "CR-2026-09-19" }
     });
     assert!(serde_json::from_value::<RulesContractManifestV1>(missing_closure).is_err());
 }
@@ -382,4 +342,13 @@ fn contract_id_domains_are_distinct() {
     let id = SemanticContractIdV1::from_digest_bytes([9; 32]);
     assert_eq!(id.as_str().len(), 64);
     assert!(SemanticContractIdV1::parse(id.as_str()).is_ok());
+}
+
+#[test]
+fn synthetic_legacy_rules_authority_is_rejected() {
+    let error =
+        serde_json::from_str::<RulesAuthorityV1>(r#"{"variant":"synthetic_legacy"}"#).unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("unknown variant `synthetic_legacy`"));
 }

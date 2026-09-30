@@ -14,16 +14,14 @@ use crate::{ContentContractIdV1, FormatContractIdV1, RulesContractIdV1};
 
 /// Closed rules authority (spec §7; ADR 0055 §2.6).
 ///
-/// JSON: tagged object `{ "variant": "synthetic_legacy" }` or
+/// JSON: tagged object
 /// `{ "variant": "comprehensive_rules", "snapshot_id": "<non-empty>" }`.
-/// Decoding is strict per variant: unknown variants, missing payloads, and
-/// payload-carrying `synthetic_legacy` objects all fail closed (spec §7b),
-/// so deserialization is implemented manually instead of via serde's
-/// internally-tagged derive (which ignores foreign fields on unit variants).
+/// Decoding is strict: unknown variants, missing payloads, and unknown fields
+/// all fail closed (spec §7b), so deserialization is implemented manually
+/// instead of via serde's internally-tagged derive.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "variant", rename_all = "snake_case")]
 pub enum RulesAuthorityV1 {
-    SyntheticLegacy,
     ComprehensiveRules { snapshot_id: String },
 }
 
@@ -69,23 +67,12 @@ impl<'de> Deserialize<'de> for RulesAuthorityV1 {
                     }
                 }
                 match variant.as_deref() {
-                    Some("synthetic_legacy") => {
-                        if snapshot_id.is_some() {
-                            return Err(A::Error::custom(
-                                "synthetic_legacy authority must not carry snapshot_id",
-                            ));
-                        }
-                        Ok(RulesAuthorityV1::SyntheticLegacy)
-                    }
                     Some("comprehensive_rules") => {
                         let snapshot_id =
                             snapshot_id.ok_or_else(|| A::Error::missing_field("snapshot_id"))?;
                         Ok(RulesAuthorityV1::ComprehensiveRules { snapshot_id })
                     }
-                    Some(other) => Err(A::Error::unknown_variant(
-                        other,
-                        &["synthetic_legacy", "comprehensive_rules"],
-                    )),
+                    Some(other) => Err(A::Error::unknown_variant(other, &["comprehensive_rules"])),
                     None => Err(A::Error::missing_field("variant")),
                 }
             }
@@ -113,9 +100,9 @@ pub struct CapabilityRequirementV1 {
 
 /// Rules contract manifest (spec §7; ADR 0055 §2.6).
 ///
-/// `capability_closure` is `None` ONLY for `SyntheticLegacy`;
 /// `ComprehensiveRules` requires a non-empty closure sorted ascending
-/// byte-wise by key with unique keys.
+/// byte-wise by key with unique keys; a `null` closure decodes but fails
+/// validation.
 ///
 /// Deserialization is manual and strict (spec §7b): both properties are
 /// required — an explicit `null` closure decodes to `None`, a missing
@@ -189,8 +176,6 @@ impl<'de> Deserialize<'de> for RulesContractManifestV1 {
 /// Typed failure family of [`RulesContractManifestV1::validate`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum RulesContractManifestValidationError {
-    #[error("synthetic_legacy authority must not claim a capability closure")]
-    SyntheticLegacyClosurePresent,
     #[error("comprehensive_rules authority requires a non-empty capability closure")]
     ComprehensiveRulesClosureMissing,
     #[error("comprehensive_rules snapshot identity must not be empty")]
@@ -212,13 +197,6 @@ impl RulesContractManifestV1 {
     /// is never silently sorted.
     pub fn validate(&self) -> Result<(), RulesContractManifestValidationError> {
         match &self.rules_authority {
-            RulesAuthorityV1::SyntheticLegacy => {
-                if self.capability_closure.is_some() {
-                    return Err(
-                        RulesContractManifestValidationError::SyntheticLegacyClosurePresent,
-                    );
-                }
-            }
             RulesAuthorityV1::ComprehensiveRules { snapshot_id } => {
                 if snapshot_id.is_empty() {
                     return Err(RulesContractManifestValidationError::EmptySnapshotId);

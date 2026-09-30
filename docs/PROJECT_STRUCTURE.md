@@ -24,7 +24,7 @@ scripts/      deterministic repository and maintainer automation
 |---|---|---|
 | `mtgml-model` | primitive identifiers, digest wrappers, shared small value types | rules, visibility, I/O |
 | `mtgml-random` | checkpointable RNG identity/state interfaces | policy decisions, wall-clock randomness |
-| `mtgml-persistence` | rules-neutral restricted canonical CBOR, digest envelope, and the single CheckpointDigestV3 calculation | `EngineState`, checkpoint/replay ownership, public JSON, filesystem I/O |
+| `mtgml-persistence` | rules-neutral restricted canonical CBOR, digest envelope, and the single CheckpointDigestV8 calculation | `EngineState`, checkpoint/replay ownership, public JSON, filesystem I/O |
 | `mtgml-decision` | closed player decision DTOs, authoritative bindings, validation | card execution, observation projection |
 | `mtgml-state` | complete checkpointable `EngineState`, identity/knowledge/format state, exact delta | hidden mutable caches, network transport |
 | `mtgml-card-ir` | experimental typed content vocabulary | authoritative source parsing, direct state mutation |
@@ -34,7 +34,6 @@ scripts/      deterministic repository and maintainer automation
 | `mtgml-wire` | canonical public serialization and shared fixtures | Magic rules decisions |
 | `mtgml-environment` | trusted controller and perspective-bound endpoints | alternate rule implementation |
 | `mtgml-commander` | Commander policy helpers and evidence; state remains inside `EngineState` | mutable state outside checkpoint closure |
-| `mtgml-conformance` | exact case vocabulary and harness contracts | production shortcuts |
 
 `mtgml-state` is the single state crate. A parallel or orphan state implementation is forbidden.
 
@@ -47,7 +46,7 @@ decision/state/card-ir
     ↓
 rules/observation/replay
     ↓
-wire/environment/conformance
+wire/environment
     ↓
 Python client and ML orchestration
 ```

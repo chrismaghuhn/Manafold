@@ -54,8 +54,6 @@ pub const STABLE_WIRE_ERROR_CODES: &[&str] = &[
     "semantic.decision",
     "semantic.decision_response",
     "semantic.magic_m3_observation",
-    "semantic.magic_combat_observation",
-    "semantic.magic_combat_observation_v4",
     "semantic.magic_basic_land_observation_v1",
     "semantic.observation",
     "semantic.information_state",
@@ -64,6 +62,5 @@ pub const STABLE_WIRE_ERROR_CODES: &[&str] = &[
     "semantic.episode_status",
     "semantic.replay_manifest",
     "semantic.replay",
-    "semantic.synthetic_m3_observation",
     "fixture.unknown_contract",
 ];

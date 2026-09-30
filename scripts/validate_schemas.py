@@ -10,49 +10,18 @@ import jsonschema
 
 ROOT = Path(__file__).resolve().parents[1]
 WIRE_MAPPING = {
-    "player-decision-request.v1": "player-decision-request.v1.schema.json",
-    "decision-response.v1": "decision-response.v1.schema.json",
-    "player-decision-request.v2": "player-decision-request.v2.schema.json",
-    "player-decision-request.v3": "player-decision-request.v3.schema.json",
     "player-decision-request.v4": "player-decision-request.v4.schema.json",
-    "decision-response.v2": "decision-response.v2.schema.json",
     "decision-response.v3": "decision-response.v3.schema.json",
     "episode-status.v1": "episode-status.v1.schema.json",
-    "observed-event-envelope.v1": "observed-event-envelope.v1.schema.json",
     "observation-envelope.v1": "observation-envelope.v1.schema.json",
     "observation-envelope.v2": "observation-envelope.v2.schema.json",
-    "information-state-envelope.v1": "information-state-envelope.v1.schema.json",
-    "player-step.v1": "player-step.v1.schema.json",
-    "replay-manifest.v1": "replay-manifest.v1.schema.json",
-    "authoritative-replay.v1": "authoritative-replay.v1.schema.json",
-    "replay-manifest.v2": "replay-manifest.v2.schema.json",
-    "authoritative-replay.v2": "authoritative-replay.v2.schema.json",
     "information-state-envelope.v2": "information-state-envelope.v2.schema.json",
     "information-state-envelope.v3": "information-state-envelope.v3.schema.json",
-    "observed-event-envelope.v2": "observed-event-envelope.v2.schema.json",
-    "observed-event-envelope.v3": "observed-event-envelope.v3.schema.json",
     "observed-event-envelope.v4": "observed-event-envelope.v4.schema.json",
-    "player-step.v2": "player-step.v2.schema.json",
-    "player-step.v3": "player-step.v3.schema.json",
     "player-step.v4": "player-step.v4.schema.json",
-    "replay-manifest.v3": "replay-manifest.v3.schema.json",
-    "authoritative-replay.v3": "authoritative-replay.v3.schema.json",
-    "magic-m3-observation.v1": "magic-m3-observation.v1.schema.json",
-    "magic-combat-observation.v2": "magic-combat-observation.v2.schema.json",
-    "magic-combat-observation.v3": "magic-combat-observation.v3.schema.json",
-    "magic-combat-observation.v4": "magic-combat-observation.v4.schema.json",
-    "synthetic-m3-observation.v1": "synthetic-m3-observation.v1.schema.json",
     "magic-basic-land-observation.v1": "magic-basic-land-observation.v1.schema.json",
     "magic-shared-execution-observation.v1": "magic-shared-execution-observation.v1.schema.json",
-    "replay-manifest.v4": "replay-manifest.v4.schema.json",
-    "authoritative-replay.v4": "authoritative-replay.v4.schema.json",
-    "replay-manifest.v5": "replay-manifest.v5.schema.json",
-    "authoritative-replay.v5": "authoritative-replay.v5.schema.json",
-    "replay-manifest.v6": "replay-manifest.v6.schema.json",
-    "authoritative-replay.v6": "authoritative-replay.v6.schema.json",
-    "replay-manifest.v7": "replay-manifest.v7.schema.json",
     "replay-manifest.v8": "replay-manifest.v8.schema.json",
-    "authoritative-replay.v7": "authoritative-replay.v7.schema.json",
     "authoritative-replay.v8": "authoritative-replay.v8.schema.json",
     "replay-step.v8": "replay-step.v8.schema.json",
 }
@@ -139,26 +108,6 @@ SCHEMA_NEGATIVE_CASES = [
         "schemas/negative/magic-basic-land-observation-v1-candidates.json",
     ),
     (
-        "player-decision-request.v3.schema.json",
-        "schemas/negative/player-decision-request-v3-unknown-version.json",
-    ),
-    (
-        "player-decision-request.v3.schema.json",
-        "schemas/negative/player-decision-request-v3-unknown-field.json",
-    ),
-    (
-        "player-decision-request.v3.schema.json",
-        "schemas/negative/player-decision-request-v3-unknown-intent.json",
-    ),
-    (
-        "player-decision-request.v3.schema.json",
-        "schemas/negative/player-decision-request-v3-play-land-missing-object.json",
-    ),
-    (
-        "player-decision-request.v3.schema.json",
-        "schemas/negative/player-decision-request-v3-trusted-game-object-id.json",
-    ),
-    (
         "magic-shared-execution-observation.v1.schema.json",
         "schemas/negative/magic-shared-execution-observation-v1-global-state-revision.json",
     ),
@@ -235,52 +184,36 @@ SCHEMA_NEGATIVE_CASES = [
         "schemas/negative/player-decision-request-v4-synthetic-wrong-candidate-intent.json",
     ),
     (
-        "observed-event-envelope.v3.schema.json",
-        "schemas/negative/observed-event-v3-object-moved-missing-entry-fields.json",
-    ),
-    (
-        "observed-event-envelope.v3.schema.json",
-        "schemas/negative/observed-event-v3-unknown-kind.json",
-    ),
-    (
-        "replay-manifest.v7.schema.json#content-contract-child",
+        "replay-manifest.v8.schema.json#content-contract-child",
         "schemas/negative/replay-v7-content-child-unknown-field.json",
     ),
     (
-        "replay-manifest.v7.schema.json#content-contract-child",
+        "replay-manifest.v8.schema.json#content-contract-child",
         "schemas/negative/replay-v7-content-child-invalid-base64.json",
     ),
     (
-        "replay-manifest.v7.schema.json#content-presence-rule",
+        "replay-manifest.v8.schema.json#content-presence-rule",
         "schemas/negative/replay-v7-content-presence-mismatch.json",
     ),
     (
-        "replay-manifest.v7.schema.json#content-presence-rule",
+        "replay-manifest.v8.schema.json#content-presence-rule",
         "schemas/negative/replay-v7-content-id-without-child.json",
     ),
     (
-        "replay-manifest.v7.schema.json#content-contract-child",
+        "replay-manifest.v8.schema.json#content-contract-child",
         "schemas/negative/replay-v7-content-child-uppercase-id.json",
     ),
     (
-        "replay-manifest.v7.schema.json#content-contract-child",
+        "replay-manifest.v8.schema.json#content-contract-child",
         "schemas/negative/replay-v7-content-child-extra-padding.json",
     ),
     (
-        "replay-manifest.v7.schema.json#content-contract-child",
+        "replay-manifest.v8.schema.json#content-contract-child",
         "schemas/negative/replay-v7-content-child-whitespace.json",
     ),
     (
-        "replay-manifest.v7.schema.json#content-contract-child",
+        "replay-manifest.v8.schema.json#content-contract-child",
         "schemas/negative/replay-v7-content-child-missing-padding.json",
-    ),
-    (
-        "replay-manifest.v7.schema.json",
-        "schemas/negative/replay-v7-land-play-incomplete-basic-land-closure.json",
-    ),
-    (
-        "authoritative-replay.v7.schema.json",
-        "schemas/negative/authoritative-replay-v7-land-play-incomplete-basic-land-closure.json",
     ),
 ]
 SCHEMA_POSITIVE_CASES = [
@@ -338,64 +271,12 @@ SCHEMA_POSITIVE_CASES = [
         "schemas/examples/player-decision-request-v4-synthetic-order.json",
     ),
     (
-        "player-decision-request.v3.schema.json",
-        "schemas/examples/player-decision-request-v3-play-land.json",
-    ),
-    (
-        "player-decision-request.v3.schema.json",
-        "schemas/examples/player-decision-request-v3-ordering.json",
-    ),
-    (
-        "observed-event-envelope.v3.schema.json",
-        "schemas/examples/observed-event-v3-object-moved.json",
-    ),
-    (
-        "observed-event-envelope.v3.schema.json",
-        "schemas/examples/observed-event-v3-entry-back-tapped.json",
-    ),
-    (
-        "observed-event-envelope.v3.schema.json",
-        "schemas/examples/observed-event-v3-mana-pool-changed.json",
-    ),
-    (
-        "observed-event-envelope.v3.schema.json",
-        "schemas/examples/observed-event-v3-counters-changed.json",
-    ),
-    (
-        "observed-event-envelope.v3.schema.json",
-        "schemas/examples/observed-event-v3-attachment-changed.json",
-    ),
-    (
-        "observed-event-envelope.v3.schema.json",
-        "schemas/examples/observed-event-v3-face-changed.json",
-    ),
-    (
-        "player-step.v3.schema.json",
-        "schemas/examples/player-step-v3.json",
-    ),
-    (
-        "player-step.v3.schema.json",
-        "schemas/examples/player-step-v3-event-next-decision.json",
-    ),
-    (
-        "player-step.v3.schema.json",
-        "schemas/examples/player-step-v3-rejected-no-events.json",
-    ),
-    (
         "magic-basic-land-observation.v1.schema.json",
         "schemas/examples/magic-basic-land-observation-v1.json",
     ),
     (
         "magic-basic-land-observation.v1.schema.json",
         "schemas/examples/magic-basic-land-observation-v1-ordered.json",
-    ),
-    (
-        "replay-manifest.v7.schema.json",
-        "schemas/examples/replay-manifest-v7-phase9-admitted-basic-land.json",
-    ),
-    (
-        "authoritative-replay.v7.schema.json",
-        "schemas/examples/authoritative-replay-v7-phase9-admitted-rejected-step.json",
     ),
 ]
 

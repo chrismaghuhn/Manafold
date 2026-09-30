@@ -87,7 +87,6 @@ fn contract_bytes_or_null<T>(id: Option<&T>, raw_bytes: fn(&T) -> [u8; 32]) -> c
 
 fn rules_authority_value(authority: &RulesAuthorityV1) -> cbor::Value {
     match authority {
-        RulesAuthorityV1::SyntheticLegacy => variant("synthetic_legacy", cbor::Value::Null),
         RulesAuthorityV1::ComprehensiveRules { snapshot_id } => variant(
             "comprehensive_rules",
             cbor::Value::Text(snapshot_id.clone()),

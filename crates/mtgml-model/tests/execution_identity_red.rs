@@ -3,16 +3,10 @@
 //! These are the permanent Task-1 contract tests. The RED phase expects a
 //! compile failure caused ONLY by the missing Task-1 production types/API.
 
-use mtgml_model::{
-    CheckpointDigestV5, ExecutionIdentityV1, ExecutionProgramV1, SemanticContractIdV1,
-};
+use mtgml_model::{ExecutionIdentityV1, ExecutionProgramV1, SemanticContractIdV1};
 
 #[test]
 fn execution_program_wire_values_are_exact() {
-    assert_eq!(
-        serde_json::to_value(ExecutionProgramV1::SyntheticRulesCompat).unwrap(),
-        serde_json::json!("synthetic_rules_compat")
-    );
     assert_eq!(
         serde_json::to_value(ExecutionProgramV1::MagicRules).unwrap(),
         serde_json::json!("magic_rules")
@@ -20,12 +14,7 @@ fn execution_program_wire_values_are_exact() {
 }
 
 #[test]
-fn execution_program_decodes_both_canonical_values() {
-    assert_eq!(
-        serde_json::from_value::<ExecutionProgramV1>(serde_json::json!("synthetic_rules_compat"))
-            .unwrap(),
-        ExecutionProgramV1::SyntheticRulesCompat
-    );
+fn execution_program_decodes_its_canonical_value() {
     assert_eq!(
         serde_json::from_value::<ExecutionProgramV1>(serde_json::json!("magic_rules")).unwrap(),
         ExecutionProgramV1::MagicRules
@@ -91,7 +80,7 @@ fn execution_identity_json_shape_is_exact() {
 #[test]
 fn execution_identity_rejects_unknown_fields() {
     let value = serde_json::json!({
-        "program_kind": "synthetic_rules_compat",
+        "program_kind": "magic_rules",
         "semantic_contract_id": SemanticContractIdV1::from_digest_bytes([0; 32]).as_str(),
         "kernel": "extra"
     });
@@ -134,9 +123,6 @@ fn semantic_contract_id_json_is_64_lowercase_hex() {
 }
 
 #[test]
-fn checkpoint_digest_v5_is_a_distinct_v5_domain_newtype() {
-    assert_eq!(CheckpointDigestV5::DOMAIN, "mtgml.checkpoint-digest.v5");
-    let digest = CheckpointDigestV5::from_digest_bytes([7; 32]);
-    assert_eq!(digest.as_str().len(), 64);
-    assert!(CheckpointDigestV5::parse(digest.as_str()).is_ok());
+fn synthetic_rules_compat_program_is_rejected() {
+    assert!(serde_json::from_str::<ExecutionProgramV1>(r#""synthetic_rules_compat""#).is_err());
 }
