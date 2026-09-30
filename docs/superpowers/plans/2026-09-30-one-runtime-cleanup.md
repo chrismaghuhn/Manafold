@@ -319,7 +319,7 @@ fn only_the_full_game_closure_is_admitted() {
 | `mtgml-rules::turn_progression` | the native tests in its test module (19 after Task 6) |
 | `mtgml-rules::basic_land_v4` | `turn_progression` tests (land play, mana ability), `basic_land` `v4_*` tests, environment `production_turn` |
 | `mtgml-rules::basic_land` (candidates, draft) | `basic_land` candidate and S1 tests, `turn_progression` tests |
-| `mtgml-rules::characteristic_query` | its 2 tests, 7 S1 tests in `basic_land` |
+| `mtgml-rules::characteristic_query` | its 2 tests, 6 S1 tests in `basic_land` |
 | `mtgml-rules::events_v3` | its 10 tests, `built_delta_check_rejects_another_after_state` |
 | `mtgml-rules::events` | `tests/semantic_delta.rs` (4) |
 | `mtgml-rules::zone_incarnation` | `tests/zone_incarnation.rs` (1), draw and discard tests in `turn_progression` |
