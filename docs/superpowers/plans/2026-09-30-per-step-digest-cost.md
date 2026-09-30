@@ -1,8 +1,7 @@
 # Per-Step Digest Cost Implementation Plan
 
-**Status:** DRAFT for owner review, 2026-09-30. Implementation starts after
-PR #261 (`feat/production-full-turn`) is merged, on a branch
-`perf/digest-once-per-step` off `master`.
+**Status:** ACCEPTED by the owner on 2026-09-30 (execution: inline). In progress on
+branch `perf/digest-once-per-step` off `master` after PR #261 was merged.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
