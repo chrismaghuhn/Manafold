@@ -2,9 +2,8 @@ use mtgml_model::{CardDefinitionId, GameObjectId, PhysicalCardId, PlayerId, Zone
 use mtgml_random::RootSeed256;
 use mtgml_state::{
     construct_synthetic_engine_state, CardRulesAuthoritativeStateV1, DeltaApplicationV3Error,
-    EngineStatePartsV3, ExecutionStateV4, SemanticDeltaOperation, SemanticDeltaOperationV2,
-    SemanticDeltaOperationV3, StateDeltaV3, SyntheticResetInputs, SyntheticV4Setup,
-    VisibilityPartition, ZoneLocation, ZonePosition,
+    EngineStatePartsV3, ExecutionStateV4, SemanticDeltaOperationV3, StateDeltaV3,
+    SyntheticResetInputs, SyntheticV4Setup, VisibilityPartition, ZoneLocation, ZonePosition,
 };
 
 fn state_with_tapped_permanents(objects: &[u64]) -> EngineStatePartsV3 {
@@ -82,12 +81,8 @@ fn untapped(before: &EngineStatePartsV3, objects: &[u64]) -> EngineStatePartsV3 
 }
 
 fn untap_completed(objects: &[u64]) -> SemanticDeltaOperationV3 {
-    SemanticDeltaOperationV3::Existing {
-        operation: Box::new(SemanticDeltaOperationV2::Existing {
-            operation: Box::new(SemanticDeltaOperation::UntapCompleted {
-                affected_objects: objects.iter().copied().map(GameObjectId).collect(),
-            }),
-        }),
+    SemanticDeltaOperationV3::UntapCompleted {
+        affected_objects: objects.iter().copied().map(GameObjectId).collect(),
     }
 }
 

@@ -36,9 +36,8 @@ use mtgml_state::{
 };
 
 use crate::{
-    AuthoritativeRuleEventKind, AuthoritativeRuleEventKindV3, AuthoritativeRuleEventV3,
-    BasicLandCandidateError, BasicLandTransitionError as Error, BasicLandTransitionProductV4,
-    SelectedSuccessorDecisionV1,
+    AuthoritativeRuleEventKindV3, AuthoritativeRuleEventV3, BasicLandCandidateError,
+    BasicLandTransitionError as Error, BasicLandTransitionProductV4, SelectedSuccessorDecisionV1,
 };
 
 /// Executes one V4 response. Land plays and mana abilities use the
@@ -189,7 +188,7 @@ struct Facts {
     attackers_declared: bool,
     combat_skipped: bool,
     combat_ended: bool,
-    zone_events: Vec<crate::AuthoritativeRuleEvent>,
+    zone_events: Vec<crate::zone_incarnation::ZoneMoveEvent>,
 }
 
 /// The land-only slice (D13): exactly two players, only admitted basic lands
@@ -599,8 +598,6 @@ fn move_card(
             claimed_from,
             claimed_to,
         },
-        // Placeholder origin: `finish` numbers every event of the transition.
-        RuleEventId(1),
         &mut events,
     )
     .map_err(|_| Error::TurnProgressUnsupported)?;
@@ -608,7 +605,7 @@ fn move_card(
     parts.execution = Default::default();
     // The new incarnation shows the same face as the card it came from.
     for event in &events {
-        if let AuthoritativeRuleEventKind::ZoneTransition { transition } = &event.event {
+        if let crate::zone_incarnation::ZoneMoveEvent::Transition(transition) = event {
             let face = next
                 .card_rules_state
                 .faces
@@ -643,42 +640,38 @@ fn finish(
             source: usize,
         },
     }
-    let legacy = |event: AuthoritativeRuleEventKind| {
-        Pending::Kind(Box::new(AuthoritativeRuleEventKindV3::Existing {
-            event: Box::new(event),
-        }))
-    };
+    let kind = |event: AuthoritativeRuleEventKindV3| Pending::Kind(Box::new(event));
     let old = &before.predecessor_v5.core;
     let new = next.predecessor_v5.core.clone();
-    let mut pending = vec![legacy(AuthoritativeRuleEventKind::DecisionCleared {
+    let mut pending = vec![kind(AuthoritativeRuleEventKindV3::DecisionCleared {
         decision: answered.decision_id,
     })];
     if old.priority != new.priority {
-        pending.push(legacy(AuthoritativeRuleEventKind::PriorityChanged {
+        pending.push(kind(AuthoritativeRuleEventKindV3::PriorityChanged {
             from: old.priority,
             to: new.priority,
         }));
     }
     if old.position != new.position {
-        pending.push(legacy(AuthoritativeRuleEventKind::TurnPositionChanged {
+        pending.push(kind(AuthoritativeRuleEventKindV3::TurnPositionChanged {
             from: old.position,
             to: new.position,
         }));
     }
     if old.active_player != new.active_player {
-        pending.push(legacy(AuthoritativeRuleEventKind::ActivePlayerChanged {
+        pending.push(kind(AuthoritativeRuleEventKindV3::ActivePlayerChanged {
             from: old.active_player,
             to: new.active_player,
         }));
     }
     if old.turn_number != new.turn_number {
-        pending.push(legacy(AuthoritativeRuleEventKind::TurnNumberChanged {
+        pending.push(kind(AuthoritativeRuleEventKindV3::TurnNumberChanged {
             from: old.turn_number,
             to: new.turn_number,
         }));
     }
     if let Some(affected_objects) = facts.untapped {
-        pending.push(legacy(AuthoritativeRuleEventKind::UntapCompleted {
+        pending.push(kind(AuthoritativeRuleEventKindV3::UntapCompleted {
             affected_objects,
         }));
     }
@@ -688,29 +681,31 @@ fn finish(
             .combat
             .as_ref()
             .ok_or(Error::InvalidResult)?;
-        pending.push(legacy(AuthoritativeRuleEventKind::AttackersDeclared {
+        pending.push(kind(AuthoritativeRuleEventKindV3::AttackersDeclared {
             defending_player: combat.defending_player,
             attackers: combat.attackers.clone(),
         }));
     }
     if facts.combat_skipped {
-        pending.push(legacy(AuthoritativeRuleEventKind::EmptyCombatStepsSkipped));
+        pending.push(kind(AuthoritativeRuleEventKindV3::EmptyCombatStepsSkipped));
     }
     if facts.combat_ended {
-        pending.push(legacy(AuthoritativeRuleEventKind::CombatEnded));
+        pending.push(kind(AuthoritativeRuleEventKindV3::CombatEnded));
     }
     let mut transition_index = None;
     for event in facts.zone_events {
-        match event.event {
-            AuthoritativeRuleEventKind::PerspectiveOccurrence { lifecycle, .. } => {
+        match event {
+            crate::zone_incarnation::ZoneMoveEvent::Occurrence(lifecycle) => {
                 pending.push(Pending::Occurrence {
                     lifecycle,
                     source: transition_index.ok_or(Error::InvalidResult)?,
                 });
             }
-            other => {
+            crate::zone_incarnation::ZoneMoveEvent::Transition(transition) => {
                 transition_index = Some(pending.len());
-                pending.push(legacy(other));
+                pending.push(kind(AuthoritativeRuleEventKindV3::ZoneTransition {
+                    transition,
+                }));
             }
         }
     }
@@ -772,8 +767,8 @@ fn finish(
         NextDecision::Discard => (running, Some(install_discard_request(&mut next)?)),
         // CR 104.2a: in a two-player game the other player wins.
         NextDecision::GameOver { loser } => {
-            pending.push(legacy(
-                AuthoritativeRuleEventKind::StateBasedActionsApplied {
+            pending.push(kind(
+                AuthoritativeRuleEventKindV3::StateBasedActionsApplied {
                     actions: vec![SbaSelectedActionV1::PlayerLoses { player: loser }],
                 },
             ));
@@ -799,7 +794,7 @@ fn finish(
         }
     };
     if let Some(request) = &request {
-        pending.push(legacy(AuthoritativeRuleEventKind::DecisionCreated {
+        pending.push(kind(AuthoritativeRuleEventKindV3::DecisionCreated {
             decision: request.decision_id,
         }));
     }
@@ -1687,10 +1682,9 @@ mod tests {
         assert_eq!(product.next_decision, None);
         assert!(product.events.iter().any(|event| matches!(
             &event.event,
-            crate::AuthoritativeRuleEventKindV3::Existing { event }
-                if **event == AuthoritativeRuleEventKind::StateBasedActionsApplied {
-                    actions: vec![mtgml_state::SbaSelectedActionV1::PlayerLoses { player: P1 }],
-                }
+            event if *event == AuthoritativeRuleEventKindV3::StateBasedActionsApplied {
+                actions: vec![mtgml_state::SbaSelectedActionV1::PlayerLoses { player: P1 }],
+            }
         )));
         assert_eq!(
             zone_count(&after, P1, ZoneKind::Hand),

@@ -3,17 +3,19 @@
 //! These are transition products, not a durable log and not a replay control
 //! stream. G0j alone connects a successor producer to the current runtime.
 
-use crate::events::AuthoritativeRuleEventKind;
 use mtgml_model::{
-    GameObjectId, PlayerId, RuleEventId, StackObjectId, StateRevision, TriggerInstanceId,
+    ContinuationId, DecisionId, GameObjectId, PlayerId, RuleEventId, StackObjectId, StateRevision,
+    TriggerInstanceId, ZoneKind,
 };
+use mtgml_random::RandomStreamKeyV1;
 use mtgml_state::{
     ActionCostFacts, CostCommitActionV1, CostFacts, DamageKind, DamageRecipient,
     EngineStatePartsV3, ManaPoolChangeCauseV1, ManaPoolV1, ManaSourceActivation,
-    PendingTriggerRecord, PerspectiveLifecycleAuditV1, SemanticDeltaOperationV2,
-    SemanticDeltaOperationV3, SourceContext, StackItemEndKindV1, StackItemPayload, StateDeltaV3,
-    TargetBinding, TemporaryEffectRecord,
+    PendingTriggerRecord, PerspectiveLifecycleAuditV1, SemanticDeltaOperationV3, SourceContext,
+    StackItemEndKindV1, StackItemPayload, StateDeltaV3, TargetBinding, TemporaryEffectRecord,
+    TurnPosition, ZoneTransition,
 };
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuthoritativeRuleEventV3 {
@@ -45,8 +47,83 @@ impl AuthoritativeRuleEventV3 {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuthoritativeRuleEventKindV3 {
-    Existing {
-        event: Box<AuthoritativeRuleEventKind>,
+    ZoneTransition {
+        transition: Box<ZoneTransition>,
+    },
+    ObjectCeasedToExist {
+        object: GameObjectId,
+    },
+    LifeChanged {
+        player: PlayerId,
+        from: i64,
+        to: i64,
+    },
+    CombatDamageDealt {
+        assignments: Vec<mtgml_state::DamageAssignmentV1>,
+    },
+    CombatDamageStepCompleted,
+    MarkedDamageChanged {
+        creature: GameObjectId,
+        from: u64,
+        to: u64,
+    },
+    ObjectTapped {
+        object: GameObjectId,
+        from: bool,
+        to: bool,
+    },
+    DecisionCreated {
+        decision: DecisionId,
+    },
+    DecisionCleared {
+        decision: DecisionId,
+    },
+    SbaGraveyardOrderChosen {
+        continuation: ContinuationId,
+        owner: PlayerId,
+        top_to_bottom: Vec<GameObjectId>,
+    },
+    StateBasedActionsApplied {
+        actions: Vec<mtgml_state::SbaSelectedActionV1>,
+    },
+    PriorityChanged {
+        from: mtgml_state::PriorityState,
+        to: mtgml_state::PriorityState,
+    },
+    RandomValueSampled {
+        stream: RandomStreamKeyV1,
+        bound: u64,
+        value: u64,
+        raw_words_consumed: u64,
+        cursor_before: u64,
+        cursor_after: u64,
+    },
+    PublicOutcome {
+        code: String,
+    },
+    TurnPositionChanged {
+        from: TurnPosition,
+        to: TurnPosition,
+    },
+    AttackersDeclared {
+        defending_player: PlayerId,
+        attackers: Vec<GameObjectId>,
+    },
+    BlockersDeclared {
+        assignments: Vec<mtgml_state::CombatBlockerAssignmentV1>,
+    },
+    CombatEnded,
+    EmptyCombatStepsSkipped,
+    UntapCompleted {
+        affected_objects: Vec<GameObjectId>,
+    },
+    ActivePlayerChanged {
+        from: PlayerId,
+        to: PlayerId,
+    },
+    TurnNumberChanged {
+        from: u64,
+        to: u64,
     },
     StackItemAdded {
         stack_object: StackObjectId,
@@ -131,11 +208,120 @@ impl AuthoritativeRuleEventKindV3 {
     /// not receive fabricated rule events.
     pub fn semantic_operations(&self) -> Vec<SemanticDeltaOperationV3> {
         match self {
-            Self::Existing { event } => vec![SemanticDeltaOperationV3::Existing {
-                operation: Box::new(SemanticDeltaOperationV2::Existing {
-                    operation: Box::new(event.semantic_delta()),
-                }),
+            Self::ZoneTransition { transition } => vec![SemanticDeltaOperationV3::ZoneTransition {
+                transition: transition.clone(),
             }],
+            Self::ObjectCeasedToExist { object } => {
+                vec![SemanticDeltaOperationV3::ObjectCeasedToExist { object: *object }]
+            }
+            Self::LifeChanged { player, from, to } => vec![SemanticDeltaOperationV3::LifeChanged {
+                player: *player,
+                from: *from,
+                to: *to,
+            }],
+            Self::CombatDamageDealt { assignments } => {
+                vec![SemanticDeltaOperationV3::CombatDamageDealt {
+                    assignments: assignments.clone(),
+                }]
+            }
+            Self::CombatDamageStepCompleted => {
+                vec![SemanticDeltaOperationV3::CombatDamageStepCompleted]
+            }
+            Self::MarkedDamageChanged { creature, from, to } => {
+                vec![SemanticDeltaOperationV3::MarkedDamageChanged {
+                    creature: *creature,
+                    from: *from,
+                    to: *to,
+                }]
+            }
+            Self::ObjectTapped { object, from, to } => {
+                vec![SemanticDeltaOperationV3::ObjectTapped {
+                    object: *object,
+                    from: *from,
+                    to: *to,
+                }]
+            }
+            Self::DecisionCreated { decision } => vec![SemanticDeltaOperationV3::DecisionCreated {
+                decision: *decision,
+            }],
+            Self::DecisionCleared { decision } => vec![SemanticDeltaOperationV3::DecisionCleared {
+                decision: *decision,
+            }],
+            Self::SbaGraveyardOrderChosen {
+                continuation,
+                owner,
+                top_to_bottom,
+            } => vec![SemanticDeltaOperationV3::SbaGraveyardOrderChosen {
+                continuation: *continuation,
+                owner: *owner,
+                top_to_bottom: top_to_bottom.clone(),
+            }],
+            Self::StateBasedActionsApplied { actions } => {
+                vec![SemanticDeltaOperationV3::StateBasedActionsApplied {
+                    actions: actions.clone(),
+                }]
+            }
+            Self::PriorityChanged { from, to } => vec![SemanticDeltaOperationV3::PriorityChanged {
+                from: *from,
+                to: *to,
+            }],
+            Self::RandomValueSampled {
+                stream,
+                bound,
+                value,
+                raw_words_consumed,
+                cursor_before,
+                cursor_after,
+            } => vec![SemanticDeltaOperationV3::RandomValueSampled {
+                stream: *stream,
+                bound: *bound,
+                value: *value,
+                raw_words_consumed: *raw_words_consumed,
+                cursor_before: *cursor_before,
+                cursor_after: *cursor_after,
+            }],
+            Self::PublicOutcome { code } => {
+                vec![SemanticDeltaOperationV3::PublicOutcome { code: code.clone() }]
+            }
+            Self::TurnPositionChanged { from, to } => {
+                vec![SemanticDeltaOperationV3::TurnPositionChanged {
+                    from: *from,
+                    to: *to,
+                }]
+            }
+            Self::AttackersDeclared {
+                defending_player,
+                attackers,
+            } => vec![SemanticDeltaOperationV3::AttackersDeclared {
+                defending_player: *defending_player,
+                attackers: attackers.clone(),
+            }],
+            Self::BlockersDeclared { assignments } => {
+                vec![SemanticDeltaOperationV3::BlockersDeclared {
+                    assignments: assignments.clone(),
+                }]
+            }
+            Self::CombatEnded => vec![SemanticDeltaOperationV3::CombatEnded],
+            Self::EmptyCombatStepsSkipped => {
+                vec![SemanticDeltaOperationV3::EmptyCombatStepsSkipped]
+            }
+            Self::UntapCompleted { affected_objects } => {
+                vec![SemanticDeltaOperationV3::UntapCompleted {
+                    affected_objects: affected_objects.clone(),
+                }]
+            }
+            Self::ActivePlayerChanged { from, to } => {
+                vec![SemanticDeltaOperationV3::ActivePlayerChanged {
+                    from: *from,
+                    to: *to,
+                }]
+            }
+            Self::TurnNumberChanged { from, to } => {
+                vec![SemanticDeltaOperationV3::TurnNumberChanged {
+                    from: *from,
+                    to: *to,
+                }]
+            }
             Self::StackItemAdded {
                 stack_object,
                 payload,
@@ -245,14 +431,8 @@ impl AuthoritativeRuleEventKindV3 {
                 }]
             }
             Self::PerspectiveObservationOccurrence { lifecycle, .. } => {
-                vec![SemanticDeltaOperationV3::Existing {
-                    operation: Box::new(SemanticDeltaOperationV2::Existing {
-                        operation: Box::new(
-                            mtgml_state::SemanticDeltaOperation::PerspectiveLifecycle {
-                                lifecycle: lifecycle.as_ref().clone(),
-                            },
-                        ),
-                    }),
+                vec![SemanticDeltaOperationV3::PerspectiveLifecycle {
+                    lifecycle: lifecycle.as_ref().clone(),
                 }]
             }
             Self::DamageApplied {
@@ -340,13 +520,12 @@ fn validate_basic_land_entry_group(
     ),
     EventDeltaV3Error,
 > {
-    use SemanticDeltaOperationV2 as V2;
     use SemanticDeltaOperationV3 as V3;
 
-    let has_land_play_operation = delta.operations.iter().any(|operation| {
-        matches!(operation, V3::Existing { operation }
-            if matches!(operation.as_ref(), V2::LandPlayCountChanged { .. }))
-    });
+    let has_land_play_operation = delta
+        .operations
+        .iter()
+        .any(|operation| matches!(operation, V3::LandPlayCountChanged { .. }));
     if !has_land_play_operation {
         return Ok((
             std::collections::BTreeSet::new(),
@@ -356,12 +535,9 @@ fn validate_basic_land_entry_group(
     let transitions = events
         .iter()
         .filter_map(|record| match &record.event {
-            AuthoritativeRuleEventKindV3::Existing { event } => match event.as_ref() {
-                AuthoritativeRuleEventKind::ZoneTransition { transition } => {
-                    Some((record.event_id, transition.as_ref()))
-                }
-                _ => None,
-            },
+            AuthoritativeRuleEventKindV3::ZoneTransition { transition } => {
+                Some((record.event_id, transition.as_ref()))
+            }
             _ => None,
         })
         .filter(|(_, transition)| {
@@ -385,13 +561,17 @@ fn validate_basic_land_entry_group(
         .iter()
         .enumerate()
         .filter_map(|(index, operation)| match operation {
-            V3::Existing { operation }
-                if matches!(operation.as_ref(), V2::ObjectEntered {
-                    old_object: Some(old), new_object, from_zone, to_zone, tapped: false, face: 0
-                } if *old == transition.old_object
-                    && *new_object == transition.new_object
-                    && *from_zone == mtgml_model::ZoneKind::Hand
-                    && *to_zone == mtgml_model::ZoneKind::Battlefield) =>
+            V3::ObjectEntered {
+                old_object: Some(old),
+                new_object,
+                from_zone,
+                to_zone,
+                tapped: false,
+                face: 0,
+            } if *old == transition.old_object
+                && *new_object == transition.new_object
+                && *from_zone == mtgml_model::ZoneKind::Hand
+                && *to_zone == mtgml_model::ZoneKind::Battlefield =>
             {
                 Some(index)
             }
@@ -412,13 +592,11 @@ fn validate_basic_land_entry_group(
         .iter()
         .enumerate()
         .filter_map(|(index, operation)| match operation {
-            V3::Existing { operation }
-                if matches!(operation.as_ref(), V2::LandPlayCountChanged {
-                    player, from: 0, to: 1
-                } if *player == transition.new_snapshot.controller) =>
-            {
-                Some(index)
-            }
+            V3::LandPlayCountChanged {
+                player,
+                from: 0,
+                to: 1,
+            } if *player == transition.new_snapshot.controller => Some(index),
             _ => None,
         })
         .collect::<Vec<_>>();
@@ -432,22 +610,16 @@ fn validate_basic_land_entry_group(
         .iter()
         .enumerate()
         .filter_map(|(index, operation)| match operation {
-            V3::Existing { operation }
-                if matches!(operation.as_ref(), V2::AbilityAuthorityAdded { source, .. }
-                    if *source == transition.new_object) =>
-            {
-                Some((index, operation.as_ref()))
-            }
+            V3::AbilityAuthorityAdded {
+                instance, source, ..
+            } if *source == transition.new_object => Some((index, instance)),
             _ => None,
         })
         .collect::<Vec<_>>();
     if added_authorities.len() != 1 {
         return Err(EventDeltaV3Error::Mismatch);
     }
-    let (authority_index, authority) = added_authorities[0];
-    let V2::AbilityAuthorityAdded { instance, .. } = authority else {
-        return Err(EventDeltaV3Error::Mismatch);
-    };
+    let (authority_index, instance) = added_authorities[0];
     grouped.insert(authority_index);
 
     let alias_entries = delta
@@ -455,16 +627,12 @@ fn validate_basic_land_entry_group(
         .iter()
         .enumerate()
         .filter_map(|(index, operation)| match operation {
-            V3::Existing { operation }
-                if matches!(operation.as_ref(), V2::AbilityIdentityChanged {
-                    instance: alias_instance, from: None, to: Some(_), ..
-                } if alias_instance == instance) =>
-            {
-                match operation.as_ref() {
-                    V2::AbilityIdentityChanged { perspective, .. } => Some((index, *perspective)),
-                    _ => None,
-                }
-            }
+            V3::AbilityIdentityChanged {
+                perspective,
+                instance: alias_instance,
+                from: None,
+                to: Some(_),
+            } if alias_instance == instance => Some((index, *perspective)),
             _ => None,
         })
         .collect::<Vec<_>>();
@@ -602,12 +770,6 @@ fn validate_observation_occurrence_lifecycle(
                 lifecycle,
                 source_event_id,
             } => (Some(lifecycle.as_ref()), Some(*source_event_id)),
-            AuthoritativeRuleEventKindV3::Existing { event } => match event.as_ref() {
-                AuthoritativeRuleEventKind::PerspectiveOccurrence { lifecycle, .. } => {
-                    (Some(lifecycle), None)
-                }
-                _ => (None, None),
-            },
             _ => (None, None),
         };
         let Some(lifecycle) = lifecycle else {
@@ -649,21 +811,16 @@ fn apply_delta_identity_changes_v3(
     projected: &mut mtgml_state::EngineState,
     delta: &StateDeltaV3,
 ) -> Result<(), EventDeltaV3Error> {
-    use SemanticDeltaOperationV2 as V2;
     use SemanticDeltaOperationV3 as V3;
 
     for operation in &delta.operations {
         match operation {
-            V3::Existing { operation } => {
-                let V2::AbilityIdentityChanged {
-                    perspective,
-                    instance,
-                    from,
-                    to,
-                } = operation.as_ref()
-                else {
-                    continue;
-                };
+            V3::AbilityIdentityChanged {
+                perspective,
+                instance,
+                from,
+                to,
+            } => {
                 let identity = projected
                     .perspective_identities
                     .players
@@ -721,28 +878,18 @@ fn apply_delta_identity_changes_v3(
 }
 
 fn is_projectable_public_source_event(event: &AuthoritativeRuleEventKindV3) -> bool {
-    match event {
+    matches!(
+        event,
         AuthoritativeRuleEventKindV3::StackItemAdded { .. }
-        | AuthoritativeRuleEventKindV3::StackItemRemoved { .. }
-        | AuthoritativeRuleEventKindV3::TriggerPlaced { .. }
-        | AuthoritativeRuleEventKindV3::CounterChanged { .. }
-        | AuthoritativeRuleEventKindV3::ManaPoolChanged { .. }
-        | AuthoritativeRuleEventKindV3::TemporaryEffectCreated { .. }
-        | AuthoritativeRuleEventKindV3::TemporaryEffectExpired { .. } => true,
-        AuthoritativeRuleEventKindV3::Existing { event } => matches!(
-            event.as_ref(),
-            AuthoritativeRuleEventKind::PerspectiveOccurrence {
-                observation: crate::PerspectiveObservationPolicyV1::MovedInSight { .. }
-                    | crate::PerspectiveObservationPolicyV1::Appeared { .. }
-                    | crate::PerspectiveObservationPolicyV1::ObjectTapped { .. }
-                    | crate::PerspectiveObservationPolicyV1::SawRandomOutcome { .. }
-                    | crate::PerspectiveObservationPolicyV1::AnnouncedOutcome { .. },
-                ..
-            } | AuthoritativeRuleEventKind::ZoneTransition { .. }
-                | AuthoritativeRuleEventKind::ObjectTapped { .. }
-        ),
-        _ => false,
-    }
+            | AuthoritativeRuleEventKindV3::StackItemRemoved { .. }
+            | AuthoritativeRuleEventKindV3::TriggerPlaced { .. }
+            | AuthoritativeRuleEventKindV3::CounterChanged { .. }
+            | AuthoritativeRuleEventKindV3::ManaPoolChanged { .. }
+            | AuthoritativeRuleEventKindV3::TemporaryEffectCreated { .. }
+            | AuthoritativeRuleEventKindV3::TemporaryEffectExpired { .. }
+            | AuthoritativeRuleEventKindV3::ZoneTransition { .. }
+            | AuthoritativeRuleEventKindV3::ObjectTapped { .. }
+    )
 }
 
 fn validate_damage_state_projection_v3(
@@ -795,15 +942,12 @@ fn validate_damage_state_projection_v3(
                 return Err(EventDeltaV3Error::Mismatch);
             }
         } else if !events.iter().any(|event| match &event.event {
-            AuthoritativeRuleEventKindV3::Existing { event } => match event.as_ref() {
-                AuthoritativeRuleEventKind::ObjectCeasedToExist { object: ceased } => {
-                    *ceased == object
-                }
-                AuthoritativeRuleEventKind::ZoneTransition { transition } => {
-                    transition.old_object == object
-                }
-                _ => false,
-            },
+            AuthoritativeRuleEventKindV3::ObjectCeasedToExist { object: ceased } => {
+                *ceased == object
+            }
+            AuthoritativeRuleEventKindV3::ZoneTransition { transition } => {
+                transition.old_object == object
+            }
             _ => false,
         }) {
             return Err(EventDeltaV3Error::Mismatch);
@@ -818,7 +962,37 @@ fn validate_delta_operation_projection_v3(
     operation: &SemanticDeltaOperationV3,
 ) -> Result<(), EventDeltaV3Error> {
     let valid = match operation {
-        SemanticDeltaOperationV3::Existing { .. }
+        // Operations whose state change the coverage check owns.
+        SemanticDeltaOperationV3::ZoneTransition { .. }
+        | SemanticDeltaOperationV3::ObjectCeasedToExist { .. }
+        | SemanticDeltaOperationV3::LifeChanged { .. }
+        | SemanticDeltaOperationV3::CombatDamageDealt { .. }
+        | SemanticDeltaOperationV3::CombatDamageStepCompleted
+        | SemanticDeltaOperationV3::MarkedDamageChanged { .. }
+        | SemanticDeltaOperationV3::ObjectTapped { .. }
+        | SemanticDeltaOperationV3::DecisionCreated { .. }
+        | SemanticDeltaOperationV3::DecisionCleared { .. }
+        | SemanticDeltaOperationV3::SbaGraveyardOrderChosen { .. }
+        | SemanticDeltaOperationV3::StateBasedActionsApplied { .. }
+        | SemanticDeltaOperationV3::PriorityChanged { .. }
+        | SemanticDeltaOperationV3::RandomValueSampled { .. }
+        | SemanticDeltaOperationV3::PublicOutcome { .. }
+        | SemanticDeltaOperationV3::TurnPositionChanged { .. }
+        | SemanticDeltaOperationV3::AttackersDeclared { .. }
+        | SemanticDeltaOperationV3::BlockersDeclared { .. }
+        | SemanticDeltaOperationV3::CombatEnded
+        | SemanticDeltaOperationV3::EmptyCombatStepsSkipped
+        | SemanticDeltaOperationV3::UntapCompleted { .. }
+        | SemanticDeltaOperationV3::ActivePlayerChanged { .. }
+        | SemanticDeltaOperationV3::TurnNumberChanged { .. }
+        | SemanticDeltaOperationV3::PerspectiveLifecycle { .. }
+        | SemanticDeltaOperationV3::LandPlayCountChanged { .. }
+        | SemanticDeltaOperationV3::AbilityIdentityChanged { .. }
+        | SemanticDeltaOperationV3::AttachmentChanged { .. }
+        | SemanticDeltaOperationV3::ObjectFaceChanged { .. }
+        | SemanticDeltaOperationV3::ObjectEntered { .. }
+        | SemanticDeltaOperationV3::AbilityAuthorityAdded { .. }
+        | SemanticDeltaOperationV3::AbilityAuthorityRemoved { .. }
         | SemanticDeltaOperationV3::DamageApplied { .. } => true,
         SemanticDeltaOperationV3::StackOrderChanged { from, to } => {
             &before.predecessor_v5.zones.stack_order == from
@@ -1073,9 +1247,198 @@ fn validate_event_projection_v3(
     event: &AuthoritativeRuleEventKindV3,
 ) -> Result<(), EventDeltaV3Error> {
     let valid = match event {
-        AuthoritativeRuleEventKindV3::Existing { event } => {
-            validate_legacy_event_projection_v3(before, after, event)
+        AuthoritativeRuleEventKindV3::ZoneTransition { transition } => {
+            object_snapshot_matches(&before.predecessor_v5, &transition.last_known)
+                && !after
+                    .predecessor_v5
+                    .zones
+                    .objects
+                    .contains_key(&transition.old_object)
+                && object_snapshot_matches(&after.predecessor_v5, &transition.new_snapshot)
+                && after
+                    .predecessor_v5
+                    .zones
+                    .locations
+                    .get(&transition.new_object)
+                    == Some(&transition.to)
         }
+        AuthoritativeRuleEventKindV3::ObjectCeasedToExist { object } => {
+            before.predecessor_v5.zones.objects.contains_key(object)
+                && !after.predecessor_v5.zones.objects.contains_key(object)
+        }
+        AuthoritativeRuleEventKindV3::LifeChanged { player, from, to } => {
+            from != to
+                && before
+                    .predecessor_v5
+                    .core
+                    .players
+                    .get(player)
+                    .is_some_and(|state| state.life == *from)
+                && after
+                    .predecessor_v5
+                    .core
+                    .players
+                    .get(player)
+                    .is_some_and(|state| state.life == *to)
+        }
+        AuthoritativeRuleEventKindV3::MarkedDamageChanged { creature, from, to } => {
+            from != to
+                && before
+                    .predecessor_v5
+                    .foundation_sources
+                    .get(creature)
+                    .is_some_and(|source| source.marked_damage == *from)
+                && after
+                    .predecessor_v5
+                    .foundation_sources
+                    .get(creature)
+                    .is_some_and(|source| source.marked_damage == *to)
+        }
+        AuthoritativeRuleEventKindV3::ObjectTapped { object, from, to } => {
+            from != to
+                && before
+                    .predecessor_v5
+                    .zones
+                    .objects
+                    .get(object)
+                    .is_some_and(|state| state.tapped == *from)
+                && after
+                    .predecessor_v5
+                    .zones
+                    .objects
+                    .get(object)
+                    .is_some_and(|state| state.tapped == *to)
+        }
+        AuthoritativeRuleEventKindV3::DecisionCreated { decision } => {
+            before
+                .execution_v4
+                .pending_decision
+                .as_ref()
+                .is_none_or(|request| request.decision_id != *decision)
+                && after
+                    .execution_v4
+                    .pending_decision
+                    .as_ref()
+                    .is_some_and(|request| request.decision_id == *decision)
+        }
+        AuthoritativeRuleEventKindV3::DecisionCleared { decision } => {
+            before
+                .execution_v4
+                .pending_decision
+                .as_ref()
+                .is_some_and(|request| request.decision_id == *decision)
+                && after
+                    .execution_v4
+                    .pending_decision
+                    .as_ref()
+                    .is_none_or(|request| request.decision_id != *decision)
+        }
+        AuthoritativeRuleEventKindV3::PriorityChanged { from, to } => {
+            from != to
+                && before.predecessor_v5.core.priority == *from
+                && after.predecessor_v5.core.priority == *to
+        }
+        AuthoritativeRuleEventKindV3::TurnPositionChanged { from, to } => {
+            from != to
+                && before.predecessor_v5.core.position == *from
+                && after.predecessor_v5.core.position == *to
+        }
+        AuthoritativeRuleEventKindV3::RandomValueSampled {
+            stream,
+            bound,
+            value,
+            raw_words_consumed,
+            cursor_before,
+            cursor_after,
+        } => {
+            *bound > 0
+                && *value < *bound
+                && cursor_before.checked_add(*raw_words_consumed) == Some(*cursor_after)
+                && before
+                    .predecessor_v5
+                    .random
+                    .streams
+                    .get(stream)
+                    .is_some_and(|cursor| cursor.next_raw_u64 == *cursor_before)
+                && after
+                    .predecessor_v5
+                    .random
+                    .streams
+                    .get(stream)
+                    .is_some_and(|cursor| cursor.next_raw_u64 == *cursor_after)
+        }
+        AuthoritativeRuleEventKindV3::PublicOutcome { .. } => true,
+        AuthoritativeRuleEventKindV3::SbaGraveyardOrderChosen {
+            continuation,
+            owner,
+            top_to_bottom,
+        } => after
+            .execution_v4
+            .continuations
+            .get(continuation)
+            .is_some_and(|record| match &record.payload {
+                mtgml_state::ContinuationPayloadV3::MagicSbaGraveyardOrderV1 {
+                    completed_owner_orders,
+                    ..
+                } => completed_owner_orders
+                    .iter()
+                    .any(|order| order.owner == *owner && order.top_to_bottom == *top_to_bottom),
+                _ => false,
+            }),
+        AuthoritativeRuleEventKindV3::StateBasedActionsApplied { actions } => {
+            actions.iter().all(|action| match action {
+                mtgml_state::SbaSelectedActionV1::PlayerLoses { player } => after
+                    .predecessor_v5
+                    .core
+                    .players
+                    .get(player)
+                    .is_some_and(|state| state.has_lost),
+                mtgml_state::SbaSelectedActionV1::ObjectToOwnerGraveyard { object, .. } => {
+                    !after.predecessor_v5.zones.objects.contains_key(object)
+                }
+            })
+        }
+        AuthoritativeRuleEventKindV3::CombatDamageStepCompleted => after
+            .predecessor_v5
+            .combat
+            .as_ref()
+            .is_some_and(|combat| combat.damage_step_completed),
+        AuthoritativeRuleEventKindV3::AttackersDeclared {
+            defending_player,
+            attackers,
+        } => after.predecessor_v5.combat.as_ref().is_some_and(|combat| {
+            combat.defending_player == *defending_player && combat.attackers == *attackers
+        }),
+        AuthoritativeRuleEventKindV3::CombatEnded => {
+            before.predecessor_v5.combat.is_some() && after.predecessor_v5.combat.is_none()
+        }
+        AuthoritativeRuleEventKindV3::EmptyCombatStepsSkipped => {
+            before.predecessor_v5.core.position != after.predecessor_v5.core.position
+        }
+        AuthoritativeRuleEventKindV3::UntapCompleted { affected_objects } => {
+            affected_objects.iter().all(|object| {
+                after
+                    .predecessor_v5
+                    .zones
+                    .objects
+                    .get(object)
+                    .is_some_and(|state| !state.tapped)
+            })
+        }
+        AuthoritativeRuleEventKindV3::ActivePlayerChanged { from, to } => {
+            from != to
+                && before.predecessor_v5.core.active_player == *from
+                && after.predecessor_v5.core.active_player == *to
+        }
+        AuthoritativeRuleEventKindV3::TurnNumberChanged { from, to } => {
+            from != to
+                && before.predecessor_v5.core.turn_number == *from
+                && after.predecessor_v5.core.turn_number == *to
+        }
+        // Combat assignment/blocked-state state projection remains closed
+        // until its exact legal relation is characterized and accepted.
+        AuthoritativeRuleEventKindV3::CombatDamageDealt { .. }
+        | AuthoritativeRuleEventKindV3::BlockersDeclared { .. } => false,
         AuthoritativeRuleEventKindV3::PerspectiveObservationOccurrence { .. } => true,
         AuthoritativeRuleEventKindV3::DamageApplied { .. } => true,
         AuthoritativeRuleEventKindV3::StackItemAdded {
@@ -1331,213 +1694,6 @@ fn validate_event_projection_v3(
         Ok(())
     } else {
         Err(EventDeltaV3Error::Mismatch)
-    }
-}
-
-fn validate_legacy_event_projection_v3(
-    before: &EngineStatePartsV3,
-    after: &EngineStatePartsV3,
-    event: &AuthoritativeRuleEventKind,
-) -> bool {
-    match event {
-        AuthoritativeRuleEventKind::ZoneTransition { transition } => {
-            object_snapshot_matches(&before.predecessor_v5, &transition.last_known)
-                && !after
-                    .predecessor_v5
-                    .zones
-                    .objects
-                    .contains_key(&transition.old_object)
-                && object_snapshot_matches(&after.predecessor_v5, &transition.new_snapshot)
-                && after
-                    .predecessor_v5
-                    .zones
-                    .locations
-                    .get(&transition.new_object)
-                    == Some(&transition.to)
-        }
-        AuthoritativeRuleEventKind::ObjectCeasedToExist { object } => {
-            before.predecessor_v5.zones.objects.contains_key(object)
-                && !after.predecessor_v5.zones.objects.contains_key(object)
-        }
-        AuthoritativeRuleEventKind::LifeChanged { player, from, to } => {
-            from != to
-                && before
-                    .predecessor_v5
-                    .core
-                    .players
-                    .get(player)
-                    .is_some_and(|state| state.life == *from)
-                && after
-                    .predecessor_v5
-                    .core
-                    .players
-                    .get(player)
-                    .is_some_and(|state| state.life == *to)
-        }
-        AuthoritativeRuleEventKind::MarkedDamageChanged { creature, from, to } => {
-            from != to
-                && before
-                    .predecessor_v5
-                    .foundation_sources
-                    .get(creature)
-                    .is_some_and(|source| source.marked_damage == *from)
-                && after
-                    .predecessor_v5
-                    .foundation_sources
-                    .get(creature)
-                    .is_some_and(|source| source.marked_damage == *to)
-        }
-        AuthoritativeRuleEventKind::ObjectTapped { object, from, to } => {
-            from != to
-                && before
-                    .predecessor_v5
-                    .zones
-                    .objects
-                    .get(object)
-                    .is_some_and(|state| state.tapped == *from)
-                && after
-                    .predecessor_v5
-                    .zones
-                    .objects
-                    .get(object)
-                    .is_some_and(|state| state.tapped == *to)
-        }
-        AuthoritativeRuleEventKind::DecisionCreated { decision } => {
-            before
-                .execution_v4
-                .pending_decision
-                .as_ref()
-                .is_none_or(|request| request.decision_id != *decision)
-                && after
-                    .execution_v4
-                    .pending_decision
-                    .as_ref()
-                    .is_some_and(|request| request.decision_id == *decision)
-        }
-        AuthoritativeRuleEventKind::DecisionCleared { decision } => {
-            before
-                .execution_v4
-                .pending_decision
-                .as_ref()
-                .is_some_and(|request| request.decision_id == *decision)
-                && after
-                    .execution_v4
-                    .pending_decision
-                    .as_ref()
-                    .is_none_or(|request| request.decision_id != *decision)
-        }
-        AuthoritativeRuleEventKind::PriorityChanged { from, to } => {
-            from != to
-                && before.predecessor_v5.core.priority == *from
-                && after.predecessor_v5.core.priority == *to
-        }
-        AuthoritativeRuleEventKind::TurnPositionChanged { from, to } => {
-            from != to
-                && before.predecessor_v5.core.position == *from
-                && after.predecessor_v5.core.position == *to
-        }
-        AuthoritativeRuleEventKind::RandomValueSampled {
-            stream,
-            bound,
-            value,
-            raw_words_consumed,
-            cursor_before,
-            cursor_after,
-        } => {
-            *bound > 0
-                && *value < *bound
-                && cursor_before.checked_add(*raw_words_consumed) == Some(*cursor_after)
-                && before
-                    .predecessor_v5
-                    .random
-                    .streams
-                    .get(stream)
-                    .is_some_and(|cursor| cursor.next_raw_u64 == *cursor_before)
-                && after
-                    .predecessor_v5
-                    .random
-                    .streams
-                    .get(stream)
-                    .is_some_and(|cursor| cursor.next_raw_u64 == *cursor_after)
-        }
-        AuthoritativeRuleEventKind::PublicOutcome { .. } => true,
-        AuthoritativeRuleEventKind::SbaGraveyardOrderChosen {
-            continuation,
-            owner,
-            top_to_bottom,
-        } => after
-            .execution_v4
-            .continuations
-            .get(continuation)
-            .is_some_and(|record| match &record.payload {
-                mtgml_state::ContinuationPayloadV3::MagicSbaGraveyardOrderV1 {
-                    completed_owner_orders,
-                    ..
-                } => completed_owner_orders
-                    .iter()
-                    .any(|order| order.owner == *owner && order.top_to_bottom == *top_to_bottom),
-                _ => false,
-            }),
-        AuthoritativeRuleEventKind::StateBasedActionsApplied { actions } => {
-            actions.iter().all(|action| match action {
-                mtgml_state::SbaSelectedActionV1::PlayerLoses { player } => after
-                    .predecessor_v5
-                    .core
-                    .players
-                    .get(player)
-                    .is_some_and(|state| state.has_lost),
-                mtgml_state::SbaSelectedActionV1::ObjectToOwnerGraveyard { object, .. } => {
-                    !after.predecessor_v5.zones.objects.contains_key(object)
-                }
-            })
-        }
-        AuthoritativeRuleEventKind::CombatDamageStepCompleted => after
-            .predecessor_v5
-            .combat
-            .as_ref()
-            .is_some_and(|combat| combat.damage_step_completed),
-        AuthoritativeRuleEventKind::AttackersDeclared {
-            defending_player,
-            attackers,
-        } => after.predecessor_v5.combat.as_ref().is_some_and(|combat| {
-            combat.defending_player == *defending_player && combat.attackers == *attackers
-        }),
-        AuthoritativeRuleEventKind::CombatEnded => {
-            before.predecessor_v5.combat.is_some() && after.predecessor_v5.combat.is_none()
-        }
-        AuthoritativeRuleEventKind::EmptyCombatStepsSkipped => {
-            before.predecessor_v5.core.position != after.predecessor_v5.core.position
-        }
-        AuthoritativeRuleEventKind::UntapCompleted { affected_objects } => {
-            affected_objects.iter().all(|object| {
-                after
-                    .predecessor_v5
-                    .zones
-                    .objects
-                    .get(object)
-                    .is_some_and(|state| !state.tapped)
-            })
-        }
-        AuthoritativeRuleEventKind::ActivePlayerChanged { from, to } => {
-            from != to
-                && before.predecessor_v5.core.active_player == *from
-                && after.predecessor_v5.core.active_player == *to
-        }
-        AuthoritativeRuleEventKind::TurnNumberChanged { from, to } => {
-            from != to
-                && before.predecessor_v5.core.turn_number == *from
-                && after.predecessor_v5.core.turn_number == *to
-        }
-        AuthoritativeRuleEventKind::PerspectiveOccurrence { lifecycle, .. } => {
-            let mut projected: mtgml_state::EngineState = before.predecessor_v5.clone().into();
-            mtgml_state::apply_perspective_lifecycle(&mut projected, lifecycle).is_ok()
-                && projected.knowledge == after.predecessor_v5.knowledge
-                && projected.perspective_identities == after.predecessor_v5.perspective_identities
-        }
-        // Combat assignment/blocked-state state projection remains closed
-        // until its exact legal relation is characterized and accepted.
-        AuthoritativeRuleEventKind::CombatDamageDealt { .. }
-        | AuthoritativeRuleEventKind::BlockersDeclared { .. } => false,
     }
 }
 
@@ -1892,12 +2048,8 @@ mod tests {
             RuleEventId(8),
             StateRevision(4),
             [
-                AuthoritativeRuleEventKindV3::Existing {
-                    event: Box::new(AuthoritativeRuleEventKind::CombatEnded),
-                },
-                AuthoritativeRuleEventKindV3::Existing {
-                    event: Box::new(AuthoritativeRuleEventKind::EmptyCombatStepsSkipped),
-                },
+                AuthoritativeRuleEventKindV3::CombatEnded,
+                AuthoritativeRuleEventKindV3::EmptyCombatStepsSkipped,
             ],
         )
         .unwrap();
@@ -1919,9 +2071,7 @@ mod tests {
             allocate_rule_events_v3(
                 RuleEventId(u64::MAX),
                 StateRevision(1),
-                [AuthoritativeRuleEventKindV3::Existing {
-                    event: Box::new(AuthoritativeRuleEventKind::CombatEnded),
-                }],
+                [AuthoritativeRuleEventKindV3::CombatEnded],
             ),
             Err(RuleEventCursorV3Error::Exhausted)
         );
@@ -1939,9 +2089,7 @@ mod tests {
         let event = AuthoritativeRuleEventV3 {
             event_id: RuleEventId(1),
             state_revision: after.predecessor_v5.revision,
-            event: AuthoritativeRuleEventKindV3::Existing {
-                event: Box::new(AuthoritativeRuleEventKind::CombatEnded),
-            },
+            event: AuthoritativeRuleEventKindV3::CombatEnded,
         };
         let operation = event
             .event
@@ -1968,9 +2116,7 @@ mod tests {
 
     #[test]
     fn basic_land_entry_event_owns_its_typed_state_index_operations() {
-        use mtgml_state::{
-            ObjectSnapshot, SemanticDeltaOperationV2, ZoneLocation, ZonePosition, ZoneTransition,
-        };
+        use mtgml_state::{ObjectSnapshot, ZoneLocation, ZonePosition, ZoneTransition};
 
         let before = state();
         let actor = PlayerId(1);
@@ -2012,45 +2158,35 @@ mod tests {
         let event = AuthoritativeRuleEventV3 {
             event_id: RuleEventId(1),
             state_revision: StateRevision(1),
-            event: AuthoritativeRuleEventKindV3::Existing {
-                event: Box::new(AuthoritativeRuleEventKind::ZoneTransition {
-                    transition: Box::new(transition),
-                }),
+            event: AuthoritativeRuleEventKindV3::ZoneTransition {
+                transition: Box::new(transition),
             },
         };
         let ability = mtgml_model::AbilityInstanceId(4);
         let operations = vec![
-            SemanticDeltaOperationV3::Existing {
-                operation: Box::new(SemanticDeltaOperationV2::ObjectEntered {
-                    old_object: Some(old_object),
-                    new_object,
-                    from_zone: mtgml_model::ZoneKind::Hand,
-                    to_zone: mtgml_model::ZoneKind::Battlefield,
-                    tapped: false,
-                    face: 0,
-                }),
+            SemanticDeltaOperationV3::ObjectEntered {
+                old_object: Some(old_object),
+                new_object,
+                from_zone: mtgml_model::ZoneKind::Hand,
+                to_zone: mtgml_model::ZoneKind::Battlefield,
+                tapped: false,
+                face: 0,
             },
-            SemanticDeltaOperationV3::Existing {
-                operation: Box::new(SemanticDeltaOperationV2::LandPlayCountChanged {
-                    player: actor,
-                    from: 0,
-                    to: 1,
-                }),
+            SemanticDeltaOperationV3::LandPlayCountChanged {
+                player: actor,
+                from: 0,
+                to: 1,
             },
-            SemanticDeltaOperationV3::Existing {
-                operation: Box::new(SemanticDeltaOperationV2::AbilityAuthorityAdded {
-                    instance: ability,
-                    source: new_object,
-                    ability_key: 0,
-                }),
+            SemanticDeltaOperationV3::AbilityAuthorityAdded {
+                instance: ability,
+                source: new_object,
+                ability_key: 0,
             },
-            SemanticDeltaOperationV3::Existing {
-                operation: Box::new(SemanticDeltaOperationV2::AbilityIdentityChanged {
-                    perspective: actor,
-                    instance: ability,
-                    from: None,
-                    to: Some(mtgml_model::OpaqueAbilityId(7)),
-                }),
+            SemanticDeltaOperationV3::AbilityIdentityChanged {
+                perspective: actor,
+                instance: ability,
+                from: None,
+                to: Some(mtgml_model::OpaqueAbilityId(7)),
             },
         ];
         let delta = StateDeltaV3 {
@@ -2068,12 +2204,10 @@ mod tests {
         );
 
         let mut fabricated = delta.clone();
-        fabricated.operations[1] = SemanticDeltaOperationV3::Existing {
-            operation: Box::new(SemanticDeltaOperationV2::LandPlayCountChanged {
-                player: PlayerId(2),
-                from: 0,
-                to: 1,
-            }),
+        fabricated.operations[1] = SemanticDeltaOperationV3::LandPlayCountChanged {
+            player: PlayerId(2),
+            from: 0,
+            to: 1,
         };
         assert_eq!(
             validate_event_delta_parity_v3(std::slice::from_ref(&event), &fabricated),
@@ -2259,12 +2393,10 @@ mod tests {
             source_activations,
             spent_buckets: [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
         };
-        let tap_event = AuthoritativeRuleEventKindV3::Existing {
-            event: Box::new(AuthoritativeRuleEventKind::ObjectTapped {
-                object: GameObjectId(1),
-                from: false,
-                to: true,
-            }),
+        let tap_event = AuthoritativeRuleEventKindV3::ObjectTapped {
+            object: GameObjectId(1),
+            from: false,
+            to: true,
         };
         let ability_event = AuthoritativeRuleEventKindV3::AbilityActivated {
             stack_object: StackObjectId(1),
@@ -2450,12 +2582,10 @@ mod tests {
                 post_replacement_amount: 3,
                 damage_kind: DamageKind::Noncombat,
             },
-            AuthoritativeRuleEventKindV3::Existing {
-                event: Box::new(AuthoritativeRuleEventKind::LifeChanged {
-                    player,
-                    from: life_before,
-                    to: life_before - 3,
-                }),
+            AuthoritativeRuleEventKindV3::LifeChanged {
+                player,
+                from: life_before,
+                to: life_before - 3,
             },
         ];
         let (events, next) = allocate_rule_events_v3(
@@ -2743,4 +2873,49 @@ mod tests {
             Err(EventDeltaV3Error::Mismatch)
         );
     }
+}
+
+/// Rules-owned trusted perception/authorization policy of one perspective
+/// occurrence. Trusted references are authoritative `GameObjectId`s; the
+/// public opaque substitution happens exclusively in observation projection.
+/// This type never enters the authoritative audit because it does not mutate
+/// authoritative state.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum PerspectiveObservationPolicyV1 {
+    /// A tracked movement perceived by the perspective. Field flags decide
+    /// which incarnations are authorized for opaque substitution. Revealing
+    /// only the old incarnation models a tracked disappearance; revealing
+    /// only the new one models an appearance of an already-tracked identity.
+    MovedInSight {
+        from_zone: ZoneKind,
+        to_zone: ZoneKind,
+        old_object: GameObjectId,
+        new_object: GameObjectId,
+        reveals_old: bool,
+        reveals_new: bool,
+    },
+    /// A previously unknown incarnation becomes visible to the perspective.
+    Appeared {
+        from_zone: ZoneKind,
+        to_zone: ZoneKind,
+        new_object: GameObjectId,
+    },
+    /// Knowledge-only occurrence: no observed envelope is projected.
+    NoEnvelope,
+    /// A public object's tapped state is authorized to change for this
+    /// perspective. Trusted `GameObjectId` stays here; opaque
+    /// substitution happens exclusively in observation projection.
+    ObjectTapped {
+        object: GameObjectId,
+        tapped: bool,
+    },
+    SawRandomOutcome {
+        label: String,
+        exclusive_upper_bound: u64,
+        value: u64,
+    },
+    AnnouncedOutcome {
+        code: String,
+    },
 }

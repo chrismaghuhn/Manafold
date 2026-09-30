@@ -6,17 +6,145 @@ use mtgml_model::{
     StateRevision, TriggerInstanceId,
 };
 
+use crate::lifecycle::PerspectiveLifecycleAuditV1;
+use crate::zones::ZoneTransition;
+use crate::TurnPosition;
+use mtgml_model::DecisionId;
+use mtgml_random::RandomStreamKeyV1;
+
 use crate::{
     calculate_full_state_digest_v7, ContinuationPayloadV3, DamageKind, DamageRecipient,
     EngineStatePartsV3, EngineStatePartsV3Error, ManaCost, ManaPoolV1, PendingTriggerRecord,
-    ReservedNonManaCost, SelectedCostOperand, SemanticDeltaOperationV2, SourceContext,
-    StackItemPayload, TargetRef, TemporaryEffectRecord,
+    ReservedNonManaCost, SelectedCostOperand, SourceContext, StackItemPayload, TargetRef,
+    TemporaryEffectRecord,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SemanticDeltaOperationV3 {
-    Existing {
-        operation: Box<SemanticDeltaOperationV2>,
+    ZoneTransition {
+        transition: Box<ZoneTransition>,
+    },
+    ObjectCeasedToExist {
+        object: GameObjectId,
+    },
+    LifeChanged {
+        player: PlayerId,
+        from: i64,
+        to: i64,
+    },
+    CombatDamageDealt {
+        assignments: Vec<crate::DamageAssignmentV1>,
+    },
+    CombatDamageStepCompleted,
+    MarkedDamageChanged {
+        creature: GameObjectId,
+        from: u64,
+        to: u64,
+    },
+    ObjectTapped {
+        object: GameObjectId,
+        from: bool,
+        to: bool,
+    },
+    DecisionCreated {
+        decision: DecisionId,
+    },
+    DecisionCleared {
+        decision: DecisionId,
+    },
+    SbaGraveyardOrderChosen {
+        continuation: ContinuationId,
+        owner: PlayerId,
+        top_to_bottom: Vec<GameObjectId>,
+    },
+    StateBasedActionsApplied {
+        actions: Vec<crate::SbaSelectedActionV1>,
+    },
+    PriorityChanged {
+        from: crate::PriorityState,
+        to: crate::PriorityState,
+    },
+    RandomValueSampled {
+        stream: RandomStreamKeyV1,
+        bound: u64,
+        value: u64,
+        raw_words_consumed: u64,
+        cursor_before: u64,
+        cursor_after: u64,
+    },
+    PublicOutcome {
+        code: String,
+    },
+    TurnPositionChanged {
+        from: TurnPosition,
+        to: TurnPosition,
+    },
+    AttackersDeclared {
+        defending_player: PlayerId,
+        attackers: Vec<GameObjectId>,
+    },
+    BlockersDeclared {
+        assignments: Vec<crate::CombatBlockerAssignmentV1>,
+    },
+    CombatEnded,
+    EmptyCombatStepsSkipped,
+    UntapCompleted {
+        affected_objects: Vec<GameObjectId>,
+    },
+    ActivePlayerChanged {
+        from: PlayerId,
+        to: PlayerId,
+    },
+    TurnNumberChanged {
+        from: u64,
+        to: u64,
+    },
+    /// Complete state-changing meaning of one perspective-visible occurrence
+    /// (M2.E). Carries perspective, consumed visible sequence, and the typed
+    /// identity/knowledge mutation as the single state-owned audit payload.
+    PerspectiveLifecycle {
+        lifecycle: PerspectiveLifecycleAuditV1,
+    },
+    LandPlayCountChanged {
+        player: mtgml_model::PlayerId,
+        from: u8,
+        to: u8,
+    },
+    AbilityIdentityChanged {
+        perspective: mtgml_model::PlayerId,
+        instance: mtgml_model::AbilityInstanceId,
+        from: Option<mtgml_model::OpaqueAbilityId>,
+        to: Option<mtgml_model::OpaqueAbilityId>,
+    },
+    AttachmentChanged {
+        source: mtgml_model::GameObjectId,
+        from_target: Option<mtgml_model::GameObjectId>,
+        to_target: Option<mtgml_model::GameObjectId>,
+        timestamp_revision: StateRevision,
+        operation_ordinal: u32,
+    },
+    ObjectFaceChanged {
+        object: mtgml_model::GameObjectId,
+        from_face: u32,
+        to_face: u32,
+    },
+    ObjectEntered {
+        old_object: Option<mtgml_model::GameObjectId>,
+        new_object: mtgml_model::GameObjectId,
+        from_zone: mtgml_model::ZoneKind,
+        to_zone: mtgml_model::ZoneKind,
+        tapped: bool,
+        face: u32,
+    },
+    AbilityAuthorityAdded {
+        instance: mtgml_model::AbilityInstanceId,
+        source: mtgml_model::GameObjectId,
+        ability_key: u32,
+    },
+    AbilityAuthorityRemoved {
+        instance: mtgml_model::AbilityInstanceId,
+        source: mtgml_model::GameObjectId,
+        ability_key: u32,
     },
     StackOrderChanged {
         from: Vec<StackObjectId>,
@@ -272,31 +400,16 @@ fn validate_delta_operation_coverage(
     operations: &[SemanticDeltaOperationV3],
 ) -> Result<(), DeltaApplicationV3Error> {
     use SemanticDeltaOperationV3 as V3;
-    let has_v3 = |predicate: &dyn Fn(&V3) -> bool| operations.iter().any(predicate);
-    let has_v2 = |predicate: &dyn Fn(&SemanticDeltaOperationV2) -> bool| {
-        operations.iter().any(|operation| match operation {
-            V3::Existing { operation } => predicate(operation),
-            _ => false,
-        })
-    };
-    let has_legacy = |predicate: &dyn Fn(&crate::SemanticDeltaOperation) -> bool| {
-        operations.iter().any(|operation| match operation {
-            V3::Existing { operation: v2 } => match v2.as_ref() {
-                SemanticDeltaOperationV2::Existing { operation } => predicate(operation),
-                _ => false,
-            },
-            _ => false,
-        })
-    };
+    let has = |predicate: &dyn Fn(&V3) -> bool| operations.iter().any(predicate);
     let uncovered = || Err(DeltaApplicationV3Error::UncoveredMutation);
 
     let old_before = &before.predecessor_v5;
     let old_after = &after.predecessor_v5;
     // An untap step claims exactly the permanents it untapped: each listed
     // object was tapped before and is untapped after.
-    if has_legacy(&|operation| {
+    if has(&|operation| {
         matches!(operation,
-        crate::SemanticDeltaOperation::UntapCompleted { affected_objects }
+        V3::UntapCompleted { affected_objects }
             if affected_objects.iter().any(|object| {
                 !(old_before.zones.objects.get(object).is_some_and(|old| old.tapped)
                     && old_after.zones.objects.get(object).is_some_and(|new| !new.tapped))
@@ -306,36 +419,36 @@ fn validate_delta_operation_coverage(
     }
     // Core rules state.
     if old_before.core.active_player != old_after.core.active_player
-        && !has_legacy(&|operation| {
+        && !has(&|operation| {
             matches!(operation,
-            crate::SemanticDeltaOperation::ActivePlayerChanged { from, to }
+            V3::ActivePlayerChanged { from, to }
                 if *from == old_before.core.active_player && *to == old_after.core.active_player)
         })
     {
         return uncovered();
     }
     if old_before.core.turn_number != old_after.core.turn_number
-        && !has_legacy(&|operation| {
+        && !has(&|operation| {
             matches!(operation,
-            crate::SemanticDeltaOperation::TurnNumberChanged { from, to }
+            V3::TurnNumberChanged { from, to }
                 if *from == old_before.core.turn_number && *to == old_after.core.turn_number)
         })
     {
         return uncovered();
     }
     if old_before.core.position != old_after.core.position
-        && !has_legacy(&|operation| {
+        && !has(&|operation| {
             matches!(operation,
-            crate::SemanticDeltaOperation::TurnPositionChanged { from, to }
+            V3::TurnPositionChanged { from, to }
                 if *from == old_before.core.position && *to == old_after.core.position)
         })
     {
         return uncovered();
     }
     if old_before.core.priority != old_after.core.priority
-        && !has_legacy(&|operation| {
+        && !has(&|operation| {
             matches!(operation,
-            crate::SemanticDeltaOperation::PriorityChanged { from, to }
+            V3::PriorityChanged { from, to }
                 if *from == old_before.core.priority && *to == old_after.core.priority)
         })
     {
@@ -346,12 +459,12 @@ fn validate_delta_operation_coverage(
             return uncovered();
         };
         if old.life != new.life
-            && !has_legacy(&|operation| {
+            && !has(&|operation| {
                 matches!(operation,
-                crate::SemanticDeltaOperation::LifeChanged { player: changed, from, to }
+                V3::LifeChanged { player: changed, from, to }
                     if changed == player && *from == old.life && *to == new.life)
             })
-            && !has_v3(&|operation| {
+            && !has(&|operation| {
                 matches!(operation,
                 V3::DamageApplied { recipient: DamageRecipient::Player(changed), .. }
                     if changed == player)
@@ -360,9 +473,9 @@ fn validate_delta_operation_coverage(
             return uncovered();
         }
         if old.has_lost != new.has_lost
-            && !has_legacy(&|operation| {
+            && !has(&|operation| {
                 matches!(operation,
-                crate::SemanticDeltaOperation::StateBasedActionsApplied { actions }
+                V3::StateBasedActionsApplied { actions }
                     if actions.iter().any(|action| matches!(action,
                         crate::SbaSelectedActionV1::PlayerLoses { player: changed }
                             if changed == player)))
@@ -380,14 +493,14 @@ fn validate_delta_operation_coverage(
         return uncovered();
     }
     if old_before.combat != old_after.combat
-        && !has_legacy(&|operation| {
+        && !has(&|operation| {
             matches!(
                 operation,
-                crate::SemanticDeltaOperation::AttackersDeclared { .. }
-                    | crate::SemanticDeltaOperation::BlockersDeclared { .. }
-                    | crate::SemanticDeltaOperation::CombatDamageDealt { .. }
-                    | crate::SemanticDeltaOperation::CombatDamageStepCompleted
-                    | crate::SemanticDeltaOperation::CombatEnded
+                V3::AttackersDeclared { .. }
+                    | V3::BlockersDeclared { .. }
+                    | V3::CombatDamageDealt { .. }
+                    | V3::CombatDamageStepCompleted
+                    | V3::CombatEnded
             )
         })
     {
@@ -397,7 +510,7 @@ fn validate_delta_operation_coverage(
     // Zone objects and ordered memberships. Every change must be named by a
     // typed incarnation, stack, tap, or face operation.
     if old_before.zones.stack_order != old_after.zones.stack_order
-        && !has_v3(&|operation| {
+        && !has(&|operation| {
             matches!(operation,
             V3::StackOrderChanged { from, to }
                 if from == &old_before.zones.stack_order && to == &old_after.zones.stack_order)
@@ -410,7 +523,7 @@ fn validate_delta_operation_coverage(
             if old_record != new_record {
                 return uncovered();
             }
-        } else if !has_v3(&|operation| {
+        } else if !has(&|operation| {
             matches!(operation,
             V3::StackItemEnded { stack_object, payload, .. }
                 if stack_object == id && old_record.payload.as_ref() == Some(payload.as_ref()))
@@ -480,20 +593,15 @@ fn validate_delta_operation_coverage(
             {
                 let untapped_by_untap_step = old_object.tapped
                     && !new_object.tapped
-                    && has_legacy(&|operation| {
+                    && has(&|operation| {
                         matches!(operation,
-                            crate::SemanticDeltaOperation::UntapCompleted { affected_objects }
+                            V3::UntapCompleted { affected_objects }
                                 if affected_objects.contains(id))
                     });
                 let covered = untapped_by_untap_step
-                    || has_v2(&|operation| {
+                    || has(&|operation| {
                         matches!(operation,
-                        SemanticDeltaOperationV2::ObjectTapped { object, from, to }
-                            if *object == *id && *from == old_object.tapped && *to == new_object.tapped)
-                    })
-                    || has_legacy(&|operation| {
-                        matches!(operation,
-                            crate::SemanticDeltaOperation::ObjectTapped { object, from, to }
+                            V3::ObjectTapped { object, from, to }
                                 if *object == *id && *from == old_object.tapped && *to == new_object.tapped)
                     });
                 if !covered {
@@ -502,17 +610,17 @@ fn validate_delta_operation_coverage(
             }
             Some(_) => return uncovered(),
             None => {
-                if !has_v2(&|operation| {
+                if !has(&|operation| {
                     matches!(operation,
-                    SemanticDeltaOperationV2::ObjectEntered { old_object: Some(old), .. }
+                    V3::ObjectEntered { old_object: Some(old), .. }
                         if *old == *id)
-                }) && !has_legacy(&|operation| {
+                }) && !has(&|operation| {
                     matches!(operation,
-                        crate::SemanticDeltaOperation::ZoneTransition { transition }
+                        V3::ZoneTransition { transition }
                             if transition.old_object == *id)
-                }) && !has_legacy(&|operation| {
+                }) && !has(&|operation| {
                     matches!(operation,
-                        crate::SemanticDeltaOperation::ObjectCeasedToExist { object }
+                        V3::ObjectCeasedToExist { object }
                             if *object == *id)
                 }) {
                     return uncovered();
@@ -522,14 +630,14 @@ fn validate_delta_operation_coverage(
     }
     for (id, new_object) in &old_after.zones.objects {
         if !old_before.zones.objects.contains_key(id)
-            && !has_v2(&|operation| {
+            && !has(&|operation| {
                 matches!(operation,
-                SemanticDeltaOperationV2::ObjectEntered { new_object: entered, .. }
+                V3::ObjectEntered { new_object: entered, .. }
                     if *entered == *id)
             })
-            && !has_legacy(&|operation| {
+            && !has(&|operation| {
                 matches!(operation,
-                crate::SemanticDeltaOperation::ZoneTransition { transition }
+                V3::ZoneTransition { transition }
                     if transition.new_object == *id)
             })
         {
@@ -552,24 +660,14 @@ fn validate_delta_operation_coverage(
         }
     }
     if old_before.zones.locations != old_after.zones.locations
-        && !has_v2(&|operation| matches!(operation, SemanticDeltaOperationV2::ObjectEntered { .. }))
-        && !has_legacy(&|operation| {
-            matches!(
-                operation,
-                crate::SemanticDeltaOperation::ZoneTransition { .. }
-            )
-        })
+        && !has(&|operation| matches!(operation, V3::ObjectEntered { .. }))
+        && !has(&|operation| matches!(operation, V3::ZoneTransition { .. }))
     {
         return uncovered();
     }
     if old_before.zones.ordered_zones != old_after.zones.ordered_zones
-        && !has_v2(&|operation| matches!(operation, SemanticDeltaOperationV2::ObjectEntered { .. }))
-        && !has_legacy(&|operation| {
-            matches!(
-                operation,
-                crate::SemanticDeltaOperation::ZoneTransition { .. }
-            )
-        })
+        && !has(&|operation| matches!(operation, V3::ObjectEntered { .. }))
+        && !has(&|operation| matches!(operation, V3::ZoneTransition { .. }))
     {
         return uncovered();
     }
@@ -580,7 +678,7 @@ fn validate_delta_operation_coverage(
         return uncovered();
     }
     if before.execution_v4.pending_decision != after.execution_v4.pending_decision
-        && !has_v3(&|operation| {
+        && !has(&|operation| {
             matches!(operation,
             V3::PendingRequestChanged { from, to }
                 if from.as_deref() == before.execution_v4.pending_decision.as_ref()
@@ -608,7 +706,7 @@ fn validate_delta_operation_coverage(
             .get(&id)
             .map(|record| &record.payload);
         if from != to
-            && !has_v3(&|operation| {
+            && !has(&|operation| {
                 matches!(operation,
                 V3::ContinuationChanged { continuation, from: op_from, to: op_to }
                     if *continuation == id && op_from.as_deref() == from && op_to.as_deref() == to)
@@ -628,7 +726,7 @@ fn validate_delta_operation_coverage(
         let from = before.execution_v4.waiting_triggers.get(&id);
         let to = after.execution_v4.waiting_triggers.get(&id);
         if from != to
-            && !has_v3(&|operation| {
+            && !has(&|operation| {
                 matches!(operation,
                 V3::TriggerCreated { trigger } if to == Some(trigger.as_ref()))
                     || matches!(operation,
@@ -650,7 +748,7 @@ fn validate_delta_operation_coverage(
         let from = before.execution_v4.effects.get(&id);
         let to = after.execution_v4.effects.get(&id);
         if from != to
-            && !has_v3(&|operation| {
+            && !has(&|operation| {
                 matches!(operation,
                 V3::TemporaryEffectChanged { effect, from: op_from, to: op_to }
                     if *effect == id && op_from.as_deref() == from && op_to.as_deref() == to)
@@ -686,20 +784,14 @@ fn validate_delta_operation_coverage(
                 .copied()
                 .unwrap_or_default();
             if from != to
-                && !has_v3(&|operation| {
+                && !has(&|operation| {
                     matches!(operation,
                     V3::ManaPoolChanged { player: op_player, from: op_from, to: op_to, .. }
                         if *op_player == player && *op_from == from && *op_to == to)
                 })
-                && !has_v3(&|operation| {
+                && !has(&|operation| {
                     matches!(operation,
                     V3::AtomicCostCommitted { actor, .. } if *actor == player)
-                })
-                && !has_v2(&|operation| {
-                    matches!(operation,
-                    SemanticDeltaOperationV2::ManaAdded { player: op_player, .. }
-                        | SemanticDeltaOperationV2::ManaPoolEmptied { player: op_player, .. }
-                        if *op_player == player)
                 })
             {
                 return uncovered();
@@ -717,14 +809,9 @@ fn validate_delta_operation_coverage(
                     .copied()
                     .unwrap_or(0);
                 if *from != to
-                    && !has_v3(&|operation| {
+                    && !has(&|operation| {
                         matches!(operation,
                         V3::CounterChanged { object: op_object, kind: op_kind, from: op_from, to: op_to, .. }
-                            if op_object == object && op_kind == kind && *op_from == *from && *op_to == to)
-                    })
-                    && !has_v2(&|operation| {
-                        matches!(operation,
-                        SemanticDeltaOperationV2::CounterChanged { object: op_object, kind: op_kind, from: op_from, to: op_to, .. }
                             if op_object == object && op_kind == kind && *op_from == *from && *op_to == to)
                     })
                 {
@@ -742,14 +829,9 @@ fn validate_delta_operation_coverage(
                     .copied()
                     .unwrap_or(0);
                 if from != *to
-                    && !has_v3(&|operation| {
+                    && !has(&|operation| {
                         matches!(operation,
                         V3::CounterChanged { object: op_object, kind: op_kind, from: op_from, to: op_to, .. }
-                            if op_object == object && op_kind == kind && *op_from == from && *op_to == *to)
-                    })
-                    && !has_v2(&|operation| {
-                        matches!(operation,
-                        SemanticDeltaOperationV2::CounterChanged { object: op_object, kind: op_kind, from: op_from, to: op_to, .. }
                             if op_object == object && op_kind == kind && *op_from == from && *op_to == *to)
                     })
                 {
@@ -759,18 +841,8 @@ fn validate_delta_operation_coverage(
         }
     }
     if old_rules.attachments != new_rules.attachments
-        && !has_v2(&|operation| {
-            matches!(
-                operation,
-                SemanticDeltaOperationV2::AttachmentChanged { .. }
-            )
-        })
-        && !has_legacy(&|operation| {
-            matches!(
-                operation,
-                crate::SemanticDeltaOperation::ZoneTransition { .. }
-            )
-        })
+        && !has(&|operation| matches!(operation, V3::AttachmentChanged { .. }))
+        && !has(&|operation| matches!(operation, V3::ZoneTransition { .. }))
     {
         return uncovered();
     }
@@ -779,46 +851,29 @@ fn validate_delta_operation_coverage(
     let faces_follow_zone_transitions = || {
         let mut expected = old_rules.faces.faces.clone();
         for operation in operations {
-            if let V3::Existing { operation } = operation {
-                if let SemanticDeltaOperationV2::Existing { operation } = operation.as_ref() {
-                    if let crate::SemanticDeltaOperation::ZoneTransition { transition } =
-                        operation.as_ref()
-                    {
-                        if let Some(face) = expected.remove(&transition.old_object) {
-                            expected.insert(transition.new_object, face);
-                        }
-                    }
+            if let V3::ZoneTransition { transition } = operation {
+                if let Some(face) = expected.remove(&transition.old_object) {
+                    expected.insert(transition.new_object, face);
                 }
             }
         }
         expected == new_rules.faces.faces
     };
     if old_rules.faces != new_rules.faces
-        && !has_v2(&|operation| {
-            matches!(
-                operation,
-                SemanticDeltaOperationV2::ObjectFaceChanged { .. }
-            )
-        })
-        && !has_v2(&|operation| matches!(operation, SemanticDeltaOperationV2::ObjectEntered { .. }))
+        && !has(&|operation| matches!(operation, V3::ObjectFaceChanged { .. }))
+        && !has(&|operation| matches!(operation, V3::ObjectEntered { .. }))
         && !faces_follow_zone_transitions()
     {
         return uncovered();
     }
     if old_rules.abilities != new_rules.abilities
-        && !has_v2(&|operation| {
+        && !has(&|operation| {
             matches!(
                 operation,
-                SemanticDeltaOperationV2::AbilityAuthorityAdded { .. }
-                    | SemanticDeltaOperationV2::AbilityAuthorityRemoved { .. }
+                V3::AbilityAuthorityAdded { .. } | V3::AbilityAuthorityRemoved { .. }
             )
         })
-        && !has_v2(&|operation| {
-            matches!(
-                operation,
-                SemanticDeltaOperationV2::AbilityIdentityChanged { .. }
-            )
-        })
+        && !has(&|operation| matches!(operation, V3::AbilityIdentityChanged { .. }))
     {
         return uncovered();
     }
@@ -939,19 +994,9 @@ fn validate_delta_operation_coverage(
     }
     if old_before.foundation_sources != old_after.foundation_sources
         || old_before.random != old_after.random
-            && !has_legacy(&|operation| {
-                matches!(
-                    operation,
-                    crate::SemanticDeltaOperation::RandomValueSampled { .. }
-                )
-            })
+            && !has(&|operation| matches!(operation, V3::RandomValueSampled { .. }))
         || old_before.knowledge != old_after.knowledge
-            && !has_legacy(&|operation| {
-                matches!(
-                    operation,
-                    crate::SemanticDeltaOperation::PerspectiveLifecycle { .. }
-                )
-            })
+            && !has(&|operation| matches!(operation, V3::PerspectiveLifecycle { .. }))
     {
         return uncovered();
     }
@@ -964,12 +1009,7 @@ fn validate_delta_operation_coverage(
             || old.retired_object_ids != new.retired_object_ids
             || old.next_opaque_object_id != new.next_opaque_object_id;
         if object_identity_changed
-            && !has_legacy(&|operation| {
-                matches!(
-                    operation,
-                    crate::SemanticDeltaOperation::PerspectiveLifecycle { .. }
-                )
-            })
+            && !has(&|operation| matches!(operation, V3::PerspectiveLifecycle { .. }))
         {
             return uncovered();
         }
@@ -978,9 +1018,9 @@ fn validate_delta_operation_coverage(
             || old.retired_ability_ids != new.retired_ability_ids
             || old.next_opaque_ability_id != new.next_opaque_ability_id;
         if ability_identity_changed
-            && !has_v2(&|operation| {
+            && !has(&|operation| {
                 matches!(operation,
-                    SemanticDeltaOperationV2::AbilityIdentityChanged {
+                    V3::AbilityIdentityChanged {
                         perspective: changed, ..
                     } if changed == perspective)
             })
@@ -988,7 +1028,7 @@ fn validate_delta_operation_coverage(
             return uncovered();
         }
         if old.next_player_decision_id != new.next_player_decision_id
-            && !has_v3(&|operation| {
+            && !has(&|operation| {
                 matches!(operation,
                     V3::PendingRequestChanged { to: Some(request), .. }
                         if request.actor == *perspective
@@ -1015,50 +1055,44 @@ fn validate_delta_operation_coverage(
         return uncovered();
     }
     if new_allocators.next_object_id != old_allocators.next_object_id
-        && !has_v2(&|operation| matches!(operation, SemanticDeltaOperationV2::ObjectEntered { .. }))
-        && !has_legacy(&|operation| {
-            matches!(
-                operation,
-                crate::SemanticDeltaOperation::ZoneTransition { .. }
-            )
-        })
-        && !has_v3(&|operation| matches!(operation, V3::StackItemCreated { .. }))
+        && !has(&|operation| matches!(operation, V3::ObjectEntered { .. }))
+        && !has(&|operation| matches!(operation, V3::ZoneTransition { .. }))
+        && !has(&|operation| matches!(operation, V3::StackItemCreated { .. }))
     {
         return uncovered();
     }
     if new_allocators.next_ability_id != old_allocators.next_ability_id
-        && !has_v2(&|operation| {
+        && !has(&|operation| {
             matches!(
                 operation,
-                SemanticDeltaOperationV2::AbilityAuthorityAdded { .. }
-                    | SemanticDeltaOperationV2::AbilityAuthorityRemoved { .. }
+                V3::AbilityAuthorityAdded { .. } | V3::AbilityAuthorityRemoved { .. }
             )
         })
     {
         return uncovered();
     }
     if new_allocators.next_stack_object_id != old_allocators.next_stack_object_id
-        && !has_v3(&|operation| matches!(operation, V3::StackItemCreated { .. }))
+        && !has(&|operation| matches!(operation, V3::StackItemCreated { .. }))
     {
         return uncovered();
     }
     if new_allocators.next_effect_id != old_allocators.next_effect_id
-        && !has_v3(&|operation| matches!(operation, V3::TemporaryEffectChanged { to: Some(_), .. }))
+        && !has(&|operation| matches!(operation, V3::TemporaryEffectChanged { to: Some(_), .. }))
     {
         return uncovered();
     }
     if new_allocators.next_trigger_id != old_allocators.next_trigger_id
-        && !has_v3(&|operation| matches!(operation, V3::TriggerCreated { .. }))
+        && !has(&|operation| matches!(operation, V3::TriggerCreated { .. }))
     {
         return uncovered();
     }
     if new_allocators.next_decision_id != old_allocators.next_decision_id
-        && !has_v3(&|operation| matches!(operation, V3::PendingRequestChanged { to: Some(_), .. }))
+        && !has(&|operation| matches!(operation, V3::PendingRequestChanged { to: Some(_), .. }))
     {
         return uncovered();
     }
     if new_allocators.next_continuation_id != old_allocators.next_continuation_id
-        && !has_v3(&|operation| matches!(operation, V3::ContinuationChanged { to: Some(_), .. }))
+        && !has(&|operation| matches!(operation, V3::ContinuationChanged { to: Some(_), .. }))
     {
         return uncovered();
     }
@@ -1075,21 +1109,17 @@ fn validate_turn_history_delta(
     after: &EngineStatePartsV3,
     operations: &[SemanticDeltaOperationV3],
 ) -> bool {
-    use crate::SemanticDeltaOperation as Legacy;
     use SemanticDeltaOperationV3 as V3;
     let old = &before.card_rules_state.turn_history;
     let new = &after.card_rules_state.turn_history;
     let has_land_count = |player, from, to| {
-        operations.iter().any(|operation| match operation {
-            V3::Existing { operation } => matches!(
-                operation.as_ref(),
-                SemanticDeltaOperationV2::LandPlayCountChanged {
+        operations.iter().any(|operation| {
+            matches!(operation,
+                V3::LandPlayCountChanged {
                     player: op_player,
                     from: op_from,
                     to: op_to
-                } if *op_player == player && *op_from == from && *op_to == to
-            ),
-            _ => false,
+                } if *op_player == player && *op_from == from && *op_to == to)
         })
     };
     let has_life_loss = |player| {
@@ -1100,19 +1130,27 @@ fn validate_turn_history_delta(
             return false;
         };
         operations.iter().any(|operation| match operation {
-            V3::Existing { operation } => match operation.as_ref() {
-                SemanticDeltaOperationV2::Existing { operation } => matches!(operation.as_ref(),
-                    Legacy::LifeChanged { player: op_player, from, to }
-                        if *op_player == player && *from == old_player.life && *to == new_player.life && from > to),
-                _ => false,
-            },
+            V3::LifeChanged {
+                player: op_player,
+                from,
+                to,
+            } => {
+                *op_player == player
+                    && *from == old_player.life
+                    && *to == new_player.life
+                    && from > to
+            }
             V3::DamageApplied {
                 recipient: DamageRecipient::Player(op_player),
                 post_replacement_amount,
                 ..
-            } => *op_player == player
-                && old_player.life.checked_sub(i64::from(*post_replacement_amount))
-                    == Some(new_player.life),
+            } => {
+                *op_player == player
+                    && old_player
+                        .life
+                        .checked_sub(i64::from(*post_replacement_amount))
+                        == Some(new_player.life)
+            }
             _ => false,
         })
     };
@@ -1123,16 +1161,10 @@ fn validate_turn_history_delta(
         return false;
     }
     if old.turn_number != new.turn_number {
-        let exact_turn_change = operations.iter().any(|operation| match operation {
-            V3::Existing { operation } => match operation.as_ref() {
-                SemanticDeltaOperationV2::Existing { operation } => matches!(
-                    operation.as_ref(),
-                    Legacy::TurnNumberChanged { from, to }
-                        if *from == old.turn_number && *to == new.turn_number
-                ),
-                _ => false,
-            },
-            _ => false,
+        let exact_turn_change = operations.iter().any(|operation| {
+            matches!(operation,
+                V3::TurnNumberChanged { from, to }
+                    if *from == old.turn_number && *to == new.turn_number)
         });
         if !exact_turn_change
             || new

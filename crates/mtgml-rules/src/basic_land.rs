@@ -20,8 +20,8 @@ use mtgml_model::{
 use mtgml_state::{
     apply_perspective_lifecycle, IdentityMutationV1, KnowledgeAcquisitionCause,
     KnowledgeAcquisitionReason, KnowledgeHistoryChannel, KnowledgeMutationV1, KnownLocationFactV2,
-    PerspectiveLifecycleAuditV1, PerspectiveLifecycleMutationV1, SemanticDeltaOperationV2,
-    SemanticDeltaOperationV3, VisibilityPartition, ZoneLocation, ZonePosition,
+    PerspectiveLifecycleAuditV1, PerspectiveLifecycleMutationV1, SemanticDeltaOperationV3,
+    VisibilityPartition, ZoneLocation, ZonePosition,
 };
 use mtgml_state::{EngineStatePartsV3, StateDeltaV3, TurnPosition};
 
@@ -102,24 +102,6 @@ struct BasicLandDraft {
     events: Vec<DraftEvent>,
 }
 
-fn existing_operation(operation: mtgml_state::SemanticDeltaOperation) -> SemanticDeltaOperationV3 {
-    existing_v2_operation(SemanticDeltaOperationV2::Existing {
-        operation: Box::new(operation),
-    })
-}
-
-fn existing_v2_operation(operation: SemanticDeltaOperationV2) -> SemanticDeltaOperationV3 {
-    SemanticDeltaOperationV3::Existing {
-        operation: Box::new(operation),
-    }
-}
-
-fn existing_event(event: crate::AuthoritativeRuleEventKind) -> crate::AuthoritativeRuleEventKindV3 {
-    crate::AuthoritativeRuleEventKindV3::Existing {
-        event: Box::new(event),
-    }
-}
-
 fn apply_lifecycle(
     state: &mut EngineStatePartsV3,
     audit: &PerspectiveLifecycleAuditV1,
@@ -159,11 +141,9 @@ fn push_visible_occurrences(
             mutation: PerspectiveLifecycleMutationV1::default(),
         };
         apply_lifecycle(state, &audit)?;
-        operations.push(existing_operation(
-            mtgml_state::SemanticDeltaOperation::PerspectiveLifecycle {
-                lifecycle: audit.clone(),
-            },
-        ));
+        operations.push(SemanticDeltaOperationV3::PerspectiveLifecycle {
+            lifecycle: audit.clone(),
+        });
         events.push(DraftEvent::Occurrence {
             lifecycle: audit,
             source,
@@ -190,16 +170,14 @@ fn draft_basic_land_action(
     let mut next = state.clone();
     next.predecessor_v5.revision = next_revision;
     next.execution_v4.pending_decision = None;
-    let mut operations = vec![existing_operation(
-        mtgml_state::SemanticDeltaOperation::DecisionCleared {
+    let mut operations = vec![SemanticDeltaOperationV3::DecisionCleared {
+        decision: pending_decision_id,
+    }];
+    let mut events = vec![DraftEvent::Kind(Box::new(
+        crate::AuthoritativeRuleEventKindV3::DecisionCleared {
             decision: pending_decision_id,
         },
-    )];
-    let mut events = vec![DraftEvent::Kind(Box::new(existing_event(
-        crate::AuthoritativeRuleEventKind::DecisionCleared {
-            decision: pending_decision_id,
-        },
-    )))];
+    ))];
 
     match decision {
         // Passing priority is resolved by the turn progression, never here.
@@ -350,13 +328,11 @@ fn draft_basic_land_action(
                 .collect();
             for (instance, authority) in &state.card_rules_state.abilities.by_instance {
                 if authority.source == object {
-                    operations.push(existing_v2_operation(
-                        SemanticDeltaOperationV2::AbilityAuthorityRemoved {
-                            instance: *instance,
-                            source: authority.source,
-                            ability_key: authority.ability_key,
-                        },
-                    ));
+                    operations.push(SemanticDeltaOperationV3::AbilityAuthorityRemoved {
+                        instance: *instance,
+                        source: authority.source,
+                        ability_key: authority.ability_key,
+                    });
                 }
             }
             next.card_rules_state
@@ -444,11 +420,9 @@ fn draft_basic_land_action(
                 };
                 apply_perspective_lifecycle(&mut materialized, &audit)
                     .map_err(|_| BasicLandTransitionError::InvalidResult)?;
-                operations.push(existing_operation(
-                    mtgml_state::SemanticDeltaOperation::PerspectiveLifecycle {
-                        lifecycle: audit.clone(),
-                    },
-                ));
+                operations.push(SemanticDeltaOperationV3::PerspectiveLifecycle {
+                    lifecycle: audit.clone(),
+                });
                 // The occurrence follows the zone transition it observes.
                 occurrences.push(audit);
             }
@@ -463,14 +437,12 @@ fn draft_basic_land_action(
                     if let Some(opaque) = identity.ability_to_opaque.remove(instance) {
                         identity.opaque_to_ability.remove(&opaque);
                         identity.retired_ability_ids.insert(opaque);
-                        operations.push(existing_v2_operation(
-                            SemanticDeltaOperationV2::AbilityIdentityChanged {
-                                perspective: *perspective,
-                                instance: *instance,
-                                from: Some(opaque),
-                                to: None,
-                            },
-                        ));
+                        operations.push(SemanticDeltaOperationV3::AbilityIdentityChanged {
+                            perspective: *perspective,
+                            instance: *instance,
+                            from: Some(opaque),
+                            to: None,
+                        });
                     }
                 }
             }
@@ -488,13 +460,11 @@ fn draft_basic_land_action(
             let ability = *abilities
                 .first()
                 .ok_or(BasicLandTransitionError::InvalidResult)?;
-            operations.push(existing_v2_operation(
-                SemanticDeltaOperationV2::AbilityAuthorityAdded {
-                    instance: ability,
-                    source: new_object,
-                    ability_key: 0,
-                },
-            ));
+            operations.push(SemanticDeltaOperationV3::AbilityAuthorityAdded {
+                instance: ability,
+                source: new_object,
+                ability_key: 0,
+            });
             for (perspective, identity) in next
                 .predecessor_v5
                 .perspective_identities
@@ -513,14 +483,12 @@ fn draft_basic_land_action(
                 {
                     return Err(BasicLandTransitionError::InvalidResult);
                 }
-                operations.push(existing_v2_operation(
-                    SemanticDeltaOperationV2::AbilityIdentityChanged {
-                        perspective: *perspective,
-                        instance: ability,
-                        from: None,
-                        to: Some(opaque),
-                    },
-                ));
+                operations.push(SemanticDeltaOperationV3::AbilityIdentityChanged {
+                    perspective: *perspective,
+                    instance: ability,
+                    from: None,
+                    to: Some(opaque),
+                });
             }
             next.card_rules_state
                 .turn_history
@@ -535,29 +503,25 @@ fn draft_basic_land_action(
                 last_known: old_snapshot,
                 new_snapshot,
             };
-            operations.push(existing_v2_operation(
-                SemanticDeltaOperationV2::ObjectEntered {
-                    old_object: Some(object),
-                    new_object,
-                    from_zone: from.zone,
-                    to_zone: to.zone,
-                    tapped: false,
-                    face: 0,
-                },
-            ));
-            operations.push(existing_v2_operation(
-                SemanticDeltaOperationV2::LandPlayCountChanged {
-                    player: actor,
-                    from: 0,
-                    to: 1,
-                },
-            ));
+            operations.push(SemanticDeltaOperationV3::ObjectEntered {
+                old_object: Some(object),
+                new_object,
+                from_zone: from.zone,
+                to_zone: to.zone,
+                tapped: false,
+                face: 0,
+            });
+            operations.push(SemanticDeltaOperationV3::LandPlayCountChanged {
+                player: actor,
+                from: 0,
+                to: 1,
+            });
             let source = events.len();
-            events.push(DraftEvent::Kind(Box::new(existing_event(
-                crate::AuthoritativeRuleEventKind::ZoneTransition {
+            events.push(DraftEvent::Kind(Box::new(
+                crate::AuthoritativeRuleEventKindV3::ZoneTransition {
                     transition: Box::new(transition),
                 },
-            ))));
+            )));
             events.extend(
                 occurrences
                     .into_iter()
@@ -646,21 +610,19 @@ fn draft_basic_land_action(
                 .pools
                 .get(&actor)
                 .ok_or(BasicLandTransitionError::InvalidResult)?;
-            operations.push(existing_operation(
-                mtgml_state::SemanticDeltaOperation::ObjectTapped {
-                    object: authority.source,
-                    from: from_tapped,
-                    to: true,
-                },
-            ));
+            operations.push(SemanticDeltaOperationV3::ObjectTapped {
+                object: authority.source,
+                from: from_tapped,
+                to: true,
+            });
             let tapped_event = events.len();
-            events.push(DraftEvent::Kind(Box::new(existing_event(
-                crate::AuthoritativeRuleEventKind::ObjectTapped {
+            events.push(DraftEvent::Kind(Box::new(
+                crate::AuthoritativeRuleEventKindV3::ObjectTapped {
                     object: authority.source,
                     from: from_tapped,
                     to: true,
                 },
-            ))));
+            )));
             push_visible_occurrences(&mut next, &mut events, &mut operations, tapped_event)?;
             operations.push(SemanticDeltaOperationV3::ManaPoolChanged {
                 player: actor,
@@ -695,18 +657,16 @@ fn draft_basic_land_action(
                 consecutive_passes: 0,
             };
             next.predecessor_v5.core.priority = to_priority;
-            operations.push(existing_operation(
-                mtgml_state::SemanticDeltaOperation::PriorityChanged {
+            operations.push(SemanticDeltaOperationV3::PriorityChanged {
+                from: from_priority,
+                to: to_priority,
+            });
+            events.push(DraftEvent::Kind(Box::new(
+                crate::AuthoritativeRuleEventKindV3::PriorityChanged {
                     from: from_priority,
                     to: to_priority,
                 },
-            ));
-            events.push(DraftEvent::Kind(Box::new(existing_event(
-                crate::AuthoritativeRuleEventKind::PriorityChanged {
-                    from: from_priority,
-                    to: to_priority,
-                },
-            ))));
+            )));
         }
     }
 
@@ -1241,9 +1201,9 @@ pub fn execute_basic_land_response_v4(
     let decision_created = crate::AuthoritativeRuleEventV3 {
         event_id: decision_event_id,
         state_revision: revision,
-        event: existing_event(crate::AuthoritativeRuleEventKind::DecisionCreated {
+        event: crate::AuthoritativeRuleEventKindV3::DecisionCreated {
             decision: next_request.decision_id,
-        }),
+        },
     };
     events.push(decision_created.clone());
     operations.push(SemanticDeltaOperationV3::PendingRequestChanged {

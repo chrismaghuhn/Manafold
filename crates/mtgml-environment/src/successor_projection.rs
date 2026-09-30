@@ -186,23 +186,14 @@ fn project_successor_events_v4_inner(
     }
 
     for (index, event) in events.iter().enumerate() {
-        let (lifecycle, direct_policy, source_event_id) = match &event.event {
-            AuthoritativeRuleEventKindV3::Existing { event } => match event.as_ref() {
-                mtgml_rules::AuthoritativeRuleEventKind::PerspectiveOccurrence {
-                    lifecycle,
-                    observation,
-                } => (Some(lifecycle), Some(observation), None),
-                _ => (None, None, None),
-            },
-            AuthoritativeRuleEventKindV3::PerspectiveObservationOccurrence {
-                lifecycle,
-                source_event_id,
-            } => (Some(lifecycle.as_ref()), None, Some(*source_event_id)),
-            _ => (None, None, None),
-        };
-        let Some(lifecycle) = lifecycle else {
+        let AuthoritativeRuleEventKindV3::PerspectiveObservationOccurrence {
+            lifecycle,
+            source_event_id,
+        } = &event.event
+        else {
             continue;
         };
+        let (lifecycle, source_event_id) = (lifecycle.as_ref(), *source_event_id);
         let cursor = cursors
             .get_mut(&lifecycle.perspective)
             .ok_or(SuccessorProjectionError::UnknownPerspective)?;
@@ -238,7 +229,7 @@ fn project_successor_events_v4_inner(
         .map_err(|_| SuccessorProjectionError::ObservationOccurrenceMismatch)?;
         let after_knowledge = after_knowledge.clone();
 
-        let observation = if let Some(source_event_id) = source_event_id {
+        let observation = {
             let source_index = events
                 .iter()
                 .position(|candidate| candidate.event_id == source_event_id)
@@ -261,14 +252,6 @@ fn project_successor_events_v4_inner(
                     stack_order_before: &stack_order,
                 },
             )?)
-        } else {
-            project_v4_legacy_observation_policy(
-                after,
-                direct_policy.ok_or(SuccessorProjectionError::ObservationOccurrenceMismatch)?,
-                &before_identity,
-                after_identity,
-                &after_knowledge,
-            )?
         };
         if let Some(event_kind) = observation {
             let envelope = ObservedEventEnvelopeV4 {
@@ -283,14 +266,12 @@ fn project_successor_events_v4_inner(
                 .get_mut(&lifecycle.perspective)
                 .ok_or(SuccessorProjectionError::UnknownPerspective)?
                 .push(envelope);
-            if let Some(source_event_id) = source_event_id {
-                if !observed_source_audiences
-                    .entry(source_event_id)
-                    .or_default()
-                    .insert(lifecycle.perspective)
-                {
-                    return Err(SuccessorProjectionError::ObservationOccurrenceMismatch);
-                }
+            if !observed_source_audiences
+                .entry(source_event_id)
+                .or_default()
+                .insert(lifecycle.perspective)
+            {
+                return Err(SuccessorProjectionError::ObservationOccurrenceMismatch);
             }
         }
     }
@@ -395,53 +376,48 @@ fn project_v4_public_source_event(
     } = context;
     use AuthoritativeRuleEventKindV3 as Event;
     match &source_event.event {
-        Event::Existing { event } => match event.as_ref() {
-            mtgml_rules::AuthoritativeRuleEventKind::ZoneTransition { transition } => {
-                let policy = mtgml_rules::PerspectiveObservationPolicyV1::MovedInSight {
-                    from_zone: transition.from.zone,
-                    to_zone: transition.to.zone,
-                    old_object: transition.old_object,
-                    new_object: transition.new_object,
-                    // Preserve the V7 Basic-Land projection rule: an old
-                    // incarnation is visible only when this perspective had
-                    // an opaque identity for it before the move. A newly
-                    // public incarnation is allocated separately below.
-                    reveals_old: before_identity
-                        .object_to_opaque
-                        .contains_key(&transition.old_object),
-                    reveals_new: true,
-                };
-                project_v4_legacy_observation_policy(
-                    after,
-                    &policy,
+        Event::ZoneTransition { transition } => {
+            let policy = mtgml_rules::PerspectiveObservationPolicyV1::MovedInSight {
+                from_zone: transition.from.zone,
+                to_zone: transition.to.zone,
+                old_object: transition.old_object,
+                new_object: transition.new_object,
+                // Preserve the V7 Basic-Land projection rule: an old
+                // incarnation is visible only when this perspective had
+                // an opaque identity for it before the move. A newly
+                // public incarnation is allocated separately below.
+                reveals_old: before_identity
+                    .object_to_opaque
+                    .contains_key(&transition.old_object),
+                reveals_new: true,
+            };
+            project_v4_legacy_observation_policy(
+                after,
+                &policy,
+                before_identity,
+                after_identity,
+                knowledge,
+            )?
+            .ok_or(SuccessorProjectionError::ObservationOccurrenceMismatch)
+        }
+        Event::ObjectTapped { object, to, .. } => Ok(ObservedEventKindV4::ObjectTapped {
+            object: crate::player_projection::public_opaque_object(
+                after,
+                after_identity,
+                knowledge,
+                *object,
+            )
+            .or_else(|| {
+                crate::player_projection::public_opaque_object(
+                    before,
                     before_identity,
-                    after_identity,
                     knowledge,
-                )?
-                .ok_or(SuccessorProjectionError::ObservationOccurrenceMismatch)
-            }
-            mtgml_rules::AuthoritativeRuleEventKind::ObjectTapped { object, to, .. } => {
-                Ok(ObservedEventKindV4::ObjectTapped {
-                    object: crate::player_projection::public_opaque_object(
-                        after,
-                        after_identity,
-                        knowledge,
-                        *object,
-                    )
-                    .or_else(|| {
-                        crate::player_projection::public_opaque_object(
-                            before,
-                            before_identity,
-                            knowledge,
-                            *object,
-                        )
-                    })
-                    .ok_or(SuccessorProjectionError::MissingOpaqueIdentity)?,
-                    tapped: *to,
-                })
-            }
-            _ => Err(SuccessorProjectionError::UnsupportedObservedEvent),
-        },
+                    *object,
+                )
+            })
+            .ok_or(SuccessorProjectionError::MissingOpaqueIdentity)?,
+            tapped: *to,
+        }),
         Event::StackItemAdded {
             stack_object,
             payload,
@@ -716,20 +692,16 @@ fn apply_projection_identity_delta(
     identities: &mut BTreeMap<PlayerId, PerspectiveIdentityRecordV2>,
     delta: &mtgml_state::StateDeltaV3,
 ) -> Result<(), SuccessorProjectionError> {
-    use mtgml_state::{SemanticDeltaOperationV2 as V2, SemanticDeltaOperationV3 as V3};
+    use mtgml_state::SemanticDeltaOperationV3 as V3;
 
     for operation in &delta.operations {
         match operation {
-            V3::Existing { operation } => {
-                let V2::AbilityIdentityChanged {
-                    perspective,
-                    instance,
-                    from,
-                    to,
-                } = operation.as_ref()
-                else {
-                    continue;
-                };
+            V3::AbilityIdentityChanged {
+                perspective,
+                instance,
+                from,
+                to,
+            } => {
                 let identity = identities
                     .get_mut(perspective)
                     .ok_or(SuccessorProjectionError::UnknownPerspective)?;

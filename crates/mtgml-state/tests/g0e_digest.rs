@@ -777,15 +777,13 @@ fn state_delta_v3_rejects_duplicate_cast_occurrences_for_one_stack_creation() {
         cost_facts: Default::default(),
     };
     let operations = vec![
-        mtgml_state::SemanticDeltaOperationV3::Existing {
-            operation: Box::new(mtgml_state::SemanticDeltaOperationV2::ObjectEntered {
-                old_object: None,
-                new_object: GameObjectId(50),
-                from_zone: ZoneKind::Hand,
-                to_zone: ZoneKind::Stack,
-                tapped: false,
-                face: 0,
-            }),
+        mtgml_state::SemanticDeltaOperationV3::ObjectEntered {
+            old_object: None,
+            new_object: GameObjectId(50),
+            from_zone: ZoneKind::Hand,
+            to_zone: ZoneKind::Stack,
+            tapped: false,
+            face: 0,
         },
         mtgml_state::SemanticDeltaOperationV3::StackItemCreated {
             stack_object: StackObjectId(1),
@@ -822,15 +820,13 @@ fn state_delta_v3_requires_a_cast_operation_for_a_new_spell_stack_item() {
         .clone()
         .unwrap();
     let operations = vec![
-        mtgml_state::SemanticDeltaOperationV3::Existing {
-            operation: Box::new(mtgml_state::SemanticDeltaOperationV2::ObjectEntered {
-                old_object: None,
-                new_object: GameObjectId(50),
-                from_zone: ZoneKind::Hand,
-                to_zone: ZoneKind::Stack,
-                tapped: false,
-                face: 0,
-            }),
+        mtgml_state::SemanticDeltaOperationV3::ObjectEntered {
+            old_object: None,
+            new_object: GameObjectId(50),
+            from_zone: ZoneKind::Hand,
+            to_zone: ZoneKind::Stack,
+            tapped: false,
+            face: 0,
         },
         mtgml_state::SemanticDeltaOperationV3::StackItemCreated {
             stack_object: StackObjectId(1),

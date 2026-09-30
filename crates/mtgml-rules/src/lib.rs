@@ -4,7 +4,6 @@
 mod basic_land;
 mod characteristic_query;
 mod errors;
-mod events;
 mod events_v3;
 mod snapshots;
 mod turn_progression;
@@ -23,13 +22,10 @@ pub use basic_land::{
 };
 pub(crate) use characteristic_query::{S1QueryAuthority, S1QueryError};
 pub(crate) use errors::KernelExecutionError;
-pub use events::{
-    AuthoritativeRuleEvent, AuthoritativeRuleEventKind, PerspectiveObservationPolicyV1,
-};
 pub use events_v3::{
     allocate_rule_events_v3, validate_event_delta_parity_v3, validate_event_delta_state_v3,
     validate_rule_event_cursor_v3, AuthoritativeRuleEventKindV3, AuthoritativeRuleEventV3,
-    EventDeltaV3Error, RuleEventCursorV3Error,
+    EventDeltaV3Error, PerspectiveObservationPolicyV1, RuleEventCursorV3Error,
 };
 pub use turn_progression::{execute_magic_response_v4, validate_magic_pending_request_v4};
 pub use turn_structure::temporal_successor;

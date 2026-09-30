@@ -2,7 +2,7 @@ use super::*;
 
 use mtgml_model::{GameObjectId, PlayerId, RuleEventId, StateRevision};
 use mtgml_random::RootSeed256;
-use mtgml_state::{SemanticDeltaOperation, SyntheticResetInputs, SyntheticV4Setup};
+use mtgml_state::{SyntheticResetInputs, SyntheticV4Setup};
 
 include!("tests/semantic_delta.rs");
 

@@ -1739,12 +1739,10 @@ mod tests {
                 mtgml_rules::AuthoritativeRuleEventV3 {
                     event_id: tapped_event_id,
                     state_revision: revision,
-                    event: mtgml_rules::AuthoritativeRuleEventKindV3::Existing {
-                        event: Box::new(mtgml_rules::AuthoritativeRuleEventKind::ObjectTapped {
-                            object: public_object,
-                            from: false,
-                            to: true,
-                        }),
+                    event: mtgml_rules::AuthoritativeRuleEventKindV3::ObjectTapped {
+                        object: public_object,
+                        from: false,
+                        to: true,
                     },
                 },
                 occurrence(

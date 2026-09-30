@@ -2,7 +2,7 @@ use crate::zone_incarnation::{
     apply_selected_zone_transition_in_workspace, SelectedZoneTransitionKind,
     SelectedZoneTransitionRequest,
 };
-use mtgml_model::{CardDefinitionId, PhysicalCardId, RuleEventId, ZoneKind};
+use mtgml_model::{CardDefinitionId, PhysicalCardId, ZoneKind};
 use mtgml_state::{
     construct_synthetic_engine_state, EngineState, GameObject, VisibilityPartition, ZoneKey,
     ZoneLocation, ZonePosition,
@@ -113,7 +113,6 @@ fn workspace_composes_two_moves_at_one_revision_and_reverse_inserts_order() {
     let authoritative_before = state.clone();
     let mut scratch = state.clone();
     scratch.revision = StateRevision(state.revision.0 + 1);
-    let outer_event_origin = state.allocators.next_rule_event_id;
     let mut events = Vec::new();
 
     // Each move inserts at the top: moving 6 and then 5 leaves the new
@@ -121,14 +120,12 @@ fn workspace_composes_two_moves_at_one_revision_and_reverse_inserts_order() {
     let first_transition = apply_selected_zone_transition_in_workspace(
         &mut scratch,
         &hand_to_graveyard(GameObjectId(6)),
-        outer_event_origin,
         &mut events,
     )
     .unwrap();
     let second_transition = apply_selected_zone_transition_in_workspace(
         &mut scratch,
         &hand_to_graveyard(GameObjectId(5)),
-        outer_event_origin,
         &mut events,
     )
     .unwrap();
@@ -146,14 +143,19 @@ fn workspace_composes_two_moves_at_one_revision_and_reverse_inserts_order() {
             GameObjectId(4)
         ]
     );
-    assert!(!events.is_empty());
-    for (offset, event) in events.iter().enumerate() {
-        assert_eq!(event.state_revision, scratch.revision);
-        assert_eq!(
-            event.event_id,
-            RuleEventId(outer_event_origin.0 + offset as u64)
-        );
-    }
+    // Each move emits its transition, then one occurrence per perspective.
+    assert!(matches!(
+        events.first(),
+        Some(crate::zone_incarnation::ZoneMoveEvent::Transition(transition))
+            if transition.new_object == GameObjectId(7)
+    ));
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| matches!(event, crate::zone_incarnation::ZoneMoveEvent::Transition(_)))
+            .count(),
+        2
+    );
     mtgml_state::validate_engine_state(&scratch).unwrap();
     assert_eq!(state, authoritative_before);
 
@@ -162,7 +164,6 @@ fn workspace_composes_two_moves_at_one_revision_and_reverse_inserts_order() {
     let failure = apply_selected_zone_transition_in_workspace(
         &mut scratch,
         &hand_to_graveyard(GameObjectId(999)),
-        outer_event_origin,
         &mut events,
     )
     .unwrap_err();

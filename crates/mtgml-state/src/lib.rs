@@ -6,8 +6,6 @@
 mod construction;
 mod core;
 mod damage;
-mod delta;
-mod delta_v2;
 mod delta_v3;
 mod digest;
 mod digest_v5;
@@ -43,8 +41,6 @@ pub use core::{
     PlayerState, PriorityState, TurnPosition,
 };
 pub use damage::{DamageAssignmentV1, DamageRecipientV1};
-pub use delta::SemanticDeltaOperation;
-pub use delta_v2::SemanticDeltaOperationV2;
 pub use delta_v3::{
     CostCommitActionV1, DeltaApplicationV3Error, ManaPoolChangeCauseV1, SemanticDeltaOperationV3,
     StackItemEndKindV1, StateDeltaV3,

@@ -4,7 +4,7 @@
 //! perspective-visible occurrence: whose knowledge/identity state mutates, at
 //! which perspective-local visible sequence, and with which typed identity and
 //! knowledge mutation. Rules wrap these payloads in authoritative events;
-//! `SemanticDeltaOperation` mirrors them verbatim; the semantic validation
+//! `SemanticDeltaOperationV3` mirrors them verbatim; the semantic validation
 //! cursor replays them; fixture support applies them through the normal
 //! accepted-product path. Observation/redaction policy deliberately never
 //! appears here: it does not mutate authoritative state.

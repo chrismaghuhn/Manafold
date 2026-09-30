@@ -37,8 +37,6 @@ pub enum ZoneIncarnationError {
 
 #[derive(Debug, Error)]
 pub enum KernelExecutionError {
-    #[error("rule event identity would overflow")]
-    RuleEventIdOverflow,
     #[error("transition contract failed: {0}")]
     TransitionContract(TransitionViolation),
     #[error("identity allocator failed: {0}")]
