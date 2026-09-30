@@ -1422,6 +1422,11 @@ pub(crate) fn s1_b_state_with_two_lands_fixture() -> EngineStatePartsV2 {
 }
 
 #[cfg(test)]
+pub(crate) fn basic_land_admission_fixture() -> mtgml_card_ir::ExecutableProfileAdmissionV1 {
+    tests::admission()
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use mtgml_card_ir::{
@@ -1450,11 +1455,15 @@ mod tests {
         include_bytes!("../../../cards/definitions/basic-land-v1/provenance.v1.cbor");
     const RULES_SNAPSHOT: &str = "wotc-cr-2026-09-25-txt-20260925-sha256-8d860e451f20f38865b725b42d82feb714c725373dd8f3b32b8652b3eeb070ca";
 
-    fn admission() -> ExecutableProfileAdmissionV1 {
+    pub(super) fn admission() -> ExecutableProfileAdmissionV1 {
         let id = calculate_content_contract_id_v1(MANIFEST).unwrap();
         let closure = [
             "rules/basic-land-mana",
             "rules/basic-priority",
+            "rules/cleanup-reset",
+            "rules/combat-phase",
+            "rules/declare-attackers",
+            "rules/draw-card",
             "rules/land-play",
             "rules/mana-pool",
             "rules/state-based-actions-combat",

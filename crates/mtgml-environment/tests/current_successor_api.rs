@@ -245,6 +245,10 @@ fn basic_land_admission() -> ExecutableProfileAdmissionV1 {
     let closure = [
         "rules/basic-land-mana",
         "rules/basic-priority",
+        "rules/cleanup-reset",
+        "rules/combat-phase",
+        "rules/declare-attackers",
+        "rules/draw-card",
         "rules/land-play",
         "rules/mana-pool",
         "rules/state-based-actions-combat",

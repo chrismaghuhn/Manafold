@@ -28,6 +28,18 @@ const PROFILE_REQUIREMENT_ROOTS: [(&str, &str); 3] = [
     ("rules/mana-pool", "0.1.0"),
 ];
 
+/// Rules every executable Magic game needs regardless of its cards: the turn
+/// sequence, priority, drawing, the combat phase with attacker declaration,
+/// and cleanup. Card profiles add their own roots on top of these.
+pub const MAGIC_GAME_RULE_ROOTS: &[(&str, &str)] = &[
+    ("rules/basic-priority", "0.1.0"),
+    ("rules/cleanup-reset", "0.1.0"),
+    ("rules/combat-phase", "0.1.0"),
+    ("rules/declare-attackers", "0.1.0"),
+    ("rules/draw-card", "0.1.0"),
+    ("rules/turn-structure", "0.1.0"),
+];
+
 const BASIC_LAND_SOURCE_RECORDS: [(&str, BasicLandSubtypeV1, &str); 2] = [
     (
         "a3fb7228-e76b-4e96-a40e-20b5fed75685",
@@ -300,6 +312,29 @@ pub fn admit_executable_profile_v1(
         &profile_definition_roots,
         RequiredCapabilityLifecycleV1::Specified,
     )?;
+    // The rules manifest declares one of exactly two scopes: the content-only
+    // closure (historical identities, no draw/combat/cleanup) or content plus
+    // MAGIC_GAME_RULE_ROOTS (a complete game). Anything else fails closed.
+    let game_roots = MAGIC_GAME_RULE_ROOTS
+        .iter()
+        .map(|(key, version)| CapabilityRequirementV1 {
+            key: (*key).to_owned(),
+            version: (*version).to_owned(),
+        })
+        .collect();
+    let game_direct_roots =
+        normalize_requirement_roots(report.direct_requirement_roots.clone(), game_roots)?;
+    let game_resolved = parse_canonical_registry()?
+        .resolve(&game_direct_roots, RequiredCapabilityLifecycleV1::Specified)?;
+    let (direct_requirement_roots, resolved_capabilities) =
+        if rules_manifest.capability_closure.as_ref() == Some(&game_resolved) {
+            (game_direct_roots, game_resolved)
+        } else {
+            (
+                report.direct_requirement_roots,
+                report.resolved_capabilities,
+            )
+        };
 
     if rules_manifest.validate().is_err()
         || !matches!(
@@ -318,7 +353,7 @@ pub fn admit_executable_profile_v1(
         return Err(ContentPreflightErrorV1::ExecutionIdentityMismatch);
     }
 
-    if rules_manifest.capability_closure.as_ref() != Some(&report.resolved_capabilities) {
+    if rules_manifest.capability_closure.as_ref() != Some(&resolved_capabilities) {
         return Err(ContentPreflightErrorV1::CapabilityClosureMismatch);
     }
     let rules_contract_id = calculate_rules_contract_id_v1(rules_manifest)
@@ -338,8 +373,8 @@ pub fn admit_executable_profile_v1(
     Ok(ExecutableProfileAdmissionV1 {
         content_contract_id: catalog.content_contract_id().clone(),
         verified_catalog: catalog,
-        direct_requirement_roots: report.direct_requirement_roots,
-        resolved_capabilities: report.resolved_capabilities,
+        direct_requirement_roots,
+        resolved_capabilities,
         rules_contract_manifest: rules_manifest.clone(),
         semantic_contract_manifest: semantic_manifest.clone(),
         semantic_contract_id,
