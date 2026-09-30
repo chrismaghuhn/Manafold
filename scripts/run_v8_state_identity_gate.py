@@ -189,7 +189,7 @@ def main() -> None:
         ),
         (
             "crates/mtgml-rules/src/events_v3.rs",
-            "pub(crate) fn validate_event_delta_state_v3_structural_only",
+            "pub(crate) fn validate_events_for_built_delta_v3",
         ),
     )
     for relative, token in restricted_structural_surfaces:
@@ -202,7 +202,7 @@ def main() -> None:
         ),
         (
             "crates/mtgml-rules/src/lib.rs",
-            "validate_event_delta_state_v3_structural_only",
+            "validate_events_for_built_delta_v3",
         ),
     ):
         if token in (ROOT / relative).read_text(encoding="utf-8"):

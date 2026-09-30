@@ -37,9 +37,10 @@ pub struct BasicLandReplayV8ExecutionReport {
 
 pub struct BasicLandEnvironmentRuntimeV8 {
     admission: ExecutableProfileAdmissionV1,
-    state: EngineStatePartsV3,
-    status: EpisodeStatus,
-    limit_counters: EnvironmentLimitCounters,
+    /// The current state, status and counters as a validated checkpoint:
+    /// built by `new_for_basic_land_profile` or the validated input of
+    /// `restore`. Nothing else mutates it, so readers do not re-validate it.
+    current: EnvironmentCheckpointV8,
     replay: ReplayRecorderV8,
     replay_origin: EnvironmentCheckpointV8,
 }
@@ -73,16 +74,15 @@ impl BasicLandEnvironmentRuntimeV8 {
         )?;
         Ok(Self {
             admission,
-            state: checkpoint.state.clone(),
-            status: checkpoint.status.clone(),
-            limit_counters: checkpoint.limit_counters.clone(),
+            current: checkpoint.clone(),
             replay: ReplayRecorderV8::new(manifest)?,
             replay_origin: checkpoint,
         })
     }
 
     pub fn players(&self) -> Vec<PlayerId> {
-        self.state
+        self.current
+            .state
             .predecessor_v5
             .core
             .players
@@ -92,13 +92,7 @@ impl BasicLandEnvironmentRuntimeV8 {
     }
 
     pub fn checkpoint(&self) -> Result<EnvironmentCheckpointV8, ControllerError> {
-        Ok(EnvironmentCheckpointV8::new_for_basic_land_profile(
-            &self.admission,
-            self.state.clone(),
-            self.status.clone(),
-            self.limit_counters.clone(),
-            self.admission.execution_identity().clone(),
-        )?)
+        Ok(self.current.clone())
     }
 
     pub fn fork(&self) -> Result<Self, ControllerError> {
@@ -111,9 +105,7 @@ impl BasicLandEnvironmentRuntimeV8 {
         )?;
         Ok(Self {
             admission: self.admission.clone(),
-            state: self.state.clone(),
-            status: self.status.clone(),
-            limit_counters: self.limit_counters.clone(),
+            current: checkpoint,
             replay: self.replay.clone(),
             replay_origin: self.replay_origin.clone(),
         })
@@ -146,9 +138,7 @@ impl BasicLandEnvironmentRuntimeV8 {
         )?;
         verify_manifest_player_set(&manifest, &checkpoint.state)?;
         let replay = ReplayRecorderV8::new(manifest)?;
-        self.state = checkpoint.state.clone();
-        self.status = checkpoint.status.clone();
-        self.limit_counters = checkpoint.limit_counters.clone();
+        self.current = checkpoint.clone();
         self.replay_origin = checkpoint;
         self.replay = replay;
         Ok(())
@@ -158,16 +148,11 @@ impl BasicLandEnvironmentRuntimeV8 {
         &self,
         perspective: PlayerId,
     ) -> Result<Option<PlayerDecisionRequestV4>, crate::PlayerEndpointError> {
-        if !self
-            .state
-            .predecessor_v5
-            .core
-            .players
-            .contains_key(&perspective)
-        {
+        let state = &self.current.state;
+        if !state.predecessor_v5.core.players.contains_key(&perspective) {
             return Err(crate::PlayerEndpointError::ServiceUnavailable);
         }
-        self.state
+        state
             .execution_v4
             .pending_decision
             .as_ref()
@@ -181,10 +166,8 @@ impl BasicLandEnvironmentRuntimeV8 {
         &self,
         perspective: PlayerId,
     ) -> Result<mtgml_observation::PlayerInformationStateV3, crate::PlayerEndpointError> {
-        mtgml_rules::validate_magic_pending_request_v4(&self.admission, &self.state, &self.status)
-            .map_err(|_| crate::PlayerEndpointError::ServiceUnavailable)?;
         crate::player_projection::project_successor_information_state_v3_structural_only(
-            &self.state,
+            &self.current.state,
             perspective,
             self.admission.execution_identity(),
             self.admission.semantic_contract_manifest(),
@@ -198,7 +181,8 @@ impl BasicLandEnvironmentRuntimeV8 {
         perspective: PlayerId,
         response: DecisionResponseV3,
     ) -> Result<BasicLandRuntimeOutputV8, crate::PlayerEndpointError> {
-        if !self
+        let before = &self.current;
+        if !before
             .state
             .predecessor_v5
             .core
@@ -207,23 +191,18 @@ impl BasicLandEnvironmentRuntimeV8 {
         {
             return Err(crate::PlayerEndpointError::ServiceUnavailable);
         }
-        mtgml_rules::validate_magic_pending_request_v4(&self.admission, &self.state, &self.status)
-            .map_err(|_| crate::PlayerEndpointError::ServiceUnavailable)?;
         let rejected_code = basic_land_rejection_code(
-            &self.status,
-            self.state.execution_v4.pending_decision.as_ref(),
+            &before.status,
+            before.state.execution_v4.pending_decision.as_ref(),
             perspective,
             &response,
         );
-        let before = self
-            .checkpoint()
-            .map_err(|_| crate::PlayerEndpointError::ServiceUnavailable)?;
         let transition = match mtgml_rules::execute_magic_response_v4(
             &self.admission,
-            &self.state,
+            &before.state,
             perspective,
             &response,
-            &self.status,
+            &before.status,
         ) {
             Ok(transition) => Some(transition),
             Err(
@@ -234,61 +213,21 @@ impl BasicLandEnvironmentRuntimeV8 {
             Err(_) => return Err(crate::PlayerEndpointError::ServiceUnavailable),
         };
         let accepted = transition.as_ref().is_some_and(|value| value.accepted);
-        let next_state = transition
-            .as_ref()
-            .map_or_else(|| self.state.clone(), |value| value.next_state.clone());
         let events = transition
             .as_ref()
             .map_or_else(Vec::new, |value| value.events.clone());
         let delta = transition.as_ref().map(|value| value.delta.clone());
-        let status = transition
-            .as_ref()
-            .map_or_else(|| self.status.clone(), |value| value.status.clone());
-        if accepted {
-            let delta = delta
-                .as_ref()
-                .ok_or(crate::PlayerEndpointError::ServiceUnavailable)?;
-            let applied = delta
-                .apply_structural_only(&self.state)
-                .map_err(|_| crate::PlayerEndpointError::ServiceUnavailable)?;
-            if applied != next_state {
-                return Err(crate::PlayerEndpointError::ServiceUnavailable);
-            }
-        }
-        let counters = if accepted {
-            EnvironmentLimitCounters {
-                decisions_submitted: checked_add(before.limit_counters.decisions_submitted)?,
-                accepted_transitions: checked_add(before.limit_counters.accepted_transitions)?,
-                rule_events_emitted: before
-                    .limit_counters
-                    .rule_events_emitted
-                    .checked_add(events.len() as u64)
-                    .ok_or(crate::PlayerEndpointError::ServiceUnavailable)?,
-                resource_units_consumed: before.limit_counters.resource_units_consumed,
-                wall_clock_elapsed_millis: before.limit_counters.wall_clock_elapsed_millis,
-            }
-        } else {
-            before.limit_counters.clone()
-        };
-        let checkpoint = EnvironmentCheckpointV8::new_for_basic_land_profile(
-            &self.admission,
-            next_state.clone(),
-            status.clone(),
-            counters,
-            self.admission.execution_identity().clone(),
-        )
-        .map_err(|_| crate::PlayerEndpointError::ServiceUnavailable)?;
-        let next_request = next_state.execution_v4.pending_decision.as_ref();
+        let checkpoint = next_checkpoint(&self.admission, before, transition.as_ref())?;
         let steps = crate::successor_projection::project_successor_player_steps_v4(
             crate::successor_projection::SuccessorTransitionV4Projection {
-                before: &self.state,
-                after: &next_state,
+                before: &before.state,
+                after: &checkpoint.state,
                 before_status: &before.status,
                 events: &events,
                 delta: delta.as_ref(),
                 accepted,
-                status: &status,
-                next_request,
+                status: &checkpoint.status,
+                next_request: checkpoint.state.execution_v4.pending_decision.as_ref(),
                 actor: perspective,
                 rejected_code,
             },
@@ -302,10 +241,7 @@ impl BasicLandEnvironmentRuntimeV8 {
         )
         .map_err(|_| crate::PlayerEndpointError::ServiceUnavailable)?;
 
-        let replay_step = if accepted {
-            let transition = transition
-                .as_ref()
-                .ok_or(crate::PlayerEndpointError::ServiceUnavailable)?;
+        if accepted {
             let step_index = u64::try_from(self.replay.step_count())
                 .map_err(|_| crate::PlayerEndpointError::ServiceUnavailable)?;
             let step = ReplayStepV8 {
@@ -321,22 +257,14 @@ impl BasicLandEnvironmentRuntimeV8 {
                 environment_limit_counters_after: checkpoint.limit_counters.clone(),
                 checkpoint_digest_after: checkpoint.checkpoint_digest.clone(),
             };
-            let _ = transition;
-            Some(step)
-        } else {
-            None
-        };
-        if let Some(step) = replay_step {
             self.replay
                 .append(step)
                 .map_err(|_| crate::PlayerEndpointError::ServiceUnavailable)?;
         }
-        self.state = next_state.clone();
-        self.status = status;
-        self.limit_counters = checkpoint.limit_counters.clone();
+        self.current = checkpoint.clone();
         Ok(BasicLandRuntimeOutputV8 {
             accepted,
-            next_state,
+            next_state: checkpoint.state.clone(),
             delta,
             events,
             checkpoint,
@@ -429,6 +357,54 @@ impl BasicLandEnvironmentRuntimeV8 {
     pub fn replay_manifest(&self) -> &ReplayManifestV8 {
         self.replay.manifest()
     }
+}
+
+/// The checkpoint a response leads to: the current one when the response is
+/// rejected, or exactly one new checkpoint for an accepted transition whose
+/// delta leads from `before` to it (both checkpoint digests were computed
+/// without the delta).
+fn next_checkpoint(
+    admission: &ExecutableProfileAdmissionV1,
+    before: &EnvironmentCheckpointV8,
+    transition: Option<&mtgml_rules::BasicLandTransitionProductV4>,
+) -> Result<EnvironmentCheckpointV8, crate::PlayerEndpointError> {
+    let Some(transition) = transition else {
+        return Ok(before.clone());
+    };
+    // No producer returns a product that is not accepted. If one did, its
+    // meaning would be unknown, so fail closed instead of guessing.
+    if !transition.accepted {
+        return Err(crate::PlayerEndpointError::ServiceUnavailable);
+    }
+    let counters = EnvironmentLimitCounters {
+        decisions_submitted: checked_add(before.limit_counters.decisions_submitted)?,
+        accepted_transitions: checked_add(before.limit_counters.accepted_transitions)?,
+        rule_events_emitted: before
+            .limit_counters
+            .rule_events_emitted
+            .checked_add(transition.events.len() as u64)
+            .ok_or(crate::PlayerEndpointError::ServiceUnavailable)?,
+        resource_units_consumed: before.limit_counters.resource_units_consumed,
+        wall_clock_elapsed_millis: before.limit_counters.wall_clock_elapsed_millis,
+    };
+    let checkpoint = EnvironmentCheckpointV8::new_for_basic_land_profile(
+        admission,
+        transition.next_state.clone(),
+        transition.status.clone(),
+        counters,
+        admission.execution_identity().clone(),
+    )
+    .map_err(|_| crate::PlayerEndpointError::ServiceUnavailable)?;
+    let delta = &transition.delta;
+    if delta.before_revision != before.state.predecessor_v5.revision
+        || delta.before_digest != before.state_digest
+        || delta.after_revision != checkpoint.state.predecessor_v5.revision
+        || delta.after_digest != checkpoint.state_digest
+        || delta.replacement != checkpoint.state
+    {
+        return Err(crate::PlayerEndpointError::ServiceUnavailable);
+    }
+    Ok(checkpoint)
 }
 
 fn basic_land_rejection_code(
@@ -1071,8 +1047,8 @@ mod tests {
         )
         .unwrap();
         assert_eq!(direct.players(), vec![PlayerId(1), PlayerId(2)]);
-        assert_eq!(direct.state, checkpoint.state);
-        assert_eq!(direct.status, checkpoint.status);
+        assert_eq!(direct.current.state, checkpoint.state);
+        assert_eq!(direct.current.status, checkpoint.status);
         assert_eq!(direct.replay_origin, checkpoint);
         assert_eq!(
             direct.admission.semantic_contract_manifest(),
@@ -2623,6 +2599,7 @@ mod tests {
             let request = direct.visible_decision(PlayerId(1)).unwrap().unwrap();
             let mana_source = if candidate_id == 3 {
                 let ability = match direct
+                    .current
                     .state
                     .execution_v4
                     .pending_decision
@@ -2636,7 +2613,7 @@ mod tests {
                     }
                     _ => panic!("candidate 3 is the intrinsic mana ability"),
                 };
-                Some(direct.state.card_rules_state.abilities.by_instance[&ability].source)
+                Some(direct.current.state.card_rules_state.abilities.by_instance[&ability].source)
             } else {
                 None
             };
@@ -3186,6 +3163,56 @@ mod tests {
             assert_eq!(v7_replayed.transitions, vec![v7_direct]);
             assert_eq!(v8_replayed.transitions, vec![v8_direct]);
         }
+    }
+
+    #[test]
+    fn a_transition_that_is_not_accepted_fails_closed() {
+        let admission = admission();
+        let status = EpisodeStatus::Running;
+        let v2 = state_with_two_lands_v2();
+        let mut state =
+            EngineStatePartsV3::new(v2.predecessor_v5, Default::default(), v2.card_rules_state)
+                .unwrap();
+        mtgml_rules::install_basic_land_request_v4(&admission, &mut state, PlayerId(1), &status)
+            .unwrap();
+        let before = EnvironmentCheckpointV8::new_for_basic_land_profile(
+            &admission,
+            state.clone(),
+            status.clone(),
+            EnvironmentLimitCounters::default(),
+            admission.execution_identity().clone(),
+        )
+        .unwrap();
+        let request = state.execution_v4.pending_decision.clone().unwrap();
+        let response = DecisionResponseV3 {
+            schema_version: mtgml_decision::DECISION_RESPONSE_V3_SCHEMA.to_owned(),
+            player_decision_id: request.player_decision_id,
+            view_sequence: request.view_sequence,
+            answer: mtgml_decision::DecisionAnswerV2::SelectOne {
+                candidate_id: mtgml_model::CandidateIdV1(0),
+            },
+        };
+        let mut product = mtgml_rules::execute_magic_response_v4(
+            &admission,
+            &state,
+            PlayerId(1),
+            &response,
+            &status,
+        )
+        .unwrap();
+
+        assert!(next_checkpoint(&admission, &before, Some(&product)).is_ok());
+        assert_eq!(
+            next_checkpoint(&admission, &before, None),
+            Ok(before.clone())
+        );
+        // No producer returns a product that is not accepted; if one did, its
+        // meaning is unknown, so the runtime must not guess.
+        product.accepted = false;
+        assert_eq!(
+            next_checkpoint(&admission, &before, Some(&product)),
+            Err(crate::PlayerEndpointError::ServiceUnavailable)
+        );
     }
 
     #[test]

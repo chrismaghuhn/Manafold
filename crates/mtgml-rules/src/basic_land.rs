@@ -2853,6 +2853,54 @@ mod tests {
     }
 
     #[test]
+    fn s1_query_for_objects_matches_one_query_per_object() {
+        let admission = admission();
+        let state = successor_state_with_two_lands();
+        let objects: Vec<_> = state
+            .predecessor_v5
+            .zones
+            .objects
+            .iter()
+            .filter(|(_, object)| !object.face_down)
+            .map(|(id, _)| *id)
+            .collect();
+        assert!(objects.len() >= 2);
+        let batch = crate::S1QueryAuthority::for_objects(&admission, &state, &objects).unwrap();
+        let single: Vec<_> = objects
+            .iter()
+            .map(|object| {
+                crate::S1QueryAuthority::for_object(&admission, &state, *object)
+                    .unwrap()
+                    .queried_object()
+            })
+            .collect();
+        assert_eq!(
+            batch.iter().map(|a| a.queried_object()).collect::<Vec<_>>(),
+            single
+        );
+        assert!(
+            crate::S1QueryAuthority::for_objects(&admission, &state, &[])
+                .unwrap()
+                .is_empty()
+        );
+
+        let mut missing_location = state.clone();
+        missing_location
+            .predecessor_v5
+            .zones
+            .locations
+            .remove(&objects[1]);
+        for order in [[objects[0], objects[1]], [objects[1], objects[0]]] {
+            assert_eq!(
+                crate::S1QueryAuthority::for_objects(&admission, &missing_location, &order)
+                    .unwrap_err(),
+                crate::S1QueryAuthority::for_object(&admission, &missing_location, order[0])
+                    .unwrap_err(),
+            );
+        }
+    }
+
+    #[test]
     fn s1_b_admitted_mountain_and_plains_have_empty_colors_and_no_pt() {
         let admission = admission();
         let state = successor_state_with_two_lands();

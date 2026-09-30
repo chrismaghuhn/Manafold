@@ -264,6 +264,45 @@ fn drawing_from_an_empty_library_ends_the_game() {
 }
 
 #[test]
+fn checkpoints_stay_bound_to_their_state_digest() {
+    let game = Game::new(two_player_land_game(10, 3, 1));
+    let admission = common::game_admission();
+    while !game.at(UPKEEP, 3) {
+        game.respond(true).unwrap();
+        let checkpoint = game.controller.checkpoint().unwrap();
+        assert_eq!(
+            checkpoint.state_digest,
+            mtgml_state::calculate_full_state_digest_v7_structural_only(&checkpoint.state).unwrap()
+        );
+        assert!(checkpoint
+            .validate_for_basic_land_profile(&admission)
+            .is_ok());
+    }
+}
+
+#[test]
+fn restored_runtime_continues_from_the_restored_checkpoint() {
+    let game = Game::new(two_player_land_game(10, 3, 1));
+    game.respond_until(true, |game| game.at(UPKEEP, 2));
+    let saved = game.controller.checkpoint().unwrap();
+    game.respond_until(true, |game| game.at(UPKEEP, 3));
+
+    game.controller.restore(saved.clone()).unwrap();
+    assert_eq!(game.controller.checkpoint().unwrap(), saved);
+    game.respond(true).unwrap();
+    assert_eq!(
+        game.controller
+            .checkpoint()
+            .unwrap()
+            .state
+            .predecessor_v5
+            .revision
+            .0,
+        saved.state.predecessor_v5.revision.0 + 1
+    );
+}
+
+#[test]
 fn a_game_cannot_start_with_hands_the_slice_cannot_reach() {
     // P1 is active in the first main phase and may hold eight; P2 may hold
     // seven. One card more would need several discards at some cleanup.
