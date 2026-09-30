@@ -22,6 +22,7 @@ mod state_based_actions;
 mod successor_contract;
 mod synthetic;
 mod transition;
+mod turn_progression;
 mod turn_structure;
 mod validation;
 mod zone_incarnation;
@@ -61,6 +62,7 @@ pub use state_based_actions::SbaContinuationValidationError;
 pub use successor_contract::validate_successor_transition_contract;
 pub use synthetic::validate_synthetic_runtime_state;
 pub use transition::{PredecessorTransitionResult, RulesKernel, TransitionResult};
+pub use turn_progression::{execute_magic_response_v4, validate_magic_pending_request_v4};
 pub use turn_structure::{
     temporal_successor, unsupported_rules_boundary, validate_turn_structure_support,
     TurnStructureError, TurnStructureSupportProfile, UnsupportedRulesBoundary,

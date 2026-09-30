@@ -762,6 +762,25 @@ fn validate_delta_operation_coverage(
     {
         return uncovered();
     }
+    // A zone transition carries the card's face from the old incarnation to
+    // the new one unchanged.
+    let faces_follow_zone_transitions = || {
+        let mut expected = old_rules.faces.faces.clone();
+        for operation in operations {
+            if let V3::Existing { operation } = operation {
+                if let SemanticDeltaOperationV2::Existing { operation } = operation.as_ref() {
+                    if let crate::SemanticDeltaOperation::ZoneTransition { transition } =
+                        operation.as_ref()
+                    {
+                        if let Some(face) = expected.remove(&transition.old_object) {
+                            expected.insert(transition.new_object, face);
+                        }
+                    }
+                }
+            }
+        }
+        expected == new_rules.faces.faces
+    };
     if old_rules.faces != new_rules.faces
         && !has_v2(&|operation| {
             matches!(
@@ -770,6 +789,7 @@ fn validate_delta_operation_coverage(
             )
         })
         && !has_v2(&|operation| matches!(operation, SemanticDeltaOperationV2::ObjectEntered { .. }))
+        && !faces_follow_zone_transitions()
     {
         return uncovered();
     }
