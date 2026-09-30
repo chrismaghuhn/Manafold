@@ -383,7 +383,7 @@ pub(crate) fn execute_basic_land_decision_draft(
                 mtgml_state::PriorityState::HeldBy {
                     player,
                     consecutive_passes: 0,
-                } if player == actor && actor == core.active_player => {
+                } if player == actor => {
                     let to_priority = mtgml_state::PriorityState::HeldBy {
                         player: other,
                         consecutive_passes: 1,
@@ -408,7 +408,7 @@ pub(crate) fn execute_basic_land_decision_draft(
                 mtgml_state::PriorityState::HeldBy {
                     player,
                     consecutive_passes: 1,
-                } if player == actor && actor != core.active_player => {
+                } if player == actor => {
                     let next_actor = core.active_player;
                     let old_position = core.position;
                     let new_position = priority_window_after_second_pass(old_position)?;
@@ -1045,6 +1045,37 @@ pub(crate) fn execute_basic_land_decision_draft(
                     SuccessorObservationPolicyV1::ManaPoolChanged { player: actor },
                 )?;
             }
+        }
+    }
+
+    // CR 117.3c, 117.4: the acting player receives priority again, and the
+    // action ends any succession of passes.
+    let from_priority = next.predecessor_v5.core.priority;
+    if let mtgml_state::PriorityState::HeldBy {
+        player,
+        consecutive_passes,
+    } = from_priority
+    {
+        if consecutive_passes != 0 {
+            let to_priority = mtgml_state::PriorityState::HeldBy {
+                player,
+                consecutive_passes: 0,
+            };
+            next.predecessor_v5.core.priority = to_priority;
+            operations.push(SemanticDeltaOperationV2::Existing {
+                operation: Box::new(mtgml_state::SemanticDeltaOperation::PriorityChanged {
+                    from: from_priority,
+                    to: to_priority,
+                }),
+            });
+            push_successor_event(
+                &mut next,
+                &mut events,
+                AuthoritativeRuleEventKindV2::PriorityChanged {
+                    from: from_priority,
+                    to: to_priority,
+                },
+            )?;
         }
     }
 

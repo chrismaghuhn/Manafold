@@ -252,22 +252,24 @@ fn progress(
     let mut facts = Facts::default();
     let next_decision = match answer {
         // CR 117.3d, 117.4: priority passes to the next player; when all
-        // players pass in succession the step ends.
+        // players pass in succession the step ends. An action resets the
+        // succession (see the basic-land path).
         Answer::Pass => match next.predecessor_v5.core.priority {
             PriorityState::HeldBy {
                 player,
                 consecutive_passes: 0,
-            } if player == active && request.actor == active => {
+            } if player == request.actor => {
+                let receiver = if player == active { other } else { active };
                 next.predecessor_v5.core.priority = PriorityState::HeldBy {
-                    player: other,
+                    player: receiver,
                     consecutive_passes: 1,
                 };
-                NextDecision::Priority(other)
+                NextDecision::Priority(receiver)
             }
             PriorityState::HeldBy {
                 player,
                 consecutive_passes: 1,
-            } if player == other && request.actor == other => {
+            } if player == request.actor => {
                 next.predecessor_v5.core.priority = PriorityState::None;
                 advance(admission, &mut next, &mut facts)?
             }
@@ -1369,6 +1371,37 @@ mod tests {
                 ..
             }
         )));
+    }
+
+    #[test]
+    fn acting_after_a_pass_restarts_the_pass_succession() {
+        // CR 117.3c, 117.4: a player who acts keeps priority, and only
+        // passes in succession with no action between them end the step.
+        let held = |player| PriorityState::HeldBy {
+            player,
+            consecutive_passes: 0,
+        };
+        let (admission, state) = game(3);
+        let state = pass_until(&admission, state, at(TurnPosition::PrecombatMain, 2));
+        let state = pass(&admission, &state).0;
+        assert_eq!(pending(&state).actor, P1);
+
+        let state = tap_first_mana_source(&admission, &state);
+        assert_eq!(state.predecessor_v5.core.priority, held(P1));
+        let state = pass(&admission, &state).0;
+        assert_eq!(
+            state.predecessor_v5.core.position,
+            TurnPosition::PrecombatMain
+        );
+        assert_eq!(pending(&state).actor, P2);
+
+        let state = play_first_land(&admission, &state);
+        assert_eq!(state.predecessor_v5.core.priority, held(P2));
+        let state = pass(&admission, &state).0;
+        assert_eq!(pending(&state).actor, P1);
+        let after = pass(&admission, &state).0;
+        assert_eq!(after.predecessor_v5.core.position, BEGIN_COMBAT);
+        assert_eq!(pending(&after).actor, P2);
     }
 
     #[test]
