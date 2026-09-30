@@ -466,22 +466,25 @@ fn validate_delta_operation_coverage(
                     && old_object.controller == new_object.controller
                     && old_object.face_down == new_object.face_down =>
             {
-                if !has_v2(&|operation| {
-                    matches!(operation,
-                    SemanticDeltaOperationV2::ObjectTapped { object, from, to }
-                        if *object == *id && *from == old_object.tapped && *to == new_object.tapped)
-                }) && !has_legacy(&|operation| {
-                    matches!(operation,
-                        crate::SemanticDeltaOperation::ObjectTapped { object, from, to }
-                            if *object == *id && *from == old_object.tapped && *to == new_object.tapped)
-                }) && !(old_object.tapped
+                let untapped_by_untap_step = old_object.tapped
                     && !new_object.tapped
                     && has_legacy(&|operation| {
                         matches!(operation,
                             crate::SemanticDeltaOperation::UntapCompleted { affected_objects }
                                 if affected_objects.contains(id))
-                    }))
-                {
+                    });
+                let covered = untapped_by_untap_step
+                    || has_v2(&|operation| {
+                        matches!(operation,
+                        SemanticDeltaOperationV2::ObjectTapped { object, from, to }
+                            if *object == *id && *from == old_object.tapped && *to == new_object.tapped)
+                    })
+                    || has_legacy(&|operation| {
+                        matches!(operation,
+                            crate::SemanticDeltaOperation::ObjectTapped { object, from, to }
+                                if *object == *id && *from == old_object.tapped && *to == new_object.tapped)
+                    });
+                if !covered {
                     return uncovered();
                 }
             }
