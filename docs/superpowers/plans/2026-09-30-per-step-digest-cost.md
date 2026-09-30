@@ -215,6 +215,10 @@ Measured 2026-09-30 on the owner's machine. Integration gate: 24/24 PASS at `cdd
 
 The next largest cost is `project_successor_player_steps_v4`, at 24.6% inclusive.
 
+After the final review (owner request), two review minors were fixed:
+- A rules product with `accepted=false` now fails closed with `ServiceUnavailable`, via `next_checkpoint`. Before, the runtime kept the current checkpoint.
+- The `#[cfg(test)]` re-apply path from Task 3 is removed; the test helper uses `validate_events_for_built_delta_v3`. The V8 state identity gate now pins that function as the crate-private structural helper.
+
 ## Next (not in this plan)
 
 - The digest function itself encodes the state to CBOR, decodes it again and validates it before hashing. That is about half the cost of each remaining digest. Making it cheaper must keep every digest byte-identical; it is a separate plan with its own profile.
