@@ -1,7 +1,7 @@
 use crate::{cbor, envelope, PersistenceDecodeErrorV1};
 use mtgml_model::{
     CheckpointCodecIdentity, CheckpointDigestV8, DigestReferenceV1, EnvironmentLimitCounters,
-    EpisodeStatus, ExecutionIdentityV1, ExecutionProgramV1, FullStateDigestV7, PlayerOutcome,
+    EpisodeStatus, ExecutionIdentityV1, ExecutionProgramV1, FullStateDigest, PlayerOutcome,
     PlayerResult, TerminalReason, TruncationReason,
 };
 
@@ -40,7 +40,7 @@ pub fn calculate_checkpoint_digest_v8(
 ) -> Result<CheckpointDigestV8, PersistenceDecodeErrorV1> {
     validate_full_state_reference(
         full_state_digest,
-        FullStateDigestV7::DOMAIN,
+        FullStateDigest::DOMAIN,
         "full-state-digest-input.v7",
     )?;
     status

@@ -28,7 +28,7 @@ def observation_digest_from_payload(payload: bytes) -> str:
 
 
 @dataclass(frozen=True, slots=True)
-class ObservationEnvelopeV2:
+class ObservationEnvelope:
     schema_version: str
     perspective: int
     view_sequence: int
@@ -37,7 +37,7 @@ class ObservationEnvelopeV2:
     digest: str
 
     @classmethod
-    def from_wire(cls, value: object) -> ObservationEnvelopeV2:
+    def from_wire(cls, value: object) -> ObservationEnvelope:
         obj = require_exact_keys(
             value,
             {
@@ -83,15 +83,15 @@ class ObservationEnvelopeV2:
 
 
 @dataclass(frozen=True, slots=True)
-class InformationStateDigestInputV3:
+class InformationStateDigestInput:
     schema_version: str
     perspective: int
-    current_observation: ObservationEnvelopeV2
+    current_observation: ObservationEnvelope
     next_visible_sequence: int
     retained_knowledge: tuple[PlayerKnownObjectV1, ...]
 
     @classmethod
-    def from_wire(cls, value: object) -> InformationStateDigestInputV3:
+    def from_wire(cls, value: object) -> InformationStateDigestInput:
         obj = require_exact_keys(
             value,
             {
@@ -109,7 +109,7 @@ class InformationStateDigestInputV3:
         result = cls(
             INFORMATION_STATE_DIGEST_INPUT_SCHEMA_V3,
             parse_uint(obj["perspective"]),
-            ObservationEnvelopeV2.from_wire(obj["current_observation"]),
+            ObservationEnvelope.from_wire(obj["current_observation"]),
             parse_uint(obj["next_visible_sequence"]),
             tuple(PlayerKnownObjectV1.from_wire(item) for item in obj["retained_knowledge"]),
         )
@@ -143,8 +143,8 @@ class InformationStateDigestInputV3:
         }
 
 
-def compute_information_state_digest_v3(
-    input_value: InformationStateDigestInputV3,
+def compute_information_state_digest(
+    input_value: InformationStateDigestInput,
 ) -> tuple[bytes, str]:
     payload = canonical_json_bytes(input_value.to_wire())
     digest = hashlib.sha256(b"mtgml.information-state-digest.v3\0" + payload).hexdigest()
@@ -152,16 +152,16 @@ def compute_information_state_digest_v3(
 
 
 @dataclass(frozen=True, slots=True)
-class PlayerInformationStateV3:
+class PlayerInformationState:
     schema_version: str
     perspective: int
-    current_observation: ObservationEnvelopeV2
+    current_observation: ObservationEnvelope
     next_visible_sequence: int
     retained_knowledge: tuple[PlayerKnownObjectV1, ...]
     digest: str
 
     @classmethod
-    def from_wire(cls, value: object) -> PlayerInformationStateV3:
+    def from_wire(cls, value: object) -> PlayerInformationState:
         obj = require_exact_keys(
             value,
             {
@@ -180,7 +180,7 @@ class PlayerInformationStateV3:
         result = cls(
             INFORMATION_STATE_SCHEMA_V3,
             parse_uint(obj["perspective"]),
-            ObservationEnvelopeV2.from_wire(obj["current_observation"]),
+            ObservationEnvelope.from_wire(obj["current_observation"]),
             parse_uint(obj["next_visible_sequence"]),
             tuple(PlayerKnownObjectV1.from_wire(item) for item in obj["retained_knowledge"]),
             require_digest(obj["digest"]),
@@ -188,8 +188,8 @@ class PlayerInformationStateV3:
         result.validate()
         return result
 
-    def digest_input(self) -> InformationStateDigestInputV3:
-        return InformationStateDigestInputV3(
+    def digest_input(self) -> InformationStateDigestInput:
+        return InformationStateDigestInput(
             INFORMATION_STATE_DIGEST_INPUT_SCHEMA_V3,
             self.perspective,
             self.current_observation,
@@ -209,7 +209,7 @@ class PlayerInformationStateV3:
                 "semantic.information_state", "observation cursor or perspective differs"
             )
         input_value = self.digest_input()
-        _, expected = compute_information_state_digest_v3(input_value)
+        _, expected = compute_information_state_digest(input_value)
         if self.digest != expected:
             raise WireError("semantic.information_state", "information-state digest mismatch")
 

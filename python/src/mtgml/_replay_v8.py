@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from itertools import pairwise
 
-from ._replay_common import DeckIdentityV1, KernelIdentityV1
-from ._replay_v2 import RandomnessIdentityV2
-from ._replay_v4 import CheckpointCodecIdentityV4, EnvironmentLimitCountersV4
-from ._replay_v5 import ExecutionIdentityV1
-from ._replay_v6 import _validate_status_for_players
-from ._replay_v7 import SemanticContractMaterialV7
+from ._contract_material import SemanticContractMaterialV7
+from ._replay_common import (
+    CheckpointCodecIdentityV4,
+    DeckIdentityV1,
+    EnvironmentLimitCountersV4,
+    ExecutionIdentityV1,
+    KernelIdentityV1,
+    RandomnessIdentityV2,
+)
 from .canonical import (
     parse_u64_number,
     parse_uint,
@@ -29,6 +33,19 @@ REPLAY_STEP_SCHEMA_V8 = "replay-step.v8"
 CHECKPOINT_CODEC_ID_V8 = "in-memory-reference"
 CHECKPOINT_CODEC_VERSION_V8 = "8"
 SHARED_OBSERVATION_CODEC_V1 = "magic-shared-execution-observation.v1"
+
+
+def _validate_status_for_players(status: EpisodeStatus, players: set[int]) -> None:
+    if status.kind == "running":
+        return
+    ordered = [outcome.player for outcome in status.players]
+    if any(left >= right for left, right in pairwise(ordered)):
+        raise WireError("semantic.replay_manifest", "status players are not in canonical order")
+    actual = {outcome.player for outcome in status.players}
+    if actual != players:
+        raise WireError(
+            "semantic.replay_manifest", "status does not cover the manifest player universe"
+        )
 
 
 @dataclass(frozen=True, slots=True)

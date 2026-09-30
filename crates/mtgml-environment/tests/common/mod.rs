@@ -174,7 +174,7 @@ pub fn try_land_game(
     let admission = game_admission();
     let mut state = land_game_state(libraries, hands, seed);
     let status = mtgml_model::EpisodeStatus::Running;
-    mtgml_rules::install_basic_land_request_v4(&admission, &mut state, P1, &status).unwrap();
+    mtgml_rules::install_basic_land_request(&admission, &mut state, P1, &status).unwrap();
     let checkpoint = EnvironmentCheckpointV8::new_for_basic_land_profile(
         &admission,
         state.clone(),

@@ -2,7 +2,7 @@
 
 use mtgml_decision::{DecisionResponseV3, PlayerDecisionRequestV4};
 use mtgml_model::PlayerId;
-use mtgml_observation::{ObservationEnvelopeV2, PlayerInformationStateV3, PlayerStepV4};
+use mtgml_observation::{ObservationEnvelope, PlayerInformationState, PlayerStepV4};
 use std::sync::MutexGuard;
 
 use crate::controller_successor::SharedBackend;
@@ -16,8 +16,8 @@ pub struct PlayerEndpointHandle {
 
 pub trait PlayerEndpoint: Send + Sync {
     fn perspective(&self) -> PlayerId;
-    fn observation(&self) -> Result<ObservationEnvelopeV2, PlayerEndpointError>;
-    fn information_state(&self) -> Result<PlayerInformationStateV3, PlayerEndpointError>;
+    fn observation(&self) -> Result<ObservationEnvelope, PlayerEndpointError>;
+    fn information_state(&self) -> Result<PlayerInformationState, PlayerEndpointError>;
     fn visible_decision(&self) -> Result<Option<PlayerDecisionRequestV4>, PlayerEndpointError>;
     fn submit(&self, response: DecisionResponseV3) -> Result<PlayerStepV4, PlayerEndpointError>;
 }
@@ -40,11 +40,11 @@ impl PlayerEndpoint for PlayerEndpointHandle {
         self.perspective
     }
 
-    fn observation(&self) -> Result<ObservationEnvelopeV2, PlayerEndpointError> {
+    fn observation(&self) -> Result<ObservationEnvelope, PlayerEndpointError> {
         self.lock()?.player_observation(self.perspective)
     }
 
-    fn information_state(&self) -> Result<PlayerInformationStateV3, PlayerEndpointError> {
+    fn information_state(&self) -> Result<PlayerInformationState, PlayerEndpointError> {
         self.lock()?.player_information_state(self.perspective)
     }
 

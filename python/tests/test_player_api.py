@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import inspect
-import json
 import sys
 import unittest
 from pathlib import Path
@@ -15,12 +14,12 @@ from mtgml.decision_v4 import PlayerDecisionRequestV4
 from mtgml.observation import (
     MAGIC_SHARED_EXECUTION_OBSERVATION_SCHEMA_V1,
     OBSERVATION_SCHEMA_V2,
-    InformationStateDigestInputV3,
-    ObservationEnvelopeV2,
-    PlayerInformationStateV3,
+    InformationStateDigestInput,
+    ObservationEnvelope,
+    PlayerInformationState,
     PlayerKnownObjectV1,
     PlayerStepV4,
-    compute_information_state_digest_v3,
+    compute_information_state_digest,
 )
 from mtgml.player_client import PlayerClient
 
@@ -41,9 +40,9 @@ class PlayerApiTests(unittest.TestCase):
             get_type_hints(PlayerClient.visible_decision)["return"],
             PlayerDecisionRequestV4 | None,
         )
-        self.assertIs(get_type_hints(PlayerClient.observation)["return"], ObservationEnvelopeV2)
+        self.assertIs(get_type_hints(PlayerClient.observation)["return"], ObservationEnvelope)
         self.assertIs(
-            get_type_hints(PlayerClient.information_state)["return"], PlayerInformationStateV3
+            get_type_hints(PlayerClient.information_state)["return"], PlayerInformationState
         )
         self.assertEqual(get_type_hints(PlayerClient.submit)["response"], DecisionResponseV3)
 
@@ -96,7 +95,9 @@ class PlayerStepSubmissionContractTests(unittest.TestCase):
         )
 
 
-OBSERVATION_DIGEST_OF_EMPTY_OBJECT = "90845308617867fd703c6c4f37ede7908da24420053821f89190ad36236dfca3"
+OBSERVATION_DIGEST_OF_EMPTY_OBJECT = (
+    "90845308617867fd703c6c4f37ede7908da24420053821f89190ad36236dfca3"
+)
 
 # Active and retired records carrying all four observed causes.
 RICH_RETAINED_KNOWLEDGE: list[dict] = [
@@ -159,10 +160,10 @@ RICH_RETAINED_KNOWLEDGE: list[dict] = [
 ]
 
 
-def _information_v3(next_visible_sequence: int, records: list[dict]) -> PlayerInformationStateV3:
+def _information_v3(next_visible_sequence: int, records: list[dict]) -> PlayerInformationState:
     """A V3 information state with a correct digest. Computing the digest
     validates the retained knowledge, so invalid knowledge raises here."""
-    observation = ObservationEnvelopeV2(
+    observation = ObservationEnvelope(
         OBSERVATION_SCHEMA_V2,
         1,
         next_visible_sequence,
@@ -171,11 +172,11 @@ def _information_v3(next_visible_sequence: int, records: list[dict]) -> PlayerIn
         OBSERVATION_DIGEST_OF_EMPTY_OBJECT,
     )
     retained = tuple(PlayerKnownObjectV1.from_wire(record) for record in records)
-    input_value = InformationStateDigestInputV3(
+    input_value = InformationStateDigestInput(
         "information-state-digest-input.v3", 1, observation, next_visible_sequence, retained
     )
-    _, digest = compute_information_state_digest_v3(input_value)
-    return PlayerInformationStateV3(
+    _, digest = compute_information_state_digest(input_value)
+    return PlayerInformationState(
         "information-state-envelope.v3", 1, observation, next_visible_sequence, retained, digest
     )
 
@@ -221,7 +222,7 @@ class InformationProvenanceParityTests(unittest.TestCase):
         decoded = decode_canonical(
             "information-state-envelope.v3", canonical_json_bytes(information.to_wire())
         )
-        assert isinstance(decoded, PlayerInformationStateV3)
+        assert isinstance(decoded, PlayerInformationState)
         self.assertEqual(decoded, information)
         self.assertEqual(causes(decoded.to_wire()), expected)
         self.assertEqual(

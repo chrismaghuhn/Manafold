@@ -249,7 +249,7 @@ fn g0g_information_projection_uses_shared_stack_codec_without_global_revision() 
     let successor = basic_land_state(seed());
     let catalog = catalog_for(&[1, 2]);
     let (identity, semantic, rules) = execution_authority(&catalog);
-    let information = crate::player_projection::project_successor_information_state_v3(
+    let information = crate::player_projection::project_successor_information_state(
         &successor,
         PlayerId(1),
         &identity,
@@ -281,7 +281,7 @@ fn g0g_information_projection_uses_shared_stack_codec_without_global_revision() 
 
     let mut later_global_revision = successor.clone();
     later_global_revision.revision.0 += 11;
-    let later_information = crate::player_projection::project_successor_information_state_v3(
+    let later_information = crate::player_projection::project_successor_information_state(
         &later_global_revision,
         PlayerId(1),
         &identity,
@@ -478,7 +478,7 @@ fn g0g_projection_adds_shared_views_and_hides_revision_and_allocator_history() {
 
     let catalog = catalog_for(&[1, 2, 50]);
     let (identity, semantic, rules) = execution_authority(&catalog);
-    let information = crate::player_projection::project_successor_information_state_v3(
+    let information = crate::player_projection::project_successor_information_state(
         &state,
         PlayerId(1),
         &identity,
@@ -526,10 +526,10 @@ fn g0g_projection_adds_shared_views_and_hides_revision_and_allocator_history() {
     state.revision = after_revision;
     state.allocators.next_rule_event_id = mtgml_model::RuleEventId(4);
     let effect = state.execution.effects[&mtgml_model::EffectInstanceId(1)].clone();
-    let mut events = vec![mtgml_rules::AuthoritativeRuleEventV3 {
+    let mut events = vec![mtgml_rules::AuthoritativeRuleEvent {
         event_id: mtgml_model::RuleEventId(1),
         state_revision: after_revision,
-        event: mtgml_rules::AuthoritativeRuleEventKindV3::TemporaryEffectCreated { effect },
+        event: mtgml_rules::AuthoritativeRuleEventKind::TemporaryEffectCreated { effect },
     }];
     let mut after_engine: mtgml_state::EngineState = state.clone();
     for event_id in [2, 3] {
@@ -541,10 +541,10 @@ fn g0g_projection_adds_shared_views_and_hides_revision_and_allocator_history() {
             mutation: mtgml_state::PerspectiveLifecycleMutationV1::default(),
         };
         mtgml_state::apply_perspective_lifecycle(&mut after_engine, &lifecycle).unwrap();
-        events.push(mtgml_rules::AuthoritativeRuleEventV3 {
+        events.push(mtgml_rules::AuthoritativeRuleEvent {
             event_id: mtgml_model::RuleEventId(event_id),
             state_revision: after_revision,
-            event: mtgml_rules::AuthoritativeRuleEventKindV3::PerspectiveObservationOccurrence {
+            event: mtgml_rules::AuthoritativeRuleEventKind::PerspectiveObservationOccurrence {
                 lifecycle: Box::new(lifecycle),
                 source_event_id: mtgml_model::RuleEventId(1),
             },
@@ -555,7 +555,7 @@ fn g0g_projection_adds_shared_views_and_hides_revision_and_allocator_history() {
     let running = mtgml_model::EpisodeStatus::Running;
     let project_steps = |before: &mtgml_state::EngineState,
                          after: &mtgml_state::EngineState,
-                         events: &[mtgml_rules::AuthoritativeRuleEventV3]| {
+                         events: &[mtgml_rules::AuthoritativeRuleEvent]| {
         crate::successor_projection::project_successor_player_steps_v4(
             crate::successor_projection::SuccessorTransitionV4Projection {
                 before,
@@ -584,7 +584,7 @@ fn g0g_projection_adds_shared_views_and_hides_revision_and_allocator_history() {
 
     let mut occurrence = events[1].clone();
     let mut source = events[0].clone();
-    let mtgml_rules::AuthoritativeRuleEventKindV3::PerspectiveObservationOccurrence {
+    let mtgml_rules::AuthoritativeRuleEventKind::PerspectiveObservationOccurrence {
         source_event_id,
         ..
     } = &mut occurrence.event
@@ -595,7 +595,7 @@ fn g0g_projection_adds_shared_views_and_hides_revision_and_allocator_history() {
     occurrence.event_id = mtgml_model::RuleEventId(1);
     source.event_id = mtgml_model::RuleEventId(2);
     let mut future_reference_events = vec![occurrence, source, events[2].clone()];
-    if let mtgml_rules::AuthoritativeRuleEventKindV3::PerspectiveObservationOccurrence {
+    if let mtgml_rules::AuthoritativeRuleEventKind::PerspectiveObservationOccurrence {
         source_event_id,
         ..
     } = &mut future_reference_events[2].event
@@ -673,7 +673,7 @@ fn g0g_projection_adds_shared_views_and_hides_revision_and_allocator_history() {
     reidentify(&mut reidentified_before);
     reidentify(&mut reidentified_after);
     let mut reidentified_events = events.clone();
-    if let mtgml_rules::AuthoritativeRuleEventKindV3::TemporaryEffectCreated { effect } =
+    if let mtgml_rules::AuthoritativeRuleEventKind::TemporaryEffectCreated { effect } =
         &mut reidentified_events[0].event
     {
         effect.id = mtgml_model::EffectInstanceId(90);
@@ -761,10 +761,10 @@ fn g0g_projection_adds_shared_views_and_hides_revision_and_allocator_history() {
         .as_ref()
         .unwrap()
         .clone();
-    let mut removal_events = vec![mtgml_rules::AuthoritativeRuleEventV3 {
+    let mut removal_events = vec![mtgml_rules::AuthoritativeRuleEvent {
         event_id: mtgml_model::RuleEventId(4),
         state_revision: removal_revision,
-        event: mtgml_rules::AuthoritativeRuleEventKindV3::StackItemRemoved {
+        event: mtgml_rules::AuthoritativeRuleEventKind::StackItemRemoved {
             stack_object: stack_id,
             payload: removed_payload,
             result: mtgml_state::StackItemEndKindV1::Resolved,
@@ -796,10 +796,10 @@ fn g0g_projection_adds_shared_views_and_hides_revision_and_allocator_history() {
             },
         };
         mtgml_state::apply_perspective_lifecycle(&mut removal_engine, &lifecycle).unwrap();
-        removal_events.push(mtgml_rules::AuthoritativeRuleEventV3 {
+        removal_events.push(mtgml_rules::AuthoritativeRuleEvent {
             event_id: mtgml_model::RuleEventId(event_id),
             state_revision: removal_revision,
-            event: mtgml_rules::AuthoritativeRuleEventKindV3::PerspectiveObservationOccurrence {
+            event: mtgml_rules::AuthoritativeRuleEventKind::PerspectiveObservationOccurrence {
                 lifecycle: Box::new(lifecycle),
                 source_event_id: mtgml_model::RuleEventId(4),
             },
@@ -891,7 +891,7 @@ fn hidden_rng_change_preserves_basic_land_observation_bytes_and_digest() {
     };
     assert_eq!(basic(&a), basic(&b));
     let information = |state: &EngineState| {
-        crate::player_projection::project_successor_information_state_v3(
+        crate::player_projection::project_successor_information_state(
             state,
             PlayerId(1),
             &identity,
@@ -988,7 +988,7 @@ fn trusted_game_object_renaming_preserves_public_observation_and_information_byt
         mtgml_wire::encode_canonical(&project(&renamed)).unwrap()
     );
     let information = |state: &EngineState| {
-        crate::player_projection::project_successor_information_state_v3(
+        crate::player_projection::project_successor_information_state(
             state,
             PlayerId(1),
             &identity,

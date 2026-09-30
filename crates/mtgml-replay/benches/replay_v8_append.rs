@@ -2,7 +2,7 @@ use std::hint::black_box;
 use std::time::Instant;
 
 use mtgml_decision::{DecisionAnswerV2, DecisionResponseV3, DECISION_RESPONSE_V3_SCHEMA};
-use mtgml_model::{FullStateDigestV7, StateRevision};
+use mtgml_model::{FullStateDigest, StateRevision};
 use mtgml_replay::{
     InitialEnvironmentIdentityV8, ReplayManifestV8, ReplayRecorderV8, ReplayStepV8,
 };
@@ -21,7 +21,7 @@ fn run_append_count(count: u64) -> std::time::Duration {
         counters.decisions_submitted += 1;
         counters.accepted_transitions += 1;
         let revision = StateRevision(current.state_revision.0 + 1);
-        let digest = FullStateDigestV7::from_digest_bytes([index as u8; 32]);
+        let digest = FullStateDigest::from_digest_bytes([index as u8; 32]);
         let checkpoint_digest =
             mtgml_persistence::checkpoint_digest::calculate_checkpoint_digest_v8(
                 &digest.as_digest_reference(),

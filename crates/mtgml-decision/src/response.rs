@@ -1,7 +1,7 @@
 //! The player's decision response: the answer to one visible request.
 
+use crate::answer::DecisionAnswerV2;
 use crate::error::DecisionValidationError;
-use crate::v2::DecisionAnswerV2;
 use mtgml_model::{PlayerDecisionIdV1, VisibleSequence};
 use serde::{Deserialize, Serialize};
 

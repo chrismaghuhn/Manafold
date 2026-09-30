@@ -12,7 +12,7 @@ use mtgml_environment::{
     PlayerEndpoint, PlayerEndpointError, TrustedEnvironmentController,
 };
 use mtgml_model::{CardDefinitionId, PlayerId};
-use mtgml_observation::{ObservationEnvelopeV2, PlayerInformationStateV3, PlayerStepV4};
+use mtgml_observation::{ObservationEnvelope, PlayerInformationState, PlayerStepV4};
 use mtgml_replay::AuthoritativeReplayV8;
 use mtgml_state::{
     AbilityAuthorityStateV1, AbilityAuthorityV1, CardRulesAuthoritativeStateV1, EngineState,
@@ -55,7 +55,7 @@ impl EnvironmentBackend for ProductionAliasProbe {
     fn player_observation(
         &self,
         perspective: PlayerId,
-    ) -> Result<ObservationEnvelopeV2, PlayerEndpointError> {
+    ) -> Result<ObservationEnvelope, PlayerEndpointError> {
         if perspective != self.step.information_state.perspective {
             return Err(PlayerEndpointError::ServiceUnavailable);
         }
@@ -65,7 +65,7 @@ impl EnvironmentBackend for ProductionAliasProbe {
     fn player_information_state(
         &self,
         perspective: PlayerId,
-    ) -> Result<PlayerInformationStateV3, PlayerEndpointError> {
+    ) -> Result<PlayerInformationState, PlayerEndpointError> {
         if perspective != self.step.information_state.perspective {
             return Err(PlayerEndpointError::ServiceUnavailable);
         }
@@ -129,8 +129,7 @@ fn verified_basic_land_runs_through_real_v8_controller_and_player_endpoints() {
     let admission = common::game_admission();
     let mut state = basic_land_state();
     let status = mtgml_model::EpisodeStatus::Running;
-    mtgml_rules::install_basic_land_request_v4(&admission, &mut state, PlayerId(1), &status)
-        .unwrap();
+    mtgml_rules::install_basic_land_request(&admission, &mut state, PlayerId(1), &status).unwrap();
     let checkpoint = EnvironmentCheckpointV8::new_for_basic_land_profile(
         &admission,
         state.clone(),

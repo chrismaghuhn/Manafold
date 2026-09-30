@@ -1,13 +1,13 @@
 use crate::canonical_json::encode_canonical;
 use crate::contract::WireContract;
 use crate::error::WireError;
-use mtgml_model::InformationStateDigestV3;
+use mtgml_model::InformationStateDigest;
 use mtgml_observation::{
-    InformationStateDigestInputV3, MagicBasicLandObservationV1, MagicSharedExecutionObservationV1,
-    ObservationEnvelopeV2, ObservedEventEnvelopeV4, PlayerInformationStateV3, PlayerStepV4,
+    InformationStateDigestInput, MagicBasicLandObservationV1, MagicSharedExecutionObservationV1,
+    ObservationEnvelope, ObservedEventEnvelopeV4, PlayerInformationState, PlayerStepV4,
 };
 
-impl WireContract for ObservationEnvelopeV2 {
+impl WireContract for ObservationEnvelope {
     fn validate_wire(&self) -> Result<(), WireError> {
         self.validate()
             .map_err(|error| WireError::new("semantic.observation", error.to_string()))
@@ -32,14 +32,14 @@ impl WireContract for MagicSharedExecutionObservationV1 {
     }
 }
 
-impl WireContract for InformationStateDigestInputV3 {
+impl WireContract for InformationStateDigestInput {
     fn validate_wire(&self) -> Result<(), WireError> {
         self.validate()
             .map_err(|error| WireError::new("semantic.information_state", error.to_string()))
     }
 }
 
-impl WireContract for PlayerInformationStateV3 {
+impl WireContract for PlayerInformationState {
     fn validate_wire(&self) -> Result<(), WireError> {
         self.validate()
             .map_err(|error| WireError::new("semantic.information_state", error.to_string()))?;
@@ -47,16 +47,16 @@ impl WireContract for PlayerInformationStateV3 {
     }
 }
 
-pub fn compute_information_state_digest_v3(
-    input: &InformationStateDigestInputV3,
-) -> Result<(Vec<u8>, InformationStateDigestV3), WireError> {
+pub fn compute_information_state_digest(
+    input: &InformationStateDigestInput,
+) -> Result<(Vec<u8>, InformationStateDigest), WireError> {
     let payload = encode_canonical(input)?;
-    let digest = InformationStateDigestV3::from_canonical_bytes(&payload);
+    let digest = InformationStateDigest::from_canonical_bytes(&payload);
     Ok((payload, digest))
 }
 
-fn verify_information_state_digest_v3(state: &PlayerInformationStateV3) -> Result<(), WireError> {
-    let (_, expected) = compute_information_state_digest_v3(&state.digest_input())?;
+fn verify_information_state_digest_v3(state: &PlayerInformationState) -> Result<(), WireError> {
+    let (_, expected) = compute_information_state_digest(&state.digest_input())?;
     if expected == state.digest {
         Ok(())
     } else {

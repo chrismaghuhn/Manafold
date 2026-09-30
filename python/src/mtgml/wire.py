@@ -15,13 +15,13 @@ from .decision_v4 import PlayerDecisionRequestV4
 from .episode import EpisodeStatus
 from .errors import WireError
 from .observation import (
-    InformationStateDigestInputV3,
+    InformationStateDigestInput,
     MagicSharedExecutionObservationV1,
-    ObservationEnvelopeV2,
-    PlayerInformationStateV3,
+    ObservationEnvelope,
+    PlayerInformationState,
 )
 from .observation import (
-    compute_information_state_digest_v3 as _compute_information_state_digest_v3,
+    compute_information_state_digest as _compute_information_state_digest,
 )
 from .replay import (
     AuthoritativeReplayV8,
@@ -35,8 +35,8 @@ _DECODERS: dict[str, Callable[[object], object]] = {
     "player-decision-request.v4": PlayerDecisionRequestV4.from_wire,
     "decision-response.v3": DecisionResponseV3.from_wire,
     "episode-status.v1": EpisodeStatus.from_wire,
-    "observation-envelope.v2": ObservationEnvelopeV2.from_wire,
-    "information-state-envelope.v3": PlayerInformationStateV3.from_wire,
+    "observation-envelope.v2": ObservationEnvelope.from_wire,
+    "information-state-envelope.v3": PlayerInformationState.from_wire,
     "magic-shared-execution-observation.v1": MagicSharedExecutionObservationV1.from_wire,
     "observed-event-envelope.v4": ObservedEventEnvelopeV4.from_wire,
     "player-step.v4": PlayerStepV4.from_wire,
@@ -83,7 +83,7 @@ def decode_canonical(contract: str, payload: bytes) -> object:
     return result
 
 
-def compute_information_state_digest_v3(
-    input_value: InformationStateDigestInputV3,
+def compute_information_state_digest(
+    input_value: InformationStateDigestInput,
 ) -> tuple[bytes, str]:
-    return _compute_information_state_digest_v3(input_value)
+    return _compute_information_state_digest(input_value)

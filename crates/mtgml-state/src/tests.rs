@@ -53,7 +53,7 @@ fn empty_shell() -> EngineState {
         combat: None,
         zones: ZoneState::default(),
         allocators: IdentityAllocatorState::default(),
-        execution: ExecutionStateV4::default(),
+        execution: ExecutionState::default(),
         random: RandomStateV1::from_entries(
             RootSeed256::from_lower_hex(&"22".repeat(32)).unwrap(),
             vec![CanonicalRandomStreamEntryV1 {
@@ -180,8 +180,8 @@ fn synthetic_reset_is_exactly_deterministic_for_identical_inputs() {
     );
 }
 
-fn v7_digest(state: &EngineState) -> mtgml_model::FullStateDigestV7 {
-    calculate_full_state_digest_v7(state).unwrap()
+fn v7_digest(state: &EngineState) -> mtgml_model::FullStateDigest {
+    calculate_full_state_digest(state).unwrap()
 }
 
 fn digest_payload_texts(state: &EngineState) -> Vec<String> {
@@ -196,7 +196,7 @@ fn digest_payload_texts(state: &EngineState) -> Vec<String> {
             _ => {}
         }
     }
-    let payload = canonical_state_bytes_v7(state).unwrap();
+    let payload = canonical_state_bytes(state).unwrap();
     let decoded = mtgml_persistence::cbor::decode_canonical(&payload).unwrap();
     let mut texts = Vec::new();
     walk(&decoded, &mut texts);

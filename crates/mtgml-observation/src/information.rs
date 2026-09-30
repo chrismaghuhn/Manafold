@@ -1,61 +1,27 @@
-//! Detached G0 observation and information-state successor DTOs.
-//!
-//! These values have no environment producer yet. G0g owns public projection;
-//! this module owns only the closed versioned value shapes and local checks.
+//! The player information state: the current observation, the next visible
+//! sequence and the retained knowledge of one perspective, bound by one digest.
 
-use base64::{engine::general_purpose::STANDARD, Engine as _};
-use mtgml_model::{
-    InformationStateDigestV3, ObservationDigest, OpaqueObjectId, PlayerId, VisibleSequence,
-};
+use mtgml_model::{InformationStateDigest, OpaqueObjectId, PlayerId, VisibleSequence};
 use serde::{Deserialize, Serialize};
 
 use crate::error::ObservationValidationError;
 use crate::knowledge::{provenance_sequence, PlayerKnownObjectV1};
+use crate::observation::ObservationEnvelope;
 
-pub const OBSERVATION_SCHEMA_V2: &str = "observation-envelope.v2";
 pub const INFORMATION_STATE_SCHEMA_V3: &str = "information-state-envelope.v3";
 pub const INFORMATION_STATE_DIGEST_INPUT_SCHEMA_V3: &str = "information-state-digest-input.v3";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct ObservationEnvelopeV2 {
+pub struct InformationStateDigestInput {
     pub schema_version: String,
     pub perspective: PlayerId,
-    pub view_sequence: VisibleSequence,
-    pub payload_codec: String,
-    pub payload_base64: String,
-    pub digest: ObservationDigest,
-}
-
-impl ObservationEnvelopeV2 {
-    pub fn validate(&self) -> Result<(), ObservationValidationError> {
-        if self.schema_version != OBSERVATION_SCHEMA_V2 || self.payload_codec.is_empty() {
-            return Err(ObservationValidationError::SchemaOrCodec);
-        }
-        let decoded = STANDARD
-            .decode(&self.payload_base64)
-            .map_err(|_| ObservationValidationError::Base64)?;
-        if STANDARD.encode(&decoded) != self.payload_base64 {
-            return Err(ObservationValidationError::Base64);
-        }
-        if ObservationDigest::from_canonical_bytes(&decoded) != self.digest {
-            return Err(ObservationValidationError::DigestMismatch);
-        }
-        Ok(())
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct InformationStateDigestInputV3 {
-    pub schema_version: String,
-    pub perspective: PlayerId,
-    pub current_observation: ObservationEnvelopeV2,
+    pub current_observation: ObservationEnvelope,
     pub next_visible_sequence: VisibleSequence,
     pub retained_knowledge: Vec<PlayerKnownObjectV1>,
 }
 
-impl InformationStateDigestInputV3 {
+impl InformationStateDigestInput {
     pub fn validate(&self) -> Result<(), ObservationValidationError> {
         if self.schema_version != INFORMATION_STATE_DIGEST_INPUT_SCHEMA_V3 {
             return Err(ObservationValidationError::SchemaOrCodec);
@@ -73,18 +39,18 @@ impl InformationStateDigestInputV3 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct PlayerInformationStateV3 {
+pub struct PlayerInformationState {
     pub schema_version: String,
     pub perspective: PlayerId,
-    pub current_observation: ObservationEnvelopeV2,
+    pub current_observation: ObservationEnvelope,
     pub next_visible_sequence: VisibleSequence,
     pub retained_knowledge: Vec<PlayerKnownObjectV1>,
-    pub digest: InformationStateDigestV3,
+    pub digest: InformationStateDigest,
 }
 
-impl PlayerInformationStateV3 {
-    pub fn digest_input(&self) -> InformationStateDigestInputV3 {
-        InformationStateDigestInputV3 {
+impl PlayerInformationState {
+    pub fn digest_input(&self) -> InformationStateDigestInput {
+        InformationStateDigestInput {
             schema_version: INFORMATION_STATE_DIGEST_INPUT_SCHEMA_V3.into(),
             perspective: self.perspective,
             current_observation: self.current_observation.clone(),
@@ -139,15 +105,14 @@ mod tests {
 
     #[test]
     fn rust_dtos_match_successor_observation_and_information_fixtures() {
-        let observation: ObservationEnvelopeV2 = serde_json::from_str(OBSERVATION).unwrap();
+        let observation: ObservationEnvelope = serde_json::from_str(OBSERVATION).unwrap();
         observation.validate().unwrap();
         assert_eq!(
             serde_json::to_value(&observation).unwrap(),
             serde_json::from_str::<Value>(OBSERVATION).unwrap()
         );
 
-        let information: PlayerInformationStateV3 =
-            serde_json::from_str(INFORMATION_STATE).unwrap();
+        let information: PlayerInformationState = serde_json::from_str(INFORMATION_STATE).unwrap();
         information.validate().unwrap();
         assert_eq!(
             serde_json::to_value(&information).unwrap(),
@@ -161,7 +126,7 @@ mod tests {
 
     #[test]
     fn information_state_requires_observation_view_cursor_equality() {
-        let mut information: PlayerInformationStateV3 =
+        let mut information: PlayerInformationState =
             serde_json::from_str(INFORMATION_STATE).unwrap();
         information.next_visible_sequence = VisibleSequence(6);
         assert_eq!(

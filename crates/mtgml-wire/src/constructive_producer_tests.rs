@@ -1,16 +1,16 @@
 use mtgml_model::{
-    CardDefinitionId, EpisodeStatus, InformationStateDigestV3, ObservationDigest, OpaqueObjectId,
+    CardDefinitionId, EpisodeStatus, InformationStateDigest, ObservationDigest, OpaqueObjectId,
     PlayerId, PlayerOutcome, PlayerResult, TerminalReason, VisibleSequence, ZoneKind,
 };
 use mtgml_observation::{
-    ObservationEnvelopeV2, PlayerInformationStateV3, PlayerKnowledgeCauseV1,
-    PlayerKnowledgeChannelV1, PlayerKnowledgeInvalidationReasonV1, PlayerKnowledgeInvalidationV1,
+    ObservationEnvelope, PlayerInformationState, PlayerKnowledgeCauseV1, PlayerKnowledgeChannelV1,
+    PlayerKnowledgeInvalidationReasonV1, PlayerKnowledgeInvalidationV1,
     PlayerKnowledgeProvenanceV1, PlayerKnownLocationFactV1, PlayerKnownLocationV1,
     PlayerKnownObjectV1, INFORMATION_STATE_SCHEMA_V3, MAGIC_SHARED_EXECUTION_OBSERVATION_SCHEMA_V1,
     OBSERVATION_SCHEMA_V2,
 };
 
-use crate::{compute_information_state_digest_v3, decode_canonical, encode_canonical};
+use crate::{compute_information_state_digest, decode_canonical, encode_canonical};
 
 const OBSERVATION_DIGEST: &str = "90845308617867fd703c6c4f37ede7908da24420053821f89190ad36236dfca3";
 
@@ -35,8 +35,8 @@ fn observed_provenance(
     }
 }
 
-fn observation_envelope_v2() -> ObservationEnvelopeV2 {
-    ObservationEnvelopeV2 {
+fn observation_envelope_v2() -> ObservationEnvelope {
+    ObservationEnvelope {
         schema_version: OBSERVATION_SCHEMA_V2.to_owned(),
         perspective: PlayerId(1),
         view_sequence: VisibleSequence(5),
@@ -48,8 +48,8 @@ fn observation_envelope_v2() -> ObservationEnvelopeV2 {
 
 /// Retained knowledge with all four observed causes, active and retired: the
 /// richest information state, which no wire golden carries.
-fn rich_information_state_v3() -> PlayerInformationStateV3 {
-    let mut state = PlayerInformationStateV3 {
+fn rich_information_state_v3() -> PlayerInformationState {
+    let mut state = PlayerInformationState {
         schema_version: INFORMATION_STATE_SCHEMA_V3.to_owned(),
         perspective: PlayerId(1),
         current_observation: observation_envelope_v2(),
@@ -112,9 +112,9 @@ fn rich_information_state_v3() -> PlayerInformationStateV3 {
                 },
             },
         ],
-        digest: InformationStateDigestV3::from_canonical_bytes(b"placeholder"),
+        digest: InformationStateDigest::from_canonical_bytes(b"placeholder"),
     };
-    let (_, digest) = compute_information_state_digest_v3(&state.digest_input()).unwrap();
+    let (_, digest) = compute_information_state_digest(&state.digest_input()).unwrap();
     state.digest = digest;
     state
 }
@@ -125,7 +125,7 @@ fn information_state_v3_with_rich_retained_knowledge_round_trips() {
     state.validate().unwrap();
     let bytes = encode_canonical(&state).unwrap();
     // The canonical decoder recomputes and checks the digest.
-    let decoded: PlayerInformationStateV3 = decode_canonical(&bytes).unwrap();
+    let decoded: PlayerInformationState = decode_canonical(&bytes).unwrap();
     assert_eq!(decoded, state);
     assert_eq!(encode_canonical(&decoded).unwrap(), bytes);
 }

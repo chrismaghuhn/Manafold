@@ -322,7 +322,7 @@ def main() -> None:
     state_rust = "\n".join(p.read_text(encoding="utf-8") for p in production_files)
     for token in (
         "validate_engine_state",
-        "EngineStateParts",
+        "pub struct EngineState",
         "pub replacement:",
         "PerspectiveIdentityState",
     ):

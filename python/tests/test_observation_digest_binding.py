@@ -14,7 +14,7 @@ from mtgml.errors import WireError
 from mtgml.observation import (
     MAGIC_SHARED_EXECUTION_OBSERVATION_SCHEMA_V1,
     OBSERVATION_SCHEMA_V2,
-    ObservationEnvelopeV2,
+    ObservationEnvelope,
 )
 from mtgml.wire import decode_canonical
 
@@ -50,7 +50,7 @@ class ObservationDigestBindingTests(unittest.TestCase):
         self.assertEqual(caught.exception.code, "semantic.observation")
 
     def test_to_wire_rejects_manually_constructed_payload_a_with_digest_b(self) -> None:
-        value = ObservationEnvelopeV2(
+        value = ObservationEnvelope(
             OBSERVATION_SCHEMA_V2,
             1,
             0,
@@ -65,7 +65,7 @@ class ObservationDigestBindingTests(unittest.TestCase):
     def test_matching_digest_is_accepted_by_both_python_wire_paths(self) -> None:
         payload = canonical_json_bytes(observation_wire(b"{}", b"{}"))
         decoded = decode_canonical("observation-envelope.v2", payload)
-        self.assertIsInstance(decoded, ObservationEnvelopeV2)
+        self.assertIsInstance(decoded, ObservationEnvelope)
         self.assertEqual(decoded.to_wire()["payload_base64"], "e30=")
 
     def test_known_value_uses_exact_payload_bytes_not_base64_text(self) -> None:

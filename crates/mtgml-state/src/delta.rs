@@ -1,8 +1,8 @@
-//! Detached full-replacement StateDeltaV3 bound to FullStateDigestV7.
+//! Detached full-replacement StateDelta bound to FullStateDigest.
 
-use mtgml_decision::AuthoritativeDecisionRequestV4;
+use mtgml_decision::AuthoritativeDecisionRequest;
 use mtgml_model::{
-    ContinuationId, EffectInstanceId, FullStateDigestV7, GameObjectId, PlayerId, StackObjectId,
+    ContinuationId, EffectInstanceId, FullStateDigest, GameObjectId, PlayerId, StackObjectId,
     StateRevision, TriggerInstanceId,
 };
 
@@ -13,14 +13,13 @@ use mtgml_model::DecisionId;
 use mtgml_random::RandomStreamKeyV1;
 
 use crate::{
-    calculate_full_state_digest_v7, ContinuationPayloadV3, DamageKind, DamageRecipient,
-    EngineState, EngineStatePartsV3Error, ManaCost, ManaPoolV1, PendingTriggerRecord,
-    ReservedNonManaCost, SelectedCostOperand, SourceContext, StackItemPayload, TargetRef,
-    TemporaryEffectRecord,
+    calculate_full_state_digest, ContinuationPayload, DamageKind, DamageRecipient, EngineState,
+    EngineStateError, ManaCost, ManaPoolV1, PendingTriggerRecord, ReservedNonManaCost,
+    SelectedCostOperand, SourceContext, StackItemPayload, TargetRef, TemporaryEffectRecord,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SemanticDeltaOperationV3 {
+pub enum SemanticDeltaOperation {
     ZoneTransition {
         transition: Box<ZoneTransition>,
     },
@@ -217,12 +216,12 @@ pub enum SemanticDeltaOperationV3 {
     },
     ContinuationChanged {
         continuation: ContinuationId,
-        from: Option<Box<ContinuationPayloadV3>>,
-        to: Option<Box<ContinuationPayloadV3>>,
+        from: Option<Box<ContinuationPayload>>,
+        to: Option<Box<ContinuationPayload>>,
     },
     PendingRequestChanged {
-        from: Option<Box<AuthoritativeDecisionRequestV4>>,
-        to: Option<Box<AuthoritativeDecisionRequestV4>>,
+        from: Option<Box<AuthoritativeDecisionRequest>>,
+        to: Option<Box<AuthoritativeDecisionRequest>>,
     },
     TemporaryEffectChanged {
         effect: EffectInstanceId,
@@ -263,21 +262,21 @@ pub enum ManaPoolChangeCauseV1 {
 /// Applying operations never reconstructs the state; `replacement` remains
 /// the one authoritative after-state.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StateDeltaV3 {
+pub struct StateDelta {
     pub before_revision: StateRevision,
     pub after_revision: StateRevision,
-    pub before_digest: FullStateDigestV7,
-    pub after_digest: FullStateDigestV7,
+    pub before_digest: FullStateDigest,
+    pub after_digest: FullStateDigest,
     pub replacement: EngineState,
-    pub operations: Vec<SemanticDeltaOperationV3>,
+    pub operations: Vec<SemanticDeltaOperation>,
 }
 
-impl StateDeltaV3 {
+impl StateDelta {
     pub fn between(
         before: &EngineState,
         after: &EngineState,
-        operations: Vec<SemanticDeltaOperationV3>,
-    ) -> Result<Self, DeltaApplicationV3Error> {
+        operations: Vec<SemanticDeltaOperation>,
+    ) -> Result<Self, DeltaApplicationError> {
         before.validate()?;
         after.validate()?;
         validate_revision_step(before.revision, after.revision)?;
@@ -300,8 +299,8 @@ impl StateDeltaV3 {
     pub fn between_structural_only(
         before: &EngineState,
         after: &EngineState,
-        operations: Vec<SemanticDeltaOperationV3>,
-    ) -> Result<Self, DeltaApplicationV3Error> {
+        operations: Vec<SemanticDeltaOperation>,
+    ) -> Result<Self, DeltaApplicationError> {
         before.validate_structure()?;
         after.validate_structure()?;
         validate_revision_step(before.revision, after.revision)?;
@@ -316,10 +315,10 @@ impl StateDeltaV3 {
         })
     }
 
-    pub fn apply(&self, before: &EngineState) -> Result<EngineState, DeltaApplicationV3Error> {
+    pub fn apply(&self, before: &EngineState) -> Result<EngineState, DeltaApplicationError> {
         before.validate()?;
         if before.revision != self.before_revision || digest(before)? != self.before_digest {
-            return Err(DeltaApplicationV3Error::BeforeMismatch);
+            return Err(DeltaApplicationError::BeforeMismatch);
         }
         self.replacement.validate()?;
         validate_revision_step(self.before_revision, self.after_revision)?;
@@ -327,7 +326,7 @@ impl StateDeltaV3 {
         if self.replacement.revision != self.after_revision
             || digest(&self.replacement)? != self.after_digest
         {
-            return Err(DeltaApplicationV3Error::AfterMismatch);
+            return Err(DeltaApplicationError::AfterMismatch);
         }
         Ok(self.replacement.clone())
     }
@@ -339,12 +338,12 @@ impl StateDeltaV3 {
     pub fn apply_structural_only(
         &self,
         before: &EngineState,
-    ) -> Result<EngineState, DeltaApplicationV3Error> {
+    ) -> Result<EngineState, DeltaApplicationError> {
         before.validate_structure()?;
         if before.revision != self.before_revision
             || digest_structural_only(before)? != self.before_digest
         {
-            return Err(DeltaApplicationV3Error::BeforeMismatch);
+            return Err(DeltaApplicationError::BeforeMismatch);
         }
         self.replacement.validate_structure()?;
         validate_revision_step(self.before_revision, self.after_revision)?;
@@ -352,33 +351,31 @@ impl StateDeltaV3 {
         if self.replacement.revision != self.after_revision
             || digest_structural_only(&self.replacement)? != self.after_digest
         {
-            return Err(DeltaApplicationV3Error::AfterMismatch);
+            return Err(DeltaApplicationError::AfterMismatch);
         }
         Ok(self.replacement.clone())
     }
 }
 
-fn digest(state: &EngineState) -> Result<FullStateDigestV7, DeltaApplicationV3Error> {
-    calculate_full_state_digest_v7(state).map_err(|_| DeltaApplicationV3Error::DigestCalculation)
+fn digest(state: &EngineState) -> Result<FullStateDigest, DeltaApplicationError> {
+    calculate_full_state_digest(state).map_err(|_| DeltaApplicationError::DigestCalculation)
 }
 
-fn digest_structural_only(
-    state: &EngineState,
-) -> Result<FullStateDigestV7, DeltaApplicationV3Error> {
-    crate::calculate_full_state_digest_v7_structural_only(state)
-        .map_err(|_| DeltaApplicationV3Error::DigestCalculation)
+fn digest_structural_only(state: &EngineState) -> Result<FullStateDigest, DeltaApplicationError> {
+    crate::calculate_full_state_digest_structural_only(state)
+        .map_err(|_| DeltaApplicationError::DigestCalculation)
 }
 
 fn validate_revision_step(
     before: StateRevision,
     after: StateRevision,
-) -> Result<(), DeltaApplicationV3Error> {
+) -> Result<(), DeltaApplicationError> {
     let expected = before
         .0
         .checked_add(1)
-        .ok_or(DeltaApplicationV3Error::RevisionProgression)?;
+        .ok_or(DeltaApplicationError::RevisionProgression)?;
     if after.0 != expected {
-        return Err(DeltaApplicationV3Error::RevisionProgression);
+        return Err(DeltaApplicationError::RevisionProgression);
     }
     Ok(())
 }
@@ -386,11 +383,11 @@ fn validate_revision_step(
 fn validate_delta_operation_coverage(
     before: &EngineState,
     after: &EngineState,
-    operations: &[SemanticDeltaOperationV3],
-) -> Result<(), DeltaApplicationV3Error> {
-    use SemanticDeltaOperationV3 as V3;
+    operations: &[SemanticDeltaOperation],
+) -> Result<(), DeltaApplicationError> {
+    use SemanticDeltaOperation as V3;
     let has = |predicate: &dyn Fn(&V3) -> bool| operations.iter().any(predicate);
-    let uncovered = || Err(DeltaApplicationV3Error::UncoveredMutation);
+    let uncovered = || Err(DeltaApplicationError::UncoveredMutation);
 
     let old_before = before;
     let old_after = after;
@@ -1080,9 +1077,9 @@ fn validate_delta_operation_coverage(
 fn validate_turn_history_delta(
     before: &EngineState,
     after: &EngineState,
-    operations: &[SemanticDeltaOperationV3],
+    operations: &[SemanticDeltaOperation],
 ) -> bool {
-    use SemanticDeltaOperationV3 as V3;
+    use SemanticDeltaOperation as V3;
     let old = &before.card_rules.turn_history;
     let new = &after.card_rules.turn_history;
     let has_land_count = |player, from, to| {
@@ -1294,17 +1291,17 @@ fn validate_turn_history_delta(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub enum DeltaApplicationV3Error {
-    #[error("FullStateDigestV7 calculation failed")]
+pub enum DeltaApplicationError {
+    #[error("FullStateDigest calculation failed")]
     DigestCalculation,
-    #[error("StateDeltaV3 before revision or digest does not match")]
+    #[error("StateDelta before revision or digest does not match")]
     BeforeMismatch,
-    #[error("StateDeltaV3 replacement does not match its after identity")]
+    #[error("StateDelta replacement does not match its after identity")]
     AfterMismatch,
-    #[error("StateDeltaV3 revision must advance exactly once without overflow")]
+    #[error("StateDelta revision must advance exactly once without overflow")]
     RevisionProgression,
-    #[error("StateDeltaV3 operations do not cover every authoritative mutation")]
+    #[error("StateDelta operations do not cover every authoritative mutation")]
     UncoveredMutation,
-    #[error("StateDeltaV3 contains invalid replacement state: {0}")]
-    InvalidReplacement(#[from] EngineStatePartsV3Error),
+    #[error("StateDelta contains invalid replacement state: {0}")]
+    InvalidReplacement(#[from] EngineStateError),
 }

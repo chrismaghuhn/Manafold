@@ -9,11 +9,11 @@ use crate::{
     OBSERVATION_SCHEMA_V2,
 };
 use mtgml_model::{
-    InformationStateDigestV3, ObservationDigest, OpaqueObjectId, PlayerId, VisibleSequence,
+    InformationStateDigest, ObservationDigest, OpaqueObjectId, PlayerId, VisibleSequence,
 };
 
-fn observation(view_sequence: VisibleSequence) -> ObservationEnvelopeV2 {
-    ObservationEnvelopeV2 {
+fn observation(view_sequence: VisibleSequence) -> ObservationEnvelope {
+    ObservationEnvelope {
         schema_version: OBSERVATION_SCHEMA_V2.into(),
         perspective: PlayerId(1),
         view_sequence,
@@ -26,14 +26,14 @@ fn observation(view_sequence: VisibleSequence) -> ObservationEnvelopeV2 {
 fn state_with_knowledge(
     next_visible_sequence: VisibleSequence,
     retained_knowledge: Vec<PlayerKnownObjectV1>,
-) -> PlayerInformationStateV3 {
-    PlayerInformationStateV3 {
+) -> PlayerInformationState {
+    PlayerInformationState {
         schema_version: INFORMATION_STATE_SCHEMA_V3.into(),
         perspective: PlayerId(1),
         current_observation: observation(next_visible_sequence),
         next_visible_sequence,
         retained_knowledge,
-        digest: InformationStateDigestV3::from_canonical_bytes(b"placeholder"),
+        digest: InformationStateDigest::from_canonical_bytes(b"placeholder"),
     }
 }
 
@@ -52,7 +52,7 @@ fn observed(
 fn state_with(
     next_visible_sequence: VisibleSequence,
     acquisition: PlayerKnowledgeProvenanceV1,
-) -> PlayerInformationStateV3 {
+) -> PlayerInformationState {
     state_with_knowledge(
         next_visible_sequence,
         vec![PlayerKnownObjectV1::Active {

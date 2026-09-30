@@ -115,9 +115,9 @@ class ContentContractMaterialTests(unittest.TestCase):
         ):
             with self.subTest(name=name), self.assertRaises(WireError):
                 ContentContractMaterialV1.from_wire(
-                    _read(f"schemas/negative/replay-v7-content-child-{name}.json")
+                    _read(f"schemas/negative/content-contract-child-{name}.json")
                 )
-        presence = _read("schemas/negative/replay-v7-content-presence-mismatch.json")
+        presence = _read("schemas/negative/content-contract-presence-mismatch.json")
         with self.assertRaises(WireError):
             SemanticContractMaterialV7.from_wire(presence)
 

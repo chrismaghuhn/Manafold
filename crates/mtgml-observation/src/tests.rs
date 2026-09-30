@@ -5,8 +5,8 @@ use super::*;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use mtgml_model::{ObservationDigest, PlayerId, VisibleSequence};
 
-fn observation(payload: &[u8], digest_payload: &[u8]) -> ObservationEnvelopeV2 {
-    ObservationEnvelopeV2 {
+fn observation(payload: &[u8], digest_payload: &[u8]) -> ObservationEnvelope {
+    ObservationEnvelope {
         schema_version: OBSERVATION_SCHEMA_V2.into(),
         perspective: PlayerId(1),
         view_sequence: VisibleSequence(0),
@@ -56,7 +56,7 @@ fn basic_land_observation_v1_rejects_duplicated_candidate_authority() {
 #[test]
 fn information_state_input_excludes_trusted_fields() {
     let observation = observation(b"{}", b"{}");
-    let input = InformationStateDigestInputV3 {
+    let input = InformationStateDigestInput {
         schema_version: INFORMATION_STATE_DIGEST_INPUT_SCHEMA_V3.into(),
         perspective: PlayerId(1),
         current_observation: observation,

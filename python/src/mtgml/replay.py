@@ -1,8 +1,12 @@
-from ._replay_common import DeckIdentityV1, KernelIdentityV1
-from ._replay_v2 import RandomnessIdentityV2
-from ._replay_v4 import CheckpointCodecIdentityV4, EnvironmentLimitCountersV4
-from ._replay_v5 import ExecutionIdentityV1
-from ._replay_v7 import ContentContractMaterialV1, SemanticContractMaterialV7
+from ._contract_material import ContentContractMaterialV1, SemanticContractMaterialV7
+from ._replay_common import (
+    CheckpointCodecIdentityV4,
+    DeckIdentityV1,
+    EnvironmentLimitCountersV4,
+    ExecutionIdentityV1,
+    KernelIdentityV1,
+    RandomnessIdentityV2,
+)
 from ._replay_v8 import (
     CHECKPOINT_CODEC_ID_V8,
     CHECKPOINT_CODEC_VERSION_V8,

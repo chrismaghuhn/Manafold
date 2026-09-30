@@ -21,7 +21,7 @@ fn card_rules_state_rejects_empty_counter_maps() {
     assert!(state.canonical_value().is_err());
     let mut current = synthetic_state();
     current.card_rules = state;
-    assert!(calculate_full_state_digest_v7(&current).is_err());
+    assert!(calculate_full_state_digest(&current).is_err());
 }
 
 
@@ -464,7 +464,7 @@ fn v7_digest_binds_each_card_rules_family() {
         }),
     ];
     let baseline = synthetic_state();
-    let baseline_digest = calculate_full_state_digest_v7(&baseline).unwrap();
+    let baseline_digest = calculate_full_state_digest(&baseline).unwrap();
     let mut seen = BTreeMap::new();
     for (name, mutate) in mutations {
         let mut changed = baseline.clone();
@@ -472,7 +472,7 @@ fn v7_digest_binds_each_card_rules_family() {
         changed
             .validate()
             .unwrap_or_else(|error| panic!("mutation {name} must stay valid: {error}"));
-        let changed_digest = calculate_full_state_digest_v7(&changed).unwrap();
+        let changed_digest = calculate_full_state_digest(&changed).unwrap();
         assert_ne!(
             baseline_digest, changed_digest,
             "mutation {name} must change the V7 digest"

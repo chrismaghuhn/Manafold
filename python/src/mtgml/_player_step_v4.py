@@ -5,20 +5,72 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ._events_v4 import ObservedEventEnvelopeV4
-from ._player_step_v2 import PLAYER_SUBMISSION_CODES, PlayerStepSubmissionV1
+from ._information_state import PlayerInformationState
 from .canonical import require_exact_keys
 from .decision_v4 import PlayerDecisionRequestV4
 from .episode import EpisodeStatus
 from .errors import WireError
-from .observation_v3 import PlayerInformationStateV3
 
 PLAYER_STEP_SCHEMA_V4 = "player-step.v4"
+PLAYER_SUBMISSION_CODES = frozenset(
+    {
+        "stale_decision",
+        "unavailable_decision",
+        "invalid_answer",
+        "invalid_candidate",
+        "duplicate_assignment",
+        "invalid_cardinality",
+        "invalid_number",
+        "invalid_order",
+        "episode_closed",
+    }
+)
+
+
+@dataclass(frozen=True, slots=True)
+class PlayerStepSubmissionV1:
+    kind: str
+    code: str | None = None
+
+    @classmethod
+    def from_wire(cls, value: object) -> PlayerStepSubmissionV1:
+        if not isinstance(value, dict):
+            raise WireError("decode.invalid_json", "submission must be an object")
+        kind = value.get("kind")
+        if kind == "accepted":
+            require_exact_keys(value, {"kind"})
+            return cls("accepted")
+        if kind == "rejected":
+            obj = require_exact_keys(value, {"kind", "code"})
+            code = obj["code"]
+            if code not in PLAYER_SUBMISSION_CODES:
+                raise WireError("decode.invalid_json", "unknown submission code")
+            return cls("rejected", str(code))
+        raise WireError("decode.invalid_json", "unknown submission outcome kind")
+
+    def to_wire(self) -> dict[str, object]:
+        self.validate()
+        if self.kind == "accepted":
+            return {"kind": "accepted"}
+        return {"kind": "rejected", "code": self.code}
+
+    def validate(self) -> None:
+        if self.kind == "accepted":
+            if self.code is not None:
+                raise WireError("encode.serialization", "accepted submission must not carry a code")
+        elif self.kind == "rejected":
+            if self.code is None or self.code not in PLAYER_SUBMISSION_CODES:
+                raise WireError(
+                    "encode.serialization", "rejected submission carries an invalid code"
+                )
+        else:
+            raise WireError("encode.serialization", "unknown submission kind")
 
 
 @dataclass(frozen=True, slots=True)
 class PlayerStepV4:
     schema_version: str
-    information_state: PlayerInformationStateV3
+    information_state: PlayerInformationState
     observed_events: tuple[ObservedEventEnvelopeV4, ...]
     next_decision: PlayerDecisionRequestV4 | None
     status: EpisodeStatus
@@ -43,7 +95,7 @@ class PlayerStepV4:
             raise WireError("decode.invalid_json", "unsupported player-step V4")
         result = cls(
             PLAYER_STEP_SCHEMA_V4,
-            PlayerInformationStateV3.from_wire(obj["information_state"]),
+            PlayerInformationState.from_wire(obj["information_state"]),
             tuple(ObservedEventEnvelopeV4.from_wire(item) for item in obj["observed_events"]),
             None
             if obj["next_decision"] is None

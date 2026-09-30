@@ -842,7 +842,7 @@ class SafeTriggerDescriptorV1:
 
 
 @dataclass(frozen=True, slots=True)
-class CandidateIntentV4:
+class CandidateIntent:
     kind: str
     object_id: int | None = None
     player_id: int | None = None
@@ -858,7 +858,7 @@ class CandidateIntentV4:
     trigger: SafeTriggerDescriptorV1 | None = None
 
     @classmethod
-    def from_wire(cls, value: object) -> CandidateIntentV4:
+    def from_wire(cls, value: object) -> CandidateIntent:
         if (
             not isinstance(value, dict)
             or not isinstance(value.get("kind"), str)
@@ -1016,15 +1016,15 @@ class CandidateIntentV4:
 
 
 @dataclass(frozen=True, slots=True)
-class VisibleCandidateV4:
+class VisibleCandidate:
     candidate_id: int
-    intent: CandidateIntentV4
+    intent: CandidateIntent
 
     @classmethod
-    def from_wire(cls, value: object) -> VisibleCandidateV4:
+    def from_wire(cls, value: object) -> VisibleCandidate:
         obj = require_exact_keys(value, {"candidate_id", "intent"})
         return cls(
-            _u32(obj["candidate_id"], "candidate_id"), CandidateIntentV4.from_wire(obj["intent"])
+            _u32(obj["candidate_id"], "candidate_id"), CandidateIntent.from_wire(obj["intent"])
         )
 
     def to_wire(self) -> dict[str, object]:
@@ -1176,7 +1176,7 @@ class PlayerDecisionRequestV4:
     decision_domain_v2: DecisionSpec
     purpose: DecisionPurposeV4
     parent_player_decision_id: int | None
-    candidates: tuple[VisibleCandidateV4, ...]
+    candidates: tuple[VisibleCandidate, ...]
 
     @classmethod
     def from_wire(cls, value: object) -> PlayerDecisionRequestV4:
@@ -1209,8 +1209,7 @@ class PlayerDecisionRequestV4:
             DecisionPurposeV4.from_wire(obj["purpose"]),
             _nullable_u64(obj["parent_player_decision_id"], "parent_player_decision_id"),
             tuple(
-                VisibleCandidateV4.from_wire(item)
-                for item in _array(obj["candidates"], "candidates")
+                VisibleCandidate.from_wire(item) for item in _array(obj["candidates"], "candidates")
             ),
         )
         result.validate()

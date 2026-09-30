@@ -4,7 +4,7 @@
 mod basic_land;
 mod characteristic_query;
 mod errors;
-mod events_v3;
+mod events;
 mod snapshots;
 mod turn_progression;
 mod turn_structure;
@@ -15,18 +15,18 @@ mod zone_incarnation;
 mod tests;
 
 pub use basic_land::{
-    derive_basic_land_candidates_v4, execute_basic_land_response_v4, install_basic_land_request_v4,
-    selected_basic_land_action_v4, validate_basic_land_pending_request_v4, BasicLandCandidateError,
-    BasicLandTransitionError, BasicLandTransitionProductV4, MagicActionRequestV1,
+    derive_basic_land_candidates, execute_basic_land_response, install_basic_land_request,
+    selected_basic_land_action, validate_basic_land_pending_request, BasicLandCandidateError,
+    BasicLandTransitionError, BasicLandTransitionProduct, MagicActionRequestV1,
     SelectedSuccessorDecisionV1,
 };
 pub(crate) use characteristic_query::{S1QueryAuthority, S1QueryError};
 pub(crate) use errors::KernelExecutionError;
-pub use events_v3::{
-    allocate_rule_events_v3, validate_event_delta_parity_v3, validate_event_delta_state_v3,
-    validate_rule_event_cursor_v3, AuthoritativeRuleEventKindV3, AuthoritativeRuleEventV3,
-    EventDeltaV3Error, PerspectiveObservationPolicyV1, RuleEventCursorV3Error,
+pub use events::{
+    allocate_rule_events, validate_event_delta_parity, validate_event_delta_state,
+    validate_rule_event_cursor, AuthoritativeRuleEvent, AuthoritativeRuleEventKind,
+    EventDeltaError, PerspectiveObservationPolicyV1, RuleEventCursorError,
 };
-pub use turn_progression::{execute_magic_response_v4, validate_magic_pending_request_v4};
+pub use turn_progression::{execute_magic_response, validate_magic_pending_request};
 pub use turn_structure::temporal_successor;
 pub(crate) use validation::TransitionViolation;

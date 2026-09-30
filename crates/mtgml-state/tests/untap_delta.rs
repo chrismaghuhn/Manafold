@@ -1,9 +1,9 @@
 use mtgml_model::{CardDefinitionId, GameObjectId, PhysicalCardId, PlayerId, ZoneKind};
 use mtgml_random::RootSeed256;
 use mtgml_state::{
-    construct_synthetic_engine_state, DeltaApplicationV3Error, EngineState,
-    SemanticDeltaOperationV3, StateDeltaV3, SyntheticResetInputs, SyntheticV4Setup,
-    VisibilityPartition, ZoneLocation, ZonePosition,
+    construct_synthetic_engine_state, DeltaApplicationError, EngineState, SemanticDeltaOperation,
+    StateDelta, SyntheticResetInputs, SyntheticV4Setup, VisibilityPartition, ZoneLocation,
+    ZonePosition,
 };
 
 fn state_with_tapped_permanents(objects: &[u64]) -> EngineState {
@@ -61,8 +61,8 @@ fn untapped(before: &EngineState, objects: &[u64]) -> EngineState {
     after
 }
 
-fn untap_completed(objects: &[u64]) -> SemanticDeltaOperationV3 {
-    SemanticDeltaOperationV3::UntapCompleted {
+fn untap_completed(objects: &[u64]) -> SemanticDeltaOperation {
+    SemanticDeltaOperation::UntapCompleted {
         affected_objects: objects.iter().copied().map(GameObjectId).collect(),
     }
 }
@@ -73,7 +73,7 @@ fn untap_completed_covers_exactly_its_affected_objects() {
     let after = untapped(&before, &[10, 11]);
 
     let delta =
-        StateDeltaV3::between_structural_only(&before, &after, vec![untap_completed(&[10, 11])])
+        StateDelta::between_structural_only(&before, &after, vec![untap_completed(&[10, 11])])
             .expect("UntapCompleted covers the permanents it untapped");
 
     assert_eq!(delta.apply_structural_only(&before).unwrap(), after);
@@ -85,9 +85,9 @@ fn untap_completed_does_not_cover_unlisted_objects() {
     let after = untapped(&before, &[10, 11, 12]);
 
     assert_eq!(
-        StateDeltaV3::between_structural_only(&before, &after, vec![untap_completed(&[10, 11])])
+        StateDelta::between_structural_only(&before, &after, vec![untap_completed(&[10, 11])])
             .unwrap_err(),
-        DeltaApplicationV3Error::UncoveredMutation
+        DeltaApplicationError::UncoveredMutation
     );
 }
 
@@ -110,9 +110,9 @@ fn untap_completed_does_not_cover_tapping() {
         .tapped = true;
 
     assert_eq!(
-        StateDeltaV3::between_structural_only(&before, &after, vec![untap_completed(&[10])])
+        StateDelta::between_structural_only(&before, &after, vec![untap_completed(&[10])])
             .unwrap_err(),
-        DeltaApplicationV3Error::UncoveredMutation
+        DeltaApplicationError::UncoveredMutation
     );
 }
 
@@ -125,9 +125,9 @@ fn untap_completed_claims_only_objects_it_untapped() {
 
     for claimed in [&[10, 11][..], &[10, 12][..]] {
         assert_eq!(
-            StateDeltaV3::between_structural_only(&before, &after, vec![untap_completed(claimed)])
+            StateDelta::between_structural_only(&before, &after, vec![untap_completed(claimed)])
                 .unwrap_err(),
-            DeltaApplicationV3Error::UncoveredMutation
+            DeltaApplicationError::UncoveredMutation
         );
     }
 }

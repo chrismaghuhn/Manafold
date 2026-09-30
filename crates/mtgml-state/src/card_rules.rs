@@ -1,5 +1,5 @@
 //! Typed card-rules authoritative state (mana, turn history, counters,
-//! attachments, faces, ability authority) and its FullStateDigestV7 record
+//! attachments, faces, ability authority) and its FullStateDigest record
 //! encoding, plus the V3-execution validator the V2 state parts still run.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -110,7 +110,7 @@ pub struct CardRulesAuthoritativeStateV1 {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum PersistedV6Error {
+pub enum CardRulesStateError {
     #[error("invalid FullStateDigestV6 persisted structure")]
     InvalidStructure,
     #[error("noncanonical FullStateDigestV6 persisted input")]
@@ -128,7 +128,7 @@ fn unsigned(value: u64) -> Value {
 }
 
 impl ManaStateV1 {
-    pub fn validate(&self) -> Result<(), PersistedV6Error> {
+    pub fn validate(&self) -> Result<(), CardRulesStateError> {
         Ok(())
     }
 
@@ -147,12 +147,12 @@ impl ManaStateV1 {
 }
 
 impl TurnHistoryStateV1 {
-    pub fn validate(&self) -> Result<(), PersistedV6Error> {
+    pub fn validate(&self) -> Result<(), CardRulesStateError> {
         if self.players.values().any(|history| {
             history.land_plays_used > 1
                 || history.noncreature_spells_cast > history.spells_cast_total
         }) {
-            return Err(PersistedV6Error::InvalidStructure);
+            return Err(CardRulesStateError::InvalidStructure);
         }
         Ok(())
     }
@@ -199,14 +199,14 @@ impl CounterStateV1 {
 }
 
 impl AttachmentStateV1 {
-    fn validate(&self) -> Result<(), PersistedV6Error> {
+    fn validate(&self) -> Result<(), CardRulesStateError> {
         let mut timestamps = BTreeSet::new();
         if self
             .by_source
             .values()
             .any(|edge| !timestamps.insert(edge.timestamp))
         {
-            return Err(PersistedV6Error::InvalidStructure);
+            return Err(CardRulesStateError::InvalidStructure);
         }
         Ok(())
     }
@@ -234,11 +234,11 @@ impl FaceStateV1 {
 }
 
 impl AbilityAuthorityStateV1 {
-    fn validate(&self) -> Result<(), PersistedV6Error> {
+    fn validate(&self) -> Result<(), CardRulesStateError> {
         let mut semantic_keys = BTreeSet::new();
         for authority in self.by_instance.values() {
             if !semantic_keys.insert((authority.source, authority.ability_key)) {
-                return Err(PersistedV6Error::InvalidStructure);
+                return Err(CardRulesStateError::InvalidStructure);
             }
         }
         Ok(())
@@ -256,7 +256,7 @@ impl AbilityAuthorityStateV1 {
 }
 
 impl CardRulesAuthoritativeStateV1 {
-    pub fn validate(&self) -> Result<(), PersistedV6Error> {
+    pub fn validate(&self) -> Result<(), CardRulesStateError> {
         self.mana.validate()?;
         self.turn_history.validate()?;
         self.abilities.validate()?;
@@ -267,12 +267,12 @@ impl CardRulesAuthoritativeStateV1 {
             .values()
             .any(|values| values.is_empty() || values.values().any(|n| *n == 0))
         {
-            return Err(PersistedV6Error::InvalidStructure);
+            return Err(CardRulesStateError::InvalidStructure);
         }
         Ok(())
     }
 
-    pub fn canonical_value(&self) -> Result<Value, PersistedV6Error> {
+    pub fn canonical_value(&self) -> Result<Value, CardRulesStateError> {
         self.validate()?;
         Ok(array([
             Value::Text("card-rules-authoritative-state.v1".to_owned()),

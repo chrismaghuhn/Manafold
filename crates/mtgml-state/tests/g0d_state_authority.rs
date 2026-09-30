@@ -6,8 +6,8 @@ use mtgml_model::{
 };
 use mtgml_random::RootSeed256;
 use mtgml_state::{
-    construct_synthetic_engine_state, AbilitySourceContext, EngineState, ExecutionStateV4,
-    ManaCost, ManaPaymentStage, ManaPaymentStaging, ManaSourceActivation, ManaSourceActivationCost,
+    construct_synthetic_engine_state, AbilitySourceContext, EngineState, ExecutionState, ManaCost,
+    ManaPaymentStage, ManaPaymentStaging, ManaSourceActivation, ManaSourceActivationCost,
     NonManaActivationContinuation, NonManaActivationStage, ReservedNonManaCost,
     SelectedCostOperand, StackItemPayload, StackRecord, SyntheticResetInputs, SyntheticV4Setup,
     VisibilityPartition, ZoneLocation, ZonePosition,
@@ -163,10 +163,10 @@ fn staged_blight_activation() -> (EngineState, ContinuationId) {
     };
     state.execution.continuations.insert(
         continuation_id,
-        mtgml_state::ContinuationRecordV3 {
+        mtgml_state::ContinuationRecord {
             id: continuation_id,
             created_at_revision: state.revision,
-            payload: mtgml_state::ContinuationPayloadV3::NonManaActivation(
+            payload: mtgml_state::ContinuationPayload::NonManaActivation(
                 NonManaActivationContinuation {
                     actor: PlayerId(1),
                     source_object,
@@ -196,7 +196,7 @@ fn staged_blight_activation() -> (EngineState, ContinuationId) {
         },
     );
     let view_sequence = state.knowledge.players[&PlayerId(1)].next_visible_sequence;
-    state.execution.pending_decision = Some(mtgml_decision::AuthoritativeDecisionRequestV4 {
+    state.execution.pending_decision = Some(mtgml_decision::AuthoritativeDecisionRequest {
         decision_id: DecisionId(2),
         player_decision_id: PlayerDecisionIdV1(1),
         state_revision: StateRevision(state.revision.0),
@@ -207,10 +207,10 @@ fn staged_blight_activation() -> (EngineState, ContinuationId) {
         purpose: mtgml_decision::DecisionPurposeV4::ManaProductionChoice,
         parent_player_decision_id: None,
         continuation_id: Some(continuation_id),
-        candidates: vec![mtgml_decision::AuthoritativeCandidateV4 {
+        candidates: vec![mtgml_decision::AuthoritativeCandidate {
             candidate_id: CandidateIdV1(0),
-            visible_intent: mtgml_decision::CandidateIntentV4::FinalizeManaProduction,
-            trusted_binding: mtgml_decision::EngineCandidateBindingV4::FinalizeManaProduction {
+            visible_intent: mtgml_decision::CandidateIntent::FinalizeManaProduction,
+            trusted_binding: mtgml_decision::EngineCandidateBinding::FinalizeManaProduction {
                 continuation: continuation_id,
             },
         }],
@@ -222,7 +222,7 @@ fn staged_blight_activation() -> (EngineState, ContinuationId) {
 fn successor_authority_has_one_v3_root_and_v4_execution_owner() {
     let state = root();
     state.validate().unwrap();
-    assert_eq!(state.execution, ExecutionStateV4::default());
+    assert_eq!(state.execution, ExecutionState::default());
 }
 
 /// Issues one pending pass-priority request to player 1 and returns its
@@ -240,7 +240,7 @@ fn issue_pass_priority_request(state: &mut EngineState) -> DecisionId {
     identity.next_player_decision_id =
         PlayerDecisionIdV1(player_decision_id.0.checked_add(1).unwrap());
     let view_sequence = state.knowledge.players[&actor].next_visible_sequence;
-    state.execution.pending_decision = Some(mtgml_decision::AuthoritativeDecisionRequestV4 {
+    state.execution.pending_decision = Some(mtgml_decision::AuthoritativeDecisionRequest {
         decision_id,
         player_decision_id,
         state_revision: state.revision,
@@ -251,10 +251,10 @@ fn issue_pass_priority_request(state: &mut EngineState) -> DecisionId {
         purpose: mtgml_decision::DecisionPurposeV4::PriorityAction,
         parent_player_decision_id: None,
         continuation_id: None,
-        candidates: vec![mtgml_decision::AuthoritativeCandidateV4 {
+        candidates: vec![mtgml_decision::AuthoritativeCandidate {
             candidate_id: CandidateIdV1(0),
-            visible_intent: mtgml_decision::CandidateIntentV4::PassPriority,
-            trusted_binding: mtgml_decision::EngineCandidateBindingV4::PassPriority,
+            visible_intent: mtgml_decision::CandidateIntent::PassPriority,
+            trusted_binding: mtgml_decision::EngineCandidateBinding::PassPriority,
         }],
     });
     decision_id
@@ -267,7 +267,7 @@ fn m42_priority_candidate_is_structural_but_not_rules_admitted() {
     assert!(state.validate_structure().is_ok());
     assert_eq!(
         state.validate(),
-        Err(mtgml_state::EngineStatePartsV3Error::ProfileDependentDecisionNotAdmitted)
+        Err(mtgml_state::EngineStateError::ProfileDependentDecisionNotAdmitted)
     );
 }
 
@@ -283,12 +283,12 @@ fn pending_request_decision_identity_must_stay_below_the_allocator() {
     // next == issued must fail closed.
     assert_eq!(
         build(0).validate_structure(),
-        Err(mtgml_state::EngineStatePartsV3Error::PendingDecision)
+        Err(mtgml_state::EngineStateError::PendingDecision)
     );
     // next < issued must fail closed.
     assert_eq!(
         build(-1).validate_structure(),
-        Err(mtgml_state::EngineStatePartsV3Error::PendingDecision)
+        Err(mtgml_state::EngineStateError::PendingDecision)
     );
     // A strictly greater cursor is accepted.
     build(1).validate_structure().unwrap();
@@ -309,7 +309,7 @@ fn successor_stack_records_require_one_typed_payload_owner() {
     state.allocators.next_stack_object_id = StackObjectId(2);
     assert_eq!(
         state.validate(),
-        Err(mtgml_state::EngineStatePartsV3Error::MissingStackPayload)
+        Err(mtgml_state::EngineStateError::MissingStackPayload)
     );
 }
 
@@ -342,7 +342,7 @@ fn stack_zone_card_requires_exactly_one_spell_payload() {
     state.allocators.next_object_id = GameObjectId(4);
     assert_eq!(
         state.validate(),
-        Err(mtgml_state::EngineStatePartsV3Error::StackCardReference)
+        Err(mtgml_state::EngineStateError::StackCardReference)
     );
 }
 
@@ -355,10 +355,10 @@ fn paused_stack_resolution_must_reference_the_current_top_item() {
     state.allocators.next_continuation_id = ContinuationId(2);
     state.execution.continuations.insert(
         id,
-        mtgml_state::ContinuationRecordV3 {
+        mtgml_state::ContinuationRecord {
             id,
             created_at_revision: state.revision,
-            payload: mtgml_state::ContinuationPayloadV3::StackResolution(
+            payload: mtgml_state::ContinuationPayload::StackResolution(
                 mtgml_state::StackResolutionContinuation {
                     resolving_stack_object: StackObjectId(1),
                     stage: mtgml_state::StackResolutionStage::AwaitingOptionalPayment,
@@ -370,7 +370,7 @@ fn paused_stack_resolution_must_reference_the_current_top_item() {
     );
     assert_eq!(
         state.validate(),
-        Err(mtgml_state::EngineStatePartsV3Error::StackResolution)
+        Err(mtgml_state::EngineStateError::StackResolution)
     );
 }
 
@@ -381,10 +381,10 @@ fn stack_resolution_continuation_must_keep_the_resolving_item_in_the_stack_owner
     state.allocators.next_continuation_id = mtgml_model::ContinuationId(2);
     state.execution.continuations.insert(
         id,
-        mtgml_state::ContinuationRecordV3 {
+        mtgml_state::ContinuationRecord {
             id,
             created_at_revision: state.revision,
-            payload: mtgml_state::ContinuationPayloadV3::StackResolution(
+            payload: mtgml_state::ContinuationPayload::StackResolution(
                 mtgml_state::StackResolutionContinuation {
                     resolving_stack_object: StackObjectId(1),
                     stage: mtgml_state::StackResolutionStage::AwaitingOptionalPayment,
@@ -396,7 +396,7 @@ fn stack_resolution_continuation_must_keep_the_resolving_item_in_the_stack_owner
     );
     assert_eq!(
         state.validate(),
-        Err(mtgml_state::EngineStatePartsV3Error::StackResolution)
+        Err(mtgml_state::EngineStateError::StackResolution)
     );
 }
 
@@ -407,10 +407,10 @@ fn v3_continuation_preserves_frozen_synthetic_and_sba_stage_invariants() {
     synthetic.allocators.next_continuation_id = ContinuationId(2);
     synthetic.execution.continuations.insert(
         synthetic_id,
-        mtgml_state::ContinuationRecordV3 {
+        mtgml_state::ContinuationRecord {
             id: synthetic_id,
             created_at_revision: synthetic.revision,
-            payload: mtgml_state::ContinuationPayloadV3::SyntheticAssembly {
+            payload: mtgml_state::ContinuationPayload::SyntheticAssembly {
                 actor: PlayerId(1),
                 stage: mtgml_state::AssemblyStageV2::ChooseCount,
                 selected_count: Some(u32::MAX),
@@ -421,7 +421,7 @@ fn v3_continuation_preserves_frozen_synthetic_and_sba_stage_invariants() {
     );
     assert_eq!(
         synthetic.validate(),
-        Err(mtgml_state::EngineStatePartsV3Error::ContinuationRecord)
+        Err(mtgml_state::EngineStateError::ContinuationRecord)
     );
 
     let mut sba = root();
@@ -429,10 +429,10 @@ fn v3_continuation_preserves_frozen_synthetic_and_sba_stage_invariants() {
     sba.allocators.next_continuation_id = ContinuationId(2);
     sba.execution.continuations.insert(
         sba_id,
-        mtgml_state::ContinuationRecordV3 {
+        mtgml_state::ContinuationRecord {
             id: sba_id,
             created_at_revision: sba.revision,
-            payload: mtgml_state::ContinuationPayloadV3::MagicSbaGraveyardOrderV1 {
+            payload: mtgml_state::ContinuationPayload::MagicSbaGraveyardOrderV1 {
                 round_start_revision: sba.revision,
                 selected_sba_actions: vec![],
                 apnap_owners: vec![PlayerId(1)],
@@ -443,7 +443,7 @@ fn v3_continuation_preserves_frozen_synthetic_and_sba_stage_invariants() {
     );
     assert_eq!(
         sba.validate(),
-        Err(mtgml_state::EngineStatePartsV3Error::ContinuationRecord)
+        Err(mtgml_state::EngineStateError::ContinuationRecord)
     );
 }
 
@@ -478,7 +478,7 @@ fn temporary_effect_expiry_is_bound_to_the_authoritative_turn() {
     expired_later.execution.effects.insert(id, invalid);
     assert_eq!(
         expired_later.validate(),
-        Err(mtgml_state::EngineStatePartsV3Error::TemporaryEffectExpiry)
+        Err(mtgml_state::EngineStateError::TemporaryEffectExpiry)
     );
 }
 
@@ -487,7 +487,7 @@ fn selected_blight_operand_request_is_not_admitted_until_rules_domain_generation
     let (state, _) = staged_blight_activation();
     assert_eq!(
         state.validate(),
-        Err(mtgml_state::EngineStatePartsV3Error::ProfileDependentDecisionNotAdmitted)
+        Err(mtgml_state::EngineStateError::ProfileDependentDecisionNotAdmitted)
     );
 }
 
@@ -524,7 +524,7 @@ fn blight_operand_must_be_a_controlled_battlefield_incarnation() {
         .continuations
         .get_mut(&continuation_id)
         .unwrap();
-    let mtgml_state::ContinuationPayloadV3::NonManaActivation(activation) = &mut record.payload
+    let mtgml_state::ContinuationPayload::NonManaActivation(activation) = &mut record.payload
     else {
         unreachable!()
     };
@@ -535,7 +535,7 @@ fn blight_operand_must_be_a_controlled_battlefield_incarnation() {
     };
     assert_eq!(
         state.validate(),
-        Err(mtgml_state::EngineStatePartsV3Error::SelectedCostOperand)
+        Err(mtgml_state::EngineStateError::SelectedCostOperand)
     );
 }
 
@@ -547,7 +547,7 @@ fn tap_reserved_activation_source_is_not_a_mana_source() {
         .continuations
         .get_mut(&continuation_id)
         .unwrap();
-    let mtgml_state::ContinuationPayloadV3::NonManaActivation(activation) = &mut record.payload
+    let mtgml_state::ContinuationPayload::NonManaActivation(activation) = &mut record.payload
     else {
         unreachable!()
     };
@@ -561,7 +561,7 @@ fn tap_reserved_activation_source_is_not_a_mana_source() {
     source.ability_key = mtgml_card_ir::AbilityKey(4);
     assert_eq!(
         state.validate(),
-        Err(mtgml_state::EngineStatePartsV3Error::ManaPaymentStaging)
+        Err(mtgml_state::EngineStateError::ManaPaymentStaging)
     );
 }
 
@@ -577,7 +577,7 @@ fn provisional_source_output_overflow_fails_closed() {
         .unrestricted[3] = u32::MAX;
     assert_eq!(
         state.validate(),
-        Err(mtgml_state::EngineStatePartsV3Error::ProvisionalManaOverflow)
+        Err(mtgml_state::EngineStateError::ProvisionalManaOverflow)
     );
 }
 
@@ -598,7 +598,7 @@ fn pending_v4_request_must_match_its_perspective_local_visible_cursor() {
         .view_sequence = stale;
     assert_eq!(
         state.validate(),
-        Err(mtgml_state::EngineStatePartsV3Error::PendingDecision)
+        Err(mtgml_state::EngineStateError::PendingDecision)
     );
 }
 
@@ -607,7 +607,7 @@ fn profile_dependent_pending_request_is_fail_closed_at_state_admission() {
     let (state, _) = staged_blight_activation();
     assert_eq!(
         state.validate(),
-        Err(mtgml_state::EngineStatePartsV3Error::ProfileDependentDecisionNotAdmitted)
+        Err(mtgml_state::EngineStateError::ProfileDependentDecisionNotAdmitted)
     );
 }
 
@@ -616,18 +616,18 @@ fn pending_request_purpose_must_match_mana_staging_stage() {
     let (mut state, _) = staged_blight_activation();
     let request = state.execution.pending_decision.as_mut().unwrap();
     request.purpose = mtgml_decision::DecisionPurposeV4::ManaPayment;
-    request.candidates = vec![mtgml_decision::AuthoritativeCandidateV4 {
+    request.candidates = vec![mtgml_decision::AuthoritativeCandidate {
         candidate_id: CandidateIdV1(0),
-        visible_intent: mtgml_decision::CandidateIntentV4::SelectManaPayment {
+        visible_intent: mtgml_decision::CandidateIntent::SelectManaPayment {
             spent_buckets: [0; 12],
         },
-        trusted_binding: mtgml_decision::EngineCandidateBindingV4::SelectManaPayment {
+        trusted_binding: mtgml_decision::EngineCandidateBinding::SelectManaPayment {
             spent_buckets: [0; 12],
         },
     }];
     assert_eq!(
         state.validate(),
-        Err(mtgml_state::EngineStatePartsV3Error::ContinuationRequestMismatch)
+        Err(mtgml_state::EngineStateError::ContinuationRequestMismatch)
     );
 }
 
@@ -640,12 +640,12 @@ fn pending_finalize_binding_must_name_its_exact_continuation() {
         .as_mut()
         .unwrap()
         .candidates[0]
-        .trusted_binding = mtgml_decision::EngineCandidateBindingV4::FinalizeManaProduction {
+        .trusted_binding = mtgml_decision::EngineCandidateBinding::FinalizeManaProduction {
         continuation: ContinuationId(99),
     };
     assert_eq!(
         state.validate(),
-        Err(mtgml_state::EngineStatePartsV3Error::PendingCandidateBinding)
+        Err(mtgml_state::EngineStateError::PendingCandidateBinding)
     );
 }
 
@@ -696,14 +696,14 @@ fn mana_source_candidate_rejects_the_tap_reserved_activation_source() {
         );
     let output = [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0];
     let request = state.execution.pending_decision.as_mut().unwrap();
-    request.candidates = vec![mtgml_decision::AuthoritativeCandidateV4 {
+    request.candidates = vec![mtgml_decision::AuthoritativeCandidate {
         candidate_id: CandidateIdV1(0),
-        visible_intent: mtgml_decision::CandidateIntentV4::SelectManaSource {
+        visible_intent: mtgml_decision::CandidateIntent::SelectManaSource {
             source: opaque_object,
             ability: opaque_ability,
             produced_buckets: output,
         },
-        trusted_binding: mtgml_decision::EngineCandidateBindingV4::SelectManaSource {
+        trusted_binding: mtgml_decision::EngineCandidateBinding::SelectManaSource {
             source: GameObjectId(3),
             ability: AbilityInstanceId(1),
             ability_key: mtgml_card_ir::AbilityKey(4),
@@ -714,7 +714,7 @@ fn mana_source_candidate_rejects_the_tap_reserved_activation_source() {
     }];
     assert_eq!(
         state.validate(),
-        Err(mtgml_state::EngineStatePartsV3Error::PendingCandidateBinding)
+        Err(mtgml_state::EngineStateError::PendingCandidateBinding)
     );
 }
 
@@ -732,8 +732,8 @@ fn profile_dependent_v4_response_is_not_selected_without_rules_domain_generation
         },
     };
     assert_eq!(
-        state.selected_bindings_v4(PlayerId(1), &response),
-        Err(mtgml_state::EngineStatePartsV3Error::ProfileDependentDecisionNotAdmitted)
+        state.selected_bindings(PlayerId(1), &response),
+        Err(mtgml_state::EngineStateError::ProfileDependentDecisionNotAdmitted)
     );
     assert_eq!(state, before);
 }
@@ -749,7 +749,7 @@ fn v4_parent_decision_must_precede_its_child_identity() {
         .parent_player_decision_id = Some(PlayerDecisionIdV1(2));
     assert_eq!(
         state.validate(),
-        Err(mtgml_state::EngineStatePartsV3Error::PendingCandidateBinding)
+        Err(mtgml_state::EngineStateError::PendingCandidateBinding)
     );
 }
 
@@ -772,10 +772,10 @@ fn trigger_placement_progress_must_follow_apnap_and_completed_prefix() {
         );
         state.execution.continuations.insert(
             id,
-            mtgml_state::ContinuationRecordV3 {
+            mtgml_state::ContinuationRecord {
                 id,
                 created_at_revision: state.revision,
-                payload: mtgml_state::ContinuationPayloadV3::TriggerPlacement(
+                payload: mtgml_state::ContinuationPayload::TriggerPlacement(
                     mtgml_state::TriggerPlacementContinuation {
                         apnap_actors,
                         current_actor_index,
@@ -796,13 +796,13 @@ fn trigger_placement_progress_must_follow_apnap_and_completed_prefix() {
     let apnap = make_state(vec![PlayerId(2), PlayerId(1)], 0);
     assert_eq!(
         apnap.validate(),
-        Err(mtgml_state::EngineStatePartsV3Error::TriggerPlacement)
+        Err(mtgml_state::EngineStateError::TriggerPlacement)
     );
 
     let skipped_owner = make_state(vec![PlayerId(1), PlayerId(2)], 1);
     assert_eq!(
         skipped_owner.validate(),
-        Err(mtgml_state::EngineStatePartsV3Error::TriggerPlacement)
+        Err(mtgml_state::EngineStateError::TriggerPlacement)
     );
 }
 
@@ -832,10 +832,10 @@ fn trigger_order_request_is_bound_to_the_current_apnap_group_not_trigger_ids() {
     let continuation_id = ContinuationId(1);
     state.execution.continuations.insert(
         continuation_id,
-        mtgml_state::ContinuationRecordV3 {
+        mtgml_state::ContinuationRecord {
             id: continuation_id,
             created_at_revision: state.revision,
-            payload: mtgml_state::ContinuationPayloadV3::TriggerPlacement(
+            payload: mtgml_state::ContinuationPayload::TriggerPlacement(
                 mtgml_state::TriggerPlacementContinuation {
                     apnap_actors: vec![PlayerId(1)],
                     current_actor_index: 0,
@@ -859,7 +859,7 @@ fn trigger_order_request_is_bound_to_the_current_apnap_group_not_trigger_ids() {
         event_kind: mtgml_decision::TriggerEventKindV1::CardDrawn,
         subject: mtgml_decision::SafeTriggerSubjectV1::CardDrawn { player },
     };
-    state.execution.pending_decision = Some(mtgml_decision::AuthoritativeDecisionRequestV4 {
+    state.execution.pending_decision = Some(mtgml_decision::AuthoritativeDecisionRequest {
         decision_id: DecisionId(2),
         player_decision_id: PlayerDecisionIdV1(1),
         state_revision: StateRevision(state.revision.0),
@@ -874,21 +874,21 @@ fn trigger_order_request_is_bound_to_the_current_apnap_group_not_trigger_ids() {
         parent_player_decision_id: None,
         continuation_id: Some(continuation_id),
         candidates: vec![
-            mtgml_decision::AuthoritativeCandidateV4 {
+            mtgml_decision::AuthoritativeCandidate {
                 candidate_id: CandidateIdV1(0),
-                visible_intent: mtgml_decision::CandidateIntentV4::SelectTrigger {
+                visible_intent: mtgml_decision::CandidateIntent::SelectTrigger {
                     trigger: card_drawn(PlayerId(1)),
                 },
-                trusted_binding: mtgml_decision::EngineCandidateBindingV4::SelectTrigger {
+                trusted_binding: mtgml_decision::EngineCandidateBinding::SelectTrigger {
                     trigger: mtgml_model::TriggerInstanceId(1),
                 },
             },
-            mtgml_decision::AuthoritativeCandidateV4 {
+            mtgml_decision::AuthoritativeCandidate {
                 candidate_id: CandidateIdV1(1),
-                visible_intent: mtgml_decision::CandidateIntentV4::SelectTrigger {
+                visible_intent: mtgml_decision::CandidateIntent::SelectTrigger {
                     trigger: card_drawn(PlayerId(2)),
                 },
-                trusted_binding: mtgml_decision::EngineCandidateBindingV4::SelectTrigger {
+                trusted_binding: mtgml_decision::EngineCandidateBinding::SelectTrigger {
                     trigger: mtgml_model::TriggerInstanceId(2),
                 },
             },
@@ -903,12 +903,12 @@ fn trigger_order_request_is_bound_to_the_current_apnap_group_not_trigger_ids() {
         .as_mut()
         .unwrap()
         .candidates[0]
-        .trusted_binding = mtgml_decision::EngineCandidateBindingV4::SelectTrigger {
+        .trusted_binding = mtgml_decision::EngineCandidateBinding::SelectTrigger {
         trigger: mtgml_model::TriggerInstanceId(2),
     };
     assert_eq!(
         rebound.validate(),
-        Err(mtgml_state::EngineStatePartsV3Error::PendingCandidateBinding)
+        Err(mtgml_state::EngineStateError::PendingCandidateBinding)
     );
 }
 
@@ -971,7 +971,7 @@ fn typed_spell_stack_payload_matches_the_live_stack_card_incarnation() {
     });
     assert_eq!(
         zero_target.validate(),
-        Err(mtgml_state::EngineStatePartsV3Error::TargetReference)
+        Err(mtgml_state::EngineStateError::TargetReference)
     );
 }
 
@@ -1161,7 +1161,7 @@ fn triggered_stack_payload_captures_every_closed_event_fact_across_source_depart
     );
     assert_eq!(
         state.validate(),
-        Err(mtgml_state::EngineStatePartsV3Error::MissingTriggerPlacement)
+        Err(mtgml_state::EngineStateError::MissingTriggerPlacement)
     );
 }
 

@@ -10,7 +10,7 @@ use mtgml_card_ir::{
 };
 use mtgml_model::{
     CheckpointCodecIdentity, CheckpointDigestV8, EnvironmentLimitCounters, EpisodeStatus,
-    ExecutionIdentityV1, FullStateDigestV7, PlayerId, RulesContractManifestV1,
+    ExecutionIdentityV1, FullStateDigest, PlayerId, RulesContractManifestV1,
     SemanticContractManifestV1,
 };
 use mtgml_state::{EngineState, StackItemPayload};
@@ -24,7 +24,7 @@ pub const CHECKPOINT_CODEC_SEMANTIC_VERSION_V8: &str = "8";
 pub struct EnvironmentCheckpointV8 {
     pub schema_version: String,
     pub state: EngineState,
-    pub state_digest: FullStateDigestV7,
+    pub state_digest: FullStateDigest,
     pub status: EpisodeStatus,
     pub limit_counters: EnvironmentLimitCounters,
     pub codec: CheckpointCodecIdentity,
@@ -57,7 +57,7 @@ impl EnvironmentCheckpointV8 {
         if &execution_identity != admission.execution_identity() {
             return Err(CheckpointV8Error::ContractBinding);
         }
-        mtgml_rules::validate_magic_pending_request_v4(admission, &state, &status)
+        mtgml_rules::validate_magic_pending_request(admission, &state, &status)
             .map_err(|_| CheckpointV8Error::State)?;
         Self::build(state, status, limit_counters, execution_identity, true)
     }
@@ -75,9 +75,9 @@ impl EnvironmentCheckpointV8 {
                 .map_err(|_| CheckpointV8Error::State)?;
         }
         let state_digest = if structurally_validated_by_rules {
-            mtgml_state::calculate_full_state_digest_v7_structural_only(&state)
+            mtgml_state::calculate_full_state_digest_structural_only(&state)
         } else {
-            mtgml_state::calculate_full_state_digest_v7(&state)
+            mtgml_state::calculate_full_state_digest(&state)
         }
         .map_err(|_| CheckpointV8Error::StateDigest)?;
         let codec = CheckpointCodecIdentity {
@@ -123,7 +123,7 @@ impl EnvironmentCheckpointV8 {
         if &self.execution_identity != admission.execution_identity() {
             return Err(CheckpointV8Error::ContractBinding);
         }
-        mtgml_rules::validate_magic_pending_request_v4(admission, &self.state, &self.status)
+        mtgml_rules::validate_magic_pending_request(admission, &self.state, &self.status)
             .map_err(|_| CheckpointV8Error::State)?;
         self.validate_inner(true)
     }
@@ -168,9 +168,9 @@ impl EnvironmentCheckpointV8 {
             .map_err(|_| CheckpointV8Error::LimitCounters)?;
         if recompute_digests {
             let actual_state = if structurally_validated_by_rules {
-                mtgml_state::calculate_full_state_digest_v7_structural_only(&self.state)
+                mtgml_state::calculate_full_state_digest_structural_only(&self.state)
             } else {
-                mtgml_state::calculate_full_state_digest_v7(&self.state)
+                mtgml_state::calculate_full_state_digest(&self.state)
             }
             .map_err(|_| CheckpointV8Error::StateDigest)?;
             if actual_state != self.state_digest {
@@ -282,7 +282,7 @@ impl EnvironmentCheckpointV8 {
 }
 
 fn calculate_checkpoint_digest_v8(
-    digest: &FullStateDigestV7,
+    digest: &FullStateDigest,
     status: &EpisodeStatus,
     counters: &EnvironmentLimitCounters,
     codec: &CheckpointCodecIdentity,
@@ -445,7 +445,7 @@ mod tests {
 
     fn checkpoint(admission: &ExecutableProfileAdmissionV1) -> EnvironmentCheckpointV8 {
         let mut state = crate::basic_land_runtime_v8::fixtures::state_with_two_lands();
-        mtgml_rules::install_basic_land_request_v4(
+        mtgml_rules::install_basic_land_request(
             admission,
             &mut state,
             PlayerId(1),
@@ -491,7 +491,7 @@ mod tests {
             .unwrap();
         assert_eq!(restored, checkpoint.state);
         assert_eq!(
-            mtgml_state::calculate_full_state_digest_v7_structural_only(&checkpoint.state).unwrap(),
+            mtgml_state::calculate_full_state_digest_structural_only(&checkpoint.state).unwrap(),
             checkpoint.state_digest
         );
     }
@@ -501,7 +501,7 @@ mod tests {
         let admission = admission();
         let baseline = checkpoint(&admission);
         let mut state = baseline.clone();
-        state.state_digest = mtgml_model::FullStateDigestV7::from_digest_bytes([0; 32]);
+        state.state_digest = mtgml_model::FullStateDigest::from_digest_bytes([0; 32]);
         assert_eq!(
             state.restore_detached_for_basic_land_profile(&admission),
             Err(CheckpointV8Error::StateDigest)
@@ -559,7 +559,7 @@ mod tests {
             )
         };
         let mut state = crate::basic_land_runtime_v8::fixtures::state_with_two_lands();
-        mtgml_rules::install_basic_land_request_v4(
+        mtgml_rules::install_basic_land_request(
             &admission,
             &mut state,
             mtgml_model::PlayerId(1),

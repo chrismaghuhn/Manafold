@@ -8,10 +8,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 STATE_SRC = ROOT / "crates/mtgml-state/src"
-ENCODER_RS = STATE_SRC / "persisted_v7.rs"
+ENCODER_RS = STATE_SRC / "digest.rs"
 
 # The state struct and its exhaustive destructure in the single-pass
-# FullStateDigestV7 encoder.
+# FullStateDigest encoder.
 STATE_STRUCTS = ((STATE_SRC / "engine.rs", "pub struct EngineState {", "let EngineState {"),)
 
 
@@ -51,7 +51,7 @@ class AuthoritativeStateIntegrationCoverageTests(unittest.TestCase):
                 _assert_exact_coverage(
                     fields,
                     _destructured_fields(encoder, destructure_header),
-                    "FullStateDigestV7 encoder",
+                    "FullStateDigest encoder",
                 )
 
     def test_deliberately_unaccounted_authoritative_field_fails_the_digest_guard(self) -> None:
@@ -64,7 +64,7 @@ class AuthoritativeStateIntegrationCoverageTests(unittest.TestCase):
             _assert_exact_coverage(
                 synthetic_authoritative_fields,
                 _destructured_fields(encoder, destructure_header),
-                "FullStateDigestV7 encoder",
+                "FullStateDigest encoder",
             )
 
 

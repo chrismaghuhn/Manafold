@@ -4,11 +4,11 @@ use mtgml_model::{
 };
 use mtgml_random::RootSeed256;
 use mtgml_state::{
-    calculate_full_state_digest_v7, canonical_state_bytes_v7, construct_synthetic_engine_state,
-    full_state_digest_v7_from_payload, ActionCostFacts, EffectExpiry, EngineState, ManaCost,
+    calculate_full_state_digest, canonical_state_bytes, construct_synthetic_engine_state,
+    full_state_digest_from_payload, ActionCostFacts, EffectExpiry, EngineState, ManaCost,
     ManaPaymentStage, ManaPaymentStaging, ManaSourceActivation, ManaSourceActivationCost,
     NonManaActivationContinuation, NonManaActivationStage, ReservedNonManaCost,
-    SelectedCostOperand, StackItemPayload, StackRecord, StateDeltaV3, SyntheticResetInputs,
+    SelectedCostOperand, StackItemPayload, StackRecord, StateDelta, SyntheticResetInputs,
     SyntheticV4Setup, TemporaryEffectRecord, TemporaryOperation, VisibilityPartition, ZoneLocation,
     ZonePosition, FULL_STATE_DIGEST_DOMAIN_V7, FULL_STATE_DIGEST_INPUT_SCHEMA_V7,
 };
@@ -84,10 +84,10 @@ fn staged_activation_state() -> EngineState {
     };
     state.execution.continuations.insert(
         continuation_id,
-        mtgml_state::ContinuationRecordV3 {
+        mtgml_state::ContinuationRecord {
             id: continuation_id,
             created_at_revision: state.revision,
-            payload: mtgml_state::ContinuationPayloadV3::NonManaActivation(
+            payload: mtgml_state::ContinuationPayload::NonManaActivation(
                 NonManaActivationContinuation {
                     actor: PlayerId(1),
                     source_object,
@@ -117,7 +117,7 @@ fn staged_activation_state() -> EngineState {
         },
     );
     let view_sequence = state.knowledge.players[&PlayerId(1)].next_visible_sequence;
-    state.execution.pending_decision = Some(mtgml_decision::AuthoritativeDecisionRequestV4 {
+    state.execution.pending_decision = Some(mtgml_decision::AuthoritativeDecisionRequest {
         decision_id: mtgml_model::DecisionId(2),
         player_decision_id: mtgml_model::PlayerDecisionIdV1(1),
         state_revision: state.revision,
@@ -128,10 +128,10 @@ fn staged_activation_state() -> EngineState {
         purpose: mtgml_decision::DecisionPurposeV4::ManaProductionChoice,
         parent_player_decision_id: None,
         continuation_id: Some(continuation_id),
-        candidates: vec![mtgml_decision::AuthoritativeCandidateV4 {
+        candidates: vec![mtgml_decision::AuthoritativeCandidate {
             candidate_id: mtgml_model::CandidateIdV1(0),
-            visible_intent: mtgml_decision::CandidateIntentV4::FinalizeManaProduction,
-            trusted_binding: mtgml_decision::EngineCandidateBindingV4::FinalizeManaProduction {
+            visible_intent: mtgml_decision::CandidateIntent::FinalizeManaProduction,
+            trusted_binding: mtgml_decision::EngineCandidateBinding::FinalizeManaProduction {
                 continuation: continuation_id,
             },
         }],
@@ -188,7 +188,7 @@ fn insert_spell(state: &mut EngineState, object_id: u64, stack_id: u64) {
 #[test]
 fn v7_digest_has_the_frozen_14_field_domain_envelope() {
     let state = state();
-    let payload = canonical_state_bytes_v7(&state).unwrap();
+    let payload = canonical_state_bytes(&state).unwrap();
     let value = mtgml_persistence::cbor::decode_canonical(&payload).unwrap();
     let mtgml_persistence::cbor::Value::Array(fields) = value else {
         panic!("V7 input must be an array")
@@ -215,7 +215,7 @@ fn v7_digest_has_the_frozen_14_field_domain_envelope() {
                 && execution[0] == mtgml_persistence::cbor::Value::Text("execution_v4".to_owned())
     ));
     assert_eq!(
-        calculate_full_state_digest_v7(&state).unwrap().as_str(),
+        calculate_full_state_digest(&state).unwrap().as_str(),
         "9e80644042e5316842cac990ee05371faf21e900b96d28ae3ff59d43193a2489"
     );
 }
@@ -236,12 +236,8 @@ fn v7_detached_g0c_identity_fixture_matches_its_domain_kat() {
         })
         .collect::<Vec<_>>();
     let expected =
-        mtgml_model::FullStateDigestV7::parse(fixture["expected_digest"].as_str().unwrap())
-            .unwrap();
-    assert_eq!(
-        full_state_digest_v7_from_payload(&payload).unwrap(),
-        expected
-    );
+        mtgml_model::FullStateDigest::parse(fixture["expected_digest"].as_str().unwrap()).unwrap();
+    assert_eq!(full_state_digest_from_payload(&payload).unwrap(), expected);
 }
 
 #[test]
@@ -256,8 +252,8 @@ fn v7_digest_changes_when_a_shared_card_rule_value_changes() {
         .unwrap()
         .land_plays_used = 1;
     assert_ne!(
-        calculate_full_state_digest_v7(&state).unwrap(),
-        calculate_full_state_digest_v7(&changed).unwrap()
+        calculate_full_state_digest(&state).unwrap(),
+        calculate_full_state_digest(&changed).unwrap()
     );
 }
 
@@ -312,7 +308,7 @@ fn v7_digest_binds_typed_stack_payload_and_mode_order() {
     state.zones.stack_order.push(StackObjectId(1));
     state.validate().unwrap();
 
-    let original = calculate_full_state_digest_v7(&state).unwrap();
+    let original = calculate_full_state_digest(&state).unwrap();
     if let Some(StackItemPayload::Spell { modes, .. }) = state
         .zones
         .stack_records
@@ -321,7 +317,7 @@ fn v7_digest_binds_typed_stack_payload_and_mode_order() {
     {
         modes[0].selected_mode = 2;
     }
-    assert_ne!(original, calculate_full_state_digest_v7(&state).unwrap());
+    assert_ne!(original, calculate_full_state_digest(&state).unwrap());
 }
 
 #[test]
@@ -344,14 +340,14 @@ fn v7_digest_ignores_stack_map_insertion_order_but_binds_stack_order() {
         .extend([StackObjectId(1), StackObjectId(2)]);
     reverse_insert.validate().unwrap();
     assert_eq!(
-        calculate_full_state_digest_v7(&first).unwrap(),
-        calculate_full_state_digest_v7(&reverse_insert).unwrap()
+        calculate_full_state_digest(&first).unwrap(),
+        calculate_full_state_digest(&reverse_insert).unwrap()
     );
 
     reverse_insert.zones.stack_order.swap(0, 1);
     assert_ne!(
-        calculate_full_state_digest_v7(&first).unwrap(),
-        calculate_full_state_digest_v7(&reverse_insert).unwrap()
+        calculate_full_state_digest(&first).unwrap(),
+        calculate_full_state_digest(&reverse_insert).unwrap()
     );
 }
 
@@ -399,7 +395,7 @@ fn v7_digest_binds_temporary_effect_operation_and_lifetime_record() {
         },
     );
     state.validate().unwrap();
-    let original = calculate_full_state_digest_v7(&state).unwrap();
+    let original = calculate_full_state_digest(&state).unwrap();
 
     let mut changed = state.clone();
     changed
@@ -411,15 +407,15 @@ fn v7_digest_binds_temporary_effect_operation_and_lifetime_record() {
         power: 2,
         toughness: 0,
     };
-    assert_ne!(original, calculate_full_state_digest_v7(&changed).unwrap());
+    assert_ne!(original, calculate_full_state_digest(&changed).unwrap());
 }
 
 #[test]
 fn v7_typed_digest_rejects_profile_dependent_pending_activation() {
     let state = staged_activation_state();
     assert!(state.validate().is_err());
-    assert!(canonical_state_bytes_v7(&state).is_err());
-    assert!(calculate_full_state_digest_v7(&state).is_err());
+    assert!(canonical_state_bytes(&state).is_err());
+    assert!(calculate_full_state_digest(&state).is_err());
 }
 
 #[test]
@@ -472,10 +468,10 @@ fn v7_digest_binds_pending_trigger_context_and_exact_candidate_binding() {
     let continuation_id = mtgml_model::ContinuationId(1);
     state.execution.continuations.insert(
         continuation_id,
-        mtgml_state::ContinuationRecordV3 {
+        mtgml_state::ContinuationRecord {
             id: continuation_id,
             created_at_revision: state.revision,
-            payload: mtgml_state::ContinuationPayloadV3::TriggerPlacement(
+            payload: mtgml_state::ContinuationPayload::TriggerPlacement(
                 mtgml_state::TriggerPlacementContinuation {
                     apnap_actors: vec![PlayerId(1)],
                     current_actor_index: 0,
@@ -499,7 +495,7 @@ fn v7_digest_binds_pending_trigger_context_and_exact_candidate_binding() {
         event_kind: mtgml_decision::TriggerEventKindV1::CardDrawn,
         subject: mtgml_decision::SafeTriggerSubjectV1::CardDrawn { player },
     };
-    state.execution.pending_decision = Some(mtgml_decision::AuthoritativeDecisionRequestV4 {
+    state.execution.pending_decision = Some(mtgml_decision::AuthoritativeDecisionRequest {
         decision_id: mtgml_model::DecisionId(2),
         player_decision_id: mtgml_model::PlayerDecisionIdV1(1),
         state_revision: state.revision,
@@ -514,28 +510,28 @@ fn v7_digest_binds_pending_trigger_context_and_exact_candidate_binding() {
         parent_player_decision_id: None,
         continuation_id: Some(continuation_id),
         candidates: vec![
-            mtgml_decision::AuthoritativeCandidateV4 {
+            mtgml_decision::AuthoritativeCandidate {
                 candidate_id: mtgml_model::CandidateIdV1(0),
-                visible_intent: mtgml_decision::CandidateIntentV4::SelectTrigger {
+                visible_intent: mtgml_decision::CandidateIntent::SelectTrigger {
                     trigger: card_drawn(PlayerId(1)),
                 },
-                trusted_binding: mtgml_decision::EngineCandidateBindingV4::SelectTrigger {
+                trusted_binding: mtgml_decision::EngineCandidateBinding::SelectTrigger {
                     trigger: mtgml_model::TriggerInstanceId(1),
                 },
             },
-            mtgml_decision::AuthoritativeCandidateV4 {
+            mtgml_decision::AuthoritativeCandidate {
                 candidate_id: mtgml_model::CandidateIdV1(1),
-                visible_intent: mtgml_decision::CandidateIntentV4::SelectTrigger {
+                visible_intent: mtgml_decision::CandidateIntent::SelectTrigger {
                     trigger: card_drawn(PlayerId(2)),
                 },
-                trusted_binding: mtgml_decision::EngineCandidateBindingV4::SelectTrigger {
+                trusted_binding: mtgml_decision::EngineCandidateBinding::SelectTrigger {
                     trigger: mtgml_model::TriggerInstanceId(2),
                 },
             },
         ],
     });
     state.validate().unwrap();
-    let original = calculate_full_state_digest_v7(&state).unwrap();
+    let original = calculate_full_state_digest(&state).unwrap();
     let mut rebound = state.clone();
     rebound
         .execution
@@ -543,11 +539,11 @@ fn v7_digest_binds_pending_trigger_context_and_exact_candidate_binding() {
         .as_mut()
         .unwrap()
         .candidates[0]
-        .trusted_binding = mtgml_decision::EngineCandidateBindingV4::SelectTrigger {
+        .trusted_binding = mtgml_decision::EngineCandidateBinding::SelectTrigger {
         trigger: mtgml_model::TriggerInstanceId(2),
     };
     assert!(rebound.validate().is_err());
-    assert!(calculate_full_state_digest_v7(&rebound).is_err());
+    assert!(calculate_full_state_digest(&rebound).is_err());
     state
         .execution
         .waiting_triggers
@@ -565,22 +561,20 @@ fn v7_digest_binds_pending_trigger_context_and_exact_candidate_binding() {
         player: PlayerId(1),
     };
     let request = state.execution.pending_decision.as_mut().unwrap();
-    request.candidates[0].trusted_binding =
-        mtgml_decision::EngineCandidateBindingV4::SelectTrigger {
-            trigger: mtgml_model::TriggerInstanceId(2),
-        };
-    request.candidates[1].trusted_binding =
-        mtgml_decision::EngineCandidateBindingV4::SelectTrigger {
-            trigger: mtgml_model::TriggerInstanceId(1),
-        };
-    assert_ne!(original, calculate_full_state_digest_v7(&state).unwrap());
+    request.candidates[0].trusted_binding = mtgml_decision::EngineCandidateBinding::SelectTrigger {
+        trigger: mtgml_model::TriggerInstanceId(2),
+    };
+    request.candidates[1].trusted_binding = mtgml_decision::EngineCandidateBinding::SelectTrigger {
+        trigger: mtgml_model::TriggerInstanceId(1),
+    };
+    assert_ne!(original, calculate_full_state_digest(&state).unwrap());
 }
 
 #[test]
 fn v7_typed_writer_rejects_profile_dependent_pending_activation() {
     let state = staged_activation_state();
-    assert!(canonical_state_bytes_v7(&state).is_err());
-    assert!(calculate_full_state_digest_v7(&state).is_err());
+    assert!(canonical_state_bytes(&state).is_err());
+    assert!(calculate_full_state_digest(&state).is_err());
 }
 
 #[test]
@@ -588,7 +582,7 @@ fn state_delta_v3_rejects_profile_dependent_pending_requests() {
     let before = staged_activation_state();
     let mut after = before.clone();
     after.revision = mtgml_model::StateRevision(before.revision.0.checked_add(1).unwrap());
-    assert!(StateDeltaV3::between(&before, &after, vec![]).is_err());
+    assert!(StateDelta::between(&before, &after, vec![]).is_err());
     assert!(before.validate().is_err());
     assert!(after.validate().is_err());
 }
@@ -599,15 +593,15 @@ fn state_delta_v3_reapplies_the_exact_successor_replacement() {
     let mut after = before.clone();
     after.revision = mtgml_model::StateRevision(after.revision.0.checked_add(1).unwrap());
     after.validate().unwrap();
-    let delta = StateDeltaV3::between(&before, &after, vec![]).unwrap();
+    let delta = StateDelta::between(&before, &after, vec![]).unwrap();
     assert_eq!(delta.apply(&before).unwrap(), after);
 
     let unchanged = before.clone();
     let mut stale = delta;
-    stale.before_digest = mtgml_model::FullStateDigestV7::from_digest_bytes([0; 32]);
+    stale.before_digest = mtgml_model::FullStateDigest::from_digest_bytes([0; 32]);
     assert_eq!(
         stale.apply(&before),
-        Err(mtgml_state::DeltaApplicationV3Error::BeforeMismatch)
+        Err(mtgml_state::DeltaApplicationError::BeforeMismatch)
     );
     assert_eq!(before, unchanged);
 }
@@ -617,8 +611,8 @@ fn state_delta_v3_requires_exact_revision_step_and_covers_life_mutation() {
     let before = state();
     let mut unchanged_revision = before.clone();
     assert_eq!(
-        StateDeltaV3::between(&before, &unchanged_revision, vec![]),
-        Err(mtgml_state::DeltaApplicationV3Error::RevisionProgression)
+        StateDelta::between(&before, &unchanged_revision, vec![]),
+        Err(mtgml_state::DeltaApplicationError::RevisionProgression)
     );
 
     unchanged_revision.revision =
@@ -631,8 +625,8 @@ fn state_delta_v3_requires_exact_revision_step_and_covers_life_mutation() {
         .life -= 1;
     unchanged_revision.validate().unwrap();
     assert_eq!(
-        StateDeltaV3::between(&before, &unchanged_revision, vec![]),
-        Err(mtgml_state::DeltaApplicationV3Error::UncoveredMutation)
+        StateDelta::between(&before, &unchanged_revision, vec![]),
+        Err(mtgml_state::DeltaApplicationError::UncoveredMutation)
     );
 }
 
@@ -649,7 +643,7 @@ fn state_delta_v3_rejects_unrelated_turn_history_mutation_even_with_cast_operati
         .insert((object, PlayerId(1)));
     after.validate().unwrap();
 
-    let unrelated_cast = mtgml_state::SemanticDeltaOperationV3::SpellCast {
+    let unrelated_cast = mtgml_state::SemanticDeltaOperation::SpellCast {
         stack_object: StackObjectId(1),
         spell_object: object,
         card_definition: CardDefinitionId(1),
@@ -659,8 +653,8 @@ fn state_delta_v3_rejects_unrelated_turn_history_mutation_even_with_cast_operati
         cost_facts: Default::default(),
     };
     assert_eq!(
-        StateDeltaV3::between(&before, &after, vec![unrelated_cast]),
-        Err(mtgml_state::DeltaApplicationV3Error::UncoveredMutation)
+        StateDelta::between(&before, &after, vec![unrelated_cast]),
+        Err(mtgml_state::DeltaApplicationError::UncoveredMutation)
     );
 }
 
@@ -672,7 +666,7 @@ fn state_delta_v3_rejects_cast_event_against_preexisting_stack_item() {
     before.validate().unwrap();
     let mut after = before.clone();
     after.revision = mtgml_model::StateRevision(before.revision.0.checked_add(1).unwrap());
-    let operation = mtgml_state::SemanticDeltaOperationV3::SpellCast {
+    let operation = mtgml_state::SemanticDeltaOperation::SpellCast {
         stack_object: StackObjectId(1),
         spell_object: GameObjectId(50),
         card_definition: CardDefinitionId(50),
@@ -682,8 +676,8 @@ fn state_delta_v3_rejects_cast_event_against_preexisting_stack_item() {
         cost_facts: Default::default(),
     };
     assert_eq!(
-        StateDeltaV3::between(&before, &after, vec![operation]),
-        Err(mtgml_state::DeltaApplicationV3Error::UncoveredMutation)
+        StateDelta::between(&before, &after, vec![operation]),
+        Err(mtgml_state::DeltaApplicationError::UncoveredMutation)
     );
 }
 
@@ -713,7 +707,7 @@ fn state_delta_v3_rejects_duplicate_cast_occurrences_for_one_stack_creation() {
         .payload
         .clone()
         .unwrap();
-    let spell = || mtgml_state::SemanticDeltaOperationV3::SpellCast {
+    let spell = || mtgml_state::SemanticDeltaOperation::SpellCast {
         stack_object: StackObjectId(1),
         spell_object: GameObjectId(50),
         card_definition: CardDefinitionId(50),
@@ -723,7 +717,7 @@ fn state_delta_v3_rejects_duplicate_cast_occurrences_for_one_stack_creation() {
         cost_facts: Default::default(),
     };
     let operations = vec![
-        mtgml_state::SemanticDeltaOperationV3::ObjectEntered {
+        mtgml_state::SemanticDeltaOperation::ObjectEntered {
             old_object: None,
             new_object: GameObjectId(50),
             from_zone: ZoneKind::Hand,
@@ -731,11 +725,11 @@ fn state_delta_v3_rejects_duplicate_cast_occurrences_for_one_stack_creation() {
             tapped: false,
             face: 0,
         },
-        mtgml_state::SemanticDeltaOperationV3::StackItemCreated {
+        mtgml_state::SemanticDeltaOperation::StackItemCreated {
             stack_object: StackObjectId(1),
             payload: Box::new(payload),
         },
-        mtgml_state::SemanticDeltaOperationV3::StackOrderChanged {
+        mtgml_state::SemanticDeltaOperation::StackOrderChanged {
             from: vec![],
             to: vec![StackObjectId(1)],
         },
@@ -743,8 +737,8 @@ fn state_delta_v3_rejects_duplicate_cast_occurrences_for_one_stack_creation() {
         spell(),
     ];
     assert_eq!(
-        StateDeltaV3::between(&before, &after, operations),
-        Err(mtgml_state::DeltaApplicationV3Error::UncoveredMutation)
+        StateDelta::between(&before, &after, operations),
+        Err(mtgml_state::DeltaApplicationError::UncoveredMutation)
     );
 }
 
@@ -761,7 +755,7 @@ fn state_delta_v3_requires_a_cast_operation_for_a_new_spell_stack_item() {
         .clone()
         .unwrap();
     let operations = vec![
-        mtgml_state::SemanticDeltaOperationV3::ObjectEntered {
+        mtgml_state::SemanticDeltaOperation::ObjectEntered {
             old_object: None,
             new_object: GameObjectId(50),
             from_zone: ZoneKind::Hand,
@@ -769,18 +763,18 @@ fn state_delta_v3_requires_a_cast_operation_for_a_new_spell_stack_item() {
             tapped: false,
             face: 0,
         },
-        mtgml_state::SemanticDeltaOperationV3::StackItemCreated {
+        mtgml_state::SemanticDeltaOperation::StackItemCreated {
             stack_object: StackObjectId(1),
             payload: Box::new(payload),
         },
-        mtgml_state::SemanticDeltaOperationV3::StackOrderChanged {
+        mtgml_state::SemanticDeltaOperation::StackOrderChanged {
             from: vec![],
             to: vec![StackObjectId(1)],
         },
     ];
     assert_eq!(
-        StateDeltaV3::between(&before, &after, operations),
-        Err(mtgml_state::DeltaApplicationV3Error::UncoveredMutation)
+        StateDelta::between(&before, &after, operations),
+        Err(mtgml_state::DeltaApplicationError::UncoveredMutation)
     );
 }
 
@@ -838,26 +832,26 @@ fn state_delta_v3_rejects_duplicate_stack_creation_for_triggered_payload() {
     after.validate().unwrap();
 
     let operations = vec![
-        mtgml_state::SemanticDeltaOperationV3::StackItemCreated {
+        mtgml_state::SemanticDeltaOperation::StackItemCreated {
             stack_object: StackObjectId(1),
             payload: Box::new(payload.clone()),
         },
-        mtgml_state::SemanticDeltaOperationV3::StackItemCreated {
+        mtgml_state::SemanticDeltaOperation::StackItemCreated {
             stack_object: StackObjectId(1),
             payload: Box::new(payload.clone()),
         },
-        mtgml_state::SemanticDeltaOperationV3::TriggerPlaced {
+        mtgml_state::SemanticDeltaOperation::TriggerPlaced {
             trigger: mtgml_model::TriggerInstanceId(1),
             stack_object: StackObjectId(1),
             payload: Box::new(payload),
         },
-        mtgml_state::SemanticDeltaOperationV3::StackOrderChanged {
+        mtgml_state::SemanticDeltaOperation::StackOrderChanged {
             from: vec![],
             to: vec![StackObjectId(1)],
         },
     ];
     assert_eq!(
-        StateDeltaV3::between(&before, &after, operations),
-        Err(mtgml_state::DeltaApplicationV3Error::UncoveredMutation)
+        StateDelta::between(&before, &after, operations),
+        Err(mtgml_state::DeltaApplicationError::UncoveredMutation)
     );
 }

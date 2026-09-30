@@ -183,35 +183,35 @@ SCHEMA_NEGATIVE_CASES = [
     ),
     (
         "replay-manifest.v8.schema.json#content-contract-child",
-        "schemas/negative/replay-v7-content-child-unknown-field.json",
+        "schemas/negative/content-contract-child-unknown-field.json",
     ),
     (
         "replay-manifest.v8.schema.json#content-contract-child",
-        "schemas/negative/replay-v7-content-child-invalid-base64.json",
+        "schemas/negative/content-contract-child-invalid-base64.json",
     ),
     (
         "replay-manifest.v8.schema.json#content-presence-rule",
-        "schemas/negative/replay-v7-content-presence-mismatch.json",
+        "schemas/negative/content-contract-presence-mismatch.json",
     ),
     (
         "replay-manifest.v8.schema.json#content-presence-rule",
-        "schemas/negative/replay-v7-content-id-without-child.json",
+        "schemas/negative/content-contract-id-without-child.json",
     ),
     (
         "replay-manifest.v8.schema.json#content-contract-child",
-        "schemas/negative/replay-v7-content-child-uppercase-id.json",
+        "schemas/negative/content-contract-child-uppercase-id.json",
     ),
     (
         "replay-manifest.v8.schema.json#content-contract-child",
-        "schemas/negative/replay-v7-content-child-extra-padding.json",
+        "schemas/negative/content-contract-child-extra-padding.json",
     ),
     (
         "replay-manifest.v8.schema.json#content-contract-child",
-        "schemas/negative/replay-v7-content-child-whitespace.json",
+        "schemas/negative/content-contract-child-whitespace.json",
     ),
     (
         "replay-manifest.v8.schema.json#content-contract-child",
-        "schemas/negative/replay-v7-content-child-missing-padding.json",
+        "schemas/negative/content-contract-child-missing-padding.json",
     ),
 ]
 SCHEMA_POSITIVE_CASES = [

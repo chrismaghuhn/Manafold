@@ -6,7 +6,7 @@ fn synthetic_state_is_the_current_engine_state_shape() {
     let state = synthetic_state();
     validate_engine_state(&state).unwrap();
     assert_eq!(state.revision, StateRevision(0));
-    assert_eq!(state.execution, crate::ExecutionStateV4::default());
+    assert_eq!(state.execution, crate::ExecutionState::default());
     assert_eq!(state.knowledge.players.len(), 2);
     assert_eq!(state.perspective_identities.players.len(), 2);
 }

@@ -3,7 +3,7 @@
 
 use mtgml_card_ir::ExecutableProfileAdmissionV1;
 use mtgml_decision::{
-    DecisionAnswerV2, DecisionPurposeV4, DecisionResponseV3, EngineCandidateBindingV4,
+    DecisionAnswerV2, DecisionPurposeV4, DecisionResponseV3, EngineCandidateBinding,
     DECISION_RESPONSE_V3_SCHEMA,
 };
 use mtgml_model::{
@@ -83,7 +83,7 @@ fn game(second_p2_card: Option<CardDefinitionId>) -> (ExecutableProfileAdmission
             .unwrap()
             .card_definition = definition;
     }
-    mtgml_rules::install_basic_land_request_v4(&admission, &mut state, P1, &EpisodeStatus::Running)
+    mtgml_rules::install_basic_land_request(&admission, &mut state, P1, &EpisodeStatus::Running)
         .unwrap();
     (admission, state)
 }
@@ -91,7 +91,7 @@ fn game(second_p2_card: Option<CardDefinitionId>) -> (ExecutableProfileAdmission
 fn pass(
     admission: &ExecutableProfileAdmissionV1,
     state: &EngineState,
-) -> mtgml_rules::BasicLandTransitionProductV4 {
+) -> mtgml_rules::BasicLandTransitionProduct {
     let request = state.execution.pending_decision.as_ref().unwrap();
     let answer = if request.purpose == DecisionPurposeV4::AttackerDeclaration {
         DecisionAnswerV2::SelectMany {
@@ -105,7 +105,7 @@ fn pass(
                 .find(|candidate| {
                     matches!(
                         candidate.trusted_binding,
-                        EngineCandidateBindingV4::PassPriority
+                        EngineCandidateBinding::PassPriority
                     )
                 })
                 .unwrap()
@@ -118,7 +118,7 @@ fn pass(
         view_sequence: request.view_sequence,
         answer,
     };
-    mtgml_rules::execute_magic_response_v4(
+    mtgml_rules::execute_magic_response(
         admission,
         state,
         request.actor,
@@ -135,7 +135,7 @@ fn product_entering(
     mut state: EngineState,
     position: TurnPosition,
     turn: u64,
-) -> (EngineState, mtgml_rules::BasicLandTransitionProductV4) {
+) -> (EngineState, mtgml_rules::BasicLandTransitionProduct) {
     for _ in 0..200 {
         let product = pass(admission, &state);
         let core = &product.next_state.core;
@@ -150,7 +150,7 @@ fn product_entering(
 fn project(
     admission: &ExecutableProfileAdmissionV1,
     before: &EngineState,
-    product: &mtgml_rules::BasicLandTransitionProductV4,
+    product: &mtgml_rules::BasicLandTransitionProduct,
 ) -> BTreeMap<PlayerId, PlayerStepV4> {
     let running = EpisodeStatus::Running;
     crate::successor_projection::project_successor_player_steps_v4(
@@ -384,7 +384,7 @@ fn opponent_sees_discarded_card_but_not_kept_cards() {
             P1,
             &[kept, mountain, mountain, mountain, mountain, mountain],
         );
-        mtgml_rules::install_basic_land_request_v4(
+        mtgml_rules::install_basic_land_request(
             &admission,
             &mut state,
             P1,
@@ -410,7 +410,7 @@ fn opponent_sees_discarded_card_but_not_kept_cards() {
                 candidate_ids: vec![request.candidates.last().unwrap().candidate_id],
             },
         };
-        let product = mtgml_rules::execute_magic_response_v4(
+        let product = mtgml_rules::execute_magic_response(
             &admission,
             &before,
             P1,
@@ -445,7 +445,7 @@ fn mana_emptying_is_observed_by_every_player() {
         .find(|candidate| {
             matches!(
                 candidate.trusted_binding,
-                EngineCandidateBindingV4::ActivateAbility { .. }
+                EngineCandidateBinding::ActivateAbility { .. }
             )
         })
         .unwrap()
@@ -456,7 +456,7 @@ fn mana_emptying_is_observed_by_every_player() {
         view_sequence: request.view_sequence,
         answer: DecisionAnswerV2::SelectOne { candidate_id: tap },
     };
-    let tapped = mtgml_rules::execute_magic_response_v4(
+    let tapped = mtgml_rules::execute_magic_response(
         &admission,
         &state,
         P1,

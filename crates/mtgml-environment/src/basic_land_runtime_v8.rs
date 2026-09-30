@@ -14,7 +14,7 @@ use mtgml_replay::{
     AuthoritativeReplayV8, InitialEnvironmentIdentityV8, ReplayManifestV8, ReplayRecorderV8,
     ReplayStepV8,
 };
-use mtgml_state::{EngineState, StateDeltaV3};
+use mtgml_state::{EngineState, StateDelta};
 
 use crate::{ControllerError, EnvironmentCheckpointV8};
 
@@ -22,8 +22,8 @@ use crate::{ControllerError, EnvironmentCheckpointV8};
 pub struct BasicLandRuntimeOutputV8 {
     pub accepted: bool,
     pub next_state: EngineState,
-    pub delta: Option<StateDeltaV3>,
-    pub events: Vec<mtgml_rules::AuthoritativeRuleEventV3>,
+    pub delta: Option<StateDelta>,
+    pub events: Vec<mtgml_rules::AuthoritativeRuleEvent>,
     pub checkpoint: EnvironmentCheckpointV8,
     pub player_steps: BTreeMap<PlayerId, PlayerStepV4>,
 }
@@ -153,8 +153,8 @@ impl BasicLandEnvironmentRuntimeV8 {
     pub fn information_state(
         &self,
         perspective: PlayerId,
-    ) -> Result<mtgml_observation::PlayerInformationStateV3, crate::PlayerEndpointError> {
-        crate::player_projection::project_successor_information_state_v3_structural_only(
+    ) -> Result<mtgml_observation::PlayerInformationState, crate::PlayerEndpointError> {
+        crate::player_projection::project_successor_information_state_structural_only(
             &self.current.state,
             perspective,
             self.admission.execution_identity(),
@@ -179,7 +179,7 @@ impl BasicLandEnvironmentRuntimeV8 {
             perspective,
             &response,
         );
-        let transition = match mtgml_rules::execute_magic_response_v4(
+        let transition = match mtgml_rules::execute_magic_response(
             &self.admission,
             &before.state,
             perspective,
@@ -342,7 +342,7 @@ impl BasicLandEnvironmentRuntimeV8 {
 fn next_checkpoint(
     admission: &ExecutableProfileAdmissionV1,
     before: &EnvironmentCheckpointV8,
-    transition: Option<&mtgml_rules::BasicLandTransitionProductV4>,
+    transition: Option<&mtgml_rules::BasicLandTransitionProduct>,
 ) -> Result<EnvironmentCheckpointV8, crate::PlayerEndpointError> {
     let Some(transition) = transition else {
         return Ok(before.clone());
@@ -385,7 +385,7 @@ fn next_checkpoint(
 
 fn basic_land_rejection_code(
     status: &EpisodeStatus,
-    request: Option<&mtgml_decision::AuthoritativeDecisionRequestV4>,
+    request: Option<&mtgml_decision::AuthoritativeDecisionRequest>,
     perspective: PlayerId,
     response: &DecisionResponseV3,
 ) -> mtgml_observation::PlayerSubmissionCodeV1 {
@@ -935,7 +935,7 @@ mod tests {
         let admission = game_admission();
         let mut state = state_with_two_lands();
         let status = EpisodeStatus::Running;
-        mtgml_rules::install_basic_land_request_v4(&admission, &mut state, PlayerId(1), &status)
+        mtgml_rules::install_basic_land_request(&admission, &mut state, PlayerId(1), &status)
             .unwrap();
         let checkpoint = EnvironmentCheckpointV8::new_for_basic_land_profile(
             &admission,
@@ -1128,7 +1128,7 @@ mod tests {
             .unwrap();
         }
         let project = |state: &EngineState| {
-            crate::project_successor_information_state_v3(
+            crate::project_successor_information_state(
                 state,
                 PlayerId(2),
                 admission.execution_identity(),
@@ -1164,7 +1164,7 @@ mod tests {
             _ => false,
         }));
         let owner_information =
-            crate::player_projection::project_successor_information_state_v3_structural_only(
+            crate::player_projection::project_successor_information_state_structural_only(
                 &with_internal_mapping,
                 PlayerId(1),
                 admission.execution_identity(),
@@ -1204,7 +1204,7 @@ mod tests {
             .opaque_to_ability
             .remove(&owner_opaque_ability);
         assert!(matches!(
-            crate::player_projection::project_successor_information_state_v3_structural_only(
+            crate::player_projection::project_successor_information_state_structural_only(
                 &missing_owner_ability_identity,
                 PlayerId(1),
                 admission.execution_identity(),
@@ -1241,7 +1241,7 @@ mod tests {
             )
             .unwrap();
             assert!(matches!(
-                crate::project_successor_information_state_v3(
+                crate::project_successor_information_state(
                     state,
                     PlayerId(2),
                     admission.execution_identity(),
@@ -1266,7 +1266,7 @@ mod tests {
             temporary_haste_effect(public_target),
         );
         public_effect_state.allocators.next_effect_id = mtgml_model::EffectInstanceId(2);
-        let public_information = crate::project_successor_information_state_v3(
+        let public_information = crate::project_successor_information_state(
             &public_effect_state,
             PlayerId(2),
             admission.execution_identity(),
@@ -1367,7 +1367,7 @@ mod tests {
         .unwrap();
 
         let project = |candidate: &EngineState| {
-            crate::player_projection::project_successor_information_state_v3_structural_only(
+            crate::player_projection::project_successor_information_state_structural_only(
                 candidate,
                 PlayerId(2),
                 admission.execution_identity(),
@@ -1603,22 +1603,23 @@ mod tests {
                 })
             };
             let occurrence = |event_id, revision, lifecycle, source_event_id| {
-                mtgml_rules::AuthoritativeRuleEventV3 {
+                mtgml_rules::AuthoritativeRuleEvent {
                     event_id,
                     state_revision: revision,
-                    event: mtgml_rules::AuthoritativeRuleEventKindV3::PerspectiveObservationOccurrence {
-                        lifecycle,
-                        source_event_id,
-                    },
+                    event:
+                        mtgml_rules::AuthoritativeRuleEventKind::PerspectiveObservationOccurrence {
+                            lifecycle,
+                            source_event_id,
+                        },
                 }
             };
             let revision = after.revision;
             let tapped_event_id = mtgml_model::RuleEventId(first_event_id.0 + 1);
             let events = vec![
-                mtgml_rules::AuthoritativeRuleEventV3 {
+                mtgml_rules::AuthoritativeRuleEvent {
                     event_id: first_event_id,
                     state_revision: revision,
-                    event: mtgml_rules::AuthoritativeRuleEventKindV3::StackItemAdded {
+                    event: mtgml_rules::AuthoritativeRuleEventKind::StackItemAdded {
                         stack_object: mtgml_model::StackObjectId(1),
                         payload: after.zones.stack_records[&mtgml_model::StackObjectId(1)]
                             .payload
@@ -1626,10 +1627,10 @@ mod tests {
                             .unwrap(),
                     },
                 },
-                mtgml_rules::AuthoritativeRuleEventV3 {
+                mtgml_rules::AuthoritativeRuleEvent {
                     event_id: tapped_event_id,
                     state_revision: revision,
-                    event: mtgml_rules::AuthoritativeRuleEventKindV3::ObjectTapped {
+                    event: mtgml_rules::AuthoritativeRuleEventKind::ObjectTapped {
                         object: public_object,
                         from: false,
                         to: true,
@@ -1692,16 +1693,12 @@ mod tests {
                 mtgml_model::RuleEventId(first_event_id.0 + events.len() as u64);
             let mut after_engine: mtgml_state::EngineState = after.clone();
             for event in &events {
-                if let mtgml_rules::AuthoritativeRuleEventKindV3::PerspectiveObservationOccurrence {
+                if let mtgml_rules::AuthoritativeRuleEventKind::PerspectiveObservationOccurrence {
                     lifecycle,
                     ..
                 } = &event.event
                 {
-                    mtgml_state::apply_perspective_lifecycle(
-                        &mut after_engine,
-                        lifecycle,
-                    )
-                    .unwrap();
+                    mtgml_state::apply_perspective_lifecycle(&mut after_engine, lifecycle).unwrap();
                 }
             }
             after = after_engine;
@@ -1836,7 +1833,7 @@ mod tests {
         let admission = game_admission();
         let mut state = state_with_two_lands();
         let status = EpisodeStatus::Running;
-        mtgml_rules::install_basic_land_request_v4(&admission, &mut state, PlayerId(1), &status)
+        mtgml_rules::install_basic_land_request(&admission, &mut state, PlayerId(1), &status)
             .unwrap();
         let checkpoint = EnvironmentCheckpointV8::new_for_basic_land_profile(
             &admission,
@@ -1870,7 +1867,7 @@ mod tests {
         let admission = game_admission();
         let status = EpisodeStatus::Running;
         let mut initial_state = state_with_two_lands();
-        mtgml_rules::install_basic_land_request_v4(
+        mtgml_rules::install_basic_land_request(
             &admission,
             &mut initial_state,
             PlayerId(1),
@@ -1895,7 +1892,7 @@ mod tests {
         .unwrap();
 
         let mut replacement_state = state_with_players([PlayerId(1), PlayerId(3)]);
-        mtgml_rules::install_basic_land_request_v4(
+        mtgml_rules::install_basic_land_request(
             &admission,
             &mut replacement_state,
             PlayerId(1),
@@ -1937,7 +1934,7 @@ mod tests {
     fn terminal_basic_land_restore_rejects_unsupported_state_without_mutation() {
         let admission = game_admission();
         let mut initial_state = state_with_two_lands();
-        mtgml_rules::install_basic_land_request_v4(
+        mtgml_rules::install_basic_land_request(
             &admission,
             &mut initial_state,
             PlayerId(1),
@@ -2018,7 +2015,7 @@ mod tests {
     fn successor_projection_accepts_running_to_terminal_and_truncated_statuses() {
         let admission = game_admission();
         let mut before = state_with_two_lands();
-        mtgml_rules::install_basic_land_request_v4(
+        mtgml_rules::install_basic_land_request(
             &admission,
             &mut before,
             PlayerId(1),
@@ -2085,7 +2082,7 @@ mod tests {
     fn successor_projection_uses_before_and_after_episode_status_separately() {
         let admission = game_admission();
         let mut before = state_with_two_lands();
-        mtgml_rules::install_basic_land_request_v4(
+        mtgml_rules::install_basic_land_request(
             &admission,
             &mut before,
             PlayerId(1),
@@ -2153,7 +2150,7 @@ mod tests {
         let initial_admission = game_admission();
         let mut state = state_with_two_lands();
         let status = EpisodeStatus::Running;
-        mtgml_rules::install_basic_land_request_v4(
+        mtgml_rules::install_basic_land_request(
             &initial_admission,
             &mut state,
             PlayerId(1),
@@ -2182,7 +2179,7 @@ mod tests {
 
         let admission = game_admission();
         let mut state = state_with_two_lands();
-        mtgml_rules::install_basic_land_request_v4(
+        mtgml_rules::install_basic_land_request(
             &admission,
             &mut state,
             PlayerId(1),
@@ -2215,7 +2212,7 @@ mod tests {
     fn restore_rebinds_empty_replay_segment_to_checkpoint_rng_provenance() {
         let admission = game_admission();
         let mut state_a = state_with_two_lands();
-        mtgml_rules::install_basic_land_request_v4(
+        mtgml_rules::install_basic_land_request(
             &admission,
             &mut state_a,
             PlayerId(1),
@@ -2241,7 +2238,7 @@ mod tests {
         .unwrap();
 
         let mut state_b = state_with_two_lands();
-        mtgml_rules::install_basic_land_request_v4(
+        mtgml_rules::install_basic_land_request(
             &admission,
             &mut state_b,
             PlayerId(1),
@@ -2296,7 +2293,7 @@ mod tests {
     fn structural_digest_helpers_do_not_admit_forged_profile_decisions() {
         let admission = game_admission();
         let mut state = state_with_two_lands();
-        mtgml_rules::install_basic_land_request_v4(
+        mtgml_rules::install_basic_land_request(
             &admission,
             &mut state,
             PlayerId(1),
@@ -2305,7 +2302,7 @@ mod tests {
         .unwrap();
         let request = state.execution.pending_decision.clone().unwrap();
         let land_object = match request.candidates[1].trusted_binding {
-            mtgml_decision::EngineCandidateBindingV4::PlayLand { object } => object,
+            mtgml_decision::EngineCandidateBinding::PlayLand { object } => object,
             _ => panic!("candidate 1 is the legal PlayLand"),
         };
         let opaque_object =
@@ -2313,12 +2310,12 @@ mod tests {
         let mut forged = request;
         forged.candidates.insert(
             3,
-            mtgml_decision::AuthoritativeCandidateV4 {
+            mtgml_decision::AuthoritativeCandidate {
                 candidate_id: mtgml_model::CandidateIdV1(3),
-                visible_intent: mtgml_decision::CandidateIntentV4::CastSpell {
+                visible_intent: mtgml_decision::CandidateIntent::CastSpell {
                     object: opaque_object,
                 },
-                trusted_binding: mtgml_decision::EngineCandidateBindingV4::CastSpell {
+                trusted_binding: mtgml_decision::EngineCandidateBinding::CastSpell {
                     object: land_object,
                 },
             },
@@ -2330,7 +2327,7 @@ mod tests {
         state.execution.pending_decision = Some(forged);
 
         state.validate_structure().unwrap();
-        mtgml_state::calculate_full_state_digest_v7_structural_only(&state).unwrap();
+        mtgml_state::calculate_full_state_digest_structural_only(&state).unwrap();
         assert!(state.validate().is_err());
         assert!(EnvironmentCheckpointV8::new(
             state.clone(),
@@ -2355,13 +2352,8 @@ mod tests {
             let admission = game_admission();
             let mut state = state_with_two_lands();
             let status = EpisodeStatus::Running;
-            mtgml_rules::install_basic_land_request_v4(
-                &admission,
-                &mut state,
-                PlayerId(1),
-                &status,
-            )
-            .unwrap();
+            mtgml_rules::install_basic_land_request(&admission, &mut state, PlayerId(1), &status)
+                .unwrap();
             let checkpoint = EnvironmentCheckpointV8::new_for_basic_land_profile(
                 &admission,
                 state.clone(),
@@ -2416,13 +2408,8 @@ mod tests {
             let admission = game_admission();
             let mut state = state_with_two_lands();
             let status = EpisodeStatus::Running;
-            mtgml_rules::install_basic_land_request_v4(
-                &admission,
-                &mut state,
-                PlayerId(1),
-                &status,
-            )
-            .unwrap();
+            mtgml_rules::install_basic_land_request(&admission, &mut state, PlayerId(1), &status)
+                .unwrap();
             let initial = EnvironmentCheckpointV8::new_for_basic_land_profile(
                 &admission,
                 state.clone(),
@@ -2452,9 +2439,7 @@ mod tests {
                     .candidates[3]
                     .trusted_binding
                 {
-                    mtgml_decision::EngineCandidateBindingV4::ActivateAbility { ability } => {
-                        ability
-                    }
+                    mtgml_decision::EngineCandidateBinding::ActivateAbility { ability } => ability,
                     _ => panic!("candidate 3 is the intrinsic mana ability"),
                 };
                 Some(direct.current.state.card_rules.abilities.by_instance[&ability].source)
@@ -2523,7 +2508,7 @@ mod tests {
         let admission = game_admission();
         let status = EpisodeStatus::Running;
         let mut state = state_with_two_lands();
-        mtgml_rules::install_basic_land_request_v4(&admission, &mut state, PlayerId(1), &status)
+        mtgml_rules::install_basic_land_request(&admission, &mut state, PlayerId(1), &status)
             .unwrap();
         let before = EnvironmentCheckpointV8::new_for_basic_land_profile(
             &admission,
@@ -2542,7 +2527,7 @@ mod tests {
                 candidate_id: mtgml_model::CandidateIdV1(0),
             },
         };
-        let mut product = mtgml_rules::execute_magic_response_v4(
+        let mut product = mtgml_rules::execute_magic_response(
             &admission,
             &state,
             PlayerId(1),

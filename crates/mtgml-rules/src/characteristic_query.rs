@@ -10,7 +10,7 @@ use mtgml_card_ir::{
     BASIC_LAND_PROFILE_ID_V1,
 };
 use mtgml_model::{CardDefinitionId, GameObjectId, PlayerId, ZoneKind};
-use mtgml_state::{EngineState, EngineStatePartsV3Error, GameObject, ZoneLocation};
+use mtgml_state::{EngineState, EngineStateError, GameObject, ZoneLocation};
 use std::collections::BTreeSet;
 use thiserror::Error;
 
@@ -100,7 +100,7 @@ impl<'a> S1QueryAuthority<'a> {
             .ok_or_else(|| classify_absent_object(state, object_id))?;
         if object.id != object_id {
             return Err(S1QueryError::InconsistentState(
-                EngineStatePartsV3Error::StateInvariant,
+                EngineStateError::StateInvariant,
             ));
         }
         let location = state
@@ -310,7 +310,7 @@ pub(crate) enum S1QueryError {
     #[error("counter state for object {0:?} is invalid")]
     InvalidCounterState(GameObjectId),
     #[error("authoritative state is inconsistent: {0}")]
-    InconsistentState(EngineStatePartsV3Error),
+    InconsistentState(EngineStateError),
     #[error("characteristic arithmetic overflowed")]
     ArithmeticOverflow,
 }
