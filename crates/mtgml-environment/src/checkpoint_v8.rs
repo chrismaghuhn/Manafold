@@ -57,7 +57,7 @@ impl EnvironmentCheckpointV8 {
         if &execution_identity != admission.execution_identity() {
             return Err(CheckpointV8Error::ContractBinding);
         }
-        mtgml_rules::validate_basic_land_pending_request_v4(admission, &state, &status)
+        mtgml_rules::validate_magic_pending_request_v4(admission, &state, &status)
             .map_err(|_| CheckpointV8Error::State)?;
         Self::build(state, status, limit_counters, execution_identity, true)
     }
@@ -126,7 +126,7 @@ impl EnvironmentCheckpointV8 {
         if &self.execution_identity != admission.execution_identity() {
             return Err(CheckpointV8Error::ContractBinding);
         }
-        mtgml_rules::validate_basic_land_pending_request_v4(admission, &self.state, &self.status)
+        mtgml_rules::validate_magic_pending_request_v4(admission, &self.state, &self.status)
             .map_err(|_| CheckpointV8Error::State)?;
         self.validate_inner(true)
     }

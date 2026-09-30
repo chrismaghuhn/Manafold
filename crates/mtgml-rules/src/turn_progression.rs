@@ -372,8 +372,14 @@ fn advance(
                 }
                 return Ok(open_priority(next));
             }
+            // The beginning of combat is part of the turn structure every
+            // admission has (as in the accepted basic-land slice); declaring
+            // attackers and the rest of combat need their own capabilities.
             TurnPosition::Combat {
-                step: CombatStep::BeginningOfCombat | CombatStep::EndOfCombat,
+                step: CombatStep::BeginningOfCombat,
+            } => return Ok(open_priority(next)),
+            TurnPosition::Combat {
+                step: CombatStep::EndOfCombat,
             } => {
                 admits(admission, "rules/combat-phase")?;
                 return Ok(open_priority(next));
@@ -635,23 +641,48 @@ fn finish(
             }
         }
     }
-    // CR 500.4: mana empties from each player's pool at the end of each step.
+    // CR 500.4: mana empties from each player's pool at the end of each
+    // step. Pools are public: every player observes each change.
     if old.position != new.position {
         let pools = next.card_rules_state.mana.pools.clone();
         for (player, pool) in pools {
-            if pool != Default::default() {
-                next.card_rules_state
-                    .mana
-                    .pools
-                    .insert(player, Default::default());
-                pending.push(Pending::Kind(Box::new(
-                    AuthoritativeRuleEventKindV3::ManaPoolChanged {
-                        player,
-                        before: pool,
-                        after: Default::default(),
-                        cause: ManaPoolChangeCauseV1::Emptied,
-                    },
-                )));
+            if pool == Default::default() {
+                continue;
+            }
+            next.card_rules_state
+                .mana
+                .pools
+                .insert(player, Default::default());
+            let source = pending.len();
+            pending.push(Pending::Kind(Box::new(
+                AuthoritativeRuleEventKindV3::ManaPoolChanged {
+                    player,
+                    before: pool,
+                    after: Default::default(),
+                    cause: ManaPoolChangeCauseV1::Emptied,
+                },
+            )));
+            let perspectives: Vec<PlayerId> =
+                next.predecessor_v5.core.players.keys().copied().collect();
+            for perspective in perspectives {
+                let lifecycle = PerspectiveLifecycleAuditV1 {
+                    perspective,
+                    sequence: next
+                        .predecessor_v5
+                        .knowledge
+                        .players
+                        .get(&perspective)
+                        .ok_or(Error::InvalidResult)?
+                        .next_visible_sequence,
+                    mutation: Default::default(),
+                };
+                let mut engine: EngineState = next.predecessor_v5.clone().into();
+                mtgml_state::apply_perspective_lifecycle(&mut engine, &lifecycle)
+                    .map_err(|_| Error::InvalidResult)?;
+                let mut parts = engine.parts();
+                parts.execution = Default::default();
+                next.predecessor_v5 = parts;
+                pending.push(Pending::Occurrence { lifecycle, source });
             }
         }
     }
@@ -1474,12 +1505,13 @@ mod tests {
     #[test]
     fn content_only_admission_fails_closed_beyond_its_scope() {
         let (admission, state) = game_with(crate::basic_land::content_only_admission_fixture(), 3);
+        let state = pass_until(&admission, state, at(BEGIN_COMBAT, 1));
         let state = pass(&admission, &state).0;
 
         assert_eq!(
             submit(&admission, &state, pass_answer(pending(&state))),
             Err(crate::BasicLandTransitionError::TurnProgressUnsupported),
-            "the content-only scope admits no combat phase"
+            "the content-only scope admits no attacker declaration"
         );
     }
 

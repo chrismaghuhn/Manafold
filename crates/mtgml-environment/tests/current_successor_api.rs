@@ -1,37 +1,26 @@
 #![cfg(not(feature = "historical-conformance-runtime"))]
 
+mod common;
+
+use common::CONTENT;
+
 use std::collections::BTreeMap;
 
-use mtgml_card_ir::{
-    admit_executable_profile_v1, decode_content_manifest_v1, CardSemanticBindingV1,
-    ExecutableProfileAdmissionV1,
-};
+use mtgml_card_ir::{decode_content_manifest_v1, CardSemanticBindingV1};
 use mtgml_decision::{DecisionAnswerV2, DecisionResponseV3};
 use mtgml_environment::{
     submit_response_bytes, BasicLandReplayV8ExecutionReport, BasicLandRuntimeOutputV8,
     ControllerError, CurrentPlayerStep, EnvironmentBackend, EnvironmentCheckpointV8,
     PlayerEndpoint, PlayerEndpointError, TrustedEnvironmentController,
 };
-use mtgml_model::{
-    CapabilityRequirementV1, CardDefinitionId, ExecutionIdentityV1, ExecutionProgramV1, PlayerId,
-    RulesAuthorityV1, RulesContractManifestV1, SemanticContractManifestV1,
-};
+use mtgml_model::{CardDefinitionId, PlayerId};
 use mtgml_observation::{ObservationEnvelopeV2, PlayerInformationStateV3, PlayerStepV4};
-use mtgml_replay::{
-    AuthoritativeReplayV8, ContentContractMaterialV1, InitialEnvironmentIdentityV8,
-    ReplayManifestV8, SemanticContractMaterialV7,
-};
+use mtgml_replay::AuthoritativeReplayV8;
 use mtgml_state::{
     AbilityAuthorityStateV1, AbilityAuthorityV1, CardRulesAuthoritativeStateV1, EngineStatePartsV2,
     EngineStatePartsV3, FaceStateV1, ManaStateV1, PlayerTurnHistoryV1, TurnHistoryStateV1,
     TurnPosition, VisibilityPartition, ZoneKey, ZoneLocation, ZonePosition,
 };
-
-const CONTENT: &[u8] =
-    include_bytes!("../../../cards/definitions/basic-land-v1/content-contract.v1.cbor");
-const PROVENANCE: &[u8] =
-    include_bytes!("../../../cards/definitions/basic-land-v1/provenance.v1.cbor");
-const RULES_SNAPSHOT: &str = "wotc-cr-2026-09-25-txt-20260925-sha256-8d860e451f20f38865b725b42d82feb714c725373dd8f3b32b8652b3eeb070ca";
 
 struct ProductionAliasProbe {
     step: PlayerStepV4,
@@ -139,7 +128,7 @@ fn public_current_endpoint_and_wire_boundary_return_player_step_v4() {
 
 #[test]
 fn verified_basic_land_runs_through_real_v8_controller_and_player_endpoints() {
-    let admission = basic_land_admission();
+    let admission = common::game_admission();
     let mut state = basic_land_state();
     let status = mtgml_model::EpisodeStatus::Running;
     mtgml_rules::install_basic_land_request_v4(&admission, &mut state, PlayerId(1), &status)
@@ -157,7 +146,7 @@ fn verified_basic_land_runs_through_real_v8_controller_and_player_endpoints() {
         state,
         status,
         Default::default(),
-        replay_manifest(&admission, &checkpoint),
+        common::replay_manifest(&admission, &checkpoint),
     )
     .unwrap();
     let controller = TrustedEnvironmentController::new(runtime);
@@ -236,61 +225,6 @@ fn verified_basic_land_runs_through_real_v8_controller_and_player_endpoints() {
     let report = controller.execute_replay(replay).unwrap();
     assert_eq!(report.transitions.len(), 1);
     assert_eq!(report.final_checkpoint, controller.checkpoint().unwrap());
-}
-
-fn basic_land_admission() -> ExecutableProfileAdmissionV1 {
-    let content_id =
-        mtgml_persistence::content_contract_digest::calculate_content_contract_id_v1(CONTENT)
-            .unwrap();
-    let closure = [
-        "rules/basic-land-mana",
-        "rules/basic-priority",
-        "rules/cleanup-reset",
-        "rules/combat-phase",
-        "rules/declare-attackers",
-        "rules/draw-card",
-        "rules/land-play",
-        "rules/mana-pool",
-        "rules/state-based-actions-combat",
-        "rules/turn-structure",
-        "rules/zone-incarnation",
-    ]
-    .into_iter()
-    .map(|key| CapabilityRequirementV1 {
-        key: key.to_owned(),
-        version: "0.1.0".to_owned(),
-    })
-    .collect();
-    let rules = RulesContractManifestV1 {
-        rules_authority: RulesAuthorityV1::ComprehensiveRules {
-            snapshot_id: RULES_SNAPSHOT.to_owned(),
-        },
-        capability_closure: Some(closure),
-    };
-    let semantic = SemanticContractManifestV1 {
-        rules_contract_id:
-            mtgml_persistence::semantic_contract_digest::calculate_rules_contract_id_v1(&rules)
-                .unwrap(),
-        format_contract_id: None,
-        content_contract_id: Some(content_id.clone()),
-    };
-    let execution = ExecutionIdentityV1 {
-        program_kind: ExecutionProgramV1::MagicRules,
-        semantic_contract_id:
-            mtgml_persistence::semantic_contract_digest::calculate_semantic_contract_id_v1(
-                &semantic,
-            )
-            .unwrap(),
-    };
-    admit_executable_profile_v1(
-        CONTENT,
-        &content_id,
-        PROVENANCE,
-        &rules,
-        &semantic,
-        &execution,
-    )
-    .unwrap()
 }
 
 fn add_object(
@@ -449,50 +383,4 @@ fn basic_land_state() -> EngineStatePartsV3 {
         state.card_rules_state,
     )
     .unwrap()
-}
-
-fn checkpoint_identity(checkpoint: &EnvironmentCheckpointV8) -> InitialEnvironmentIdentityV8 {
-    InitialEnvironmentIdentityV8 {
-        state_revision: checkpoint.state.predecessor_v5.revision,
-        full_state_digest: checkpoint.state_digest.clone(),
-        episode_status: checkpoint.status.clone(),
-        environment_limit_counters: checkpoint.limit_counters.clone(),
-        checkpoint_codec_identity: checkpoint.codec.clone(),
-        checkpoint_digest: checkpoint.checkpoint_digest.clone(),
-        execution_identity: checkpoint.execution_identity.clone(),
-    }
-}
-
-fn replay_manifest(
-    admission: &ExecutableProfileAdmissionV1,
-    checkpoint: &EnvironmentCheckpointV8,
-) -> ReplayManifestV8 {
-    let mut manifest: ReplayManifestV8 = serde_json::from_str(include_str!(
-        "../../../schemas/examples/replay-manifest-v8.json"
-    ))
-    .unwrap();
-    manifest.execution_identity = admission.execution_identity().clone();
-    manifest.semantic_contract = SemanticContractMaterialV7 {
-        semantic_contract_id: admission.semantic_contract_id().clone(),
-        manifest: admission.semantic_contract_manifest().clone(),
-        rules_manifest: admission.rules_contract_manifest().clone(),
-        content_contract: Some(
-            ContentContractMaterialV1::from_manifest(decode_content_manifest_v1(CONTENT).unwrap())
-                .unwrap(),
-        ),
-    };
-    let mut second_deck = manifest.decks[0].clone();
-    second_deck.player = PlayerId(2);
-    second_deck.deck_id = "deck:synthetic-p2".to_owned();
-    manifest.decks.push(second_deck);
-    manifest.rules_snapshot = RULES_SNAPSHOT.to_owned();
-    manifest.card_bundle = admission.content_contract_id().to_string();
-    manifest.randomness.root_seed_hex = checkpoint
-        .state
-        .predecessor_v5
-        .random
-        .root_seed
-        .to_lower_hex();
-    manifest.initial_identity = checkpoint_identity(checkpoint);
-    manifest
 }

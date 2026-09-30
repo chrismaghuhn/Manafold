@@ -181,12 +181,8 @@ impl BasicLandEnvironmentRuntimeV8 {
         &self,
         perspective: PlayerId,
     ) -> Result<mtgml_observation::PlayerInformationStateV3, crate::PlayerEndpointError> {
-        mtgml_rules::validate_basic_land_pending_request_v4(
-            &self.admission,
-            &self.state,
-            &self.status,
-        )
-        .map_err(|_| crate::PlayerEndpointError::ServiceUnavailable)?;
+        mtgml_rules::validate_magic_pending_request_v4(&self.admission, &self.state, &self.status)
+            .map_err(|_| crate::PlayerEndpointError::ServiceUnavailable)?;
         crate::player_projection::project_successor_information_state_v3_structural_only(
             &self.state,
             perspective,
@@ -211,12 +207,8 @@ impl BasicLandEnvironmentRuntimeV8 {
         {
             return Err(crate::PlayerEndpointError::ServiceUnavailable);
         }
-        mtgml_rules::validate_basic_land_pending_request_v4(
-            &self.admission,
-            &self.state,
-            &self.status,
-        )
-        .map_err(|_| crate::PlayerEndpointError::ServiceUnavailable)?;
+        mtgml_rules::validate_magic_pending_request_v4(&self.admission, &self.state, &self.status)
+            .map_err(|_| crate::PlayerEndpointError::ServiceUnavailable)?;
         let rejected_code = basic_land_rejection_code(
             &self.status,
             self.state.execution_v4.pending_decision.as_ref(),
@@ -226,7 +218,7 @@ impl BasicLandEnvironmentRuntimeV8 {
         let before = self
             .checkpoint()
             .map_err(|_| crate::PlayerEndpointError::ServiceUnavailable)?;
-        let transition = match mtgml_rules::execute_basic_land_response_v4(
+        let transition = match mtgml_rules::execute_magic_response_v4(
             &self.admission,
             &self.state,
             perspective,

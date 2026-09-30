@@ -457,3 +457,51 @@ fn opponent_sees_discarded_card_but_not_kept_cards() {
     }
     assert_eq!(opponent_steps[0], opponent_steps[1]);
 }
+
+#[test]
+fn mana_emptying_is_observed_by_every_player() {
+    let (admission, state) = game(None);
+    let request = state.execution_v4.pending_decision.as_ref().unwrap();
+    let tap = request
+        .candidates
+        .iter()
+        .find(|candidate| {
+            matches!(
+                candidate.trusted_binding,
+                EngineCandidateBindingV4::ActivateAbility { .. }
+            )
+        })
+        .unwrap()
+        .candidate_id;
+    let response = DecisionResponseV3 {
+        schema_version: DECISION_RESPONSE_V3_SCHEMA.to_owned(),
+        player_decision_id: request.player_decision_id,
+        view_sequence: request.view_sequence,
+        answer: DecisionAnswerV2::SelectOne { candidate_id: tap },
+    };
+    let tapped = mtgml_rules::execute_magic_response_v4(
+        &admission,
+        &state,
+        P1,
+        &response,
+        &EpisodeStatus::Running,
+    )
+    .unwrap()
+    .next_state;
+    let passed = pass(&admission, &tapped).next_state;
+    let product = pass(&admission, &passed);
+    let steps = project(&admission, &passed, &product);
+
+    for player in [P1, P2] {
+        assert!(
+            steps[&player]
+                .observed_events
+                .iter()
+                .any(|envelope| matches!(
+                    envelope.event,
+                    ObservedEventKindV4::ManaPoolChanged { player: P1, .. }
+                )),
+            "{player:?} observes P1's pool emptying"
+        );
+    }
+}
