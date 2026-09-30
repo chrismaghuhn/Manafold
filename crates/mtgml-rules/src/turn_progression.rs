@@ -110,6 +110,9 @@ pub fn validate_magic_pending_request_v4(
     state: &EngineStatePartsV3,
     status: &EpisodeStatus,
 ) -> Result<(), BasicLandCandidateError> {
+    if !hands_within_slice(state) {
+        return Err(BasicLandCandidateError::InvalidState);
+    }
     let Some(request) = state
         .execution_v4
         .pending_decision
@@ -205,6 +208,9 @@ fn validate_slice(
     {
         return Err(Error::TurnProgressUnsupported);
     }
+    if !hands_within_slice(state) {
+        return Err(Error::TurnProgressUnsupported);
+    }
     for (object, location) in &parts.zones.locations {
         if location.zone == ZoneKind::Battlefield {
             crate::S1QueryAuthority::for_object(admission, state, *object)
@@ -212,6 +218,36 @@ fn validate_slice(
         }
     }
     Ok(())
+}
+
+/// One draw per turn (CR 504.1) and the discard to maximum hand size at each
+/// cleanup (CR 514.1) keep the non-active player at seven cards or fewer and
+/// the active player at seven before their draw and eight after it. A larger
+/// hand could only reach a cleanup with several simultaneous discards, which
+/// need the owner's graveyard order that this slice does not offer.
+fn hands_within_slice(state: &EngineStatePartsV3) -> bool {
+    let core = &state.predecessor_v5.core;
+    let before_draw = matches!(
+        core.position,
+        TurnPosition::Beginning {
+            step: BeginningStep::Untap | BeginningStep::Upkeep
+        }
+    );
+    core.players.keys().all(|player| {
+        let hand = state
+            .predecessor_v5
+            .zones
+            .locations
+            .values()
+            .filter(|location| location.zone == ZoneKind::Hand && location.player == Some(*player))
+            .count();
+        let limit = if *player == core.active_player && !before_draw {
+            crate::turn_structure::ORDINARY_MAXIMUM_HAND_SIZE + 1
+        } else {
+            crate::turn_structure::ORDINARY_MAXIMUM_HAND_SIZE
+        };
+        hand <= limit
+    })
 }
 
 fn admits(admission: &ExecutableProfileAdmissionV1, key: &str) -> Result<(), Error> {
@@ -1728,18 +1764,30 @@ mod tests {
     }
 
     #[test]
-    fn cleanup_with_more_than_eight_cards_fails_closed() {
+    fn hands_the_slice_cannot_reach_are_rejected_before_play() {
         // Discarding two or more cards at once needs the owner's graveyard
-        // order, which this slice does not offer yet.
-        let (admission, state) =
-            game_with_hands(crate::basic_land::basic_land_admission_fixture(), 3, 7, 0);
-        let state = pass_until(&admission, state, at(END_STEP, 1));
-        let state = pass(&admission, &state).0;
-
-        assert_eq!(
-            submit(&admission, &state, pass_answer(pending(&state))),
-            Err(crate::BasicLandTransitionError::TurnProgressUnsupported)
-        );
+        // order, which this slice does not offer. One draw per turn and the
+        // discard to seven keep every reachable cleanup at one discard, so
+        // larger hands are rejected before any step instead of mid-game.
+        let admission = crate::basic_land::basic_land_admission_fixture();
+        let status = EpisodeStatus::Running;
+        for (p1_extra, p2_extra) in [(7, 0), (0, 8)] {
+            let (_, state) = game_with_hands(admission.clone(), 3, p1_extra, p2_extra);
+            assert!(
+                zone_count(&state, P1, ZoneKind::Hand) == 9
+                    || zone_count(&state, P2, ZoneKind::Hand) == 8
+            );
+            assert!(validate_magic_pending_request_v4(&admission, &state, &status).is_err());
+            assert_eq!(
+                submit(&admission, &state, pass_answer(pending(&state))),
+                Err(crate::BasicLandTransitionError::TurnProgressUnsupported)
+            );
+        }
+        // The active player may hold eight after their draw, the other seven.
+        let (_, state) = game_with_hands(admission.clone(), 3, 6, 7);
+        assert_eq!(zone_count(&state, P1, ZoneKind::Hand), 8);
+        assert_eq!(zone_count(&state, P2, ZoneKind::Hand), 7);
+        validate_magic_pending_request_v4(&admission, &state, &status).unwrap();
     }
 
     #[test]
@@ -1782,17 +1830,6 @@ mod tests {
             discard(&admission, &state, vec![first, last_candidate(&state)]),
             Err(crate::BasicLandTransitionError::InvalidSelection)
         );
-    }
-
-    #[test]
-    fn non_active_player_never_discards() {
-        let (admission, state) =
-            game_with_hands(crate::basic_land::basic_land_admission_fixture(), 3, 0, 8);
-        let after = discard_request(&admission, state);
-
-        assert_eq!(after.predecessor_v5.core.turn_number, 2);
-        assert_eq!(after.predecessor_v5.core.position, UPKEEP);
-        assert_eq!(pending(&after).purpose, DecisionPurposeV4::PriorityAction);
     }
 
     #[test]

@@ -163,6 +163,15 @@ pub fn land_game(
     hands: &[Vec<CardDefinitionId>; 2],
     seed: u64,
 ) -> TrustedEnvironmentController {
+    try_land_game(libraries, hands, seed).unwrap()
+}
+
+/// As `land_game`, returning the error if the game cannot be created.
+pub fn try_land_game(
+    libraries: &[Vec<CardDefinitionId>; 2],
+    hands: &[Vec<CardDefinitionId>; 2],
+    seed: u64,
+) -> Result<TrustedEnvironmentController, mtgml_environment::ControllerError> {
     let admission = game_admission();
     let mut state = land_game_state(libraries, hands, seed);
     let status = mtgml_model::EpisodeStatus::Running;
@@ -173,17 +182,15 @@ pub fn land_game(
         status.clone(),
         Default::default(),
         admission.execution_identity().clone(),
-    )
-    .unwrap();
+    )?;
     let runtime = mtgml_environment::BasicLandEnvironmentRuntimeV8::new(
         admission.clone(),
         state,
         status,
         Default::default(),
         replay_manifest(&admission, &checkpoint),
-    )
-    .unwrap();
-    TrustedEnvironmentController::new(runtime)
+    )?;
+    Ok(TrustedEnvironmentController::new(runtime))
 }
 
 fn land_game_state(

@@ -264,6 +264,18 @@ fn drawing_from_an_empty_library_ends_the_game() {
 }
 
 #[test]
+fn a_game_cannot_start_with_hands_the_slice_cannot_reach() {
+    // P1 is active in the first main phase and may hold eight; P2 may hold
+    // seven. One card more would need several discards at some cleanup.
+    let (mountain, _) = land_definitions();
+    let hand = |cards: usize| vec![mountain; cards];
+    let libraries = [hand(3), hand(3)];
+    assert!(common::try_land_game(&libraries, &[hand(8), hand(7)], 1).is_ok());
+    assert!(common::try_land_game(&libraries, &[hand(9), hand(7)], 1).is_err());
+    assert!(common::try_land_game(&libraries, &[hand(8), hand(8)], 1).is_err());
+}
+
+#[test]
 fn hand_size_discard_through_the_player_endpoint() {
     // Both players hold seven and never play a land: P2 draws to eight on
     // turn 2 and P1 on turn 3; each discards at their own cleanup.
