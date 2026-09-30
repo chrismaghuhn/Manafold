@@ -217,43 +217,7 @@ impl BasicLandEnvironmentRuntimeV8 {
             .as_ref()
             .map_or_else(Vec::new, |value| value.events.clone());
         let delta = transition.as_ref().map(|value| value.delta.clone());
-        let checkpoint = match transition.as_ref().filter(|_| accepted) {
-            // A rejected response leaves the current checkpoint as it is.
-            None => before.clone(),
-            Some(transition) => {
-                let counters = EnvironmentLimitCounters {
-                    decisions_submitted: checked_add(before.limit_counters.decisions_submitted)?,
-                    accepted_transitions: checked_add(before.limit_counters.accepted_transitions)?,
-                    rule_events_emitted: before
-                        .limit_counters
-                        .rule_events_emitted
-                        .checked_add(events.len() as u64)
-                        .ok_or(crate::PlayerEndpointError::ServiceUnavailable)?,
-                    resource_units_consumed: before.limit_counters.resource_units_consumed,
-                    wall_clock_elapsed_millis: before.limit_counters.wall_clock_elapsed_millis,
-                };
-                let checkpoint = EnvironmentCheckpointV8::new_for_basic_land_profile(
-                    &self.admission,
-                    transition.next_state.clone(),
-                    transition.status.clone(),
-                    counters,
-                    self.admission.execution_identity().clone(),
-                )
-                .map_err(|_| crate::PlayerEndpointError::ServiceUnavailable)?;
-                // The delta must lead from the current checkpoint to the new
-                // one; both checkpoint digests were computed without it.
-                let delta = &transition.delta;
-                if delta.before_revision != before.state.predecessor_v5.revision
-                    || delta.before_digest != before.state_digest
-                    || delta.after_revision != checkpoint.state.predecessor_v5.revision
-                    || delta.after_digest != checkpoint.state_digest
-                    || delta.replacement != checkpoint.state
-                {
-                    return Err(crate::PlayerEndpointError::ServiceUnavailable);
-                }
-                checkpoint
-            }
-        };
+        let checkpoint = next_checkpoint(&self.admission, before, transition.as_ref())?;
         let steps = crate::successor_projection::project_successor_player_steps_v4(
             crate::successor_projection::SuccessorTransitionV4Projection {
                 before: &before.state,
@@ -393,6 +357,54 @@ impl BasicLandEnvironmentRuntimeV8 {
     pub fn replay_manifest(&self) -> &ReplayManifestV8 {
         self.replay.manifest()
     }
+}
+
+/// The checkpoint a response leads to: the current one when the response is
+/// rejected, or exactly one new checkpoint for an accepted transition whose
+/// delta leads from `before` to it (both checkpoint digests were computed
+/// without the delta).
+fn next_checkpoint(
+    admission: &ExecutableProfileAdmissionV1,
+    before: &EnvironmentCheckpointV8,
+    transition: Option<&mtgml_rules::BasicLandTransitionProductV4>,
+) -> Result<EnvironmentCheckpointV8, crate::PlayerEndpointError> {
+    let Some(transition) = transition else {
+        return Ok(before.clone());
+    };
+    // No producer returns a product that is not accepted. If one did, its
+    // meaning would be unknown, so fail closed instead of guessing.
+    if !transition.accepted {
+        return Err(crate::PlayerEndpointError::ServiceUnavailable);
+    }
+    let counters = EnvironmentLimitCounters {
+        decisions_submitted: checked_add(before.limit_counters.decisions_submitted)?,
+        accepted_transitions: checked_add(before.limit_counters.accepted_transitions)?,
+        rule_events_emitted: before
+            .limit_counters
+            .rule_events_emitted
+            .checked_add(transition.events.len() as u64)
+            .ok_or(crate::PlayerEndpointError::ServiceUnavailable)?,
+        resource_units_consumed: before.limit_counters.resource_units_consumed,
+        wall_clock_elapsed_millis: before.limit_counters.wall_clock_elapsed_millis,
+    };
+    let checkpoint = EnvironmentCheckpointV8::new_for_basic_land_profile(
+        admission,
+        transition.next_state.clone(),
+        transition.status.clone(),
+        counters,
+        admission.execution_identity().clone(),
+    )
+    .map_err(|_| crate::PlayerEndpointError::ServiceUnavailable)?;
+    let delta = &transition.delta;
+    if delta.before_revision != before.state.predecessor_v5.revision
+        || delta.before_digest != before.state_digest
+        || delta.after_revision != checkpoint.state.predecessor_v5.revision
+        || delta.after_digest != checkpoint.state_digest
+        || delta.replacement != checkpoint.state
+    {
+        return Err(crate::PlayerEndpointError::ServiceUnavailable);
+    }
+    Ok(checkpoint)
 }
 
 fn basic_land_rejection_code(
@@ -3151,6 +3163,56 @@ mod tests {
             assert_eq!(v7_replayed.transitions, vec![v7_direct]);
             assert_eq!(v8_replayed.transitions, vec![v8_direct]);
         }
+    }
+
+    #[test]
+    fn a_transition_that_is_not_accepted_fails_closed() {
+        let admission = admission();
+        let status = EpisodeStatus::Running;
+        let v2 = state_with_two_lands_v2();
+        let mut state =
+            EngineStatePartsV3::new(v2.predecessor_v5, Default::default(), v2.card_rules_state)
+                .unwrap();
+        mtgml_rules::install_basic_land_request_v4(&admission, &mut state, PlayerId(1), &status)
+            .unwrap();
+        let before = EnvironmentCheckpointV8::new_for_basic_land_profile(
+            &admission,
+            state.clone(),
+            status.clone(),
+            EnvironmentLimitCounters::default(),
+            admission.execution_identity().clone(),
+        )
+        .unwrap();
+        let request = state.execution_v4.pending_decision.clone().unwrap();
+        let response = DecisionResponseV3 {
+            schema_version: mtgml_decision::DECISION_RESPONSE_V3_SCHEMA.to_owned(),
+            player_decision_id: request.player_decision_id,
+            view_sequence: request.view_sequence,
+            answer: mtgml_decision::DecisionAnswerV2::SelectOne {
+                candidate_id: mtgml_model::CandidateIdV1(0),
+            },
+        };
+        let mut product = mtgml_rules::execute_magic_response_v4(
+            &admission,
+            &state,
+            PlayerId(1),
+            &response,
+            &status,
+        )
+        .unwrap();
+
+        assert!(next_checkpoint(&admission, &before, Some(&product)).is_ok());
+        assert_eq!(
+            next_checkpoint(&admission, &before, None),
+            Ok(before.clone())
+        );
+        // No producer returns a product that is not accepted; if one did, its
+        // meaning is unknown, so the runtime must not guess.
+        product.accepted = false;
+        assert_eq!(
+            next_checkpoint(&admission, &before, Some(&product)),
+            Err(crate::PlayerEndpointError::ServiceUnavailable)
+        );
     }
 
     #[test]
