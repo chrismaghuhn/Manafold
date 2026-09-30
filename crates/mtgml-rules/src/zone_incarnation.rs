@@ -1,16 +1,13 @@
-//! Private rules-owned entry seam for the selected zone-incarnation capability.
-//!
-//! This module owns the single future production implementation point. The
-//! conformance facade below only translates its closed test vocabulary and
-//! delegates here; it contains no transition behavior.
+//! The one zone-move primitive: a card leaves one zone and a new incarnation
+//! enters another, with the identity and knowledge updates every perspective
+//! observes. Callers stage moves in a workspace they own.
 
-use mtgml_model::{GameObjectId, RuleEventId, StateRevision};
-use mtgml_state::{validate_engine_state, EngineState, ZoneLocation, ZonePosition, ZoneTransition};
+use mtgml_model::{GameObjectId, RuleEventId};
+use mtgml_state::{EngineState, ZoneLocation, ZonePosition, ZoneTransition};
 
 use crate::errors::ZoneIncarnationError;
 use crate::events::{AuthoritativeRuleEvent, AuthoritativeRuleEventKind};
-use crate::product::build_accepted_product;
-use crate::{KernelExecutionError, PredecessorTransitionResult};
+use crate::KernelExecutionError;
 use mtgml_state::{
     IdentityMutationV1, KnowledgeAcquisitionCause, KnowledgeAcquisitionReason,
     KnowledgeHistoryChannel, KnowledgeMutationV1, KnownLocationFactV2, PerspectiveLifecycleAuditV1,
@@ -19,7 +16,6 @@ use mtgml_state::{
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SelectedZoneTransitionKind {
-    BattlefieldToOwnerGraveyard,
     LibraryTopToOwnerHand,
     /// A discard (CR 701.9a): hand to the top of the owner's public graveyard.
     HandToOwnerGraveyard,
@@ -134,32 +130,6 @@ fn emit_perspective_occurrence(
     Ok(())
 }
 
-/// Standalone S2 transition wrapper. It owns the one-move revision policy,
-/// complete before/after validation, delta, and accepted product.
-pub(crate) fn execute_selected_zone_transition(
-    state: &EngineState,
-    request: &SelectedZoneTransitionRequest,
-) -> Result<PredecessorTransitionResult, KernelExecutionError> {
-    validate_engine_state(state).map_err(KernelExecutionError::BeforeState)?;
-    let revision = StateRevision(
-        state
-            .revision
-            .0
-            .checked_add(1)
-            .ok_or(KernelExecutionError::RevisionOverflow)?,
-    );
-    let mut candidate = state.clone();
-    candidate.revision = revision;
-    let mut events = Vec::new();
-    apply_selected_zone_transition_in_workspace(
-        &mut candidate,
-        request,
-        state.allocators.next_rule_event_id,
-        &mut events,
-    )?;
-    build_accepted_product(state, candidate, events, |_| Ok(()))
-}
-
 /// Apply one selected S2 move to a caller-owned scratch workspace.
 ///
 /// The candidate revision and outer event cursor belong to the coordinator.
@@ -172,41 +142,6 @@ pub(crate) fn apply_selected_zone_transition_in_workspace(
     request: &SelectedZoneTransitionRequest,
     event_origin: RuleEventId,
     events: &mut Vec<AuthoritativeRuleEvent>,
-) -> Result<ZoneTransition, KernelExecutionError> {
-    apply_selected_zone_transition_in_workspace_with_reindex(
-        candidate,
-        request,
-        event_origin,
-        events,
-        false,
-    )
-}
-
-/// SBA-batch entry into the same S2 workspace authority. The extra flag
-/// permits the single occurrence for a public Graveyard insertion to refresh
-/// every tracked member whose trusted top offset changes; standalone S2 keeps
-/// its reviewed single-move product byte-for-byte unchanged.
-pub(crate) fn apply_selected_zone_transition_in_sba_batch_workspace(
-    candidate: &mut EngineState,
-    request: &SelectedZoneTransitionRequest,
-    event_origin: RuleEventId,
-    events: &mut Vec<AuthoritativeRuleEvent>,
-) -> Result<ZoneTransition, KernelExecutionError> {
-    apply_selected_zone_transition_in_workspace_with_reindex(
-        candidate,
-        request,
-        event_origin,
-        events,
-        true,
-    )
-}
-
-fn apply_selected_zone_transition_in_workspace_with_reindex(
-    candidate: &mut EngineState,
-    request: &SelectedZoneTransitionRequest,
-    event_origin: RuleEventId,
-    events: &mut Vec<AuthoritativeRuleEvent>,
-    reindex_graveyard_knowledge: bool,
 ) -> Result<ZoneTransition, KernelExecutionError> {
     let state = &*candidate;
 
@@ -233,16 +168,6 @@ fn apply_selected_zone_transition_in_workspace_with_reindex(
     }
 
     let source_family_matches = match request.kind {
-        SelectedZoneTransitionKind::BattlefieldToOwnerGraveyard => {
-            actual_from
-                == &ZoneLocation {
-                    zone: mtgml_model::ZoneKind::Battlefield,
-                    player: None,
-                    position: ZonePosition::Unordered,
-                    visibility: mtgml_state::VisibilityPartition::Public,
-                    partition: None,
-                }
-        }
         SelectedZoneTransitionKind::LibraryTopToOwnerHand => {
             actual_from.zone == mtgml_model::ZoneKind::Library
                 && actual_from.player == Some(old_object.owner)
@@ -277,8 +202,7 @@ fn apply_selected_zone_transition_in_workspace_with_reindex(
     }
 
     let required_to = match request.kind {
-        SelectedZoneTransitionKind::BattlefieldToOwnerGraveyard
-        | SelectedZoneTransitionKind::HandToOwnerGraveyard => ZoneLocation {
+        SelectedZoneTransitionKind::HandToOwnerGraveyard => ZoneLocation {
             zone: mtgml_model::ZoneKind::Graveyard,
             player: Some(old_object.owner),
             position: ZonePosition::Top { offset: 0 },
@@ -312,8 +236,7 @@ fn apply_selected_zone_transition_in_workspace_with_reindex(
     let graveyard_key = required_to.key();
     if matches!(
         request.kind,
-        SelectedZoneTransitionKind::BattlefieldToOwnerGraveyard
-            | SelectedZoneTransitionKind::HandToOwnerGraveyard
+        SelectedZoneTransitionKind::HandToOwnerGraveyard
     ) {
         if let Some(existing) = state.zones.ordered_zones.get(&graveyard_key) {
             for member in existing {
@@ -398,8 +321,7 @@ fn apply_selected_zone_transition_in_workspace_with_reindex(
         }
     }
     match request.kind {
-        SelectedZoneTransitionKind::BattlefieldToOwnerGraveyard
-        | SelectedZoneTransitionKind::HandToOwnerGraveyard => {
+        SelectedZoneTransitionKind::HandToOwnerGraveyard => {
             next.foundation_sources.remove(&request.object);
             if let Some(existing) = next.zones.ordered_zones.get(&graveyard_key).cloned() {
                 for member in existing {
@@ -525,159 +447,6 @@ fn apply_selected_zone_transition_in_workspace_with_reindex(
     let new_object = new_object_id;
     let to_location = transition.to.clone();
     match request.kind {
-        SelectedZoneTransitionKind::BattlefieldToOwnerGraveyard => {
-            let destination_key = transition.to.key();
-            for perspective in state.core.players.keys().copied() {
-                let identity = state
-                    .perspective_identities
-                    .players
-                    .get(&perspective)
-                    .ok_or(KernelExecutionError::ZoneIncarnation(
-                        ZoneIncarnationError::PerspectiveKnowledgeMismatch,
-                    ))?;
-                let knowledge = state.knowledge.players.get(&perspective).ok_or(
-                    KernelExecutionError::ZoneIncarnation(
-                        ZoneIncarnationError::PerspectiveKnowledgeMismatch,
-                    ),
-                )?;
-                let owner_opaque = identity.object_to_opaque.get(&request.object).copied();
-                let sequence = knowledge.next_visible_sequence;
-                let provenance = KnowledgeAcquisitionReason::Observed {
-                    channel: KnowledgeHistoryChannel::Public,
-                    sequence,
-                    cause: KnowledgeAcquisitionCause::PublicEvent,
-                };
-
-                if reindex_graveyard_knowledge {
-                    let mut updates = Vec::new();
-                    if let Some(existing) = state.zones.ordered_zones.get(&destination_key) {
-                        for member in existing {
-                            let Some(opaque) = identity.object_to_opaque.get(member).copied()
-                            else {
-                                continue;
-                            };
-                            let record = knowledge.active.get(&opaque).ok_or(
-                                KernelExecutionError::ZoneIncarnation(
-                                    ZoneIncarnationError::PerspectiveKnowledgeMismatch,
-                                ),
-                            )?;
-                            if record.known_location.is_some() {
-                                let location = next.zones.locations.get(member).cloned().ok_or(
-                                    KernelExecutionError::ZoneIncarnation(
-                                        ZoneIncarnationError::PerspectiveKnowledgeMismatch,
-                                    ),
-                                )?;
-                                updates.push(mtgml_state::KnowledgeLocationUpdateV1 {
-                                    opaque,
-                                    fact: KnownLocationFactV2 {
-                                        location,
-                                        provenance,
-                                    },
-                                });
-                            }
-                        }
-                    }
-                    let identity_mutation = if let Some(opaque) = owner_opaque {
-                        if !knowledge.active.contains_key(&opaque) {
-                            return Err(KernelExecutionError::ZoneIncarnation(
-                                ZoneIncarnationError::PerspectiveKnowledgeMismatch,
-                            ));
-                        }
-                        updates.push(mtgml_state::KnowledgeLocationUpdateV1 {
-                            opaque,
-                            fact: KnownLocationFactV2 {
-                                location: to_location.clone(),
-                                provenance,
-                            },
-                        });
-                        IdentityMutationV1::Remap {
-                            opaque,
-                            from_object: request.object,
-                            to_object: new_object,
-                        }
-                    } else {
-                        IdentityMutationV1::None
-                    };
-                    if updates.is_empty() {
-                        continue;
-                    }
-                    updates.sort_by_key(|update| update.opaque);
-                    if updates
-                        .windows(2)
-                        .any(|pair| pair[0].opaque == pair[1].opaque)
-                    {
-                        return Err(KernelExecutionError::ZoneIncarnation(
-                            ZoneIncarnationError::PerspectiveKnowledgeMismatch,
-                        ));
-                    }
-                    let lifecycle = PerspectiveLifecycleAuditV1 {
-                        perspective,
-                        sequence,
-                        mutation: PerspectiveLifecycleMutationV1 {
-                            identity: identity_mutation,
-                            knowledge: Some(KnowledgeMutationV1::UpdateLocations { updates }),
-                        },
-                    };
-                    emit_perspective_occurrence(
-                        event_origin,
-                        events.len(),
-                        &mut next,
-                        &mut staged_events,
-                        lifecycle,
-                        crate::PerspectiveObservationPolicyV1::MovedInSight {
-                            from_zone: transition.from.zone,
-                            to_zone: transition.to.zone,
-                            old_object: request.object,
-                            new_object,
-                            reveals_old: true,
-                            reveals_new: true,
-                        },
-                    )?;
-                } else {
-                    let Some(opaque) = owner_opaque else {
-                        continue;
-                    };
-                    if !knowledge.active.contains_key(&opaque) {
-                        return Err(KernelExecutionError::ZoneIncarnation(
-                            ZoneIncarnationError::PerspectiveKnowledgeMismatch,
-                        ));
-                    }
-                    let lifecycle = PerspectiveLifecycleAuditV1 {
-                        perspective,
-                        sequence,
-                        mutation: PerspectiveLifecycleMutationV1 {
-                            identity: IdentityMutationV1::Remap {
-                                opaque,
-                                from_object: request.object,
-                                to_object: new_object,
-                            },
-                            knowledge: Some(KnowledgeMutationV1::UpdateLocation {
-                                opaque,
-                                fact: KnownLocationFactV2 {
-                                    location: to_location.clone(),
-                                    provenance,
-                                },
-                            }),
-                        },
-                    };
-                    emit_perspective_occurrence(
-                        event_origin,
-                        events.len(),
-                        &mut next,
-                        &mut staged_events,
-                        lifecycle,
-                        crate::PerspectiveObservationPolicyV1::MovedInSight {
-                            from_zone: transition.from.zone,
-                            to_zone: transition.to.zone,
-                            old_object: request.object,
-                            new_object,
-                            reveals_old: true,
-                            reveals_new: true,
-                        },
-                    )?;
-                }
-            }
-        }
         SelectedZoneTransitionKind::HandToOwnerGraveyard => {
             // The graveyard is public: every perspective learns the card. A
             // perspective that tracked the hand card follows it; any other
@@ -919,41 +688,4 @@ fn apply_selected_zone_transition_in_workspace_with_reindex(
     *candidate = next;
     events.extend(staged_events);
     Ok(transition)
-}
-
-/// Closed family vocabulary available only when the conformance testkit feature
-/// is explicitly enabled. It is not a runtime request or environment API.
-#[cfg(feature = "magic-conformance-testkit")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ConformanceZoneTransitionKind {
-    BattlefieldToOwnerGraveyard,
-    LibraryTopToOwnerHand,
-}
-
-/// Narrow conformance bridge to the private production-owned seam.
-#[cfg(feature = "magic-conformance-testkit")]
-pub fn execute_selected_zone_transition_for_conformance(
-    state: &EngineState,
-    object: GameObjectId,
-    claimed_from: ZoneLocation,
-    claimed_to: ZoneLocation,
-    kind: ConformanceZoneTransitionKind,
-) -> Result<PredecessorTransitionResult, KernelExecutionError> {
-    let kind = match kind {
-        ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard => {
-            SelectedZoneTransitionKind::BattlefieldToOwnerGraveyard
-        }
-        ConformanceZoneTransitionKind::LibraryTopToOwnerHand => {
-            SelectedZoneTransitionKind::LibraryTopToOwnerHand
-        }
-    };
-    execute_selected_zone_transition(
-        state,
-        &SelectedZoneTransitionRequest {
-            object,
-            kind,
-            claimed_from,
-            claimed_to,
-        },
-    )
 }

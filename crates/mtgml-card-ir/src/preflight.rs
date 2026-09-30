@@ -313,9 +313,8 @@ pub fn admit_executable_profile_v1(
         &profile_definition_roots,
         RequiredCapabilityLifecycleV1::Specified,
     )?;
-    // The rules manifest declares one of exactly two scopes: the content-only
-    // closure (historical identities, no draw/combat/cleanup) or content plus
-    // MAGIC_GAME_RULE_ROOTS (a complete game). Anything else fails closed.
+    // An executable game needs its content plus MAGIC_GAME_RULE_ROOTS; the
+    // rules manifest must declare exactly that closure.
     let game_roots = MAGIC_GAME_RULE_ROOTS
         .iter()
         .map(|(key, version)| CapabilityRequirementV1 {
@@ -323,19 +322,12 @@ pub fn admit_executable_profile_v1(
             version: (*version).to_owned(),
         })
         .collect();
-    let game_direct_roots =
-        normalize_requirement_roots(report.direct_requirement_roots.clone(), game_roots)?;
-    let game_resolved = parse_canonical_registry()?
-        .resolve(&game_direct_roots, RequiredCapabilityLifecycleV1::Specified)?;
-    let (direct_requirement_roots, resolved_capabilities) =
-        if rules_manifest.capability_closure.as_ref() == Some(&game_resolved) {
-            (game_direct_roots, game_resolved)
-        } else {
-            (
-                report.direct_requirement_roots,
-                report.resolved_capabilities,
-            )
-        };
+    let direct_requirement_roots =
+        normalize_requirement_roots(report.direct_requirement_roots, game_roots)?;
+    let resolved_capabilities = parse_canonical_registry()?.resolve(
+        &direct_requirement_roots,
+        RequiredCapabilityLifecycleV1::Specified,
+    )?;
 
     if rules_manifest.validate().is_err()
         || !matches!(

@@ -1,4 +1,3 @@
-#![cfg(not(feature = "historical-conformance-runtime"))]
 //! Complete turns through the production V8 controller and player endpoints.
 
 mod common;

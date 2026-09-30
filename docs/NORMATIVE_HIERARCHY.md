@@ -1,8 +1,10 @@
 # Normative Hierarchy and Conflict Policy
 
-**Status:** accepted  
+**Status:** SUPERSEDED by AGENTS.md §4 (one current format, changed in place)  
 **Stability:** normative  
 **Owner:** architecture maintainers
+
+> **Superseded by AGENTS.md §4.** Manafold has no external users or persisted data that must stay readable, so every format has one current version that is changed in place, and the old code path is deleted in the same change. This document records the earlier policy and is no longer normative.
 
 ## Why this exists
 

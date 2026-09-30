@@ -84,44 +84,23 @@ class PythonTestProfileTests(unittest.TestCase):
         )
         self.assertIn(full, run_checks.INTEGRATION_EXTRA)
 
-    def test_fast_profile_includes_v5_execution_identity_gate(self) -> None:
-        gate = [sys.executable, "scripts/run_v5_execution_identity_gate.py"]
-        self.assertIn(gate, run_checks.FAST)
-
-    def test_fast_profile_includes_migrated_state_identity_gate(self) -> None:
-        gate = [sys.executable, "scripts/run_v8_state_identity_gate.py"]
-        self.assertIn(gate, run_checks.FAST)
-
-    def test_justfile_contracts_includes_historical_identity_gates(self) -> None:
+    def test_justfile_contracts_includes_the_catalog_check(self) -> None:
         justfile = ROOT / "justfile"
         text = justfile.read_text(encoding="utf-8")
-        self.assertIn("run_v5_execution_identity_gate.py", text)
-        self.assertIn("run_v8_state_identity_gate.py", text)
         self.assertIn("generate_semantic_contract_catalog.py --check", text)
 
-    def test_integration_compiles_default_successor_environment_separately(self) -> None:
-        self.assertIn(
-            ["cargo", "check", "-p", "mtgml-environment", "--locked"],
-            run_checks.INTEGRATION_EXTRA,
-        )
-
-    def test_integration_executes_default_successor_api_test(self) -> None:
+    def test_integration_runs_the_release_random_smoke_games(self) -> None:
         self.assertIn(
             [
                 "cargo",
                 "test",
+                "--release",
                 "-p",
                 "mtgml-environment",
                 "--test",
-                "current_successor_api",
+                "random_smoke",
                 "--locked",
             ],
-            run_checks.INTEGRATION_EXTRA,
-        )
-
-    def test_integration_runs_default_successor_environment_test_suite(self) -> None:
-        self.assertIn(
-            ["cargo", "test", "-p", "mtgml-environment", "--locked"],
             run_checks.INTEGRATION_EXTRA,
         )
 

@@ -183,6 +183,8 @@ ADR-0038.
 
 ## Historical V1 and V2
 
+> **Superseded by AGENTS.md §4.** Formats now have one current version that is changed in place, and the old code path is deleted in the same change. Where this section requires a new version identity per change, it no longer applies.
+
 ### V1
 
 V1 used canonical JSON and placeholder RNG semantics. There is no current-engine V1 producer. Historical bytes/fixtures remain immutable evidence.
@@ -1128,6 +1130,8 @@ preimage over a V4 full-state reference and codec `/5`; it is never re-bound
 to V5 state or codec `/6`.
 
 ## M4 successor identity contract
+
+> **Superseded by AGENTS.md §4.** Formats now have one current version that is changed in place, and the old code path is deleted in the same change. Where this section requires a new version identity per change, it no longer applies.
 
 The accepted M4 Semantic Spec allocates `FullStateDigestV6` with input schema
 `full-state-digest-input.v6` and domain `mtgml.full-state-digest.v6`. It

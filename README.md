@@ -12,10 +12,10 @@
 - **P0:** `COMPLETE / FROZEN` (reviewed head `a7e641a7e6145610c9533187cf6340712f460e44`, merge commit `20dac927027776ef5f0a5b389a27d4a05eefb180`)
 - **M3.T0:** `COMPLETE / FROZEN` (closure review head `b403edefcabf7b304c0fa5f6816d22ac8aca477b`, 10/10 frozen exit criteria PASS, 0 BLOCKER / 0 MAJOR; status-sync merge `b9c5f2be97b8fc1f31d648d58f890de78f0a035c`; freeze executed and tracked in Issue #178)
 - **M3.S1:** `COMPLETE / COVERED / NOT CERTIFIED` (`rules/turn-structure@0.1.0`; S1 authorization head `587016574e4e8f9f797a713877f8caf1c5143cfb`; covered for the bounded scope, certification is not claimed)
-- **M3 semantic implementation:** the eleven bounded Foundation V2 capabilities are implemented and covered; none is certified
-- **M3.S2:** its selected Battlefield → owner Graveyard and owner Library-top → owner Hand profiles are integrated with combat SBA and ordinary Draw replay
+- **M3 semantic implementation:** the eleven bounded Foundation V2 capabilities were implemented on the old rules kernel, which was removed on 2026-09-30 so that one runtime remains; `cards/capabilities/registry.json` lists what the native turn progression covers; none is certified
+- **M3.S2:** its selected Battlefield → owner Graveyard and owner Library-top → owner Hand profiles were integrated with combat SBA and ordinary Draw replay on the old rules kernel; the native turn progression keeps Library-top → owner Hand (draw) and adds owner Hand → owner Graveyard (discard)
 - **PR #208:** `MERGED`; `S2_EXACT_HEAD_VERIFICATION = PASS`
-- **S2 authoritative replay:** the Block 8 exact Foundation V2 integration exercises both SBA-to-graveyard and Draw-to-Hand incarnation transitions through Replay V6; acceptance-time evidence is preserved in `docs/reviews/m3-final-closure-2026-09-25.md`
+- **S2 authoritative replay:** the Block 8 exact Foundation V2 integration exercised both SBA-to-graveyard and Draw-to-Hand incarnation transitions through Replay V6 on the removed old runtime; acceptance-time evidence is preserved in `docs/reviews/m3-final-closure-2026-09-25.md`
 - **M3 Pre-T0 hardening:** `COMPLETE / ACCEPTED` (`ADR 0054 = ACCEPTED`, `FOUNDATION_V2 = ACCEPTED_HARDENED_M3_SCOPE`)
 - **M3 plan status:** `ACCEPTED`
 - **Task 14:** `COMPLETE` — `S1_EXACT_HEAD_VERIFICATION = PASS`
@@ -33,12 +33,12 @@
 - **M3 Block 7:** Cleanup Reset + complete bounded turn merged and accepted in PR #219 at `c7cafa0356508164988fb92b0fcedc24bccbbdae`.
 - **M3 Block 8:** cumulative final closure accepted by PR #220; exact Foundation V2 turn integration reaches P2 Draw and its next visible priority Decision.
 - **M3 hardening acceptance:** PR #184 merged and accepted ADR 0054/Foundation V2; T0 was reauthorized under Issue #178, implemented by merged PRs #189/#190/#191, and finalized as COMPLETE / FROZEN
-- **Capability lifecycle:** 11 Foundation capabilities are `covered`; `0` are certified.
+- **Capability lifecycle:** 8 capabilities are `covered` and 7 `specified` (`cards/capabilities/registry.json`); `0` are certified.
 - **Current boundary:** `M3 = COMPLETE`; `M3_FINAL_ACCEPTANCE = PASS`; `M4 = IN_PROGRESS`; the executable real-card slice is Mountain + Plains under `basic-land@1.0.0`; no broader certification, card/deck/format/Commander/playability support is claimed.
 - **Project type:** independent greenfield MTG/ML rules and simulation engine
 - **Playable engine:** no
 - **Production turn loop:** the V8 runtime plays complete two-player turns with basic lands (untap, upkeep, draw, main phases, an empty combat, end step, cleanup with discard to hand size, turn change); a player who draws from an empty library loses and the game ends; proven through the production player endpoints (`crates/mtgml-environment/tests/production_turn.rs`); no creatures, combat damage, spells, or deck support.
-- **Real Magic semantics:** accepted evidence covers the eleven bounded Foundation V2 capabilities. This does not claim arbitrary Magic support, cards, decks, formats, or playability.
+- **Real Magic semantics:** the native turn progression covers turn structure, priority, draw, the combat phase with an empty attack, cleanup, and zone incarnation; combat damage, blockers, damage and life, and combat state-based actions are specified only. This does not claim arbitrary Magic support, cards, decks, formats, or playability.
 - **Bounded executable real-card support:** Mountain + Plains under `basic-land@1.0.0`; no broader card/deck support is claimed.
 
 **Current resumable execution contract after the G0j activation cut:** V8.
@@ -48,12 +48,9 @@ Decision request V4 / response V3, ObservedEvent V4, PlayerStep V4,
 ObservationEnvelope V2, PlayerInformationState V3 / InformationStateDigest
 V3, and `magic-shared-execution-observation.v1`. Its executable admission
 remains bounded to Mountain and Plains under `basic-land@1.0.0`; G0j preserves
-that M4.2 slice and adds no spell or deck support. V6/V7 predecessor artifacts
-(`FullStateDigestV6`, `EnvironmentCheckpointV7` / `CheckpointDigestV7`, and
-Replay V7) remain historical read/verification only, and V3 player products
-retain their exact historical meanings under ADR 0056. They have no current
-writers or automatic migration. No predecessor gameplay writer is current.
-No historical identity is reinterpreted. M4.2 is
+that M4.2 slice and adds no spell or deck support. It is the only runtime:
+older format versions (V7 and earlier) keep readers and fixtures until they
+are removed, but nothing writes or executes them. M4.2 is
 `COMPLETE` only for the bounded Mountain/Plains slice; this does not claim
 broader card, deck, format, or playability support.
 

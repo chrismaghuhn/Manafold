@@ -235,7 +235,7 @@
       "owner_role": "architecture-maintainer",
       "path": "docs/NORMATIVE_HIERARCHY.md",
       "role": "normative",
-      "stability": "accepted"
+      "stability": "deprecated"
     },
     {
       "change_process": "information-review-pr",
@@ -564,7 +564,7 @@
       "owner_role": "api-maintainer",
       "path": "docs/contracts/COMPATIBILITY_POLICY.md",
       "role": "normative",
-      "stability": "accepted"
+      "stability": "deprecated"
     },
     {
       "change_process": "adr-and-state-tests",
@@ -627,7 +627,7 @@
       "owner_role": "api-maintainer",
       "path": "docs/maintenance/API_LIFECYCLE.md",
       "role": "normative",
-      "stability": "accepted"
+      "stability": "deprecated"
     },
     {
       "change_process": "dependency-policy-pr",
@@ -676,7 +676,7 @@
       "owner_role": "wire-maintainer",
       "path": "docs/maintenance/SCHEMA_EVOLUTION.md",
       "role": "normative",
-      "stability": "accepted"
+      "stability": "deprecated"
     },
     {
       "change_process": "toolchain-and-clean-build-pr",
@@ -1150,6 +1150,13 @@
     {
       "change_process": "process-pr",
       "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-09-30-one-runtime-cleanup-design.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
       "path": "docs/superpowers/plans/2026-09-28-m4-shared-s1-characteristic-object-query-authority.md",
       "role": "process",
       "stability": "provisional"
@@ -1158,6 +1165,13 @@
       "change_process": "process-pr",
       "owner_role": "maintainer",
       "path": "docs/superpowers/plans/2026-09-30-production-full-turn.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/plans/2026-09-30-one-runtime-cleanup.md",
       "role": "process",
       "stability": "provisional"
     },

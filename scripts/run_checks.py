@@ -47,8 +47,6 @@ def reference_python_matches() -> bool:
 FAST = [
     [sys.executable, "scripts/generate_card_ir_capability_projection.py", "--check"],
     [sys.executable, "scripts/generate_contracts.py", "--check"],
-    [sys.executable, "scripts/run_v5_execution_identity_gate.py"],
-    [sys.executable, "scripts/run_v8_state_identity_gate.py"],
     [sys.executable, "scripts/verify_repository.py"],
     [sys.executable, "scripts/check_rust_source_structure.py"],
     [sys.executable, "scripts/check_documentation.py"],
@@ -61,25 +59,6 @@ INTEGRATION_EXTRA = [
     [sys.executable, "-m", "ruff", "format", "--check", "python", "scripts"],
     [sys.executable, "-m", "ruff", "check", "python", "scripts"],
     [sys.executable, "-m", "mypy", "--config-file", "python/pyproject.toml"],
-    # The workspace-wide all-features build also enables the explicitly
-    # historical conformance adapter. Compile the product's default feature
-    # selection separately so the current environment API stays V8/V4.
-    ["cargo", "check", "-p", "mtgml-environment", "--locked"],
-    # Exercise the public current endpoint and wire boundary under default
-    # features; the all-features workspace tests intentionally select V2
-    # historical aliases for conformance coverage. Run the complete default
-    # environment test target too, including mode-sensitive API fixtures and
-    # tests/production_turn.rs (complete turns through the production path).
-    ["cargo", "test", "-p", "mtgml-environment", "--locked"],
-    [
-        "cargo",
-        "test",
-        "-p",
-        "mtgml-environment",
-        "--test",
-        "current_successor_api",
-        "--locked",
-    ],
     # Random-vs-random 30-turn games through the production path; every PR
     # keeps them green. They need an optimized build.
     [
@@ -100,19 +79,6 @@ INTEGRATION_EXTRA = [
         "--workspace",
         "--all-targets",
         "--all-features",
-        "--locked",
-        "--",
-        "-D",
-        "warnings",
-    ],
-    # The all-features lint never compiles the production-path tests (they
-    # build only without the historical runtime feature); lint them here.
-    [
-        "cargo",
-        "clippy",
-        "-p",
-        "mtgml-environment",
-        "--all-targets",
         "--locked",
         "--",
         "-D",

@@ -1,5 +1,3 @@
-#![cfg(not(feature = "historical-conformance-runtime"))]
-
 mod common;
 
 use common::CONTENT;

@@ -8,8 +8,6 @@
 - `run_python_tests.py` — Python contract suite (`--profile full` is the default;
   `--profile smoke` is the explicit small development allowlist);
 - `run_verification.py` — external authoritative gate report under `dist/verification/`;
-- `run_m1_closure.py` — external M1 ten-gate closure report under `dist/verification/m1/`;
-- `run_m2_final_closure.py` — external M2.Final twenty-gate closure report (M2.B-H runners plus M1 regression and the M2 scope guard) under `dist/m2-final-verification/`;
 - `build_source_archive.py` — deterministic source ZIP and checksum;
 - `verify_source_archive.py` — source/archive member and byte parity;
 - `verify_archive_reproducibility.py` — repeated deterministic build and ZIP safety;
@@ -46,22 +44,18 @@ fixtures. `command.argv` is the only executable argument list,
 `command.cwd` is repository-relative, and any display rerun command is
 informational only.
 
-The explicit opt-in T0 failure witness (an ignored Rust test that runs a
-real digest-mismatch T0 case, prints exactly one closed `T0_FAILURE_CONTEXT`
-line plus exactly one `MANAFOLD_FAILURE_SIGNATURE`, and exits nonzero) is
-captured and reproduced outside the source tree with:
+A failing command is captured and reproduced outside the source tree with:
 
 ```text
 <project-python> scripts/capture_failure.py \
-  --case-id synthetic-entry-digest-mismatch \
+  --case-id <case-id> \
   --output-root <outside-source-or-dist/failures> \
-  -- cargo +1.85.1 test --package mtgml-conformance --locked \
-  t0_failure_witness_capture -- --ignored --nocapture
+  -- <command>
 
 <project-python> scripts/rerun_failure.py <packet>
 ```
 
-A declared `--case-id` that disagrees with the emitted T0 context is
-blocked without a packet. Rerun requires exact T0 context equality
+If the command prints a closed `T0_FAILURE_CONTEXT` line, a declared
+`--case-id` that disagrees with it is blocked without a packet. Rerun requires exact T0 context equality
 (case, step, diagnostic, authority, kernel, expected/actual digest
 identities) in addition to the existing signature and exit checks.

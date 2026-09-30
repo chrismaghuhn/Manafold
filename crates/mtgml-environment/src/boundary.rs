@@ -43,16 +43,7 @@ pub fn submit_response_bytes(
     endpoint: &dyn PlayerEndpoint,
     bytes: &[u8],
 ) -> Result<crate::CurrentPlayerStep, PlayerBoundaryError> {
-    #[cfg(any(test, feature = "historical-conformance-runtime"))]
-    {
-        let response = mtgml_wire::decision_response_v2::decode_submission(bytes)
-            .map_err(|_| PlayerBoundaryError::Wire(PlayerWireErrorCodeV1::MalformedResponse))?;
-        Ok(endpoint.submit(response)?)
-    }
-    #[cfg(not(any(test, feature = "historical-conformance-runtime")))]
-    {
-        let response = mtgml_wire::decision_response_v3::decode_submission(bytes)
-            .map_err(|_| PlayerBoundaryError::Wire(PlayerWireErrorCodeV1::MalformedResponse))?;
-        Ok(endpoint.submit(response)?)
-    }
+    let response = mtgml_wire::decision_response_v3::decode_submission(bytes)
+        .map_err(|_| PlayerBoundaryError::Wire(PlayerWireErrorCodeV1::MalformedResponse))?;
+    Ok(endpoint.submit(response)?)
 }

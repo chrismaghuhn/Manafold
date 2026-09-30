@@ -359,22 +359,12 @@ def main() -> None:
     env_prod = [p for p in sorted(env_src.glob("*.rs")) if p.name != "tests.rs"]
     env_rust = "\n".join(p.read_text(encoding="utf-8") for p in env_prod)
 
-    # Issue #62: test modules may be split into lexical include! fragments
-    # under src/tests/; evidence tokens span the whole module text.
-    def _test_module_text(src_dir):
-        parts = [(src_dir / "tests.rs").read_text(encoding="utf-8")]
-        fragment_dir = src_dir / "tests"
-        if fragment_dir.is_dir():
-            parts.extend(p.read_text(encoding="utf-8") for p in sorted(fragment_dir.glob("*.rs")))
-        return "\n".join(parts)
-
     if "Arc<Mutex" not in env_rust or re.search(r"fn\s+bind_player\s*\(\s*&self", env_rust) is None:
         fail("player endpoint handles still borrow the controller exclusively")
 
     state_src = ROOT / "crates/mtgml-state/src"
     production_files = [p for p in sorted(state_src.glob("*.rs")) if p.name != "tests.rs"]
     state_rust = "\n".join(p.read_text(encoding="utf-8") for p in production_files)
-    state_tests = _test_module_text(state_src)
     for token in (
         "validate_engine_state",
         "EngineStateParts",
@@ -384,8 +374,6 @@ def main() -> None:
         if token not in state_rust:
             fail(f"state contract lacks {token}")
 
-    # S3.P0 state-identity cut: current runtime is V5; V4 and V3 remain exact
-    # detached historical verifiers.
     for token in (
         "FullStateDigestInputV5",
         "magic_sba_graveyard_order_v1",
@@ -395,107 +383,6 @@ def main() -> None:
     ):
         if token not in state_rust:
             fail(f"state contract closure lacks {token}")
-    for token in (
-        "FullStateDigestInputV4",
-        "calculate_full_state_digest_v4_historical",
-        "FullStateDigestInputV3",
-    ):
-        if token not in state_rust:
-            fail(f"historical detached digest support lacks {token}")
-
-    for token in (
-        "full_state_digest_v4_known_answer",
-        "m3_p0_full_state_digest_v4_mutation_matrix",
-        "m3_p0_full_state_digest_v5_mutation_matrix",
-        "state_delta_uses_full_state_digest_v5",
-    ):
-        if token not in state_tests:
-            fail(f"state test evidence lacks {token}")
-    magic_v5_contract_test = (ROOT / "crates/mtgml-state/tests/s3_p0_digest_v5_red.rs").read_text(
-        encoding="utf-8"
-    )
-    for token in (
-        "magic_continuation_is_valid_v5_state_and_changes_digest_when_its_order_changes",
-        "magic_sba_graveyard_order_v1",
-    ):
-        if token not in magic_v5_contract_test:
-            fail(f"Magic continuation V5 digest evidence lacks {token}")
-    if "full_state_digest_v3_historical_known_answer_is_detached" not in state_tests:
-        fail("historical V3 full-state digest evidence is not preserved")
-
-    # S3.P0 coordinated identity cut: current state is V5 and checkpoint/
-    # replay are V6; V5 checkpoint/replay remain historical verifier surfaces.
-    env_rust = "\n".join(p.read_text(encoding="utf-8") for p in env_prod)
-    for token in (
-        "EnvironmentCheckpointV6",
-        "ENVIRONMENT_CHECKPOINT_SCHEMA_V6",
-        "CHECKPOINT_CODEC_SEMANTIC_VERSION_V6",
-        "execution_identity: ExecutionIdentityV1",
-    ):
-        if token not in env_rust:
-            fail(f"checkpoint contract lacks V6 current token {token}")
-    # V6 identity invariants: checkpoint carries execution_identity;
-    # digest input carries the identity element; no child manifests in checkpoints.
-    for token in (
-        "execution_identity: ExecutionIdentityV1",
-        "CheckpointDigestV6",
-    ):
-        if token not in env_rust:
-            fail(f"checkpoint V6 identity invariant missing: {token}")
-    persistence_rust = (ROOT / "crates/mtgml-persistence/src/checkpoint_digest.rs").read_text(
-        encoding="utf-8"
-    )
-    for token in (
-        "FullStateDigestV5::DOMAIN",
-        "environment-checkpoint-digest-input.v6",
-        "mtgml.checkpoint-digest.v6",
-        "calculate_checkpoint_digest_v6",
-    ):
-        if token not in persistence_rust:
-            fail(f"checkpoint V6 identity surface lacks {token}")
-    replay_v6_rust = (ROOT / "crates/mtgml-replay/src/v6.rs").read_text(encoding="utf-8")
-    for token in (
-        "ReplayManifestV6",
-        "ReplayStepV6",
-        "AuthoritativeReplayV6",
-        "replay-manifest.v6",
-        "replay-step.v6",
-        "authoritative-replay.v6",
-        "DecisionResponseV2",
-    ):
-        if token not in replay_v6_rust:
-            fail(f"Replay V6 identity surface lacks {token}")
-    # Historical V3 digest support remains preserved as detached verifier.
-    if "calculate_checkpoint_digest_v3" not in persistence_rust:
-        fail("historical V3 checkpoint digest support is not preserved")
-
-    rules_src = ROOT / "crates/mtgml-rules/src"
-    rules_prod = [p for p in sorted(rules_src.glob("*.rs")) if p.name != "tests.rs"]
-    rules_rust = "\n".join(p.read_text(encoding="utf-8") for p in rules_prod)
-    rules_tests = _test_module_text(rules_src)
-    for token in ("SemanticValidationCursor",):
-        if token not in rules_rust:
-            fail(f"compositional transition validation lacks {token}")
-    for token in (
-        "synthetic_m2_choose_one_returns_authoritative_transition_product",
-        "invalid_v2_answer_is_rejected_without_state_mutation",
-        "wrong_actor_and_stale_revision_fail_closed",
-    ):
-        if token not in rules_tests:
-            fail(f"rules test evidence lacks {token}")
-
-    conformance_rust = (ROOT / "crates/mtgml-conformance/src/lib.rs").read_text(encoding="utf-8")
-    for token in (
-        "actual_current_decision",
-        "actual_response",
-        "ConformanceFailureClass::CurrentDecision",
-        "ConformanceFailureClass::Response",
-        "current_decision_is_an_asserted_conformance_input",
-        "submitted_response_is_an_asserted_conformance_input",
-    ):
-        if token not in conformance_rust:
-            fail(f"conformance input assertion lacks {token}")
-
     maintainer = (ROOT / "scripts/maintainer_common.py").read_text(encoding="utf-8")
     for token in (
         "discovered_native_executors",
