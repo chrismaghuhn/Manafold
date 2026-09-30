@@ -105,6 +105,7 @@ intent; code and tests are what actually runs.
 | Hidden information | `docs/INFORMATION_MODEL.md` |
 | Replay, determinism | `docs/REPLAY_AND_DETERMINISM.md` |
 | Which Magic rules text is authoritative | `docs/rules/AUTHORITY_POLICY.md` |
+| Profiling (where time goes) | `docs/agents/profiling.md` |
 
 ## 9. Workflow
 
