@@ -49,6 +49,25 @@ class PlayerDecisionRequestV4Tests(unittest.TestCase):
                 )
                 self.assertEqual(PlayerDecisionRequestV4.from_wire(raw).to_wire(), raw)
 
+    def test_hand_size_discard_requires_exact_choose_many_over_objects(self) -> None:
+        value = json.loads(
+            (ROOT / "schemas/examples/player-decision-request-v4-hand-size-discard.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        request = PlayerDecisionRequestV4.from_wire(value)
+        self.assertEqual(request.purpose.kind, "hand_size_discard")
+        for edit in (
+            lambda item: item["decision_domain_v2"].update(minimum=1, maximum=2),
+            lambda item: item["decision_domain_v2"].update(minimum=0, maximum=0),
+            lambda item: item.update(visibility="public"),
+            lambda item: item["candidates"][0].update(intent={"kind": "pass_priority"}),
+        ):
+            edited = copy.deepcopy(value)
+            edit(edited)
+            with self.assertRaises(WireError):
+                PlayerDecisionRequestV4.from_wire(edited)
+
     def test_cost_route_request_must_be_actor_only(self) -> None:
         raw = json.loads(
             (ROOT / "schemas/examples/player-decision-request-v4-cost-route.json").read_text(
