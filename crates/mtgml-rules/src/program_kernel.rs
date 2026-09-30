@@ -146,15 +146,23 @@ impl ProgramKernelV1 {
             .iter()
             .map(|requirement| requirement.key.as_str())
             .collect::<std::collections::BTreeSet<_>>();
-        if roots
-            != [
-                "rules/basic-land-mana",
-                "rules/land-play",
-                "rules/mana-pool",
-            ]
-            .into_iter()
-            .collect()
-        {
+        let content_roots = [
+            "rules/basic-land-mana",
+            "rules/land-play",
+            "rules/mana-pool",
+        ]
+        .into_iter()
+        .collect::<std::collections::BTreeSet<_>>();
+        let game_roots = content_roots
+            .iter()
+            .copied()
+            .chain(
+                mtgml_card_ir::MAGIC_GAME_RULE_ROOTS
+                    .iter()
+                    .map(|(key, _)| *key),
+            )
+            .collect::<std::collections::BTreeSet<_>>();
+        if roots != content_roots && roots != game_roots {
             return Err(ProgramKernelConstructionErrorV1::InvalidExecutableAdmission);
         }
         Ok(Self {

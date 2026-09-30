@@ -181,12 +181,8 @@ impl BasicLandEnvironmentRuntimeV8 {
         &self,
         perspective: PlayerId,
     ) -> Result<mtgml_observation::PlayerInformationStateV3, crate::PlayerEndpointError> {
-        mtgml_rules::validate_basic_land_pending_request_v4(
-            &self.admission,
-            &self.state,
-            &self.status,
-        )
-        .map_err(|_| crate::PlayerEndpointError::ServiceUnavailable)?;
+        mtgml_rules::validate_magic_pending_request_v4(&self.admission, &self.state, &self.status)
+            .map_err(|_| crate::PlayerEndpointError::ServiceUnavailable)?;
         crate::player_projection::project_successor_information_state_v3_structural_only(
             &self.state,
             perspective,
@@ -211,12 +207,8 @@ impl BasicLandEnvironmentRuntimeV8 {
         {
             return Err(crate::PlayerEndpointError::ServiceUnavailable);
         }
-        mtgml_rules::validate_basic_land_pending_request_v4(
-            &self.admission,
-            &self.state,
-            &self.status,
-        )
-        .map_err(|_| crate::PlayerEndpointError::ServiceUnavailable)?;
+        mtgml_rules::validate_magic_pending_request_v4(&self.admission, &self.state, &self.status)
+            .map_err(|_| crate::PlayerEndpointError::ServiceUnavailable)?;
         let rejected_code = basic_land_rejection_code(
             &self.status,
             self.state.execution_v4.pending_decision.as_ref(),
@@ -226,7 +218,7 @@ impl BasicLandEnvironmentRuntimeV8 {
         let before = self
             .checkpoint()
             .map_err(|_| crate::PlayerEndpointError::ServiceUnavailable)?;
-        let transition = match mtgml_rules::execute_basic_land_response_v4(
+        let transition = match mtgml_rules::execute_magic_response_v4(
             &self.admission,
             &self.state,
             perspective,
@@ -558,10 +550,7 @@ mod tests {
     const RULES_SNAPSHOT: &str = "wotc-cr-2026-09-25-txt-20260925-sha256-8d860e451f20f38865b725b42d82feb714c725373dd8f3b32b8652b3eeb070ca";
 
     fn admission() -> ExecutableProfileAdmissionV1 {
-        let content_id =
-            mtgml_persistence::content_contract_digest::calculate_content_contract_id_v1(CONTENT)
-                .unwrap();
-        let closure = [
+        admission_with_closure(&[
             "rules/basic-land-mana",
             "rules/basic-priority",
             "rules/land-play",
@@ -569,13 +558,39 @@ mod tests {
             "rules/state-based-actions-combat",
             "rules/turn-structure",
             "rules/zone-incarnation",
-        ]
-        .into_iter()
-        .map(|key| CapabilityRequirementV1 {
-            key: key.to_owned(),
-            version: "0.1.0".to_owned(),
-        })
-        .collect();
+        ])
+    }
+
+    /// Content plus the game-rule roots: a complete two-player game.
+    pub(crate) fn game_admission() -> ExecutableProfileAdmissionV1 {
+        admission_with_closure(&[
+            "rules/basic-land-mana",
+            "rules/basic-priority",
+            "rules/cleanup-reset",
+            "rules/combat-phase",
+            "rules/declare-attackers",
+            "rules/draw-card",
+            "rules/land-play",
+            "rules/mana-pool",
+            "rules/state-based-actions-combat",
+            "rules/state-based-actions-empty-library",
+            "rules/turn-structure",
+            "rules/zone-incarnation",
+        ])
+    }
+
+    fn admission_with_closure(keys: &[&str]) -> ExecutableProfileAdmissionV1 {
+        let content_id =
+            mtgml_persistence::content_contract_digest::calculate_content_contract_id_v1(CONTENT)
+                .unwrap();
+        let closure = keys
+            .iter()
+            .copied()
+            .map(|key| CapabilityRequirementV1 {
+                key: key.to_owned(),
+                version: "0.1.0".to_owned(),
+            })
+            .collect();
         let rules = RulesContractManifestV1 {
             rules_authority: RulesAuthorityV1::ComprehensiveRules {
                 snapshot_id: RULES_SNAPSHOT.to_owned(),
@@ -724,7 +739,7 @@ mod tests {
         v2
     }
 
-    fn state_with_two_lands() -> EngineStatePartsV3 {
+    pub(crate) fn state_with_two_lands() -> EngineStatePartsV3 {
         let v2 = state_with_two_lands_v2();
         EngineStatePartsV3::new(v2.predecessor_v5, Default::default(), v2.card_rules_state).unwrap()
     }
@@ -3516,5 +3531,17 @@ mod tests {
         let replayed = v8.execute_replay(v8.export_replay().unwrap()).unwrap();
         assert_eq!(replayed.final_checkpoint, new_second.checkpoint);
         assert_eq!(replayed.transitions, vec![new_first, new_second]);
+    }
+}
+
+/// Fixtures shared with other test modules of this crate.
+#[cfg(test)]
+pub(crate) mod fixtures {
+    pub(crate) fn game_admission() -> mtgml_card_ir::ExecutableProfileAdmissionV1 {
+        super::tests::game_admission()
+    }
+
+    pub(crate) fn state_with_two_lands() -> mtgml_state::EngineStatePartsV3 {
+        super::tests::state_with_two_lands()
     }
 }

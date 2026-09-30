@@ -13,6 +13,7 @@ pub use preflight::{
     admit_executable_profile_v1, construct_gameplay_from_content, content_validation_only,
     ContentAuthorizationV1, ContentPreflightErrorV1, ContentValidationReportV1,
     ExecutableProfileAdmissionV1, NoExecutableProfileAdmitted, RequiredCapabilityLifecycleV1,
+    MAGIC_GAME_RULE_ROOTS,
 };
 
 pub const CARD_DEFINITION_ENVELOPE_V1: &str = "card-definition-envelope.v1";

@@ -512,6 +512,7 @@ fn validate_decision_purpose(value: &Value) -> Result<(), crate::StateDigestErro
     match tag.as_str() {
         "priority_action"
         | "attacker_declaration"
+        | "hand_size_discard"
         | "sba_graveyard_order"
         | "cast_cost_route"
         | "mana_production_choice"
@@ -1856,6 +1857,7 @@ fn decision_purpose_value(value: &DecisionPurposeV4) -> Value {
     match value {
         DecisionPurposeV4::PriorityAction => array([text("priority_action")]),
         DecisionPurposeV4::AttackerDeclaration => array([text("attacker_declaration")]),
+        DecisionPurposeV4::HandSizeDiscard => array([text("hand_size_discard")]),
         DecisionPurposeV4::SbaGraveyardOrder => array([text("sba_graveyard_order")]),
         DecisionPurposeV4::CastCostRoute => array([text("cast_cost_route")]),
         DecisionPurposeV4::ModeSelection { mode_slot } => {
@@ -2344,5 +2346,17 @@ mod g0_validation_tests {
         };
         buckets.pop();
         assert!(validate_continuation_payload(&short_buckets).is_err());
+    }
+}
+
+#[cfg(test)]
+mod decision_purpose_codec_tests {
+    use super::*;
+
+    #[test]
+    fn hand_size_discard_purpose_round_trips_through_the_persisted_codec() {
+        let value = decision_purpose_value(&DecisionPurposeV4::HandSizeDiscard);
+        assert_eq!(value, array([text("hand_size_discard")]));
+        validate_decision_purpose(&value).unwrap();
     }
 }

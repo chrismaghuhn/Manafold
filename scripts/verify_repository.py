@@ -8,6 +8,7 @@ sys.dont_write_bytecode = True
 import ast
 import json
 import re
+import subprocess
 import tomllib
 from pathlib import Path
 
@@ -66,13 +67,40 @@ def workflow_action_pin_errors() -> list[str]:
     return errors
 
 
-def main() -> None:
-    forbidden = [
+def is_bytecode(path: Path) -> bool:
+    return "__pycache__" in path.parts or path.suffix in {".pyc", ".pyo"}
+
+
+def local_bytecode() -> set[Path]:
+    return {
         path.relative_to(ROOT)
         for path in ROOT.rglob("*")
         if not any(part in SCAN_EXCLUDED_PARTS for part in path.relative_to(ROOT).parts)
-        and (path.name == "__pycache__" or path.suffix in {".pyc", ".pyo"})
-    ]
+        and is_bytecode(path.relative_to(ROOT))
+    }
+
+
+def committable_bytecode() -> list[Path]:
+    """Bytecode that could reach a commit or the source archive.
+
+    In a git checkout, git-ignored caches (``**/__pycache__/``) are local
+    output that neither git nor build_source_archive.py picks up, so only
+    tracked or unignored bytecode counts. Without git, scan the whole tree.
+    """
+    if (ROOT / ".git").exists():
+        listed = subprocess.run(
+            ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+            cwd=ROOT,
+            capture_output=True,
+            check=True,
+        ).stdout.decode("utf-8")
+        return [path for path in map(Path, filter(None, listed.split("\0"))) if is_bytecode(path)]
+    return sorted(local_bytecode())
+
+
+def main() -> None:
+    bytecode_before = local_bytecode()
+    forbidden = committable_bytecode()
     if forbidden:
         fail(f"generated Python bytecode is present: {forbidden[:5]}")
 
@@ -512,12 +540,9 @@ def main() -> None:
         else:
             fail(f"negative fixture was accepted: {case['path']}")
 
-    if any(
-        (path.name == "__pycache__" or path.suffix in {".pyc", ".pyo"})
-        and not any(part in SCAN_EXCLUDED_PARTS for part in path.relative_to(ROOT).parts)
-        for path in ROOT.rglob("*")
-    ):
-        fail("verifier created Python bytecode")
+    created = sorted(local_bytecode() - bytecode_before)
+    if created:
+        fail(f"verifier created Python bytecode: {created[:5]}")
 
     file_count = sum(1 for path in source_paths("*") if path.is_file())
     print(

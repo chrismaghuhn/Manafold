@@ -130,11 +130,23 @@ impl MagicKernelProfile {
     }
 
     fn allows_draw_card(&self) -> bool {
-        matches!(self, Self::Admitted(profile) if profile.allows_draw_card_0_1_0())
+        match self {
+            Self::Admitted(profile) => profile.allows_draw_card_0_1_0(),
+            Self::ExecutableBasicLand(admission) => admission_has(admission, "rules/draw-card"),
+            #[cfg(any(test, feature = "magic-conformance-testkit"))]
+            _ => false,
+        }
     }
 
     fn allows_combat_attackers(&self) -> bool {
-        matches!(self, Self::Admitted(profile) if profile.allows_combat_attackers_0_1_0())
+        match self {
+            Self::Admitted(profile) => profile.allows_combat_attackers_0_1_0(),
+            Self::ExecutableBasicLand(admission) => {
+                admission_has(admission, "rules/declare-attackers")
+            }
+            #[cfg(any(test, feature = "magic-conformance-testkit"))]
+            _ => false,
+        }
     }
 
     fn allows_combat_blockers(&self) -> bool {
@@ -146,7 +158,12 @@ impl MagicKernelProfile {
     }
 
     fn allows_cleanup_reset(&self) -> bool {
-        matches!(self, Self::Admitted(profile) if profile.allows_cleanup_reset_0_1_0())
+        match self {
+            Self::Admitted(profile) => profile.allows_cleanup_reset_0_1_0(),
+            Self::ExecutableBasicLand(admission) => admission_has(admission, "rules/cleanup-reset"),
+            #[cfg(any(test, feature = "magic-conformance-testkit"))]
+            _ => false,
+        }
     }
 
     fn allows_land_play(&self) -> bool {
@@ -3225,5 +3242,24 @@ mod attacker_eligibility_tests {
         // than an ineligible candidate to filter from an otherwise admitted
         // attacker domain.
         assert!(MagicRulesKernel::derive_eligible_attackers(&state).is_err());
+    }
+}
+
+#[cfg(test)]
+mod executable_profile_tests {
+    use super::*;
+
+    #[test]
+    fn executable_profile_permissions_follow_admission() {
+        let kernel = MagicRulesKernel::from_executable_admission(
+            crate::basic_land::basic_land_admission_fixture(),
+        );
+        assert!(kernel.profile.allows_turn_structure());
+        assert!(kernel.profile.allows_basic_priority());
+        assert!(kernel.profile.allows_draw_card());
+        assert!(kernel.profile.allows_combat_attackers());
+        assert!(kernel.profile.allows_cleanup_reset());
+        assert!(!kernel.profile.allows_combat_blockers());
+        assert!(!kernel.profile.allows_combat_damage());
     }
 }

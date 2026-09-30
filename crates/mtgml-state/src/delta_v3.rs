@@ -292,6 +292,18 @@ fn validate_delta_operation_coverage(
 
     let old_before = &before.predecessor_v5;
     let old_after = &after.predecessor_v5;
+    // An untap step claims exactly the permanents it untapped: each listed
+    // object was tapped before and is untapped after.
+    if has_legacy(&|operation| {
+        matches!(operation,
+        crate::SemanticDeltaOperation::UntapCompleted { affected_objects }
+            if affected_objects.iter().any(|object| {
+                !(old_before.zones.objects.get(object).is_some_and(|old| old.tapped)
+                    && old_after.zones.objects.get(object).is_some_and(|new| !new.tapped))
+            }))
+    }) {
+        return uncovered();
+    }
     // Core rules state.
     if old_before.core.active_player != old_after.core.active_player
         && !has_legacy(&|operation| {
@@ -466,15 +478,25 @@ fn validate_delta_operation_coverage(
                     && old_object.controller == new_object.controller
                     && old_object.face_down == new_object.face_down =>
             {
-                if !has_v2(&|operation| {
-                    matches!(operation,
-                    SemanticDeltaOperationV2::ObjectTapped { object, from, to }
-                        if *object == *id && *from == old_object.tapped && *to == new_object.tapped)
-                }) && !has_legacy(&|operation| {
-                    matches!(operation,
-                        crate::SemanticDeltaOperation::ObjectTapped { object, from, to }
+                let untapped_by_untap_step = old_object.tapped
+                    && !new_object.tapped
+                    && has_legacy(&|operation| {
+                        matches!(operation,
+                            crate::SemanticDeltaOperation::UntapCompleted { affected_objects }
+                                if affected_objects.contains(id))
+                    });
+                let covered = untapped_by_untap_step
+                    || has_v2(&|operation| {
+                        matches!(operation,
+                        SemanticDeltaOperationV2::ObjectTapped { object, from, to }
                             if *object == *id && *from == old_object.tapped && *to == new_object.tapped)
-                }) {
+                    })
+                    || has_legacy(&|operation| {
+                        matches!(operation,
+                            crate::SemanticDeltaOperation::ObjectTapped { object, from, to }
+                                if *object == *id && *from == old_object.tapped && *to == new_object.tapped)
+                    });
+                if !covered {
                     return uncovered();
                 }
             }
@@ -752,6 +774,25 @@ fn validate_delta_operation_coverage(
     {
         return uncovered();
     }
+    // A zone transition carries the card's face from the old incarnation to
+    // the new one unchanged.
+    let faces_follow_zone_transitions = || {
+        let mut expected = old_rules.faces.faces.clone();
+        for operation in operations {
+            if let V3::Existing { operation } = operation {
+                if let SemanticDeltaOperationV2::Existing { operation } = operation.as_ref() {
+                    if let crate::SemanticDeltaOperation::ZoneTransition { transition } =
+                        operation.as_ref()
+                    {
+                        if let Some(face) = expected.remove(&transition.old_object) {
+                            expected.insert(transition.new_object, face);
+                        }
+                    }
+                }
+            }
+        }
+        expected == new_rules.faces.faces
+    };
     if old_rules.faces != new_rules.faces
         && !has_v2(&|operation| {
             matches!(
@@ -760,6 +801,7 @@ fn validate_delta_operation_coverage(
             )
         })
         && !has_v2(&|operation| matches!(operation, SemanticDeltaOperationV2::ObjectEntered { .. }))
+        && !faces_follow_zone_transitions()
     {
         return uncovered();
     }

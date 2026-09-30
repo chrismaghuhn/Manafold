@@ -113,6 +113,16 @@
       "version": "0.1.0"
     },
     {
+      "dependencies": [
+        "rules/draw-card",
+        "rules/turn-structure"
+      ],
+      "key": "rules/state-based-actions-empty-library",
+      "lifecycle": "covered",
+      "lifecycle_rank": 3,
+      "version": "0.1.0"
+    },
+    {
       "dependencies": [],
       "key": "rules/turn-structure",
       "lifecycle": "covered",

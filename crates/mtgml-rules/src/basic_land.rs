@@ -189,6 +189,8 @@ pub enum BasicLandTransitionError {
     Delta,
     #[error("the next turn boundary requires semantics outside this admitted profile")]
     UnsupportedPriorityBoundary,
+    #[error("the turn rules cannot progress from this state")]
+    TurnProgressUnsupported,
 }
 
 /// Resolve the second-pass boundary only when this profile can immediately
@@ -381,7 +383,7 @@ pub(crate) fn execute_basic_land_decision_draft(
                 mtgml_state::PriorityState::HeldBy {
                     player,
                     consecutive_passes: 0,
-                } if player == actor && actor == core.active_player => {
+                } if player == actor => {
                     let to_priority = mtgml_state::PriorityState::HeldBy {
                         player: other,
                         consecutive_passes: 1,
@@ -406,7 +408,7 @@ pub(crate) fn execute_basic_land_decision_draft(
                 mtgml_state::PriorityState::HeldBy {
                     player,
                     consecutive_passes: 1,
-                } if player == actor && actor != core.active_player => {
+                } if player == actor => {
                     let next_actor = core.active_player;
                     let old_position = core.position;
                     let new_position = priority_window_after_second_pass(old_position)?;
@@ -1046,6 +1048,37 @@ pub(crate) fn execute_basic_land_decision_draft(
         }
     }
 
+    // CR 117.3c, 117.4: the acting player receives priority again, and the
+    // action ends any succession of passes.
+    let from_priority = next.predecessor_v5.core.priority;
+    if let mtgml_state::PriorityState::HeldBy {
+        player,
+        consecutive_passes,
+    } = from_priority
+    {
+        if consecutive_passes != 0 {
+            let to_priority = mtgml_state::PriorityState::HeldBy {
+                player,
+                consecutive_passes: 0,
+            };
+            next.predecessor_v5.core.priority = to_priority;
+            operations.push(SemanticDeltaOperationV2::Existing {
+                operation: Box::new(mtgml_state::SemanticDeltaOperation::PriorityChanged {
+                    from: from_priority,
+                    to: to_priority,
+                }),
+            });
+            push_successor_event(
+                &mut next,
+                &mut events,
+                AuthoritativeRuleEventKindV2::PriorityChanged {
+                    from: from_priority,
+                    to: to_priority,
+                },
+            )?;
+        }
+    }
+
     next.validate()
         .map_err(|_| BasicLandTransitionError::InvalidResult)?;
     Ok(BasicLandTransitionDraftV1 {
@@ -1422,6 +1455,24 @@ pub(crate) fn s1_b_state_with_two_lands_fixture() -> EngineStatePartsV2 {
 }
 
 #[cfg(test)]
+pub(crate) fn basic_land_admission_fixture() -> mtgml_card_ir::ExecutableProfileAdmissionV1 {
+    tests::admission()
+}
+
+#[cfg(test)]
+pub(crate) fn content_only_admission_fixture() -> mtgml_card_ir::ExecutableProfileAdmissionV1 {
+    tests::admission_with_closure(&[
+        "rules/basic-land-mana",
+        "rules/basic-priority",
+        "rules/land-play",
+        "rules/mana-pool",
+        "rules/state-based-actions-combat",
+        "rules/turn-structure",
+        "rules/zone-incarnation",
+    ])
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use mtgml_card_ir::{
@@ -1450,23 +1501,33 @@ mod tests {
         include_bytes!("../../../cards/definitions/basic-land-v1/provenance.v1.cbor");
     const RULES_SNAPSHOT: &str = "wotc-cr-2026-09-25-txt-20260925-sha256-8d860e451f20f38865b725b42d82feb714c725373dd8f3b32b8652b3eeb070ca";
 
-    fn admission() -> ExecutableProfileAdmissionV1 {
-        let id = calculate_content_contract_id_v1(MANIFEST).unwrap();
-        let closure = [
+    pub(super) fn admission() -> ExecutableProfileAdmissionV1 {
+        admission_with_closure(&[
             "rules/basic-land-mana",
             "rules/basic-priority",
+            "rules/cleanup-reset",
+            "rules/combat-phase",
+            "rules/declare-attackers",
+            "rules/draw-card",
             "rules/land-play",
             "rules/mana-pool",
             "rules/state-based-actions-combat",
+            "rules/state-based-actions-empty-library",
             "rules/turn-structure",
             "rules/zone-incarnation",
-        ]
-        .into_iter()
-        .map(|key| mtgml_model::CapabilityRequirementV1 {
-            key: key.to_owned(),
-            version: "0.1.0".to_owned(),
-        })
-        .collect();
+        ])
+    }
+
+    pub(super) fn admission_with_closure(keys: &[&str]) -> ExecutableProfileAdmissionV1 {
+        let id = calculate_content_contract_id_v1(MANIFEST).unwrap();
+        let closure = keys
+            .iter()
+            .copied()
+            .map(|key| mtgml_model::CapabilityRequirementV1 {
+                key: key.to_owned(),
+                version: "0.1.0".to_owned(),
+            })
+            .collect();
         let rules = RulesContractManifestV1 {
             rules_authority: RulesAuthorityV1::ComprehensiveRules {
                 snapshot_id: RULES_SNAPSHOT.to_owned(),
