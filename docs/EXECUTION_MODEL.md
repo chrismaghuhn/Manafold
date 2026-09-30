@@ -141,7 +141,7 @@ M2 information projection additionally uses a per-perspective visible-sequence c
 ## Complete checkpoints
 
 The current runtime checkpoint contract is `EnvironmentCheckpointV8`, bound to
-`FullStateDigestV7`/`CheckpointDigestV8` and the complete `ExecutionIdentityV1`.
+`FullStateDigest`/`CheckpointDigestV8` and the complete `ExecutionIdentityV1`.
 Restore validates the complete state, episode status, limit counters, codec
 identity and execution identity against the verified admission before backend
 mutation.

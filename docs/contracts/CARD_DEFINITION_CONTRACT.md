@@ -296,13 +296,13 @@ No universal `ActionReceipt<T>` is persisted.
 ## Unchanged contracts and non-goals
 
 M4.1 adds no authoritative EngineState, no Decision family, no continuation,
-and no player-visible information. `FullStateDigestV5`,
+and no player-visible information. The full-state digest V5,
 `EnvironmentCheckpointV6`, `CheckpointDigestV6`, Replay V6, current M3
 semantic identities, and the existing execution catalog were the unchanged
-M4.1 design baseline. PR #248 later activated FullStateDigestV6, Checkpoint V7,
-and Replay V7 for the bounded M4.2 slice; G0j supersedes those current-writer
-identities with the V7/V8 family while retaining the bounded profile and its
-exact existing support. This historical M4.1 contract does not claim or
+M4.1 design baseline. PR #248 later activated the V6 state digest, Checkpoint
+V7, and Replay V7 for the bounded M4.2 slice; G0j superseded those identities
+with the V7/V8 family while retaining the bounded profile and its exact
+existing support, and the superseded identities were later removed. This historical M4.1 contract does not claim or
 authorize broader support.
 `ContentContractIdV1` is external immutable content identity and is not
 inserted into state or checkpoint identity.

@@ -38,20 +38,22 @@ Opaque player-visible identity is deliberately independent of authoritative inca
 
 ## Complete authoritative state
 
-`EngineState` is the complete semantic input to a transition:
+`EngineState` is the complete semantic input to a transition. It is one flat
+value; every component is a direct field:
 
 ```text
 EngineState
 ├── revision
 ├── core rules state
-├── zones, objects, stack records and ordering
+├── combat state (optional)
+├── zones, objects, typed stack records and ordering
 ├── trusted/global identity allocators
-├── authoritative pending decision
-├── typed continuations, effects and triggers
+├── execution: authoritative pending decision, typed continuations, effects and triggers
 ├── typed RNG stream keys and raw-word cursors
 ├── per-player retained knowledge + next visible sequence
 ├── per-player opaque mappings + visible allocators + retired IDs
-└── format state
+├── format state
+└── card-rules state: mana, turn history, counters, attachments, faces, ability authority
 ```
 
 No kernel/projector/controller/adapter object may retain hidden mutable semantic state.
@@ -143,7 +145,7 @@ M2 does not implement or certify real Commander semantics merely because structu
 ## Invariant ownership
 
 - local types validate local shape/ranges;
-- `validate_engine_state` validates cross-component relationships;
+- `EngineState::validate_structure` validates the complete state: `validate_engine_state` for cross-component relationships, then the card-rules cross-checks, stack payloads and execution records;
 - accepted transitions validate the candidate state before commit;
 - perspective projections required for commit are validated before commit;
 - checkpoint/restore/replay readers validate before exposing/using state;

@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** APPROVED by the owner, 2026-09-30; being executed inline on branch `chore/flatten-current-format`.
+**Status:** IMPLEMENTED on branch `chore/flatten-current-format`, 2026-10-01 (approved by the owner; executed inline).
 
 **Goal:** Dissolve the internal layering of the current format into one flat state, one digest encoder, one event enum, one operation enum and one information-state projection, without changing a single byte of any remaining fixture or of real games.
 
@@ -542,15 +542,15 @@ Wire-string constants keep their names. Not renamed: the families listed in spec
 
 | Module | Tests that still exercise it |
 |---|---|
-| `mtgml-state` `engine.rs` (flat state, validation) | `g0d_state_authority` (incl. `flat_state_exposes_every_component_at_the_top_level`), `src/tests/{validation,zones_allocators,batch_d}.rs`, ported card-rules tests from `engine_state_parts_v2` |
-| `mtgml-state` `digest.rs`, `card_rules.rs` | `digest_sensitivity` (5), `g0e_digest` (`9e8064…`, V7 KAT, stack/effect/trigger), `semantic_mutations::tests`, Python `test_g0c_digest_identity_fixtures`, `test_authoritative_state_coverage` |
-| `mtgml-state` `delta.rs` | `g0e_digest` `state_delta_*`, `untap_delta` |
-| `mtgml-rules` `events.rs`, `basic_land.rs`, `turn_progression.rs`, `zone_incarnation.rs` | their module tests, `tests/{semantic_delta,zone_incarnation}.rs`, `random_smoke` (short and long pins), `production_turn` |
-| `mtgml-decision` `v4.rs`, `ordering.rs`, `answer.rs`, `response.rs` | `v4::tests`, the ported `assign_dense` tests, `src/tests.rs`, Python `test_decision_v4`, `test_decision_response_v3` |
-| `mtgml-observation` `observation.rs`, `information.rs`, `knowledge.rs`, `observed_event_v4.rs`, `player_step_v4.rs`, `magic_*` | `src/tests.rs`, `provenance_tests` (ported), their module tests, wire goldens/negatives, Python `test_observation_v3`, `test_observation_digest_binding`, `test_player_api`, `test_g0g_player_products` |
-| `mtgml-environment` projection, runtime, checkpoint | `magic_basic_land_observation` (7), `basic_land_runtime_v8`, `successor_turn_projection`, `checkpoint_v8` tests, `current_successor_api`, `production_turn`, `random_smoke` |
-| `mtgml-wire` observation, fixtures | `tests.rs` manifest tests, `constructive_producer_tests` (ported) |
-| `mtgml-replay` `randomness.rs`, `contract_material.rs`, `v8.rs` | `v8::tests`, `tests/content_contract_material.rs`, Python `test_g0h_replay_v8` |
+| `mtgml-state` `engine.rs` (flat state, validation) | `g0d_state_authority` (26, incl. `flat_state_exposes_every_component_at_the_top_level` and `pending_request_decision_identity_must_stay_below_the_allocator`), `src/tests/{validation (14), zones_allocators (1), batch_d (30), continuation (5)}.rs` |
+| `mtgml-state` `digest.rs`, `card_rules.rs` | `src/tests/digest.rs` (10: the sensitivity matrix and the card-rules families; T1 ruling put them here instead of `digest_sensitivity.rs`), `g0e_digest` (17: `9e8064…`, V7 KAT, stack/effect/trigger), `semantic_mutations::tests` (14), `digest::decision_purpose_codec_tests` (1), Python `test_g0c_digest_identity_fixtures` (3), `test_authoritative_state_coverage` (2) |
+| `mtgml-state` `delta.rs` | `g0e_digest` `state_delta_*` (8), `untap_delta` (4) |
+| `mtgml-rules` `events.rs`, `basic_land.rs`, `turn_progression.rs`, `zone_incarnation.rs` | `events::tests` (10), `basic_land::tests` (12), `turn_progression::tests` (19), `src/tests.rs` (5, incl. `zone_incarnation_tests`), `characteristic_query::s1_b_detached_tests` (2), `random_smoke` (3: short and long pins), `production_turn` (8) |
+| `mtgml-decision` `v4.rs`, `ordering.rs`, `answer.rs`, `response.rs` | `v4::tests` (17, incl. the five `assign_dense_*` tests), `v4::hand_size_discard_tests` (1), `src/tests.rs` (5), `response::tests` (2), `batch_f` (1), Python `test_decision_v4` (14), `test_decision_response_v3` (2) |
+| `mtgml-observation` `observation.rs`, `information.rs`, `knowledge.rs`, `observed_event_v4.rs`, `player_step_v4.rs`, `magic_*` | `src/tests.rs` (6), `provenance_tests` (5), `information::tests` (2), `magic_shared_execution_observation_v1::tests` (4), `player_step_v4::tests` (2), wire goldens/negatives, Python `test_observation_v3` (5), `test_observation_digest_binding` (5), `test_player_api` (11), `test_g0g_player_products` (3) |
+| `mtgml-environment` projection, runtime, checkpoint | `magic_basic_land_observation` (7), `basic_land_runtime_v8::tests` (18), `successor_turn_projection` (6), `checkpoint_v8::tests` (4), `current_successor_api` (2), `production_turn` (8), `random_smoke` (3) |
+| `mtgml-wire` observation, fixtures | `src/tests.rs` (2), `constructive_producer_tests` (3), `decision::successor_response_tests` (1) |
+| `mtgml-replay` `randomness.rs`, `contract_material.rs`, `v8.rs` | `v8::tests` (7), `contract_material::tests` (1), `tests/content_contract_material.rs` (4), Python `test_g0h_replay_v8` (7) |
 
 - [ ] **Step 4: Commit** `docs: describe the flat current format`. Then run `.venv/Scripts/python.exe scripts/run_checks.py integration`. Expected: PASS, including the release `random_smoke` with the long pin. Run the byte-identity command one last time. Expected: exactly the Task 1, 2 and 5 paths.
 - [ ] **Step 5: Report the known gaps.** Report them; do not fix them.

@@ -16,8 +16,8 @@ reward/action policies, and behavior metadata.
 The M4.2 V3 player contracts and `magic-basic-land-observation.v1` payload
 retain their exact historical meanings after G0j. The current bounded M4.2
 trajectory products use PlayerDecisionRequestV4, DecisionResponseV3,
-ObservedEventEnvelopeV4, PlayerStepV4, ObservationEnvelopeV2,
-PlayerInformationStateV3 / InformationStateDigestV3, and
-`magic-shared-execution-observation.v1`. The successor family preserves only
+ObservedEventEnvelopeV4, PlayerStepV4, `ObservationEnvelope`
+(`observation-envelope.v2`), `PlayerInformationState` / `InformationStateDigest`
+(`information-state-envelope.v3`), and `magic-shared-execution-observation.v1`. The successor family preserves only
 the accepted Mountain/Plains `basic-land@1.0.0` execution; it does not claim
 complete M4 gameplay or broader card/deck support.

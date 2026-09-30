@@ -45,9 +45,9 @@ Active known-object records are keyed by that perspective's `OpaqueObjectId`, no
 
 Trusted knowledge records may retain physical/definition identities for validation, but they do **not** duplicate the live `OpaqueObjectId -> GameObjectId` association. `PerspectiveIdentityState` is the sole owner of that current live association. Player projection never exposes physical-card identity or live authoritative object identity. A known `CardDefinitionId` may be projected only when that perspective is already authorized to know the definition.
 
-## PlayerInformationStateV2 retained-knowledge contract
+## PlayerInformationState retained-knowledge contract
 
-`PlayerInformationStateV2` contains exactly one current observation plus retained perspective knowledge. Its retained object array is `PlayerKnownObjectV1[]`; retired records remain present because retirement ends live identity resolution, not the player's historical memory.
+`PlayerInformationState` contains exactly one current observation plus retained perspective knowledge. Its retained object array is `PlayerKnownObjectV1[]`; retired records remain present because retirement ends live identity resolution, not the player's historical memory.
 
 `PlayerKnownObjectV1` uses the following exact canonical-JSON semantic shapes. Object keys are serialized by the global canonical JSON rule; every field shown is required, and nullable fields are encoded as explicit `null` rather than omission. IDs use their canonical decimal-string wire representation.
 
@@ -67,7 +67,7 @@ Active record:
 }
 ```
 
-`known_definition` and `current_known_location_fact` may be `null`. Current-location update provenance is deliberately part of `PlayerInformationStateV2`; it is not dropped merely because the fact is current rather than historical.
+`known_definition` and `current_known_location_fact` may be `null`. Current-location update provenance is deliberately part of `PlayerInformationState`; it is not dropped merely because the fact is current rather than historical.
 
 Retired record:
 
@@ -257,9 +257,13 @@ A visible random result may differ when the synthetic/rules visibility contract 
 
 ## Current player products
 
-The current bounded M4.2 endpoint composes ObservationEnvelopeV2,
-PlayerInformationStateV3 / InformationStateDigestV3, ObservedEventEnvelopeV4,
-PlayerDecisionRequestV4 / DecisionResponseV3, and PlayerStepV4. Player products
+The current bounded M4.2 endpoint composes `ObservationEnvelope`
+(`observation-envelope.v2`), `PlayerInformationState` / `InformationStateDigest`
+(`information-state-envelope.v3`), ObservedEventEnvelopeV4,
+PlayerDecisionRequestV4 / DecisionResponseV3, and PlayerStepV4. The environment
+projects the information state directly from the authoritative state; its
+digest binds the current observation envelope, the next visible sequence and
+the retained knowledge. Player products
 omit global StateRevision and use the existing perspective-local
 VisibleSequence. The current public payload is
 `magic-shared-execution-observation.v1`; it remains scoped to the admitted
@@ -284,7 +288,7 @@ Wall-clock timing is outside the semantic byte guarantee, but timing never enter
 
 ## Validation
 
-`validate_engine_state()` rejects at least:
+`EngineState::validate_structure()`, through `validate_engine_state()` and the execution-record checks, rejects at least:
 
 - missing/mismatched perspective state;
 - non-bijective active mapping;

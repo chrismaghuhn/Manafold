@@ -6,22 +6,25 @@
 `EngineState` is the complete semantic input to a transition:
 
 ```text
-EngineState
+EngineState                           # one flat value; every component is a direct field
 ├── revision
 ├── CoreRulesState
-├── ZoneState
+├── combat                            # optional CombatState
+├── ZoneState                         # objects, locations, ordered zones, typed stack records
 ├── IdentityAllocatorState            # trusted/global allocators only
 ├── ExecutionState
 │   ├── authoritative pending decision
 │   ├── typed continuations
-│   ├── effects
-│   └── triggers/delayed effects
+│   ├── temporary effects
+│   ├── waiting triggers
+│   └── delayed effects               # always empty
 ├── RandomState
 ├── KnowledgeState
 │   └── per-perspective retained knowledge + next visible sequence
 ├── PerspectiveIdentityState
 │   └── mappings + perspective-local opaque/player-decision allocators + retired IDs
-└── FormatState
+├── FormatState
+└── CardRulesAuthoritativeStateV1     # mana, turn history, counters, attachments, faces, ability authority
 ```
 
 No kernel, projector, environment backend, adapter, or controller may retain hidden mutable semantic state outside this closure. Caches must be derivable, disposable, and semantically inert.
@@ -63,23 +66,27 @@ A player-visible ID must not derive from global hidden allocation history.
 
 ## Validation ownership
 
-`validate_engine_state()` owns cross-component validation. Component presence alone is insufficient.
+`EngineState::validate_structure()` owns the complete structural validation.
+It runs `validate_engine_state()` for the cross-component checks, then the
+card-rules cross-checks, the typed stack payloads, and the execution records.
+`EngineState::validate()` additionally rejects a pending request whose purpose
+is profile-dependent; only the RulesKernel-owned exact domain derivation admits
+such a request. Component presence alone is insufficient.
 
-For pending V2 decisions, `AuthoritativeDecisionRequestV2::validate()` owns
-only local structural request validity. The state-owned
-`validate_pending_authoritative_request()` boundary calls the exact candidate
-binding check for every pending candidate, including scalar payload equality
-and perspective-local object/ability resolver equality. `project_player_request()`
-projects only after that authoritative boundary has passed; it is not a second
-binding authority and never exposes trusted bindings.
+For the pending request, `AuthoritativeDecisionRequest::project_player_request()`
+checks each candidate's local shape and validates the projected player request;
+the state-owned execution-record check adds revision, actor, allocator and
+perspective-local identities, the visible cursor, continuation/request
+consistency, and the exact binding of every pending candidate. Projection never
+exposes trusted bindings.
 
-It validates at least:
+Together they validate at least:
 
 - player references;
 - object/location and stack bijections;
 - global internal allocator monotonicity;
 - authoritative pending decision/candidate binding integrity;
-- exact `CandidateOrderingV1`: candidate array already sorted by the frozen public semantic comparator, `candidate_id` equals its dense zero-based array index, no duplicate public ordering key exists, and `ChooseNumber` carries an empty candidate array;
+- exact `CandidateOrdering`: candidate array already sorted by the frozen public semantic comparator, `candidate_id` equals its dense zero-based array index, no duplicate public ordering key exists, and `ChooseNumber` carries an empty candidate array;
 - continuation reference/stage/payload consistency;
 - knowledge/history/provenance relationships joined through the sole live mapping in `PerspectiveIdentityState`;
 - opaque mapping bijections and retirement;
@@ -114,8 +121,8 @@ The reference contract prefers correctness/auditability over compactness. A late
 ## Versioning
 
 Each state format has one current version and is changed in place (AGENTS.md
-§4). The current aggregate is `EngineStatePartsV3`; `FullStateDigestV7` hashes
-it through the V6 and V5 input layers specified in
+§4). The current aggregate is the flat `EngineState`; `FullStateDigest`
+(`mtgml.full-state-digest.v7`) hashes it in one pass, as specified in
 [`../STATE_HASHING.md`](../STATE_HASHING.md).
 
 ## Combat state facts
@@ -139,11 +146,11 @@ substrate; their presence does not claim broader card/deck support.
 
 ## Current state closure
 
-The current authoritative aggregate is `EngineStatePartsV3`, with
-`ExecutionStateV4`, `PersistedExecutionV4`, `zones_v2`, typed stack records,
-and typed continuation/effect/trigger authority. `StateDeltaV3` and
-`AuthoritativeRuleEventV3` describe current transition products;
-`FullStateDigestV7` binds the complete aggregate. `EnvironmentCheckpointV8`
+The current authoritative aggregate is the flat `EngineState`, with
+`ExecutionState`, typed stack records, and typed continuation/effect/trigger
+authority. `StateDelta` and `AuthoritativeRuleEvent` describe current
+transition products; `FullStateDigest` binds the complete aggregate.
+`EnvironmentCheckpointV8`
 and Replay V8 bind the successor digest and product identities. The current
 runtime's executable admission remains the exact previously accepted M4.2
 Mountain/Plains slice; this contract change does not implement G0 Shared

@@ -113,19 +113,18 @@ pub(crate) fn state_value(state: &EngineState) -> Result<Value, crate::StateDige
         format,
         card_rules,
     } = state;
-    let parts = state;
     Ok(array([
         text(FULL_STATE_DIGEST_INPUT_SCHEMA_V7),
         text(FULL_STATE_DIGEST_DOMAIN_V7),
         u(revision.0),
-        core_value(parts),
-        zones_v2_value(parts)?,
-        allocators_value(parts),
+        core_value(state),
+        zones_v2_value(state)?,
+        allocators_value(state),
         execution_v4_value(execution)?,
-        random_value(parts),
-        knowledge_value(parts)?,
-        perspective_identities_value(parts)?,
-        combat_value(parts),
+        random_value(state),
+        knowledge_value(state)?,
+        perspective_identities_value(state)?,
+        combat_value(state),
         // The foundation-source slot of the preimage is always empty.
         array([]),
         format_value(format)?,

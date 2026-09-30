@@ -103,7 +103,7 @@ Requires both architecture and executable structural evidence:
 - exact Decision V2 / information-event-step V2 meanings;
 - exact V3 full-state/checkpoint/replay identity plan;
 - complete ADR-0038 digest-envelope and `mtgml.canonical-cbor.v1` byte contract, including every nested leaf layout, decoder resource bounds, closed persistence-decode error taxonomy, canonical re-encoding, and known-answer/negative fixtures;
-- exact `InformationStateDigestV2` domain/input identity;
+- exact information-state digest domain/input identity;
 - explicit historical V1/V2 writer/reader/verifier/execution/migration classifications;
 - no reinterpretation of old artifacts;
 - Rust/Python/schema/fixture identity coherence where public DTOs exist.
@@ -119,7 +119,7 @@ remains a separate CI gate.
 
 `SERIALIZED_CONTINUATION_LIFECYCLE` requires creation, stage advancement, fresh stage request identities, rejection atomicity, completion/removal, checkpoint/fork/replay parity, and exact delta/event/after-state parity for every accepted continuation mutation.
 
-`VISIBLE_DECISION_CANONICAL_ORDER_AND_IDENTITY` requires exact `CandidateOrderingV1`: the frozen variant-rank table, semantic numeric/boolean payload comparator, unconditional duplicate-public-key rejection, dense request-local candidate IDs, perspective-local player-decision IDs, and insertion/global-allocation-history independence. JSON/text/Rust-enum/trusted-binding order may not define candidate order. Negative state-validation evidence must reject an authoritative pending request whose candidates are out of `CandidateOrderingV1` order, whose `CandidateIdV1` values are not the dense array indices, whose public ordering key is duplicated, or whose `ChooseNumber` request contains candidates.
+`VISIBLE_DECISION_CANONICAL_ORDER_AND_IDENTITY` requires exact `CandidateOrdering`: the frozen variant-rank table, semantic numeric/boolean payload comparator, unconditional duplicate-public-key rejection, dense request-local candidate IDs, perspective-local player-decision IDs, and insertion/global-allocation-history independence. JSON/text/Rust-enum/trusted-binding order may not define candidate order. Negative state-validation evidence must reject an authoritative pending request whose candidates are out of `CandidateOrdering` order, whose `CandidateIdV1` values are not the dense array indices, whose public ordering key is duplicated, or whose `ChooseNumber` request contains candidates.
 
 ### Player projection/error gates
 

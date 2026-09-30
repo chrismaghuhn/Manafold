@@ -1,6 +1,6 @@
 # State and Artifact Hashing
 
-**Status:** FullStateDigestV7 / CheckpointDigestV8 / Replay V8 are the only persisted identities; FullStateDigestV7 is still computed through the V6 and V5 input layers described below. Earlier identities were removed (docs/superpowers/specs/2026-09-30-old-formats-cleanup-design.md)
+**Status:** `FullStateDigest` (`mtgml.full-state-digest.v7`) / CheckpointDigestV8 / Replay V8 are the only persisted identities. `FullStateDigest` is written in one pass from the flat `EngineState` by `crates/mtgml-state/src/digest.rs`. Earlier identities and input layers were removed (docs/superpowers/specs/2026-09-30-old-formats-cleanup-design.md, docs/superpowers/specs/2026-09-30-flatten-current-format-design.md)
 **Stability:** normative identity separation and ADR-0038 persistence-codec specification
 
 ## Digest domains
@@ -9,52 +9,62 @@ Distinct semantic domains use distinct Rust types and identities. Digests from d
 
 | Digest | Meaning |
 |---|---|
-| `FullStateDigestV5` | the V5 input layer that FullStateDigestV7 builds on; the V5 digest itself serves only as a test probe (`EngineState::digest`) |
-| `FullStateDigestV6` | the V6 input layer (V5 components plus the card-rules record) that FullStateDigestV7 builds on |
-| `FullStateDigestV7` | complete `EngineStatePartsV3` identity; the current writer |
-| `InformationStateDigestV2` | perspective-safe current observation + retained knowledge (`mtgml.information-state-digest.v2`) |
+| `FullStateDigest` | complete `EngineState` identity (`mtgml.full-state-digest.v7`) |
+| `InformationStateDigest` | perspective-safe current observation + retained knowledge (`mtgml.information-state-digest.v3`) |
 | `ObservationDigest` | exact current observation bytes |
 | `CandidateSetDigest` | ordered visible candidates/constraints only |
-| `CheckpointDigestV8` | checkpoint identity binding `FullStateDigestV7` and `ExecutionIdentityV1`; the current checkpoint digest |
+| `CheckpointDigestV8` | checkpoint identity binding `FullStateDigest` and `ExecutionIdentityV1`; the current checkpoint digest |
 
 Digest identity provides content identity/divergence detection, not authenticity.
 
-## FullStateDigestV7 current identity
+## FullStateDigest current identity
 
-G0j activates `FullStateDigestV7` for the complete `EngineStatePartsV3`
-successor aggregate. Its fixed canonical input is
-`full-state-digest-input.v7`, domain-separated by
-`mtgml.full-state-digest.v7`. The input includes the accepted `zones_v2` and
-`execution_v4` child identities and their closed typed records. Canonical
-encoding remains explicit restricted CBOR; arbitrary Serde output is never
-hashed.
+`FullStateDigest` identifies the complete flat `EngineState`. Its canonical
+input is `full-state-digest-input.v7`, domain-separated by
+`mtgml.full-state-digest.v7`, encoded as restricted canonical CBOR, framed by
+the V1 digest envelope and hashed with SHA-256. Arbitrary Serde output is
+never hashed.
+
+`canonical_state_bytes` validates the state with `EngineState::validate` and
+then writes the preimage once from the typed state;
+`calculate_full_state_digest` hashes those bytes. The `_structural_only`
+variants validate with `EngineState::validate_structure` instead and are used
+only behind a RulesKernel-owned profile-domain check at the containing
+runtime boundary. `full_state_digest_from_payload` frames and hashes an
+already encoded preimage; no reader decodes the preimage back into a state.
+
+The preimage is a fixed 14-element array:
+
+| Index | Content | Form |
+|---|---|---|
+| 0 | input schema | text `full-state-digest-input.v7` |
+| 1 | domain | text `mtgml.full-state-digest.v7` |
+| 2 | state revision | unsigned |
+| 3 | core | [`core_v1`](#core_v1) |
+| 4 | zones | [`zones_v2`](#zones_v2), tagged `"zones_v2"` |
+| 5 | allocators | [`allocators_v3`](#allocators_v3) |
+| 6 | execution | [`execution_v4`](#execution_v4), tagged `"execution_v4"` |
+| 7 | random | [`random_v1`](#random_v1) |
+| 8 | knowledge | [`knowledge_v2`](#knowledge_v2) |
+| 9 | perspective identities | [`perspective_identities_v2`](#perspective_identities_v2) |
+| 10 | combat | [`combat`](#combat): `null`, or the 3- or 5-element form |
+| 11 | foundation sources | always the empty array `[]` |
+| 12 | format | [`format_v1`](#format_v1) |
+| 13 | card-rules record | [card-rules record](#card-rules-record), tagged `"card-rules-authoritative-state.v1"` |
+
+Index 11 is a fixed slot: the state has no foundation-source table, and the
+slot keeps the bytes of the accepted V7 layout.
 
 `EnvironmentCheckpointV8` binds this digest with the V8 checkpoint identity.
-The V8 replay and observation families bind the same successor identities.
-This cut preserves only the accepted Mountain/Plains `basic-land@1.0.0`
-execution scope.
-
-## FullStateDigestV6 input layer
-
-FullStateDigestV7 validates its unchanged V6 components with the V6 input
-decoder. The V6 input uses domain `mtgml.full-state-digest.v6`, input schema
-`full-state-digest-input.v6`, `mtgml.canonical-cbor.v1`, and SHA-256. The
-canonical preimage is the fixed 14-element array in the accepted M4 semantic
-specification: the unchanged V5 positional components under the V6 header,
-followed by the closed `card-rules-authoritative-state.v1` record.
-
-That record contains typed Mana, TurnHistory, Counter, Attachment,
-Face, and AbilityAuthority state. Validation rejects noncanonical ordering,
-duplicates, invalid fixed tags, malformed record lengths, integer range/domain
-errors, and any `land_plays_used` value outside `{0,1}`. Its bytes use the
-shared canonical-CBOR and digest-envelope implementations. The decoder checks
-canonical decode/re-encode equality.
+The V8 replay and observation families bind the same identities. This cut
+preserves only the accepted Mountain/Plains `basic-land@1.0.0` execution
+scope.
 
 ## Immutable content identity V1
 
 `ContentContractIdV1` identifies one complete immutable rule-relevant
 `ContentContractManifestV1`. It is external content identity, not
-`EngineState`, `FullStateDigestV5`, checkpoint, or replay identity. Its
+`EngineState`, `FullStateDigest`, checkpoint, or replay identity. Its
 definition schema and validation rules are owned by the [Card Definition and
 Content Contract V1](contracts/CARD_DEFINITION_CONTRACT.md). Provenance is a
 separate audit artifact and is never included in this digest.
@@ -326,48 +336,13 @@ These are trusted codec/validation categories, not player-facing errors. Impleme
 - SHA-256 digest values embedded inside another persisted input are 32-byte byte strings carried through `DigestReferenceV1`;
 - free-form runtime debug labels are never accepted merely because a Rust field is `String`; every persisted string field must be explicitly declared by the semantic schema.
 
-# InformationStateDigestV2
-
-M2 changes information-state semantics and therefore does not reuse `mtgml.information-state-digest.v1`.
-
-Identity:
-
-```text
-semantic_domain = mtgml.information-state-digest.v2
-input_schema_id = information-state-digest-input.v2
-codec           = canonical public UTF-8 JSON (`WIRE_CONTRACT.md`)
-```
-
-The digest preimage remains the non-persisted/player-safe domain-separated form:
-
-```text
-ASCII("mtgml.information-state-digest.v2")
-0x00
-canonical_json(InformationStateDigestInputV2)
-```
-
-`InformationStateDigestInputV2` is the exact player-safe `PlayerInformationStateV2` semantic payload **with its digest field omitted**, and with schema identity fixed to `information-state-digest-input.v2`. It contains exactly:
-
-```text
-{
-  "schema_version": "information-state-digest-input.v2",
-  "perspective": <PlayerId>,
-  "state_revision": <StateRevision>,
-  "current_observation": <ObservationEnvelopeV1>,
-  "next_visible_sequence": <VisibleSequence>,
-  "retained_knowledge": <canonical ordered PlayerKnownObjectV1[]>
-}
-```
-
-It excludes `EpisodeStatus`, environment counters, trusted IDs, another player's knowledge, authoritative events, RNG state, checkpoint/replay identity, and the digest field itself. `PlayerKnownObjectV1` ordering/shape is part of the M2 public Information V2 wire contract and must be shared by Rust/Python/schema/golden fixtures before this digest producer is current.
-
-`ObservationDigest` remains V1 because `ObservationEnvelopeV1` already binds an independently versioned payload codec; M2 uses `synthetic-m2-observation.v1` without reinterpreting the envelope/digest domain.
-
 # State components
 
-These component encodings are still produced by FullStateDigestV7 through its
-V6/V5 layers. They were introduced with the V3 input and keep their V3-era
-names.
+These are the component encodings inside the `FullStateDigest` preimage.
+Their names (`core_v1`, `zones_v2`, …) label the layouts in this document;
+only `zones_v2`, `execution_v4` and the card-rules record write a tag into the
+bytes. `crates/mtgml-state/src/digest.rs` and
+`crates/mtgml-state/src/card_rules.rs` are the normative encoders.
 
 ## `core_v1`
 
@@ -375,8 +350,9 @@ names.
 [
   players[],
   active_player,
-  priority_player,
-  turn_number
+  turn_number,
+  turn_position,
+  priority
 ]
 ```
 
@@ -386,10 +362,18 @@ names.
 [player_id, life_i64, has_lost_bool]
 ```
 
-## `zones_v1`
+`turn_position` is `[phase, step_or_null]`: `["beginning", "untap" | "upkeep" | "draw"]`,
+`["precombat_main", null]`, `["combat", "beginning_of_combat" | "declare_attackers" |
+"declare_blockers" | "combat_damage" | "end_of_combat"]`, `["postcombat_main", null]`, or
+`["ending", "end_step" | "cleanup"]`.
+
+`priority` is `["none", null]` or `["held_by", [player_id, consecutive_passes_u32]]`.
+
+## `zones_v2`
 
 ```text
 [
+  "zones_v2",
   objects[],
   locations[],
   ordered_zones[],
@@ -459,7 +443,7 @@ private_group
 
 ```
 
-ADR 0049 does not change this V3 layout. It defines the vector as
+ADR 0049 does not change this layout. It defines the vector as
 the authoritative semantic order and requires every live ordered location to
 use the canonical redundant witness Top { offset }, with vector index zero as
 top and offset equal to the vector ordinal. Bottom and Index remain
@@ -478,13 +462,12 @@ or schema change.
 `stack_records` sorted by `StackObjectId`:
 
 ```text
-[
-  stack_object_id,
-  controller,
-  source_object_or_null,
-  source_ability_or_null
-]
+[stack_object_id, controller, stack_item_payload]
 ```
+
+Every live stack record carries its typed payload (spell, activated ability
+or triggered ability); a record without one is rejected. The nested payload
+layout is defined by `stack_payload_value` in `crates/mtgml-state/src/digest.rs`.
 
 `stack_order` preserves authoritative stack order.
 
@@ -507,145 +490,63 @@ Global/trusted allocators only:
 
 Perspective-local opaque/player-decision allocators are not duplicated here; they are encoded in `perspective_identities_v2`.
 
-## `execution_v2`
+## `execution_v4`
 
 ```text
 [
-  pending_authoritative_decision_or_null,
+  "execution_v4",
+  pending_decision_or_null,
   continuations[],
   effects[],
   waiting_triggers[],
-  delayed_effects[]
+  []
 ]
 ```
 
-Collections keyed by IDs are encoded as entry arrays sorted by the corresponding ID.
+Collections keyed by IDs are encoded as entry arrays sorted by the
+corresponding ID. The last slot is the delayed-effect slot; the state admits
+no delayed-effect record, so it is always the empty array.
 
-An authoritative decision is:
+`pending_decision_or_null` is the pending `AuthoritativeDecisionRequest`
+(identities, revision and visible cursor, actor, visibility, domain, purpose,
+parent decision, continuation, and the canonical candidates with their visible
+intent and trusted binding). A continuation entry is:
+
+```text
+[continuation_id, created_at_revision, continuation_payload]
+```
+
+The nested request, candidate, continuation-payload, temporary-effect and
+pending-trigger layouts are defined by `crates/mtgml-state/src/digest.rs`.
+
+The Magic SBA continuation payload is:
 
 ```text
 [
-  decision_id,
-  player_decision_id,
-  state_revision,
-  actor,
-  decision_visibility,
-  decision_domain,
-  candidates[],
-  continuation_id_or_null
+  "magic_sba_graveyard_order_v1",
+  round_start_revision,
+  selected_sba_actions[],
+  apnap_owners[player_id],
+  next_owner_index,
+  completed_owner_orders[[owner, top_to_bottom_game_object_ids[]]]
 ]
 ```
 
-`decision_visibility` variant IDs:
+`selected_sba_actions` is a closed typed action sequence:
 
 ```text
-public
-acting_player_only
-mixed
+["player_loses", player_id]
+["object_to_owner_graveyard", game_object_id, causes[]]
 ```
 
-`decision_domain` variants:
-
-```text
-["choose_one", null]
-["choose_many", [minimum_u32, maximum_u32]]
-["choose_number", [minimum_i64, maximum_i64]]
-["order", [minimum_u32, maximum_u32]]
-```
-
-Candidates are already in the authoritative canonical player-visible order and encode:
-
-```text
-[candidate_id_u32, visible_intent, trusted_binding]
-```
-
-The current M2 intent/binding semantic variant IDs are:
-
-```text
-pass_priority
-cast_spell
-activate_ability
-select_object
-select_player
-select_mode
-choose_boolean
-declare_number
-confirm
-```
-
-The exact M2 persisted layouts are:
-
-```text
-visible_intent:
-["pass_priority", null]
-["cast_spell", opaque_object_id]
-["activate_ability", opaque_ability_id]
-["select_object", opaque_object_id]
-["select_player", player_id]
-["select_mode", mode_index_u32]
-["choose_boolean", bool]
-["declare_number", value_i64]
-["confirm", null]
-
-trusted_binding:
-["pass_priority", null]
-["cast_spell", game_object_id]
-["activate_ability", ability_instance_id]
-["select_object", game_object_id]
-["select_player", player_id]
-["select_mode", mode_index_u32]
-["choose_boolean", bool]
-["declare_number", value_i64]
-["confirm", null]
-```
-
-The visible/trusted variant ID must match exactly. `ChooseNumber` V2 uses a direct numeric answer and therefore emits no candidates; `declare_number` remains defined only so the detached V3 schema can represent any explicitly admitted internal M2 candidate value without relying on a runtime enum layout.
-
-A continuation entry is:
-
-```text
-[
-  continuation_id,
-  actor,
-  created_at_revision,
-  stage_index_u16,
-  continuation_payload
-]
-```
-
-M2 continuation payload variant:
-
-```text
-[
-  "synthetic_m2_assembly",
-  [
-    assembly_stage,
-    selected_count_or_null,
-    selected_piece_keys[],
-    ordered_piece_keys[]
-  ]
-]
-```
-
-`assembly_stage` uses the normal enum representation and is exactly one of:
-
-```text
-["choose_count", null]
-["choose_members", null]
-["order_members", null]
-```
-
-Synthetic piece keys are unsigned `u32` semantic fixture keys. Selected set values are stored in ascending key order; ordered values preserve semantic order.
-
-M2 does not execute synthetic effect, delayed-effect, or trigger machinery. For `full-state-digest-input.v3`, the three corresponding arrays in `execution_v2` MUST therefore be empty:
-
-```text
-effects          = []
-waiting_triggers = []
-delayed_effects  = []
-```
-
-Any non-empty value is rejected as `semantic_validation` / unsupported M2 state before persistence. This avoids making free-form runtime `label: String` fields part of the state identity. The first later work that needs non-empty effect/trigger state must define an explicit detached schema for it.
+Player-loss actions precede object actions and are ordered by `PlayerId`;
+object actions follow in `GameObjectId` order. Each target appears at most
+once. Object causes (`zero_toughness`, `lethal_damage`) are nonempty,
+duplicate-free, and sorted by their closed cause ordering. Player-loss
+actions are part of the frozen simultaneous round but do not participate in
+Graveyard order candidate derivation. APNAP owner sequence and each selected
+top-to-bottom permutation preserve semantic order. Completed order entries
+are a prefix of the owner sequence.
 
 ## `random_v1`
 
@@ -821,83 +722,18 @@ player damage entry = [player_id, damage_u32]
 
 The presence of this historical structural field does not claim executable Commander semantics in M2.
 
-# FullStateDigestV5 input layer
+## `combat`
 
-The V5 input is the positional state layer that the V6 input, and through it
-FullStateDigestV7, builds on. It uses SHA-256, the V1 digest envelope,
-canonical CBOR, and these identities:
-
-```text
-semantic_domain = mtgml.full-state-digest.v5
-input_schema_id = full-state-digest-input.v5
-```
-
-The canonical top-level input remains a fixed 13-element array with the same
-field sequence as the accepted V4 encoder. The closed continuation payload
-family gains the Magic SBA variant. Block 6 also adds the canonical combat
-substate extension described below:
-
-```text
-[
-  "full-state-digest-input.v5",
-  "mtgml.full-state-digest.v5",
-  revision,
-  core_v1,
-  zones_v1,
-  allocators_v3,
-  execution_v2,
-  random_v1,
-  knowledge_v2,
-  perspective_identities_v2,
-  combat,
-  foundation_sources,
-  format_v1
-]
-```
-
-The V5 `execution_v2.continuations[]` payload is a closed variant array. The
-existing `SyntheticM2Assembly` encoding remains byte-for-byte the same under
-V5's new outer state identity. The new Magic encoding is:
-
-```text
-[
-  "magic_sba_graveyard_order_v1",
-  [
-    round_start_revision,
-    selected_sba_actions[closed_selected_action],
-    apnap_owners[player_id],
-    next_owner_index,
-    completed_owner_orders[[owner, top_to_bottom_game_object_ids]]
-  ]
-]
-```
-
-`selected_sba_actions` is a closed typed action sequence. Its variants and
-canonical forms are:
-
-```text
-["player_loses", player_id]
-["object_to_owner_graveyard", [game_object_id, causes[stable_cause_id]]]
-```
-
-Player-loss actions precede object actions and are ordered by `PlayerId`;
-object actions follow in `GameObjectId` order. Each target appears at most
-once. Object causes are nonempty, duplicate-free, and sorted by their closed
-cause ordering (`zero_toughness`, `lethal_damage`). Player-loss actions are
-part of the frozen simultaneous round but do not participate in Graveyard
-order candidate derivation. APNAP owner sequence and each selected
-top-to-bottom permutation preserve semantic order. Completed order entries
-are a prefix of the owner sequence. No arbitrary Serde serialization or
-controller-local state enters the digest.
-
-The V5 `combat` component preserves the prior three-element representation
-byte-for-byte whenever Block 6 facts are derivable from it:
+`null` when no combat is in progress. Otherwise the three-element form
 
 ```text
 [defending_player, attackers[], blockers[]]
 ```
 
-When they are not derivable, it uses this five-element form:
+is used whenever `damage_step_completed` is false and `blocked_attackers`
+exactly equals the attacker keys with a live blocker. In every other case the
+five-element form binds CR 509.1h blocked history and whether the mandatory
+damage action has already run:
 
 ```text
 [
@@ -910,40 +746,54 @@ When they are not derivable, it uses this five-element form:
 ```
 
 `blocked_attackers` is sorted by `GameObjectId` and duplicate-free;
-`damage_step_completed` is a CBOR boolean. The legacy form is used only when
-`damage_step_completed` is false and `blocked_attackers` exactly equals the
-attacker keys with a live blocker. Otherwise the extension binds CR 509.1h
-blocked history and whether the mandatory damage action has already run.
-Existing FullStateDigestV5 identities for prior combat states therefore keep
-their bytes, while Block 6 restore states remain distinct.
+`damage_step_completed` is a CBOR boolean.
 
-# Conversion and reader rules
+## Card-rules record
 
-Runtime `EngineState` converts fallibly into the detached V3 semantic input.
+```text
+[
+  "card-rules-authoritative-state.v1",
+  mana,
+  turn_history,
+  counters,
+  attachments,
+  faces,
+  abilities
+]
+```
 
-Conversion MUST:
+The record contains typed Mana, TurnHistory, Counter, Attachment, Face, and
+AbilityAuthority state. `CardRulesAuthoritativeStateV1::validate` rejects
+noncanonical ordering, duplicates, malformed records, integer range/domain
+errors, and any `land_plays_used` value outside `{0,1}`; `EngineState`
+validation additionally requires the same player universe and turn number as
+the core state and live references for every object-keyed entry.
+
+# Encoding rules
+
+The encoder writes the preimage directly from the typed `EngineState`. It
+MUST:
 
 - validate `EngineState` first;
 - validate all redundant bidirectional mappings before canonicalizing one direction;
-- reject unknown/unpersistable debug labels;
-- reject unsupported M2 state variants;
+- reject state the preimage cannot represent (for example a delayed-effect record or a stack record without a payload);
 - explicitly sort every unordered collection by the declared semantic-key CBOR bytes;
 - preserve semantic sequence order;
 - produce exactly one canonical payload.
 
-A persisted reader MUST:
+A persisted reader of any ADR-0038 artifact MUST:
 
 1. validate envelope framing and exact identity strings;
 2. decode only the allowed CBOR profile;
 3. validate exact schema array lengths/variants/ranges/order;
 4. reject duplicates/unknown variants;
-5. re-encode and require byte equality;
-6. construct detached versioned values;
-7. only then convert through Rust-authoritative validation to the current runtime type where that historical support state permits it.
+5. re-encode and require byte equality.
 
 # Evidence
 
 The known-answer and negative vectors under `persistence/golden` and
-`persistence/negative` pin these encodings. The Rust tests check them; the
-Python client recomputes only the V8 checkpoint digest and the contract
-identities.
+`persistence/negative` pin these encodings, and the random-vs-random
+trajectory fingerprints in `crates/mtgml-environment/tests/random_smoke.rs`
+pin the digests of whole games. The Rust tests check them; the Python client
+recomputes the V8 checkpoint digest, the information-state digest and the
+contract identities.

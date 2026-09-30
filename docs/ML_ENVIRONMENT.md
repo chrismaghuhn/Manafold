@@ -128,8 +128,8 @@ The player endpoint never exposes checkpoints.
 
 The current runtime uses `EnvironmentCheckpointV8`. It contains:
 
-- the complete current `EngineStatePartsV3`;
-- typed `FullStateDigestV7`;
+- the complete current `EngineState`;
+- typed `FullStateDigest`;
 - `EpisodeStatus`;
 - decision, accepted-transition, emitted-rule-event, resource, and elapsed-wall-clock counters;
 - checkpoint codec identity/version;

@@ -43,7 +43,7 @@ impl WireContract for PlayerInformationState {
     fn validate_wire(&self) -> Result<(), WireError> {
         self.validate()
             .map_err(|error| WireError::new("semantic.information_state", error.to_string()))?;
-        verify_information_state_digest_v3(self)
+        verify_information_state_digest(self)
     }
 }
 
@@ -55,7 +55,7 @@ pub fn compute_information_state_digest(
     Ok((payload, digest))
 }
 
-fn verify_information_state_digest_v3(state: &PlayerInformationState) -> Result<(), WireError> {
+fn verify_information_state_digest(state: &PlayerInformationState) -> Result<(), WireError> {
     let (_, expected) = compute_information_state_digest(&state.digest_input())?;
     if expected == state.digest {
         Ok(())
@@ -78,6 +78,6 @@ impl WireContract for PlayerStepV4 {
     fn validate_wire(&self) -> Result<(), WireError> {
         self.validate()
             .map_err(|error| WireError::new("semantic.player_step", error.to_string()))?;
-        verify_information_state_digest_v3(&self.information_state)
+        verify_information_state_digest(&self.information_state)
     }
 }

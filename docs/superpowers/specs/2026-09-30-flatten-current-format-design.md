@@ -1,6 +1,6 @@
 # Flatten the Current Format (Stage 3) — Design
 
-**Status:** APPROVED by the owner, 2026-09-30; not yet implemented. Branch `chore/flatten-current-format`.
+**Status:** IMPLEMENTED on branch `chore/flatten-current-format`, 2026-10-01 (approved by the owner; executed inline).
 
 **Goal:** the current format exists in one layer. There is one flat `EngineState`, one digest encoder, one delta-operation enum, one rule-event enum and one information-state projection. A new state field, event or operation for the R1/W1 creature and combat work is then added in one place.
 

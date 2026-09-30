@@ -1,6 +1,6 @@
 //! Typed card-rules authoritative state (mana, turn history, counters,
 //! attachments, faces, ability authority) and its FullStateDigest record
-//! encoding, plus the V3-execution validator the V2 state parts still run.
+//! encoding.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -111,12 +111,8 @@ pub struct CardRulesAuthoritativeStateV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum CardRulesStateError {
-    #[error("invalid FullStateDigestV6 persisted structure")]
+    #[error("invalid card-rules state structure")]
     InvalidStructure,
-    #[error("noncanonical FullStateDigestV6 persisted input")]
-    NonCanonical,
-    #[error("canonical CBOR error: {0}")]
-    Cbor(#[from] mtgml_persistence::PersistenceDecodeErrorV1),
 }
 
 fn array(values: impl IntoIterator<Item = Value>) -> Value {
