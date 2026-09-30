@@ -10,11 +10,6 @@ from ._events_v4 import (
     ObservedEventV4,
 )
 from ._generated_contract_vocab import ZONE_KINDS
-from ._information_v2 import (
-    INFORMATION_STATE_SCHEMA_V2,
-    InformationStateDigestInputV2,
-    PlayerInformationStateV2,
-)
 from ._knowledge import (
     PlayerKnowledgeInvalidationV1,
     PlayerKnowledgeProvenanceV1,
@@ -33,11 +28,6 @@ from ._magic_basic_land_observation_v1 import (
 from ._magic_observation import (
     MagicCompletedOrder,
     MagicPendingSbaOrdering,
-)
-from ._observation_v1 import (
-    OBSERVATION_SCHEMA,
-    ObservationEnvelope,
-    observation_digest_from_payload,
 )
 from ._player_step_v2 import (
     PLAYER_SUBMISSION_CODES,
@@ -84,15 +74,14 @@ from .observation_v3 import (
     ObservationEnvelopeV2,
     PlayerInformationStateV3,
     compute_information_state_digest_v3,
+    observation_digest_from_payload,
 )
 
 __all__ = [
     "INFORMATION_STATE_DIGEST_INPUT_SCHEMA_V3",
-    "INFORMATION_STATE_SCHEMA_V2",
     "INFORMATION_STATE_SCHEMA_V3",
     "MAGIC_BASIC_LAND_OBSERVATION_SCHEMA_V1",
     "MAGIC_SHARED_EXECUTION_OBSERVATION_SCHEMA_V1",
-    "OBSERVATION_SCHEMA",
     "OBSERVATION_SCHEMA_V2",
     "OBSERVED_EVENT_SCHEMA_V4",
     "PLAYER_STEP_SCHEMA_V4",
@@ -109,19 +98,16 @@ __all__ = [
     "EpisodeStatus",
     "FaceObservationV1",
     "GrantKeywordV1",
-    "InformationStateDigestInputV2",
     "InformationStateDigestInputV3",
     "MagicBasicLandObservationV1",
     "MagicCompletedOrder",
     "MagicPendingSbaOrdering",
     "MagicSharedExecutionObservationV1",
     "ManaPoolObservationV1",
-    "ObservationEnvelope",
     "ObservationEnvelopeV2",
     "ObservedEventEnvelopeV4",
     "ObservedEventV3",
     "ObservedEventV4",
-    "PlayerInformationStateV2",
     "PlayerInformationStateV3",
     "PlayerKnowledgeInvalidationV1",
     "PlayerKnowledgeProvenanceV1",

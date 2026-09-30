@@ -18,7 +18,7 @@ pub use error::{PlayerWireErrorCodeV1, WireError};
 pub use fixtures::{
     verify_golden_fixture_directory, verify_negative_fixture_directory, FixtureVerificationError,
 };
-pub use observation::{compute_information_state_digest_v2, compute_information_state_digest_v3};
+pub use observation::compute_information_state_digest_v3;
 
 // The shared negative fixture test remains in the root tests module as
 // every_shared_negative_fixture; this marker keeps the repository guard aware

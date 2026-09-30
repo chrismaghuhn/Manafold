@@ -32,6 +32,4 @@ pub type CurrentPlayerStep = mtgml_observation::PlayerStepV4;
 pub use errors::ControllerError;
 pub use errors::ReplayExecutionError;
 pub use mtgml_model::{CheckpointCodecIdentity, EnvironmentLimitCounters};
-pub use player_projection::{
-    project_magic_basic_land_observation_v1, project_successor_information_state_v3,
-};
+pub use player_projection::project_successor_information_state_v3;

@@ -11,38 +11,33 @@ use mtgml_model::{
 };
 use mtgml_observation::{
     AttachmentObservationV1, CounterObservationV1, FaceObservationV1,
-    InformationStateDigestInputV2, InformationStateDigestInputV3, MagicBasicLandObservationV1,
-    MagicSharedExecutionObservationV1, ManaPoolObservationV1, ObservationEnvelope,
-    ObservationEnvelopeV2, ObservedFaceV1, PlayerInformationStateV2, PlayerInformationStateV3,
+    InformationStateDigestInputV3, MagicBasicLandObservationV1, MagicSharedExecutionObservationV1,
+    ManaPoolObservationV1, ObservationEnvelopeV2, ObservedFaceV1, PlayerInformationStateV3,
     PlayerKnowledgeCauseV1, PlayerKnowledgeChannelV1, PlayerKnowledgeInvalidationReasonV1,
     PlayerKnowledgeProvenanceV1, PlayerKnownLocationFactV1, PlayerKnownLocationV1,
     PlayerKnownObjectV1, SyntheticBeginningStep, SyntheticCombatStep, SyntheticEndingStep,
-    SyntheticPriority, SyntheticTurnPosition, INFORMATION_STATE_SCHEMA_V2, OBSERVATION_SCHEMA,
+    SyntheticPriority, SyntheticTurnPosition,
 };
 use mtgml_observation::{MagicCompletedOrder, MagicPendingSbaOrdering};
-use mtgml_state::ContinuationPayloadV2;
 use mtgml_state::{
-    BeginningStep, CombatStep, CounterKindV1, EffectExpiry, EndingStep, EngineState,
-    EngineStatePartsV2, EngineStatePartsV3, KnowledgeAcquisitionCause, KnowledgeAcquisitionReason,
-    KnowledgeHistoryChannel, KnowledgeInvalidationReason, PriorityState, StackItemPayload,
-    TargetRef, TemporaryKeyword, TemporaryOperation, TurnPosition,
+    BeginningStep, CombatStep, CounterKindV1, EffectExpiry, EndingStep, EngineStatePartsV3,
+    KnowledgeAcquisitionCause, KnowledgeAcquisitionReason, KnowledgeHistoryChannel,
+    KnowledgeInvalidationReason, PriorityState, StackItemPayload, TargetRef, TemporaryKeyword,
+    TemporaryOperation, TurnPosition,
 };
 
-/// Builds the successor public-state observation from successor state and
-/// already verified content authority. The admitted successor runtime selects
-/// this codec only through its exact executable profile.
-pub fn project_magic_basic_land_observation_v1(
-    parts: &EngineStatePartsV2,
+/// Builds the basic-land public-state observation from a validated state and
+/// already verified content authority. The caller validates the state; the
+/// admitted runtime selects this codec only through its exact profile.
+pub(crate) fn project_magic_basic_land_observation(
+    parts: &EngineStatePartsV3,
     perspective: PlayerId,
     execution_identity: &ExecutionIdentityV1,
     semantic_manifest: &SemanticContractManifestV1,
     rules_manifest: &RulesContractManifestV1,
     catalog: &mtgml_card_ir::VerifiedContentCatalogV1,
-) -> Result<ObservationEnvelope, PlayerEndpointError> {
-    parts
-        .validate()
-        .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
-    let engine = parts.materialize();
+) -> Result<MagicBasicLandObservationV1, PlayerEndpointError> {
+    let engine = &parts.predecessor_v5;
     if !engine.core.players.contains_key(&perspective) {
         return Err(PlayerEndpointError::ServiceUnavailable);
     }
@@ -123,14 +118,11 @@ pub fn project_magic_basic_land_observation_v1(
 }
 
 fn project_magic_basic_land_observation_from_verified_faces(
-    parts: &EngineStatePartsV2,
+    parts: &EngineStatePartsV3,
     perspective: PlayerId,
     public_faces: &std::collections::BTreeMap<mtgml_model::GameObjectId, ObservedFaceV1>,
-) -> Result<ObservationEnvelope, PlayerEndpointError> {
-    parts
-        .validate()
-        .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
-    let state = parts.materialize();
+) -> Result<MagicBasicLandObservationV1, PlayerEndpointError> {
+    let state = &parts.predecessor_v5;
     let identity = state
         .perspective_identities
         .players
@@ -159,7 +151,9 @@ fn project_magic_basic_land_observation_from_verified_faces(
         turn_number: state.core.turn_number.to_string(),
         turn_position: public_turn_position(state.core.position),
         priority: public_priority(state.core.priority),
-        pending_sba_ordering: project_sba_ordering(&state, perspective)?,
+        // The shared observation carries the pending ordering from the
+        // current execution; the basic value never owns it.
+        pending_sba_ordering: None,
         mana_pools: parts
             .card_rules_state
             .mana
@@ -229,90 +223,10 @@ fn project_magic_basic_land_observation_from_verified_faces(
     value
         .validate()
         .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
-    let payload = mtgml_wire::encode_canonical(&value)
-        .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
-    let observation = ObservationEnvelope {
-        schema_version: OBSERVATION_SCHEMA.into(),
-        perspective,
-        state_revision: state.revision,
-        payload_codec: mtgml_observation::MAGIC_BASIC_LAND_OBSERVATION_SCHEMA_V1.into(),
-        payload_base64: STANDARD.encode(&payload),
-        digest: mtgml_model::ObservationDigest::from_canonical_bytes(&payload),
-    };
-    observation
-        .validate()
-        .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
-    Ok(observation)
+    Ok(value)
 }
 
 use crate::endpoint::PlayerEndpointError;
-
-fn project_sba_ordering(
-    state: &EngineState,
-    perspective: PlayerId,
-) -> Result<Option<MagicPendingSbaOrdering>, PlayerEndpointError> {
-    let mut matching = state
-        .execution
-        .continuations
-        .values()
-        .filter(|continuation| {
-            matches!(
-                continuation.payload,
-                ContinuationPayloadV2::MagicSbaGraveyardOrderV1 { .. }
-            )
-        });
-    let Some(continuation) = matching.next() else {
-        return Ok(None);
-    };
-    if matching.next().is_some() {
-        return Err(PlayerEndpointError::ServiceUnavailable);
-    }
-    let ContinuationPayloadV2::MagicSbaGraveyardOrderV1 {
-        apnap_owners,
-        next_owner_index,
-        completed_owner_orders,
-        ..
-    } = &continuation.payload
-    else {
-        unreachable!()
-    };
-    let next_order_owner = apnap_owners
-        .get(
-            usize::try_from(*next_owner_index)
-                .map_err(|_| PlayerEndpointError::ServiceUnavailable)?,
-        )
-        .copied()
-        .ok_or(PlayerEndpointError::ServiceUnavailable)?;
-    let identity = state
-        .perspective_identities
-        .players
-        .get(&perspective)
-        .ok_or(PlayerEndpointError::ServiceUnavailable)?;
-    let completed_orders = completed_owner_orders
-        .iter()
-        .map(|order| {
-            let ordered_objects = order
-                .top_to_bottom
-                .iter()
-                .map(|object| {
-                    identity
-                        .object_to_opaque
-                        .get(object)
-                        .copied()
-                        .ok_or(PlayerEndpointError::ServiceUnavailable)
-                })
-                .collect::<Result<Vec<_>, _>>()?;
-            Ok(MagicCompletedOrder {
-                owner: order.owner,
-                ordered_objects,
-            })
-        })
-        .collect::<Result<Vec<_>, PlayerEndpointError>>()?;
-    Ok(Some(MagicPendingSbaOrdering {
-        completed_orders,
-        next_order_owner,
-    }))
-}
 
 fn public_location(location: &mtgml_state::ZoneLocation) -> PlayerKnownLocationV1 {
     PlayerKnownLocationV1 {
@@ -433,28 +347,14 @@ fn project_successor_information_state_v3_inner(
     };
     state_validation.map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
 
-    let mut predecessor = parts.predecessor_v5.clone();
-    for record in predecessor.zones.stack_records.values_mut() {
-        record.payload = None;
-    }
-    let projection_state = EngineStatePartsV2 {
-        predecessor_v5: predecessor,
-        execution_v3: Default::default(),
-        card_rules_state: parts.card_rules_state.clone(),
-    };
-    let basic_envelope = project_magic_basic_land_observation_v1(
-        &projection_state,
+    let basic = project_magic_basic_land_observation(
+        parts,
         perspective,
         execution_identity,
         semantic_manifest,
         rules_manifest,
         catalog,
     )?;
-    let base_payload = STANDARD
-        .decode(&basic_envelope.payload_base64)
-        .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
-    let basic = mtgml_wire::decode_canonical::<MagicBasicLandObservationV1>(&base_payload)
-        .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
     let shared = project_shared_execution_observation(parts, perspective, basic)?;
     shared
         .validate()
@@ -479,15 +379,12 @@ fn project_successor_information_state_v3_inner(
         .validate()
         .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
 
-    let state = projection_state.materialize();
-    let basic_information =
-        project_information_state_from_observation(&state, perspective, basic_envelope)?;
     let mut information = PlayerInformationStateV3 {
         schema_version: mtgml_observation::INFORMATION_STATE_SCHEMA_V3.into(),
         perspective,
         current_observation,
         next_visible_sequence: knowledge.next_visible_sequence,
-        retained_knowledge: basic_information.retained_knowledge,
+        retained_knowledge: project_retained_knowledge(knowledge),
         digest: mtgml_model::InformationStateDigestV3::from_canonical_bytes(
             b"g0-information-state-placeholder",
         ),
@@ -905,21 +802,11 @@ fn project_sba_ordering_v4(
     }))
 }
 
-fn project_information_state_from_observation(
-    state: &EngineState,
-    perspective: PlayerId,
-    current_observation: ObservationEnvelope,
-) -> Result<PlayerInformationStateV2, PlayerEndpointError> {
-    if !state.core.players.contains_key(&perspective) {
-        return Err(PlayerEndpointError::ServiceUnavailable);
-    }
-    let knowledge = state
-        .knowledge
-        .players
-        .get(&perspective)
-        .ok_or(PlayerEndpointError::ServiceUnavailable)?;
-    // Canonical retained-knowledge order is ascending numeric OpaqueObjectId
-    // across active and retired records (INFORMATION_MODEL.md).
+/// The perspective's retained knowledge in canonical order: ascending numeric
+/// OpaqueObjectId across active and retired records (INFORMATION_MODEL.md).
+fn project_retained_knowledge(
+    knowledge: &mtgml_state::PlayerKnowledgeStateV2,
+) -> Vec<PlayerKnownObjectV1> {
     let mut retained_knowledge =
         Vec::with_capacity(knowledge.active.len() + knowledge.retired.len());
     for record in knowledge.active.values() {
@@ -951,30 +838,10 @@ fn project_information_state_from_observation(
         ));
     }
     retained_knowledge.sort_by_key(|(opaque, _)| *opaque);
-    let retained_knowledge: Vec<_> = retained_knowledge
+    retained_knowledge
         .into_iter()
         .map(|(_, object)| object)
-        .collect();
-
-    let mut information_state = PlayerInformationStateV2 {
-        schema_version: INFORMATION_STATE_SCHEMA_V2.into(),
-        perspective,
-        state_revision: state.revision,
-        current_observation,
-        next_visible_sequence: knowledge.next_visible_sequence,
-        retained_knowledge,
-        digest: mtgml_model::InformationStateDigestV2::from_canonical_bytes(
-            b"m2-information-state-placeholder",
-        ),
-    };
-    let input: InformationStateDigestInputV2 = information_state.digest_input();
-    let (_, digest) = mtgml_wire::compute_information_state_digest_v2(&input)
-        .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
-    information_state.digest = digest;
-    information_state
-        .validate()
-        .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
-    Ok(information_state)
+        .collect()
 }
 
 fn public_turn_position(position: TurnPosition) -> SyntheticTurnPosition {

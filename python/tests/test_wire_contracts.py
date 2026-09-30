@@ -34,6 +34,9 @@ DELETED_CONTRACTS: tuple[str, ...] = (
     "player-decision-request.v3",
     "decision-response.v1",
     "decision-response.v2",
+    "observation-envelope.v1",
+    "information-state-envelope.v2",
+    "information-state-digest-input.v2",
 )
 
 

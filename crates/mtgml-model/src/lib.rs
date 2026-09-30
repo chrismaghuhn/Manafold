@@ -229,10 +229,6 @@ domain_digest!(ReplayDigest, "mtgml.replay-digest.v1");
 
 // === V2 digest domains ===
 domain_digest!(
-    InformationStateDigestV2,
-    "mtgml.information-state-digest.v2"
-);
-domain_digest!(
     InformationStateDigestV3,
     "mtgml.information-state-digest.v3"
 );

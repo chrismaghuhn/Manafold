@@ -7,7 +7,6 @@ import hashlib
 from dataclasses import dataclass
 
 from ._knowledge import PlayerKnownObjectV1
-from ._observation_v1 import observation_digest_from_payload
 from .canonical import (
     canonical_json_bytes,
     parse_uint,
@@ -22,6 +21,10 @@ from .errors import WireError
 OBSERVATION_SCHEMA_V2 = "observation-envelope.v2"
 INFORMATION_STATE_SCHEMA_V3 = "information-state-envelope.v3"
 INFORMATION_STATE_DIGEST_INPUT_SCHEMA_V3 = "information-state-digest-input.v3"
+
+
+def observation_digest_from_payload(payload: bytes) -> str:
+    return hashlib.sha256(b"mtgml.observation-digest.v1\x00" + payload).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)

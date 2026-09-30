@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 from collections.abc import Callable
 from typing import TypeVar
@@ -16,12 +15,9 @@ from .decision_v4 import PlayerDecisionRequestV4
 from .episode import EpisodeStatus
 from .errors import WireError
 from .observation import (
-    InformationStateDigestInputV2,
     InformationStateDigestInputV3,
     MagicSharedExecutionObservationV1,
-    ObservationEnvelope,
     ObservationEnvelopeV2,
-    PlayerInformationStateV2,
     PlayerInformationStateV3,
 )
 from .observation import (
@@ -39,12 +35,9 @@ _DECODERS: dict[str, Callable[[object], object]] = {
     "player-decision-request.v4": PlayerDecisionRequestV4.from_wire,
     "decision-response.v3": DecisionResponseV3.from_wire,
     "episode-status.v1": EpisodeStatus.from_wire,
-    "observation-envelope.v1": ObservationEnvelope.from_wire,
     "observation-envelope.v2": ObservationEnvelopeV2.from_wire,
-    "information-state-envelope.v2": PlayerInformationStateV2.from_wire,
     "information-state-envelope.v3": PlayerInformationStateV3.from_wire,
     "magic-shared-execution-observation.v1": MagicSharedExecutionObservationV1.from_wire,
-    "information-state-digest-input.v2": InformationStateDigestInputV2.from_wire,
     "observed-event-envelope.v4": ObservedEventEnvelopeV4.from_wire,
     "player-step.v4": PlayerStepV4.from_wire,
     "magic-basic-land-observation.v1": MagicBasicLandObservationV1.from_wire,
@@ -88,14 +81,6 @@ def decode_canonical(contract: str, payload: bytes) -> object:
     if canonical != payload:
         raise WireError("decode.non_canonical_json", "wire bytes are not canonical")
     return result
-
-
-def compute_information_state_digest_v2(
-    input_value: InformationStateDigestInputV2,
-) -> tuple[bytes, str]:
-    payload = encode_canonical(input_value)
-    digest = hashlib.sha256(b"mtgml.information-state-digest.v2\0" + payload).hexdigest()
-    return payload, digest
 
 
 def compute_information_state_digest_v3(
