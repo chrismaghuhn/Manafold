@@ -5,15 +5,13 @@
   "expected_certification_status": "blocked",
   "schema_version": "golden-path-index.v1",
   "wire_fixtures": [
-    "wire/golden/player-decision-request.v1.json",
-    "wire/golden/decision-response.v1.json",
-    "wire/golden/observation-envelope.v1.json",
-    "wire/golden/information-state-envelope.v1.json",
-    "wire/golden/observed-event-ceased.v1.json",
-    "wire/golden/observed-event-tapped.v1.json",
-    "wire/golden/player-step.v1.json",
+    "wire/golden/player-decision-request-v4-cost-route.json",
+    "wire/golden/observation-envelope.v2.json",
+    "wire/golden/information-state-envelope.v3.json",
+    "wire/golden/observed-event-v4-object-moved.json",
+    "wire/golden/player-step-v4.json",
     "wire/golden/episode-status.v1.json",
-    "wire/golden/replay-manifest.v1.json",
-    "wire/golden/authoritative-replay-empty.v1.json"
+    "wire/golden/replay-manifest-v8.json",
+    "wire/golden/authoritative-replay-v8.json"
   ]
 }

@@ -12,6 +12,22 @@ from mtgml.errors import WireError
 from mtgml.wire import decode_canonical, encode_canonical
 
 
+DELETED_CONTRACTS: tuple[str, ...] = tuple(
+    f"{name}.v{version}"
+    for name in ("replay-manifest", "authoritative-replay")
+    for version in range(1, 8)
+)
+
+
+class DeletedContractTests(unittest.TestCase):
+    def test_deleted_contracts_are_unknown(self) -> None:
+        for contract in DELETED_CONTRACTS:
+            with self.subTest(contract=contract):
+                with self.assertRaises(WireError) as caught:
+                    decode_canonical(contract, b"{}")
+                self.assertEqual(caught.exception.code, "fixture.unknown_contract")
+
+
 class SharedFixtureTests(unittest.TestCase):
     def test_every_golden_fixture_roundtrips_to_identical_bytes(self) -> None:
         directory = ROOT / "wire" / "golden"

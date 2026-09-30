@@ -121,34 +121,6 @@
       "path": "player-step.v1.json"
     },
     {
-      "contract": "replay-manifest.v1",
-      "path": "replay-manifest.v1.json"
-    },
-    {
-      "contract": "replay-manifest.v2",
-      "path": "replay-manifest.v2.json"
-    },
-    {
-      "contract": "authoritative-replay.v1",
-      "path": "authoritative-replay-empty.v1.json"
-    },
-    {
-      "contract": "authoritative-replay.v2",
-      "path": "authoritative-replay-empty.v2.json"
-    },
-    {
-      "contract": "replay-manifest.v3",
-      "path": "replay-manifest.v3.json"
-    },
-    {
-      "contract": "authoritative-replay.v3",
-      "path": "authoritative-replay-empty.v3.json"
-    },
-    {
-      "contract": "authoritative-replay.v2",
-      "path": "authoritative-replay-rejected-step.v2.json"
-    },
-    {
       "contract": "player-step.v2",
       "path": "player-step-v2-rejected.json"
     },
@@ -163,30 +135,6 @@
     {
       "contract": "synthetic-m3-observation.v1",
       "path": "synthetic-m3-observation-held-by.json"
-    },
-    {
-      "contract": "replay-manifest.v4",
-      "path": "replay-manifest.v4.json"
-    },
-    {
-      "contract": "authoritative-replay.v4",
-      "path": "authoritative-replay-empty.v4.json"
-    },
-    {
-      "contract": "replay-manifest.v5",
-      "path": "replay-manifest.v5.json"
-    },
-    {
-      "contract": "authoritative-replay.v5",
-      "path": "authoritative-replay-empty.v5.json"
-    },
-    {
-      "contract": "replay-manifest.v6",
-      "path": "replay-manifest.v6.json"
-    },
-    {
-      "contract": "authoritative-replay.v6",
-      "path": "authoritative-replay-empty.v6.json"
     },
     {
       "contract": "magic-m3-observation.v1",

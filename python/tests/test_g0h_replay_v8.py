@@ -7,7 +7,14 @@ from pathlib import Path
 
 from mtgml.episode import EpisodeStatus
 from mtgml.errors import WireError
-from mtgml.replay import AuthoritativeReplayV8, calculate_checkpoint_digest_v8
+from mtgml.replay import (
+    AuthoritativeReplayV8,
+    ContentContractMaterialV1,
+    ReplayManifestV8,
+    SemanticContractMaterialV7,
+    calculate_checkpoint_digest_v8,
+)
+from mtgml.wire import decode_canonical, encode_canonical
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -63,6 +70,59 @@ class G0HReplayV8Tests(unittest.TestCase):
             with self.subTest(kind=kind, case="closed-final-step"):
                 replay = AuthoritativeReplayV8.from_wire(terminal_final)
                 self.assertEqual(replay.final_identity.episode_status.kind, kind)
+
+
+def _read(relative: str) -> object:
+    return json.loads((ROOT / relative).read_text(encoding="utf-8"))
+
+
+class ContentContractMaterialTests(unittest.TestCase):
+    """The content child that Replay V8 embeds in its semantic contract."""
+
+    def test_content_child_semantic_negative_vectors_reject(self) -> None:
+        vectors = _read("schemas/negative/m4-phase2-replay-child-semantic-negatives.json")
+        base = _read("schemas/examples/replay-manifest-v8.json")
+        assert isinstance(vectors, dict) and isinstance(base, dict)
+        for case in vectors["cases"]:
+            candidate = copy.deepcopy(base)
+            candidate["semantic_contract"]["content_contract"] = case["content_contract"]
+            candidate["semantic_contract"]["manifest"]["content_contract_id"] = case[
+                "parent_content_contract_id"
+            ]
+            with self.subTest(case=case["case"]), self.assertRaises((WireError, ValueError)):
+                ReplayManifestV8.from_wire(candidate)
+
+    def test_content_child_wire_negatives_reject(self) -> None:
+        for name in (
+            "invalid-base64",
+            "missing-padding",
+            "extra-padding",
+            "whitespace",
+            "uppercase-id",
+            "unknown-field",
+        ):
+            with self.subTest(name=name), self.assertRaises(WireError):
+                ContentContractMaterialV1.from_wire(
+                    _read(f"schemas/negative/replay-v7-content-child-{name}.json")
+                )
+        presence = _read("schemas/negative/replay-v7-content-presence-mismatch.json")
+        with self.assertRaises(WireError):
+            SemanticContractMaterialV7.from_wire(presence)
+
+    def test_duplicate_content_child_fields_reject_at_raw_json_boundary(self) -> None:
+        manifest = ReplayManifestV8.from_wire(_read("schemas/examples/replay-manifest-v8.json"))
+        canonical = encode_canonical(manifest)
+        self.assertEqual(decode_canonical("replay-manifest.v8", canonical), manifest)
+        child_id = (
+            b'"content_contract_id":'
+            b'"80d26c187739664e880948e767e44ed9791aa7c25e7ef703e6d63385311fb346",'
+        )
+        self.assertIn(child_id, canonical)
+        duplicated = canonical.replace(child_id, child_id + child_id, 1)
+        with self.assertRaises(WireError) as caught:
+            decode_canonical("replay-manifest.v8", duplicated)
+        self.assertEqual(caught.exception.code, "decode.invalid_json")
+        self.assertIn("duplicate object key", str(caught.exception))
 
 
 if __name__ == "__main__":

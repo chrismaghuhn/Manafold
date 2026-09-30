@@ -3,7 +3,6 @@ use mtgml_model::{
     InformationStateDigestV2, ObservationDigest, PlayerId, StateRevision, VisibleSequence,
 };
 use mtgml_observation::{InformationStateDigestInputV2, ObservationEnvelope, OBSERVATION_SCHEMA};
-use mtgml_replay::{AuthoritativeReplayV7, ReplayManifestV7};
 
 pub(crate) fn repository_root() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -19,53 +18,8 @@ fn every_shared_negative_fixture_is_rejected_with_the_expected_code() {
     verify_negative_fixture_directory(&repository_root().join("wire/negative")).unwrap();
 }
 
-#[test]
-fn detached_replay_v7_has_canonical_wire_without_becoming_a_named_current_decoder() {
-    for (bytes, decode_manifest) in [
-        (
-            include_bytes!("../../../schemas/examples/replay-manifest-v7-phase9-admitted-basic-land.json").as_slice(),
-            true,
-        ),
-        (
-            include_bytes!("../../../schemas/examples/authoritative-replay-v7-phase9-admitted-rejected-step.json")
-                .as_slice(),
-            false,
-        ),
-    ] {
-        let expected = canonical_json(bytes);
-        if decode_manifest {
-            let value: ReplayManifestV7 = decode_canonical(&expected).unwrap();
-            assert_eq!(encode_canonical(&value).unwrap(), expected);
-        } else {
-            let value: AuthoritativeReplayV7 = decode_canonical(&expected).unwrap();
-            assert_eq!(encode_canonical(&value).unwrap(), expected);
-        }
-    }
-}
 
-fn canonical_json(bytes: &[u8]) -> Vec<u8> {
-    let value: serde_json::Value = serde_json::from_slice(bytes).unwrap();
-    serde_json::to_vec(&sort_json(value)).unwrap()
-}
 
-fn sort_json(value: serde_json::Value) -> serde_json::Value {
-    match value {
-        serde_json::Value::Array(values) => {
-            serde_json::Value::Array(values.into_iter().map(sort_json).collect())
-        }
-        serde_json::Value::Object(values) => {
-            let mut entries = values.into_iter().collect::<Vec<_>>();
-            entries.sort_by(|left, right| left.0.cmp(&right.0));
-            serde_json::Value::Object(
-                entries
-                    .into_iter()
-                    .map(|(key, value)| (key, sort_json(value)))
-                    .collect(),
-            )
-        }
-        scalar => scalar,
-    }
-}
 
 #[test]
 fn information_state_digest_v2_known_answer() {

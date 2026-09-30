@@ -23,36 +23,6 @@ class SchemaParityTests(unittest.TestCase):
     def _schema_inventory(self) -> dict[str, object]:
         return json.loads((ROOT / "schemas" / "README.json").read_text(encoding="utf-8"))
 
-    def test_mf_gap_002_replay_v3_schemas_are_inventoried(self) -> None:
-        inventory = self._schema_inventory()
-        self.assertIn(
-            "replay-manifest.v3.schema.json",
-            inventory["wire_contracts"],
-        )
-        self.assertIn(
-            "authoritative-replay.v3.schema.json",
-            inventory["wire_contracts"],
-        )
-
-    def test_v5_replay_schemas_are_inventoried(self) -> None:
-        inventory = self._schema_inventory()
-        self.assertIn(
-            "replay-manifest.v5.schema.json",
-            inventory["wire_contracts"],
-        )
-        self.assertIn(
-            "authoritative-replay.v5.schema.json",
-            inventory["wire_contracts"],
-        )
-        self.assertIn(
-            "replay-manifest.v5",
-            validate_schemas.WIRE_MAPPING,
-        )
-        self.assertIn(
-            "authoritative-replay.v5",
-            validate_schemas.WIRE_MAPPING,
-        )
-
     def test_v4_combat_schema_rejects_multiple_blocker_scope(self) -> None:
         if jsonschema is None:
             self.skipTest("jsonschema is unavailable")
@@ -114,7 +84,7 @@ class SchemaParityTests(unittest.TestCase):
         inventory = self._schema_inventory()
         inventory["wire_contracts"] = [
             *inventory["wire_contracts"],
-            "replay-manifest.v2.schema.json",
+            "replay-manifest.v8.schema.json",
         ]
         with self.assertRaisesRegex(ValueError, "duplicate schema inventory entry"):
             validate_schemas.validate_wire_schema_inventory(inventory)
@@ -122,7 +92,7 @@ class SchemaParityTests(unittest.TestCase):
     def test_schema_inventory_missing_rejected(self) -> None:
         inventory = self._schema_inventory()
         inventory["wire_contracts"] = [
-            name for name in inventory["wire_contracts"] if name != "replay-manifest.v3.schema.json"
+            name for name in inventory["wire_contracts"] if name != "replay-manifest.v8.schema.json"
         ]
         with self.assertRaisesRegex(ValueError, "missing schema inventory entries"):
             validate_schemas.validate_wire_schema_inventory(inventory)
@@ -149,48 +119,7 @@ class SchemaParityTests(unittest.TestCase):
 
     @unittest.skipIf(jsonschema is None, "jsonschema is not installed")
     def test_all_golden_fixtures_match_their_normative_schema(self) -> None:
-        mapping = {
-            "player-decision-request.v1": "player-decision-request.v1.schema.json",
-            "decision-response.v1": "decision-response.v1.schema.json",
-            "player-decision-request.v2": "player-decision-request.v2.schema.json",
-            "decision-response.v2": "decision-response.v2.schema.json",
-            "player-decision-request.v4": "player-decision-request.v4.schema.json",
-            "episode-status.v1": "episode-status.v1.schema.json",
-            "observed-event-envelope.v1": "observed-event-envelope.v1.schema.json",
-            "observation-envelope.v1": "observation-envelope.v1.schema.json",
-            "information-state-envelope.v1": "information-state-envelope.v1.schema.json",
-            "player-step.v1": "player-step.v1.schema.json",
-            "replay-manifest.v1": "replay-manifest.v1.schema.json",
-            "authoritative-replay.v1": "authoritative-replay.v1.schema.json",
-            "replay-manifest.v2": "replay-manifest.v2.schema.json",
-            "authoritative-replay.v2": "authoritative-replay.v2.schema.json",
-            "information-state-envelope.v2": "information-state-envelope.v2.schema.json",
-            "information-state-envelope.v3": "information-state-envelope.v3.schema.json",
-            "observation-envelope.v2": "observation-envelope.v2.schema.json",
-            "observed-event-envelope.v2": "observed-event-envelope.v2.schema.json",
-            "observed-event-envelope.v4": "observed-event-envelope.v4.schema.json",
-            "player-step.v2": "player-step.v2.schema.json",
-            "player-step.v4": "player-step.v4.schema.json",
-            "replay-manifest.v3": "replay-manifest.v3.schema.json",
-            "authoritative-replay.v3": "authoritative-replay.v3.schema.json",
-            "magic-m3-observation.v1": "magic-m3-observation.v1.schema.json",
-            "magic-combat-observation.v2": "magic-combat-observation.v2.schema.json",
-            "magic-combat-observation.v3": "magic-combat-observation.v3.schema.json",
-            "magic-combat-observation.v4": "magic-combat-observation.v4.schema.json",
-            "magic-shared-execution-observation.v1": (
-                "magic-shared-execution-observation.v1.schema.json"
-            ),
-            "synthetic-m3-observation.v1": "synthetic-m3-observation.v1.schema.json",
-            "replay-manifest.v4": "replay-manifest.v4.schema.json",
-            "authoritative-replay.v4": "authoritative-replay.v4.schema.json",
-            "replay-manifest.v5": "replay-manifest.v5.schema.json",
-            "authoritative-replay.v5": "authoritative-replay.v5.schema.json",
-            "replay-manifest.v6": "replay-manifest.v6.schema.json",
-            "authoritative-replay.v6": "authoritative-replay.v6.schema.json",
-            "replay-manifest.v8": "replay-manifest.v8.schema.json",
-            "replay-step.v8": "replay-step.v8.schema.json",
-            "authoritative-replay.v8": "authoritative-replay.v8.schema.json",
-        }
+        mapping = validate_schemas.WIRE_MAPPING
         directory = ROOT / "wire" / "golden"
         manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
         for case in manifest["fixtures"]:
@@ -200,83 +129,6 @@ class SchemaParityTests(unittest.TestCase):
             instance = json.loads((directory / case["path"]).read_text(encoding="utf-8"))
             with self.subTest(case=case["path"]):
                 jsonschema.Draft202012Validator(schema).validate(instance)
-
-    @unittest.skipIf(jsonschema is None, "jsonschema is not installed")
-    def test_m2_b_detached_schema_fixtures(self) -> None:
-        mapping = {
-            "player-decision-request.v2": "player-decision-request.v2.schema.json",
-            "decision-response.v2": "decision-response.v2.schema.json",
-            "information-state-envelope.v2": "information-state-envelope.v2.schema.json",
-            "observed-event-envelope.v2": "observed-event-envelope.v2.schema.json",
-            "player-step.v2": "player-step.v2.schema.json",
-            "replay-manifest.v3": "replay-manifest.v3.schema.json",
-            "authoritative-replay.v3": "authoritative-replay.v3.schema.json",
-        }
-        directory = ROOT / "wire" / "golden"
-        manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
-        cases = [case for case in manifest["fixtures"] if case["contract"] in mapping]
-        self.assertEqual(
-            {case["contract"] for case in cases},
-            set(mapping),
-        )
-        for case in cases:
-            schema = json.loads(
-                (ROOT / "schemas" / mapping[case["contract"]]).read_text(encoding="utf-8")
-            )
-            instance = json.loads((directory / case["path"]).read_text(encoding="utf-8"))
-            with self.subTest(case=case["path"]):
-                jsonschema.Draft202012Validator(schema).validate(instance)
-
-    def test_m2_b_schemas_are_fully_closed(self) -> None:
-        m2_b_schemas = [
-            "player-decision-request.v2.schema.json",
-            "decision-response.v2.schema.json",
-            "information-state-envelope.v2.schema.json",
-            "observed-event-envelope.v2.schema.json",
-            "player-step.v2.schema.json",
-            "replay-manifest.v3.schema.json",
-            "authoritative-replay.v3.schema.json",
-        ]
-
-        def walk(node: object, path: str) -> None:
-            if isinstance(node, dict):
-                declares_object = (
-                    node.get("type") == "object" or "properties" in node or "required" in node
-                )
-                if declares_object and node.get("additionalProperties") is not False:
-                    raise AssertionError(f"open object schema at {path}")
-                for key, value in node.items():
-                    walk(value, f"{path}/{key}")
-            elif isinstance(node, list):
-                for index, value in enumerate(node):
-                    walk(value, f"{path}/{index}")
-
-        for name in m2_b_schemas:
-            schema = json.loads((ROOT / "schemas" / name).read_text(encoding="utf-8"))
-            with self.subTest(schema=name):
-                walk(schema, name)
-
-    def test_replay_manifest_schema_has_exact_required_identity_fields(self) -> None:
-        schema = json.loads(
-            (ROOT / "schemas" / "replay-manifest.v1.schema.json").read_text(encoding="utf-8")
-        )
-        self.assertEqual(
-            set(schema["required"]),
-            {
-                "schema_version",
-                "engine_build",
-                "kernel",
-                "rules_snapshot",
-                "format_policy_snapshot",
-                "oracle_snapshot",
-                "card_bundle",
-                "schemas",
-                "randomness",
-                "decks",
-                "initial_state_revision",
-                "initial_state_digest",
-            },
-        )
 
     def test_observed_event_schema_contains_all_seven_closed_variants(self) -> None:
         schema = json.loads(
@@ -316,11 +168,6 @@ class SchemaParityTests(unittest.TestCase):
         )
         self.assertEqual(len(terminal["properties"]["reason"]["enum"]), 5)
         self.assertEqual(len(truncated["properties"]["reason"]["enum"]), 5)
-
-
-def test_m2_b_detached_schema_fixtures() -> None:
-    test = SchemaParityTests("test_m2_b_detached_schema_fixtures")
-    test.test_m2_b_detached_schema_fixtures()
 
 
 if __name__ == "__main__":

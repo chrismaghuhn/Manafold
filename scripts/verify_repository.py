@@ -112,7 +112,6 @@ def main() -> None:
         "crates/mtgml-wire/src/lib.rs",
         "crates/mtgml-state/src/lib.rs",
         "crates/mtgml-environment/src/lib.rs",
-        "schemas/replay-manifest.v1.schema.json",
         "schemas/observed-event-envelope.v1.schema.json",
         "schemas/player-step.v1.schema.json",
         "schemas/episode-status.v1.schema.json",
@@ -300,32 +299,6 @@ def main() -> None:
             fail(f"maintainer justfile lacks {recipe}")
     if (ROOT / ".github/workflows/ci.yml").exists():
         fail("legacy monolithic CI workflow must not coexist with V0.2.2 split profiles")
-
-    replay_src = ROOT / "crates/mtgml-replay/src"
-    replay_prod = [p for p in sorted(replay_src.glob("*.rs")) if p.name != "tests.rs"]
-    replay_rust = "\n".join(p.read_text(encoding="utf-8") for p in replay_prod)
-    replay_tests = (replay_src / "tests.rs").read_text(encoding="utf-8")
-    for token in (
-        "format_policy_snapshot",
-        "card_bundle",
-        "pub kernel:",
-        "pub decks:",
-        "initial_state_revision",
-        "algorithm_id",
-        "derivation_version",
-        "root_seed_hex",
-    ):
-        if token not in replay_rust:
-            fail(f"Rust replay contract lacks {token}")
-    for token in (
-        "rejected response mutated the authoritative revision or full-state identity",
-        "state_digest_after != state_digest",
-    ):
-        if token not in replay_rust:
-            fail(f"Rust replay identity validation lacks {token}")
-    for token in ("rejected_replay_step_must_preserve_the_full_state_digest",):
-        if token not in replay_tests:
-            fail(f"Rust replay test evidence lacks {token}")
 
     # Issue #62: the event-kind authority moved from lib.rs to
     # observed_event.rs (structural consolidation); same evidence, new path.

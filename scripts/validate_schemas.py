@@ -23,10 +23,6 @@ WIRE_MAPPING = {
     "observation-envelope.v2": "observation-envelope.v2.schema.json",
     "information-state-envelope.v1": "information-state-envelope.v1.schema.json",
     "player-step.v1": "player-step.v1.schema.json",
-    "replay-manifest.v1": "replay-manifest.v1.schema.json",
-    "authoritative-replay.v1": "authoritative-replay.v1.schema.json",
-    "replay-manifest.v2": "replay-manifest.v2.schema.json",
-    "authoritative-replay.v2": "authoritative-replay.v2.schema.json",
     "information-state-envelope.v2": "information-state-envelope.v2.schema.json",
     "information-state-envelope.v3": "information-state-envelope.v3.schema.json",
     "observed-event-envelope.v2": "observed-event-envelope.v2.schema.json",
@@ -35,8 +31,6 @@ WIRE_MAPPING = {
     "player-step.v2": "player-step.v2.schema.json",
     "player-step.v3": "player-step.v3.schema.json",
     "player-step.v4": "player-step.v4.schema.json",
-    "replay-manifest.v3": "replay-manifest.v3.schema.json",
-    "authoritative-replay.v3": "authoritative-replay.v3.schema.json",
     "magic-m3-observation.v1": "magic-m3-observation.v1.schema.json",
     "magic-combat-observation.v2": "magic-combat-observation.v2.schema.json",
     "magic-combat-observation.v3": "magic-combat-observation.v3.schema.json",
@@ -44,15 +38,7 @@ WIRE_MAPPING = {
     "synthetic-m3-observation.v1": "synthetic-m3-observation.v1.schema.json",
     "magic-basic-land-observation.v1": "magic-basic-land-observation.v1.schema.json",
     "magic-shared-execution-observation.v1": "magic-shared-execution-observation.v1.schema.json",
-    "replay-manifest.v4": "replay-manifest.v4.schema.json",
-    "authoritative-replay.v4": "authoritative-replay.v4.schema.json",
-    "replay-manifest.v5": "replay-manifest.v5.schema.json",
-    "authoritative-replay.v5": "authoritative-replay.v5.schema.json",
-    "replay-manifest.v6": "replay-manifest.v6.schema.json",
-    "authoritative-replay.v6": "authoritative-replay.v6.schema.json",
-    "replay-manifest.v7": "replay-manifest.v7.schema.json",
     "replay-manifest.v8": "replay-manifest.v8.schema.json",
-    "authoritative-replay.v7": "authoritative-replay.v7.schema.json",
     "authoritative-replay.v8": "authoritative-replay.v8.schema.json",
     "replay-step.v8": "replay-step.v8.schema.json",
 }
@@ -243,44 +229,36 @@ SCHEMA_NEGATIVE_CASES = [
         "schemas/negative/observed-event-v3-unknown-kind.json",
     ),
     (
-        "replay-manifest.v7.schema.json#content-contract-child",
+        "replay-manifest.v8.schema.json#content-contract-child",
         "schemas/negative/replay-v7-content-child-unknown-field.json",
     ),
     (
-        "replay-manifest.v7.schema.json#content-contract-child",
+        "replay-manifest.v8.schema.json#content-contract-child",
         "schemas/negative/replay-v7-content-child-invalid-base64.json",
     ),
     (
-        "replay-manifest.v7.schema.json#content-presence-rule",
+        "replay-manifest.v8.schema.json#content-presence-rule",
         "schemas/negative/replay-v7-content-presence-mismatch.json",
     ),
     (
-        "replay-manifest.v7.schema.json#content-presence-rule",
+        "replay-manifest.v8.schema.json#content-presence-rule",
         "schemas/negative/replay-v7-content-id-without-child.json",
     ),
     (
-        "replay-manifest.v7.schema.json#content-contract-child",
+        "replay-manifest.v8.schema.json#content-contract-child",
         "schemas/negative/replay-v7-content-child-uppercase-id.json",
     ),
     (
-        "replay-manifest.v7.schema.json#content-contract-child",
+        "replay-manifest.v8.schema.json#content-contract-child",
         "schemas/negative/replay-v7-content-child-extra-padding.json",
     ),
     (
-        "replay-manifest.v7.schema.json#content-contract-child",
+        "replay-manifest.v8.schema.json#content-contract-child",
         "schemas/negative/replay-v7-content-child-whitespace.json",
     ),
     (
-        "replay-manifest.v7.schema.json#content-contract-child",
+        "replay-manifest.v8.schema.json#content-contract-child",
         "schemas/negative/replay-v7-content-child-missing-padding.json",
-    ),
-    (
-        "replay-manifest.v7.schema.json",
-        "schemas/negative/replay-v7-land-play-incomplete-basic-land-closure.json",
-    ),
-    (
-        "authoritative-replay.v7.schema.json",
-        "schemas/negative/authoritative-replay-v7-land-play-incomplete-basic-land-closure.json",
     ),
 ]
 SCHEMA_POSITIVE_CASES = [
@@ -388,14 +366,6 @@ SCHEMA_POSITIVE_CASES = [
     (
         "magic-basic-land-observation.v1.schema.json",
         "schemas/examples/magic-basic-land-observation-v1-ordered.json",
-    ),
-    (
-        "replay-manifest.v7.schema.json",
-        "schemas/examples/replay-manifest-v7-phase9-admitted-basic-land.json",
-    ),
-    (
-        "authoritative-replay.v7.schema.json",
-        "schemas/examples/authoritative-replay-v7-phase9-admitted-rejected-step.json",
     ),
 ]
 
