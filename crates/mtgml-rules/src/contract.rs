@@ -3117,6 +3117,22 @@ pub fn validate_transition_contract(
                         KnowledgeMutationV1::Acquire { opaque, .. } => {
                             resolves(Some(record_post.clone()), opaque, &transition.new_object)
                         }
+                        KnowledgeMutationV1::AcquireShiftingKnownMembers {
+                            opaque,
+                            updates,
+                            ..
+                        } => {
+                            resolves(Some(record_post.clone()), opaque, &transition.new_object)
+                                && !updates.is_empty()
+                                && updates
+                                    .windows(2)
+                                    .all(|pair| pair[0].opaque < pair[1].opaque)
+                                && updates.iter().all(|update| {
+                                    record_post.opaque_to_object.contains_key(&update.opaque)
+                                        && update.fact.location.zone == transition.to.zone
+                                        && update.fact.location.player == transition.to.player
+                                })
+                        }
                     };
                     if !causally_bound {
                         return Err(TransitionViolation::OccurrencePairing);

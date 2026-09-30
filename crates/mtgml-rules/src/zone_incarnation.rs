@@ -681,7 +681,15 @@ fn apply_selected_zone_transition_in_workspace_with_reindex(
         SelectedZoneTransitionKind::HandToOwnerGraveyard => {
             // The graveyard is public: every perspective learns the card. A
             // perspective that tracked the hand card follows it; any other
-            // perspective sees it appear.
+            // perspective sees it appear. Known members shifted down by the
+            // new top card get their exact new locations in the same
+            // occurrence.
+            let shifted_members = state
+                .zones
+                .ordered_zones
+                .get(&graveyard_key)
+                .cloned()
+                .unwrap_or_default();
             for perspective in state.core.players.keys().copied() {
                 let identity = state
                     .perspective_identities
@@ -701,6 +709,31 @@ fn apply_selected_zone_transition_in_workspace_with_reindex(
                     sequence,
                     cause: KnowledgeAcquisitionCause::PublicEvent,
                 };
+                let mut updates = Vec::new();
+                for member in &shifted_members {
+                    let Some(opaque) = identity.object_to_opaque.get(member).copied() else {
+                        continue;
+                    };
+                    let record = knowledge.active.get(&opaque).ok_or(
+                        KernelExecutionError::ZoneIncarnation(
+                            ZoneIncarnationError::PerspectiveKnowledgeMismatch,
+                        ),
+                    )?;
+                    if record.known_location.is_some() {
+                        let location = next.zones.locations.get(member).cloned().ok_or(
+                            KernelExecutionError::ZoneIncarnation(
+                                ZoneIncarnationError::PerspectiveKnowledgeMismatch,
+                            ),
+                        )?;
+                        updates.push(mtgml_state::KnowledgeLocationUpdateV1 {
+                            opaque,
+                            fact: KnownLocationFactV2 {
+                                location,
+                                provenance,
+                            },
+                        });
+                    }
+                }
                 let (mutation, observation) =
                     match identity.object_to_opaque.get(&request.object).copied() {
                         Some(opaque) => {
@@ -709,6 +742,18 @@ fn apply_selected_zone_transition_in_workspace_with_reindex(
                                     ZoneIncarnationError::PerspectiveKnowledgeMismatch,
                                 ));
                             }
+                            let fact = KnownLocationFactV2 {
+                                location: to_location.clone(),
+                                provenance,
+                            };
+                            let knowledge = if updates.is_empty() {
+                                KnowledgeMutationV1::UpdateLocation { opaque, fact }
+                            } else {
+                                updates
+                                    .push(mtgml_state::KnowledgeLocationUpdateV1 { opaque, fact });
+                                updates.sort_by_key(|update| update.opaque);
+                                KnowledgeMutationV1::UpdateLocations { updates }
+                            };
                             (
                                 PerspectiveLifecycleMutationV1 {
                                     identity: IdentityMutationV1::Remap {
@@ -716,13 +761,7 @@ fn apply_selected_zone_transition_in_workspace_with_reindex(
                                         from_object: request.object,
                                         to_object: new_object,
                                     },
-                                    knowledge: Some(KnowledgeMutationV1::UpdateLocation {
-                                        opaque,
-                                        fact: KnownLocationFactV2 {
-                                            location: to_location.clone(),
-                                            provenance,
-                                        },
-                                    }),
+                                    knowledge: Some(knowledge),
                                 },
                                 crate::PerspectiveObservationPolicyV1::MovedInSight {
                                     from_zone: transition.from.zone,
@@ -736,18 +775,32 @@ fn apply_selected_zone_transition_in_workspace_with_reindex(
                         }
                         None => {
                             let opaque = identity.next_opaque_object_id;
+                            let definition = Some(old_object.card_definition);
+                            let location = Some(to_location.clone());
+                            let knowledge = if updates.is_empty() {
+                                KnowledgeMutationV1::Acquire {
+                                    opaque,
+                                    definition,
+                                    location,
+                                    acquisition: provenance,
+                                }
+                            } else {
+                                updates.sort_by_key(|update| update.opaque);
+                                KnowledgeMutationV1::AcquireShiftingKnownMembers {
+                                    opaque,
+                                    definition,
+                                    location,
+                                    acquisition: provenance,
+                                    updates,
+                                }
+                            };
                             (
                                 PerspectiveLifecycleMutationV1 {
                                     identity: IdentityMutationV1::Allocate {
                                         opaque,
                                         object: new_object,
                                     },
-                                    knowledge: Some(KnowledgeMutationV1::Acquire {
-                                        opaque,
-                                        definition: Some(old_object.card_definition),
-                                        location: Some(to_location.clone()),
-                                        acquisition: provenance,
-                                    }),
+                                    knowledge: Some(knowledge),
                                 },
                                 crate::PerspectiveObservationPolicyV1::Appeared {
                                     from_zone: transition.from.zone,

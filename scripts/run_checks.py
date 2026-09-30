@@ -80,6 +80,18 @@ INTEGRATION_EXTRA = [
         "current_successor_api",
         "--locked",
     ],
+    # Random-vs-random 30-turn games through the production path; every PR
+    # keeps them green. They need an optimized build.
+    [
+        "cargo",
+        "test",
+        "--release",
+        "-p",
+        "mtgml-environment",
+        "--test",
+        "random_smoke",
+        "--locked",
+    ],
     ["cargo", "fmt", "--all", "--", "--check"],
     ["cargo", "check", "--workspace", "--all-targets", "--all-features", "--locked"],
     [

@@ -90,6 +90,17 @@ pub enum KnowledgeMutationV1 {
     UpdateLocations {
         updates: Vec<KnowledgeLocationUpdateV1>,
     },
+    /// First authorized retention of an opaque identity whose arrival on top
+    /// of an ordered public zone shifts members this perspective already
+    /// knows, such as a discard onto a Graveyard: the acquisition and the
+    /// members' refreshed locations bind to the same VisibleSequence.
+    AcquireShiftingKnownMembers {
+        opaque: OpaqueObjectId,
+        definition: Option<CardDefinitionId>,
+        location: Option<ZoneLocation>,
+        acquisition: KnowledgeAcquisitionReason,
+        updates: Vec<KnowledgeLocationUpdateV1>,
+    },
     /// Destination becomes unknown while distinguishability persists: the
     /// current fact moves to history and the record stays active. An observed
     /// incarnation change may authorize a definition refresh in the same
@@ -311,6 +322,54 @@ pub fn apply_lifecycle_to_player(
                 record.known_location = Some(update.fact.clone());
             }
         }
+        Some(KnowledgeMutationV1::AcquireShiftingKnownMembers {
+            opaque,
+            definition,
+            location,
+            acquisition,
+            updates,
+        }) => {
+            if knowledge.retired.contains_key(opaque) {
+                return Err(LifecycleApplicationError::OpaqueRetired);
+            }
+            if knowledge.active.contains_key(opaque) {
+                return Err(LifecycleApplicationError::DuplicateOpaque);
+            }
+            if updates.is_empty()
+                || updates
+                    .windows(2)
+                    .any(|pair| pair[0].opaque >= pair[1].opaque)
+                || updates.iter().any(|update| update.opaque == *opaque)
+            {
+                return Err(LifecycleApplicationError::InvalidState);
+            }
+            ensure_bound_provenance(acquisition, audit.sequence)?;
+            for update in updates {
+                ensure_bound_provenance(&update.fact.provenance, audit.sequence)?;
+                let record = knowledge
+                    .active
+                    .get_mut(&update.opaque)
+                    .ok_or(LifecycleApplicationError::UnknownKnowledge)?;
+                if let Some(current) = record.known_location.take() {
+                    record.historical_locations.push(current);
+                }
+                record.known_location = Some(update.fact.clone());
+            }
+            knowledge.active.insert(
+                *opaque,
+                KnowledgeRecordV2 {
+                    opaque_object: *opaque,
+                    physical_card: None,
+                    card_definition: *definition,
+                    known_location: location.clone().map(|location| KnownLocationFactV2 {
+                        location,
+                        provenance: *acquisition,
+                    }),
+                    historical_locations: Vec::new(),
+                    acquisition: *acquisition,
+                },
+            );
+        }
         Some(KnowledgeMutationV1::CurrentToHistory {
             opaque,
             observed_definition,
@@ -396,6 +455,17 @@ pub fn apply_perspective_lifecycle(
         {
             return Err(LifecycleApplicationError::InvalidState)
         }
+        Some(KnowledgeMutationV1::AcquireShiftingKnownMembers {
+            location, updates, ..
+        }) if location
+            .as_ref()
+            .is_some_and(|location| !declared_player(location.player))
+            || updates
+                .iter()
+                .any(|update| !declared_player(update.fact.location.player)) =>
+        {
+            return Err(LifecycleApplicationError::InvalidState)
+        }
         _ => {}
     }
     let mut candidate_knowledge = state
@@ -418,6 +488,7 @@ pub fn apply_perspective_lifecycle(
     )?;
     match &audit.mutation.knowledge {
         Some(KnowledgeMutationV1::Acquire { opaque, .. })
+        | Some(KnowledgeMutationV1::AcquireShiftingKnownMembers { opaque, .. })
         | Some(KnowledgeMutationV1::UpdateLocation { opaque, .. })
         | Some(KnowledgeMutationV1::CurrentToHistory { opaque, .. })
             if !candidate_identity.opaque_to_object.contains_key(opaque) =>
@@ -432,7 +503,11 @@ pub fn apply_perspective_lifecycle(
         }
         _ => {}
     }
-    if let Some(KnowledgeMutationV1::UpdateLocations { updates }) = &audit.mutation.knowledge {
+    if let Some(
+        KnowledgeMutationV1::UpdateLocations { updates }
+        | KnowledgeMutationV1::AcquireShiftingKnownMembers { updates, .. },
+    ) = &audit.mutation.knowledge
+    {
         if updates.iter().any(|update| {
             !candidate_identity
                 .opaque_to_object

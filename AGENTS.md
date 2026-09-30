@@ -68,6 +68,9 @@ Manafold has no external users and no persisted data that must stay readable.
   `cargo test -p mtgml-environment --locked` (its `tests/` integration tests).
 - For rule changes: first write a failing test that shows the behavior in a
   real game flow, then implement.
+- Every PR keeps the random-vs-random smoke games green:
+  `cargo test --release -p mtgml-environment --test random_smoke --locked`
+  (part of `just check`).
 - Some gate scripts fail on a dirty checkout. Commit (or stash) before running
   checks, and never report a failure caused only by uncommitted files as a
   code failure.

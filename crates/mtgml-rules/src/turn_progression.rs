@@ -1184,6 +1184,10 @@ mod tests {
             DecisionAnswerV2::SelectMany {
                 candidate_ids: Vec::new(),
             }
+        } else if request.purpose == DecisionPurposeV4::HandSizeDiscard {
+            DecisionAnswerV2::SelectMany {
+                candidate_ids: vec![request.candidates.last().unwrap().candidate_id],
+            }
         } else {
             DecisionAnswerV2::SelectOne {
                 candidate_id: candidate(request, |binding| {
@@ -1672,6 +1676,24 @@ mod tests {
         assert_eq!(after.predecessor_v5.core.turn_number, 2);
         assert_eq!(after.predecessor_v5.core.position, UPKEEP);
         assert_eq!(pending(&after).purpose, DecisionPurposeV4::PriorityAction);
+    }
+
+    #[test]
+    fn second_discard_shifts_the_known_graveyard_card() {
+        // P1 discards on turn 1 and again after drawing on turn 3; the second
+        // card lands on top and both players' knowledge of the first card
+        // follows it down the graveyard.
+        let (admission, state) =
+            game_with_hands(crate::basic_land::basic_land_admission_fixture(), 3, 6, 0);
+        let state = pass_until(&admission, state, at(END_STEP, 3));
+        assert_eq!(zone_count(&state, P1, ZoneKind::Graveyard), 1);
+        let state = pass(&admission, &state).0;
+        let state = pass(&admission, &state).0;
+        assert_eq!(pending(&state).purpose, DecisionPurposeV4::HandSizeDiscard);
+        let after = pass(&admission, &state).0;
+
+        assert_eq!(zone_count(&after, P1, ZoneKind::Graveyard), 2);
+        assert_eq!(after.predecessor_v5.core.turn_number, 4);
     }
 }
 /// The old full-turn kernel as differential oracle (D11): it cannot run
