@@ -536,7 +536,7 @@ fn identity(checkpoint: &EnvironmentCheckpointV8) -> InitialEnvironmentIdentityV
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+mod tests {
     use super::*;
     use mtgml_card_ir::{
         admit_executable_profile_v1, decode_content_manifest_v1, CardSemanticBindingV1,
@@ -3538,5 +3538,17 @@ pub(crate) mod tests {
         let replayed = v8.execute_replay(v8.export_replay().unwrap()).unwrap();
         assert_eq!(replayed.final_checkpoint, new_second.checkpoint);
         assert_eq!(replayed.transitions, vec![new_first, new_second]);
+    }
+}
+
+/// Fixtures shared with other test modules of this crate.
+#[cfg(test)]
+pub(crate) mod fixtures {
+    pub(crate) fn game_admission() -> mtgml_card_ir::ExecutableProfileAdmissionV1 {
+        super::tests::game_admission()
+    }
+
+    pub(crate) fn state_with_two_lands() -> mtgml_state::EngineStatePartsV3 {
+        super::tests::state_with_two_lands()
     }
 }

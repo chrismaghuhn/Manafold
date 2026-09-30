@@ -68,8 +68,8 @@ fn add_library_cards(state: &mut EngineStatePartsV3, owner: PlayerId, count: u64
 fn game(
     second_p2_card: Option<CardDefinitionId>,
 ) -> (ExecutableProfileAdmissionV1, EngineStatePartsV3) {
-    let admission = crate::basic_land_runtime_v8::tests::game_admission();
-    let mut state = crate::basic_land_runtime_v8::tests::state_with_two_lands();
+    let admission = crate::basic_land_runtime_v8::fixtures::game_admission();
+    let mut state = crate::basic_land_runtime_v8::fixtures::state_with_two_lands();
     let top = state
         .predecessor_v5
         .zones
@@ -259,7 +259,7 @@ fn drawing_player_sees_the_drawn_card() {
 #[test]
 fn opponent_step_after_draw_is_identical_for_different_top_cards() {
     // Mountain and Plains, taken from P1's hand in the fixture.
-    let fixture = crate::basic_land_runtime_v8::tests::state_with_two_lands();
+    let fixture = crate::basic_land_runtime_v8::fixtures::state_with_two_lands();
     let definitions: std::collections::BTreeSet<CardDefinitionId> = fixture
         .predecessor_v5
         .zones
