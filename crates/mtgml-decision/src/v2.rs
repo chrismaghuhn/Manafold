@@ -1,12 +1,8 @@
-use crate::common::{CandidateIntent, DecisionVisibility};
+use crate::common::CandidateIntent;
 use crate::error::DecisionValidationError;
-use crate::ordering::CandidateOrderingV1;
-use mtgml_model::{CandidateIdV1, PlayerDecisionIdV1, PlayerId, StateRevision};
+use mtgml_model::CandidateIdV1;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
-
-pub const PLAYER_DECISION_REQUEST_V2_SCHEMA: &str = "player-decision-request.v2";
-pub const DECISION_RESPONSE_V2_SCHEMA: &str = "decision-response.v2";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
@@ -31,18 +27,6 @@ pub enum DecisionAnswerV2 {
 pub struct VisibleCandidateV2 {
     pub candidate_id: CandidateIdV1,
     pub intent: CandidateIntent,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct PlayerDecisionRequestV2 {
-    pub schema_version: String,
-    pub player_decision_id: PlayerDecisionIdV1,
-    pub state_revision: StateRevision,
-    pub actor: PlayerId,
-    pub visibility: DecisionVisibility,
-    pub decision: DecisionDomainV2,
-    pub candidates: Vec<VisibleCandidateV2>,
 }
 
 impl DecisionDomainV2 {
@@ -81,34 +65,7 @@ impl DecisionDomainV2 {
     }
 }
 
-impl PlayerDecisionRequestV2 {
-    pub fn validate(&self) -> Result<(), DecisionValidationError> {
-        if self.schema_version != PLAYER_DECISION_REQUEST_V2_SCHEMA {
-            return Err(DecisionValidationError::SchemaVersion);
-        }
-        self.decision.validate_candidates(self.candidates.len())?;
-        CandidateOrderingV1::validate_public(&self.candidates)
-    }
-
-    pub fn answer(&self, answer: &DecisionAnswerV2) -> Result<(), DecisionValidationError> {
-        self.validate()?;
-        answer.validate_for(&self.decision, &self.candidates)
-    }
-}
-
 impl DecisionAnswerV2 {
-    pub fn validate_for(
-        &self,
-        domain: &DecisionDomainV2,
-        candidates: &[VisibleCandidateV2],
-    ) -> Result<(), DecisionValidationError> {
-        let ids = candidates
-            .iter()
-            .map(|candidate| candidate.candidate_id)
-            .collect::<Vec<_>>();
-        Self::validate_for_candidate_ids(self, domain, &ids)
-    }
-
     pub(crate) fn validate_for_candidate_ids(
         answer: &Self,
         domain: &DecisionDomainV2,
@@ -187,24 +144,6 @@ fn validate_cardinality(
     Ok(())
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct DecisionResponseV2 {
-    pub schema_version: String,
-    pub player_decision_id: PlayerDecisionIdV1,
-    pub state_revision: StateRevision,
-    pub answer: DecisionAnswerV2,
-}
-
-impl DecisionResponseV2 {
-    pub fn validate(&self) -> Result<(), DecisionValidationError> {
-        if self.schema_version != DECISION_RESPONSE_V2_SCHEMA {
-            return Err(DecisionValidationError::SchemaVersion);
-        }
-        self.answer.validate_shape()
-    }
-}
-
 impl DecisionAnswerV2 {
     /// Checks answer-local canonicality shared by versioned response envelopes.
     pub(crate) fn validate_shape(&self) -> Result<(), DecisionValidationError> {
@@ -239,49 +178,5 @@ impl DecisionAnswerV2 {
             DecisionAnswerV2::SelectOne { .. } | DecisionAnswerV2::ChooseNumber { .. } => {}
         }
         Ok(())
-    }
-}
-
-impl DecisionResponseV2 {
-    /// Request-relative submission checks in normative order. Deliberately
-    /// does NOT run the standalone monolithic [`Self::validate`] first:
-    /// endpoint availability, visible-request identity, and revision must be
-    /// resolved before uniqueness/canonicality so compound failures classify
-    /// deterministically (stale beats duplicate/canonical defects).
-    /// Wire/schema shape identity is enforced separately at decode time.
-    pub fn validate_for(
-        &self,
-        request: &PlayerDecisionRequestV2,
-    ) -> Result<(), DecisionValidationError> {
-        if self.schema_version != DECISION_RESPONSE_V2_SCHEMA {
-            return Err(DecisionValidationError::SchemaVersion);
-        }
-        if self.player_decision_id != request.player_decision_id {
-            return Err(DecisionValidationError::DecisionIdentityMismatch);
-        }
-        if self.state_revision != request.state_revision {
-            return Err(DecisionValidationError::StateRevisionMismatch);
-        }
-        // Answer variant first, then membership/uniqueness/canonical/bounds.
-        if !matches!(
-            (&request.decision, &self.answer),
-            (
-                DecisionDomainV2::ChooseOne,
-                DecisionAnswerV2::SelectOne { .. }
-            ) | (
-                DecisionDomainV2::ChooseMany { .. },
-                DecisionAnswerV2::SelectMany { .. }
-            ) | (
-                DecisionDomainV2::ChooseNumber { .. },
-                DecisionAnswerV2::ChooseNumber { .. }
-            ) | (
-                DecisionDomainV2::Order { .. },
-                DecisionAnswerV2::Order { .. }
-            )
-        ) {
-            return Err(DecisionValidationError::AnswerDomainMismatch);
-        }
-        self.answer
-            .validate_for(&request.decision, &request.candidates)
     }
 }

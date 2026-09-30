@@ -29,6 +29,11 @@ DELETED_CONTRACTS: tuple[str, ...] = (
     "magic-combat-observation.v3",
     "magic-combat-observation.v4",
     "synthetic-m3-observation.v1",
+    "player-decision-request.v1",
+    "player-decision-request.v2",
+    "player-decision-request.v3",
+    "decision-response.v1",
+    "decision-response.v2",
 )
 
 

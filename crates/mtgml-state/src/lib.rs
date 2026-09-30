@@ -72,7 +72,7 @@ pub use engine_state_shape::{
     SYNTHETIC_COUNT_MAX, SYNTHETIC_COUNT_MIN,
 };
 pub use execution::{EffectRecord, ExecutionState, TriggerRecord};
-pub use execution::{ExecutionStateV3, ExecutionStateV4, SuccessorDecisionError};
+pub use execution::{ExecutionStateV3, ExecutionStateV4};
 pub use format::{CommanderState, FormatState};
 pub use identity::{IdentityAllocationError, IdentityAllocatorState};
 pub use knowledge::{

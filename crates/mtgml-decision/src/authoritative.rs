@@ -2,10 +2,7 @@ use crate::common::{CandidateIntent, DecisionVisibility};
 use crate::error::{CandidateBindingError, DecisionValidationError};
 use crate::ordering::CandidateOrderingV1;
 use crate::v1::ActionCandidate;
-use crate::v2::{
-    DecisionDomainV2, PlayerDecisionRequestV2, VisibleCandidateV2,
-    PLAYER_DECISION_REQUEST_V2_SCHEMA,
-};
+use crate::v2::{DecisionDomainV2, VisibleCandidateV2};
 use mtgml_model::{
     AbilityInstanceId, CandidateIdV1, ContinuationId, DecisionId, GameObjectId, OpaqueAbilityId,
     OpaqueObjectId, PlayerDecisionIdV1, PlayerId, StateRevision,
@@ -67,28 +64,6 @@ impl AuthoritativeDecisionRequestV2 {
             return Err(DecisionValidationError::BindingVariantMismatch);
         }
         Ok(())
-    }
-
-    pub fn project_player_request(
-        &self,
-    ) -> Result<PlayerDecisionRequestV2, DecisionValidationError> {
-        self.validate()?;
-        Ok(PlayerDecisionRequestV2 {
-            schema_version: PLAYER_DECISION_REQUEST_V2_SCHEMA.to_owned(),
-            player_decision_id: self.player_decision_id,
-            state_revision: self.state_revision,
-            actor: self.actor,
-            visibility: self.visibility,
-            decision: self.decision.clone(),
-            candidates: self
-                .candidates
-                .iter()
-                .map(|candidate| VisibleCandidateV2 {
-                    candidate_id: candidate.candidate_id,
-                    intent: candidate.visible_intent.clone(),
-                })
-                .collect(),
-        })
     }
 }
 

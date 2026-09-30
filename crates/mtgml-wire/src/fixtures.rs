@@ -1,9 +1,6 @@
 use crate::canonical_json::decode_canonical;
 use crate::error::WireError;
-use mtgml_decision::{
-    DecisionResponse, DecisionResponseV2, DecisionResponseV3, PlayerDecisionRequest,
-    PlayerDecisionRequestV2, PlayerDecisionRequestV4,
-};
+use mtgml_decision::{DecisionResponseV3, PlayerDecisionRequestV4};
 use mtgml_model::EpisodeStatus;
 use mtgml_observation::{
     MagicBasicLandObservationV1, MagicSharedExecutionObservationV1, ObservationEnvelope,
@@ -92,12 +89,6 @@ pub fn verify_negative_fixture_directory(root: &Path) -> Result<(), FixtureVerif
 
 fn decode_named(contract: &str, bytes: &[u8]) -> Result<(), WireError> {
     match contract {
-        "player-decision-request.v1" => decode_canonical::<PlayerDecisionRequest>(bytes).map(drop),
-        "decision-response.v1" => decode_canonical::<DecisionResponse>(bytes).map(drop),
-        "player-decision-request.v2" => {
-            decode_canonical::<PlayerDecisionRequestV2>(bytes).map(drop)
-        }
-        "decision-response.v2" => decode_canonical::<DecisionResponseV2>(bytes).map(drop),
         "player-decision-request.v4" => {
             decode_canonical::<PlayerDecisionRequestV4>(bytes).map(drop)
         }

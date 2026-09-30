@@ -122,199 +122,120 @@ fn candidate_ordering_v1_exact_matrix() {
     let mut invalid_number = choose_number.clone();
     invalid_number.candidates = ordered;
     assert!(invalid_number.validate().is_err());
-
-    let request = PlayerDecisionRequestV2 {
-        schema_version: PLAYER_DECISION_REQUEST_V2_SCHEMA.to_owned(),
-        player_decision_id: PlayerDecisionIdV1(1),
-        state_revision: StateRevision(0),
-        actor: PlayerId(1),
-        visibility: DecisionVisibility::Public,
-        decision: DecisionDomainV2::ChooseOne,
-        candidates: vec![
-            VisibleCandidateV2 {
-                candidate_id: CandidateIdV1(0),
-                intent: CandidateIntent::ChooseBoolean { value: false },
-            },
-            VisibleCandidateV2 {
-                candidate_id: CandidateIdV1(1),
-                intent: CandidateIntent::ChooseBoolean { value: true },
-            },
-        ],
-    };
-    assert!(request.validate().is_ok());
-    let mut noncanonical = request.clone();
-    noncanonical.candidates.swap(0, 1);
-    assert!(noncanonical.validate().is_err());
 }
 
 #[test]
-fn submission_validation_precedence_matrix() {
-    let request = PlayerDecisionRequestV2 {
-        schema_version: PLAYER_DECISION_REQUEST_V2_SCHEMA.to_owned(),
-        player_decision_id: PlayerDecisionIdV1(7),
-        state_revision: StateRevision(3),
-        actor: PlayerId(1),
-        visibility: DecisionVisibility::Public,
-        decision: DecisionDomainV2::ChooseMany {
-            minimum: 2,
-            maximum: 2,
-        },
-        candidates: vec![
-            VisibleCandidateV2 {
-                candidate_id: CandidateIdV1(0),
-                intent: CandidateIntent::SelectMode { mode_index: 0 },
-            },
-            VisibleCandidateV2 {
-                candidate_id: CandidateIdV1(1),
-                intent: CandidateIntent::SelectMode { mode_index: 1 },
-            },
-        ],
+fn answer_validation_precedence_matrix() {
+    let domain = DecisionDomainV2::ChooseMany {
+        minimum: 2,
+        maximum: 2,
     };
-    let response = |player_decision: u64, revision: u64, ids: &[u32]| DecisionResponseV2 {
-        schema_version: DECISION_RESPONSE_V2_SCHEMA.into(),
-        player_decision_id: PlayerDecisionIdV1(player_decision),
-        state_revision: StateRevision(revision),
-        answer: DecisionAnswerV2::SelectMany {
-            candidate_ids: ids.iter().copied().map(CandidateIdV1).collect(),
-        },
+    let available = [CandidateIdV1(0), CandidateIdV1(1)];
+    let check = |ids: &[u32]| {
+        DecisionAnswerV2::validate_for_candidate_ids(
+            &DecisionAnswerV2::SelectMany {
+                candidate_ids: ids.iter().copied().map(CandidateIdV1).collect(),
+            },
+            &domain,
+            &available,
+        )
     };
-
-    // Compound: stale identity beats duplicate/canonical defects.
-    assert_eq!(
-        response(8, 3, &[0, 0]).validate_for(&request),
-        Err(DecisionValidationError::DecisionIdentityMismatch)
-    );
-    assert_eq!(
-        response(8, 3, &[1, 0]).validate_for(&request),
-        Err(DecisionValidationError::DecisionIdentityMismatch)
-    );
-    // Stale revision likewise precedes answer-set defects.
-    assert_eq!(
-        response(7, 9, &[0, 0]).validate_for(&request),
-        Err(DecisionValidationError::StateRevisionMismatch)
-    );
     // Membership precedes canonical representation.
     assert_eq!(
-        response(7, 3, &[9, 0]).validate_for(&request),
+        check(&[9, 0]),
         Err(DecisionValidationError::UnknownCandidate)
     );
     // Uniqueness precedes canonical representation.
     assert_eq!(
-        response(7, 3, &[0, 0]).validate_for(&request),
+        check(&[0, 0]),
         Err(DecisionValidationError::DuplicateAnswerCandidate)
     );
     // Canonical representation for SelectMany sets.
     assert_eq!(
-        response(7, 3, &[1, 0]).validate_for(&request),
+        check(&[1, 0]),
         Err(DecisionValidationError::NoncanonicalAnswer)
     );
     // Cardinality after representation checks pass.
-    assert_eq!(
-        response(7, 3, &[0]).validate_for(&request),
-        Err(DecisionValidationError::AnswerCardinality)
-    );
+    assert_eq!(check(&[0]), Err(DecisionValidationError::AnswerCardinality));
     // The exact program answer remains accepted.
-    assert_eq!(response(7, 3, &[0, 1]).validate_for(&request), Ok(()));
+    assert_eq!(check(&[0, 1]), Ok(()));
 }
 
 #[test]
 fn closed_family_domain_boundaries_matrix() {
     // Two candidates: an inclusive maximum above the candidate count is
-    // still a valid request because the candidate set itself bounds the
+    // still a valid domain because the candidate set itself bounds the
     // reachable cardinality; only an unsatisfiable minimum is invalid.
-    let two_candidates = |domain| PlayerDecisionRequestV2 {
-        schema_version: PLAYER_DECISION_REQUEST_V2_SCHEMA.to_owned(),
-        player_decision_id: PlayerDecisionIdV1(1),
-        state_revision: StateRevision(0),
-        actor: PlayerId(1),
-        visibility: DecisionVisibility::Public,
-        decision: domain,
-        candidates: vec![
-            VisibleCandidateV2 {
-                candidate_id: CandidateIdV1(0),
-                intent: CandidateIntent::SelectMode { mode_index: 0 },
-            },
-            VisibleCandidateV2 {
-                candidate_id: CandidateIdV1(1),
-                intent: CandidateIntent::SelectMode { mode_index: 1 },
-            },
-        ],
+    let widened_many = DecisionDomainV2::ChooseMany {
+        minimum: 1,
+        maximum: 3,
     };
-
-    assert!(two_candidates(DecisionDomainV2::ChooseMany {
+    let widened_order = DecisionDomainV2::Order {
         minimum: 1,
-        maximum: 3
-    })
-    .validate()
-    .is_ok());
-    assert!(two_candidates(DecisionDomainV2::Order {
-        minimum: 1,
-        maximum: 3
-    })
-    .validate()
-    .is_ok());
+        maximum: 3,
+    };
+    assert!(widened_many.validate_candidates(2).is_ok());
+    assert!(widened_order.validate_candidates(2).is_ok());
     assert!(matches!(
-        two_candidates(DecisionDomainV2::ChooseMany {
+        DecisionDomainV2::ChooseMany {
             minimum: 3,
             maximum: 3
-        })
-        .validate(),
+        }
+        .validate_candidates(2),
         Err(DecisionValidationError::ImpossibleMinimum)
     ));
     assert!(matches!(
-        two_candidates(DecisionDomainV2::Order {
+        DecisionDomainV2::Order {
             minimum: 3,
             maximum: 3
-        })
-        .validate(),
+        }
+        .validate_candidates(2),
         Err(DecisionValidationError::ImpossibleMinimum)
     ));
-
     // Answer-side boundaries for a widened interval.
-    let request = two_candidates(DecisionDomainV2::ChooseMany {
-        minimum: 1,
-        maximum: 3,
-    });
-    let ids = |values: &[u32]| DecisionAnswerV2::SelectMany {
-        candidate_ids: values.iter().copied().map(CandidateIdV1).collect(),
+    let available = [CandidateIdV1(0), CandidateIdV1(1)];
+    let many = |values: &[u32]| {
+        DecisionAnswerV2::validate_for_candidate_ids(
+            &DecisionAnswerV2::SelectMany {
+                candidate_ids: values.iter().copied().map(CandidateIdV1).collect(),
+            },
+            &widened_many,
+            &available,
+        )
     };
-    assert_eq!(request.answer(&ids(&[0])), Ok(()));
-    assert_eq!(request.answer(&ids(&[0, 1])), Ok(()));
-    assert!(request.answer(&ids(&[])).is_err());
-    assert!(request.answer(&ids(&[0, 1, 0])).is_err());
-
-    let order_request = two_candidates(DecisionDomainV2::Order {
-        minimum: 1,
-        maximum: 3,
-    });
-    let order = |values: &[u32]| DecisionAnswerV2::Order {
-        candidate_ids: values.iter().copied().map(CandidateIdV1).collect(),
+    assert_eq!(many(&[0]), Ok(()));
+    assert_eq!(many(&[0, 1]), Ok(()));
+    assert!(many(&[]).is_err());
+    assert!(many(&[0, 1, 0]).is_err());
+    let order = |values: &[u32]| {
+        DecisionAnswerV2::validate_for_candidate_ids(
+            &DecisionAnswerV2::Order {
+                candidate_ids: values.iter().copied().map(CandidateIdV1).collect(),
+            },
+            &widened_order,
+            &available,
+        )
     };
-    assert_eq!(order_request.answer(&order(&[1])), Ok(()));
-    assert_eq!(order_request.answer(&order(&[1, 0])), Ok(()));
-    assert!(order_request.answer(&order(&[])).is_err());
+    assert_eq!(order(&[1]), Ok(()));
+    assert_eq!(order(&[1, 0]), Ok(()));
+    assert!(order(&[]).is_err());
 }
 
 #[test]
 fn choose_many_zero_to_zero_with_no_candidates_requires_explicit_empty_answer() {
-    let request = PlayerDecisionRequestV2 {
-        schema_version: PLAYER_DECISION_REQUEST_V2_SCHEMA.to_owned(),
-        player_decision_id: PlayerDecisionIdV1(1),
-        state_revision: StateRevision(0),
-        actor: PlayerId(1),
-        visibility: DecisionVisibility::ActingPlayerOnly,
-        decision: DecisionDomainV2::ChooseMany {
-            minimum: 0,
-            maximum: 0,
-        },
-        candidates: vec![],
+    let domain = DecisionDomainV2::ChooseMany {
+        minimum: 0,
+        maximum: 0,
     };
-
-    assert!(request.validate().is_ok());
+    assert!(domain.validate_candidates(0).is_ok());
     assert_eq!(
-        request.answer(&DecisionAnswerV2::SelectMany {
-            candidate_ids: vec![],
-        }),
+        DecisionAnswerV2::validate_for_candidate_ids(
+            &DecisionAnswerV2::SelectMany {
+                candidate_ids: vec![],
+            },
+            &domain,
+            &[],
+        ),
         Ok(())
     );
 }
@@ -322,12 +243,14 @@ fn choose_many_zero_to_zero_with_no_candidates_requires_explicit_empty_answer() 
 #[test]
 fn candidate_id_overflow_is_rejected() {
     let response = r#"{
-            "schema_version":"decision-response.v2",
+            "schema_version":"decision-response.v3",
             "player_decision_id":"1",
-            "state_revision":"0",
+            "view_sequence":"0",
             "answer":{"kind":"select_one","candidate_id":4294967296}
         }"#;
-    assert!(serde_json::from_str::<DecisionResponseV2>(response).is_err());
+    assert!(serde_json::from_str::<DecisionResponseV3>(response).is_err());
+    let in_range = response.replace("4294967296", "4294967295");
+    assert!(serde_json::from_str::<DecisionResponseV3>(&in_range).is_ok());
 }
 
 #[test]

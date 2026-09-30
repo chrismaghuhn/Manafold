@@ -10,13 +10,8 @@ from ._magic_basic_land_observation_v1 import MagicBasicLandObservationV1
 from ._player_step_v4 import PlayerStepV4
 from .canonical import canonical_json_bytes
 from .decision import (
-    DecisionResponse,
-    DecisionResponseV2,
     DecisionResponseV3,
-    PlayerDecisionRequest,
-    PlayerDecisionRequestV2,
 )
-from .decision_v3 import PlayerDecisionRequestV3
 from .decision_v4 import PlayerDecisionRequestV4
 from .episode import EpisodeStatus
 from .errors import WireError
@@ -41,12 +36,7 @@ from .replay import (
 T = TypeVar("T")
 
 _DECODERS: dict[str, Callable[[object], object]] = {
-    "player-decision-request.v1": PlayerDecisionRequest.from_wire,
-    "decision-response.v1": DecisionResponse.from_wire,
-    "player-decision-request.v2": PlayerDecisionRequestV2.from_wire,
-    "player-decision-request.v3": PlayerDecisionRequestV3.from_wire,
     "player-decision-request.v4": PlayerDecisionRequestV4.from_wire,
-    "decision-response.v2": DecisionResponseV2.from_wire,
     "decision-response.v3": DecisionResponseV3.from_wire,
     "episode-status.v1": EpisodeStatus.from_wire,
     "observation-envelope.v1": ObservationEnvelope.from_wire,

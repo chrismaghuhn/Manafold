@@ -13,46 +13,6 @@
       "path": "episode-status-truncated-external-stop.v1.json"
     },
     {
-      "contract": "player-decision-request.v1",
-      "path": "player-decision-request.v1.json"
-    },
-    {
-      "contract": "decision-response.v1",
-      "path": "decision-response.v1.json"
-    },
-    {
-      "contract": "player-decision-request.v2",
-      "path": "player-decision-request.v2.json"
-    },
-    {
-      "contract": "player-decision-request.v2",
-      "path": "player-decision-request.v2-choose-number.json"
-    },
-    {
-      "contract": "player-decision-request.v2",
-      "path": "player-decision-request.v2-choose-many.json"
-    },
-    {
-      "contract": "player-decision-request.v2",
-      "path": "player-decision-request.v2-order.json"
-    },
-    {
-      "contract": "decision-response.v2",
-      "path": "decision-response.v2-select-one.json"
-    },
-    {
-      "contract": "decision-response.v2",
-      "path": "decision-response.v2-select-many.json"
-    },
-    {
-      "contract": "decision-response.v2",
-      "path": "decision-response.v2-order.json"
-    },
-    {
-      "contract": "decision-response.v2",
-      "path": "decision-response.v2-choose-number.json"
-    },
-    {
       "contract": "information-state-envelope.v2",
       "path": "information-state-envelope.v2.json"
     },

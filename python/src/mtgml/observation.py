@@ -62,7 +62,6 @@ from .canonical import (
     require_nonempty,
     uint_wire,
 )
-from .decision import PlayerDecisionRequest, PlayerDecisionRequestV2
 from .episode import EpisodeStatus
 from .errors import WireError
 from .magic_shared_execution_observation_v1 import (
@@ -122,8 +121,6 @@ __all__ = [
     "ObservedEventEnvelopeV4",
     "ObservedEventV3",
     "ObservedEventV4",
-    "PlayerDecisionRequest",
-    "PlayerDecisionRequestV2",
     "PlayerInformationStateV2",
     "PlayerInformationStateV3",
     "PlayerKnowledgeInvalidationV1",

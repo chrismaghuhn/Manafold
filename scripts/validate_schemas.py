@@ -10,12 +10,7 @@ import jsonschema
 
 ROOT = Path(__file__).resolve().parents[1]
 WIRE_MAPPING = {
-    "player-decision-request.v1": "player-decision-request.v1.schema.json",
-    "decision-response.v1": "decision-response.v1.schema.json",
-    "player-decision-request.v2": "player-decision-request.v2.schema.json",
-    "player-decision-request.v3": "player-decision-request.v3.schema.json",
     "player-decision-request.v4": "player-decision-request.v4.schema.json",
-    "decision-response.v2": "decision-response.v2.schema.json",
     "decision-response.v3": "decision-response.v3.schema.json",
     "episode-status.v1": "episode-status.v1.schema.json",
     "observation-envelope.v1": "observation-envelope.v1.schema.json",
@@ -111,26 +106,6 @@ SCHEMA_NEGATIVE_CASES = [
     (
         "magic-basic-land-observation.v1.schema.json",
         "schemas/negative/magic-basic-land-observation-v1-candidates.json",
-    ),
-    (
-        "player-decision-request.v3.schema.json",
-        "schemas/negative/player-decision-request-v3-unknown-version.json",
-    ),
-    (
-        "player-decision-request.v3.schema.json",
-        "schemas/negative/player-decision-request-v3-unknown-field.json",
-    ),
-    (
-        "player-decision-request.v3.schema.json",
-        "schemas/negative/player-decision-request-v3-unknown-intent.json",
-    ),
-    (
-        "player-decision-request.v3.schema.json",
-        "schemas/negative/player-decision-request-v3-play-land-missing-object.json",
-    ),
-    (
-        "player-decision-request.v3.schema.json",
-        "schemas/negative/player-decision-request-v3-trusted-game-object-id.json",
     ),
     (
         "magic-shared-execution-observation.v1.schema.json",
@@ -294,14 +269,6 @@ SCHEMA_POSITIVE_CASES = [
     (
         "player-decision-request.v4.schema.json",
         "schemas/examples/player-decision-request-v4-synthetic-order.json",
-    ),
-    (
-        "player-decision-request.v3.schema.json",
-        "schemas/examples/player-decision-request-v3-play-land.json",
-    ),
-    (
-        "player-decision-request.v3.schema.json",
-        "schemas/examples/player-decision-request-v3-ordering.json",
     ),
     (
         "magic-basic-land-observation.v1.schema.json",

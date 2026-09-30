@@ -17,18 +17,12 @@ pub use common::{CandidateIntent, DecisionVisibility};
 pub use error::{CandidateBindingError, DecisionValidationError};
 pub use ordering::CandidateOrderingV1;
 pub use ordering::CandidateOrderingV2;
-pub use v1::{
-    ActionCandidate, CandidateAssignment, DecisionKind, DecisionResponse, PlayerDecisionRequest,
-    DECISION_RESPONSE_SCHEMA, PLAYER_DECISION_REQUEST_SCHEMA,
-};
-pub use v2::{
-    DecisionAnswerV2, DecisionDomainV2, DecisionResponseV2, PlayerDecisionRequestV2,
-    VisibleCandidateV2, DECISION_RESPONSE_V2_SCHEMA, PLAYER_DECISION_REQUEST_V2_SCHEMA,
-};
+pub use v1::ActionCandidate;
+pub use v2::{DecisionAnswerV2, DecisionDomainV2, VisibleCandidateV2};
 pub use v3::{
     validate_candidate_binding_v3, AuthoritativeCandidateV3, AuthoritativeDecisionRequestV3,
-    CandidateIntentV3, DecisionResponseV3, EngineCandidateBindingV3, PlayerDecisionRequestV3,
-    VisibleCandidateV3, DECISION_RESPONSE_V3_SCHEMA, PLAYER_DECISION_REQUEST_V3_SCHEMA,
+    CandidateIntentV3, DecisionResponseV3, EngineCandidateBindingV3, VisibleCandidateV3,
+    DECISION_RESPONSE_V3_SCHEMA,
 };
 pub use v4::{
     AuthoritativeCandidateV4, AuthoritativeDecisionRequestV4, CandidateIntentV4,
