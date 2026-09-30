@@ -133,6 +133,9 @@ pub fn validate_magic_pending_request_v4(
         .validate_structure()
         .map_err(|_| BasicLandCandidateError::InvalidState)?;
     validate_slice(admission, state).map_err(|_| BasicLandCandidateError::InvalidState)?;
+    // Only an admission with the rule that creates this request accepts it.
+    admits(admission, "rules/declare-attackers")
+        .map_err(|_| BasicLandCandidateError::PendingCandidateSetMismatch)?;
     let parts = &state.predecessor_v5;
     if !matches!(status, EpisodeStatus::Running)
         || parts.core.position
@@ -905,6 +908,9 @@ fn validate_discard_request(
         .validate_structure()
         .map_err(|_| BasicLandCandidateError::InvalidState)?;
     validate_slice(admission, state).map_err(|_| BasicLandCandidateError::InvalidState)?;
+    // Only an admission with the rule that creates this request accepts it.
+    admits(admission, "rules/cleanup-reset")
+        .map_err(|_| BasicLandCandidateError::PendingCandidateSetMismatch)?;
     let parts = &state.predecessor_v5;
     let hand = parts
         .zones
@@ -1788,6 +1794,31 @@ mod tests {
         assert_eq!(zone_count(&state, P1, ZoneKind::Hand), 8);
         assert_eq!(zone_count(&state, P2, ZoneKind::Hand), 7);
         validate_magic_pending_request_v4(&admission, &state, &status).unwrap();
+    }
+
+    #[test]
+    fn turn_requests_are_valid_only_under_the_rules_that_create_them() {
+        // An attacker declaration needs rules/declare-attackers and a
+        // hand-size discard rules/cleanup-reset; the content-only admission
+        // has neither, so a restored state carrying such a request fails.
+        let status = EpisodeStatus::Running;
+        let content_only = crate::basic_land::content_only_admission_fixture();
+        let (admission, state) = game(3);
+        let state = pass_until(&admission, state, at(BEGIN_COMBAT, 1));
+        let state = pass(&admission, &state).0;
+        let attackers = pass(&admission, &state).0;
+        let (_, state) =
+            game_with_hands(crate::basic_land::basic_land_admission_fixture(), 3, 6, 0);
+        let discard = discard_request(&admission, state);
+
+        for (state, purpose) in [
+            (attackers, DecisionPurposeV4::AttackerDeclaration),
+            (discard, DecisionPurposeV4::HandSizeDiscard),
+        ] {
+            assert_eq!(pending(&state).purpose, purpose);
+            validate_magic_pending_request_v4(&admission, &state, &status).unwrap();
+            assert!(validate_magic_pending_request_v4(&content_only, &state, &status).is_err());
+        }
     }
 
     #[test]
