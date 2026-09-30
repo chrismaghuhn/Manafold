@@ -573,6 +573,7 @@ mod tests {
             "rules/land-play",
             "rules/mana-pool",
             "rules/state-based-actions-combat",
+            "rules/state-based-actions-empty-library",
             "rules/turn-structure",
             "rules/zone-incarnation",
         ])

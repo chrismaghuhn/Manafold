@@ -37,7 +37,7 @@
 - **Current boundary:** `M3 = COMPLETE`; `M3_FINAL_ACCEPTANCE = PASS`; `M4 = IN_PROGRESS`; the executable real-card slice is Mountain + Plains under `basic-land@1.0.0`; no broader certification, card/deck/format/Commander/playability support is claimed.
 - **Project type:** independent greenfield MTG/ML rules and simulation engine
 - **Playable engine:** no
-- **Production turn loop:** the V8 runtime plays complete two-player turns with basic lands (untap, upkeep, draw, main phases, an empty combat, end step, cleanup with discard to hand size, turn change), proven through the production player endpoints (`crates/mtgml-environment/tests/production_turn.rs`); no creatures, combat damage, spells, or deck support.
+- **Production turn loop:** the V8 runtime plays complete two-player turns with basic lands (untap, upkeep, draw, main phases, an empty combat, end step, cleanup with discard to hand size, turn change); a player who draws from an empty library loses and the game ends; proven through the production player endpoints (`crates/mtgml-environment/tests/production_turn.rs`); no creatures, combat damage, spells, or deck support.
 - **Real Magic semantics:** accepted evidence covers the eleven bounded Foundation V2 capabilities. This does not claim arbitrary Magic support, cards, decks, formats, or playability.
 - **Bounded executable real-card support:** Mountain + Plains under `basic-land@1.0.0`; no broader card/deck support is claimed.
 

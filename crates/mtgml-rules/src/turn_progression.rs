@@ -16,14 +16,14 @@ use mtgml_decision::{
     EngineCandidateBindingV4,
 };
 use mtgml_model::{
-    DecisionId, EpisodeStatus, GameObjectId, PlayerDecisionIdV1, PlayerId, RuleEventId,
-    StateRevision, ZoneKind,
+    DecisionId, EpisodeStatus, GameObjectId, PlayerDecisionIdV1, PlayerId, PlayerOutcome,
+    PlayerResult, RuleEventId, StateRevision, TerminalReason, ZoneKind,
 };
 use mtgml_state::{
     BeginningStep, CombatState, CombatStep, EndingStep, EngineState, EngineStatePartsV3,
-    ManaPoolChangeCauseV1, PerspectiveLifecycleAuditV1, PriorityState, SemanticDeltaOperationV3,
-    StateDeltaV3, TurnHistoryStateV1, TurnPosition, VisibilityPartition, ZoneKey, ZoneLocation,
-    ZonePosition,
+    ManaPoolChangeCauseV1, PerspectiveLifecycleAuditV1, PriorityState, SbaSelectedActionV1,
+    SemanticDeltaOperationV3, StateDeltaV3, TurnHistoryStateV1, TurnPosition, VisibilityPartition,
+    ZoneKey, ZoneLocation, ZonePosition,
 };
 
 use crate::{
@@ -161,6 +161,10 @@ enum NextDecision {
     Priority(PlayerId),
     Attackers,
     Discard,
+    /// The game ended: `loser` lost to a state-based action.
+    GameOver {
+        loser: PlayerId,
+    },
 }
 
 /// What changed during the transition beyond the endpoint fields.
@@ -370,6 +374,19 @@ fn advance(
                 admits(admission, "rules/draw-card")?;
                 // CR 103.8a: the starting player skips the draw of turn 1.
                 if next.predecessor_v5.core.turn_number >= 2 {
+                    if library_top(next, active).is_none() {
+                        // CR 121.4, 704.5b: drawing from an empty library
+                        // loses the game when state-based actions are next
+                        // checked, before anyone receives priority (CR 117.5).
+                        admits(admission, "rules/state-based-actions-empty-library")?;
+                        next.predecessor_v5
+                            .core
+                            .players
+                            .get_mut(&active)
+                            .ok_or(Error::InvalidResult)?
+                            .has_lost = true;
+                        return Ok(NextDecision::GameOver { loser: active });
+                    }
                     draw(next, active, facts)?;
                 }
                 return Ok(open_priority(next));
@@ -468,9 +485,7 @@ fn begin_turn(next: &mut EngineStatePartsV3, facts: &mut Facts) -> Result<(), Er
     Ok(())
 }
 
-/// CR 504.1: the active player draws the top card of their library. An
-/// empty library fails closed; the CR 704.5b loss is not in this slice.
-fn draw(next: &mut EngineStatePartsV3, owner: PlayerId, facts: &mut Facts) -> Result<(), Error> {
+fn library_top(state: &EngineStatePartsV3, owner: PlayerId) -> Option<GameObjectId> {
     let library = ZoneLocation {
         zone: ZoneKind::Library,
         player: Some(owner),
@@ -479,14 +494,19 @@ fn draw(next: &mut EngineStatePartsV3, owner: PlayerId, facts: &mut Facts) -> Re
         partition: None,
     };
     let key: ZoneKey = library.key();
-    let top = next
+    state
         .predecessor_v5
         .zones
         .ordered_zones
         .get(&key)
         .and_then(|objects| objects.first())
         .copied()
-        .ok_or(Error::TurnProgressUnsupported)?;
+}
+
+/// CR 504.1: the active player draws the top card of their library. The
+/// caller handles an empty library.
+fn draw(next: &mut EngineStatePartsV3, owner: PlayerId, facts: &mut Facts) -> Result<(), Error> {
+    let top = library_top(next, owner).ok_or(Error::InvalidResult)?;
     move_card(
         next,
         top,
@@ -688,18 +708,50 @@ fn finish(
             }
         }
     }
-    let status = EpisodeStatus::Running;
-    let request = match next_decision {
-        NextDecision::Priority(actor) => {
-            crate::install_basic_land_request_v4(admission, &mut next, actor, &status)
-                .map_err(|_| Error::InvalidResult)?
+    let running = EpisodeStatus::Running;
+    let (status, request) = match next_decision {
+        NextDecision::Priority(actor) => (
+            running.clone(),
+            Some(
+                crate::install_basic_land_request_v4(admission, &mut next, actor, &running)
+                    .map_err(|_| Error::InvalidResult)?,
+            ),
+        ),
+        NextDecision::Attackers => (running, Some(install_attacker_request(&mut next)?)),
+        NextDecision::Discard => (running, Some(install_discard_request(&mut next)?)),
+        // CR 104.2a: in a two-player game the other player wins.
+        NextDecision::GameOver { loser } => {
+            pending.push(legacy(
+                AuthoritativeRuleEventKind::StateBasedActionsApplied {
+                    actions: vec![SbaSelectedActionV1::PlayerLoses { player: loser }],
+                },
+            ));
+            let players = next
+                .predecessor_v5
+                .core
+                .players
+                .keys()
+                .map(|player| PlayerOutcome {
+                    player: *player,
+                    result: if *player == loser {
+                        PlayerResult::Loss
+                    } else {
+                        PlayerResult::Win
+                    },
+                })
+                .collect();
+            let status = EpisodeStatus::Terminal {
+                reason: TerminalReason::RulesLoss,
+                players,
+            };
+            (status, None)
         }
-        NextDecision::Attackers => install_attacker_request(&mut next)?,
-        NextDecision::Discard => install_discard_request(&mut next)?,
     };
-    pending.push(legacy(AuthoritativeRuleEventKind::DecisionCreated {
-        decision: request.decision_id,
-    }));
+    if let Some(request) = &request {
+        pending.push(legacy(AuthoritativeRuleEventKind::DecisionCreated {
+            decision: request.decision_id,
+        }));
+    }
 
     let revision = next.predecessor_v5.revision;
     let first = before.predecessor_v5.allocators.next_rule_event_id;
@@ -738,7 +790,7 @@ fn finish(
         .collect();
     operations.push(SemanticDeltaOperationV3::PendingRequestChanged {
         from: Some(Box::new(answered.clone())),
-        to: Some(Box::new(request.clone())),
+        to: request.clone().map(Box::new),
     });
     next.validate_structure()
         .map_err(|_| Error::InvalidResult)?;
@@ -751,7 +803,7 @@ fn finish(
         next_state: next,
         delta,
         events,
-        next_decision: Some(request),
+        next_decision: request,
         status,
     })
 }
@@ -1526,17 +1578,49 @@ mod tests {
     }
 
     #[test]
-    fn draw_from_empty_library_fails_closed() {
-        // P2 draws the synthetic library card on turn 2; P1's library is
-        // empty when P1 draws on turn 3.
+    fn drawing_from_an_empty_library_loses_the_game() {
+        // CR 121.4, 704.5b, 104.2a: P2 draws the synthetic library card on
+        // turn 2; P1's library is empty when P1 draws on turn 3, so P1 loses
+        // before anyone receives priority in the draw step, and P2 wins.
         let (admission, state) = game(0);
         let state = pass_until(&admission, state, at(UPKEEP, 3));
         let state = pass(&admission, &state).0;
+        let product = submit(&admission, &state, pass_answer(pending(&state))).unwrap();
+        let after = apply(&state, &product);
 
         assert_eq!(
-            submit(&admission, &state, pass_answer(pending(&state))),
-            Err(crate::BasicLandTransitionError::TurnProgressUnsupported)
+            product.status,
+            EpisodeStatus::Terminal {
+                reason: mtgml_model::TerminalReason::RulesLoss,
+                players: vec![
+                    mtgml_model::PlayerOutcome {
+                        player: P1,
+                        result: mtgml_model::PlayerResult::Loss,
+                    },
+                    mtgml_model::PlayerOutcome {
+                        player: P2,
+                        result: mtgml_model::PlayerResult::Win,
+                    },
+                ],
+            }
         );
+        let core = &after.predecessor_v5.core;
+        assert!(core.players[&P1].has_lost && !core.players[&P2].has_lost);
+        assert_eq!(core.position, DRAW);
+        assert_eq!(core.priority, PriorityState::None);
+        assert_eq!(product.next_decision, None);
+        assert!(product.events.iter().any(|event| matches!(
+            &event.event,
+            crate::AuthoritativeRuleEventKindV3::Existing { event }
+                if **event == AuthoritativeRuleEventKind::StateBasedActionsApplied {
+                    actions: vec![mtgml_state::SbaSelectedActionV1::PlayerLoses { player: P1 }],
+                }
+        )));
+        assert_eq!(
+            zone_count(&after, P1, ZoneKind::Hand),
+            zone_count(&state, P1, ZoneKind::Hand)
+        );
+        validate_magic_pending_request_v4(&admission, &after, &product.status).unwrap();
     }
 
     #[test]

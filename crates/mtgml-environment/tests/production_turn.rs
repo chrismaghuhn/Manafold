@@ -11,8 +11,8 @@ use mtgml_decision::{
 use mtgml_environment::{
     PlayerEndpoint, PlayerEndpointError, PlayerEndpointHandle, TrustedEnvironmentController,
 };
-use mtgml_model::{PlayerId, ZoneKind};
-use mtgml_observation::PlayerStepSubmissionV1;
+use mtgml_model::{EpisodeStatus, PlayerId, PlayerOutcome, PlayerResult, TerminalReason, ZoneKind};
+use mtgml_observation::{PlayerStepSubmissionV1, PlayerSubmissionCodeV1};
 use mtgml_state::{BeginningStep, TurnPosition};
 
 const UPKEEP: TurnPosition = TurnPosition::Beginning {
@@ -203,22 +203,64 @@ fn opponent_never_learns_drawn_cards_end_to_end() {
 }
 
 #[test]
-fn empty_library_draw_leaves_runtime_unchanged() {
+fn drawing_from_an_empty_library_ends_the_game() {
+    // Both libraries are empty: P1 skips the turn-1 draw, P2 would draw on
+    // turn 2 and loses (CR 121.4, 704.5b); P1 wins (CR 104.2a).
     let game = Game::new(two_player_land_game(0, 3, 1));
-    loop {
-        let before = game.controller.checkpoint().unwrap();
-        let replay = game.controller.export_replay().unwrap();
-        match game.respond(false) {
-            Ok(_) => continue,
-            Err(error) => {
-                assert_eq!(error, PlayerEndpointError::ServiceUnavailable);
-                assert_eq!(game.controller.checkpoint().unwrap(), before);
-                assert_eq!(game.controller.export_replay().unwrap(), replay);
-                assert_eq!(game.core().turn_number, 2);
-                return;
-            }
-        }
+    let mut last = None;
+    while game.controller.checkpoint().unwrap().status == EpisodeStatus::Running {
+        last = Some(game.respond(false).unwrap());
     }
+    let checkpoint = game.controller.checkpoint().unwrap();
+    assert_eq!(
+        checkpoint.status,
+        EpisodeStatus::Terminal {
+            reason: TerminalReason::RulesLoss,
+            players: vec![
+                PlayerOutcome {
+                    player: P1,
+                    result: PlayerResult::Win,
+                },
+                PlayerOutcome {
+                    player: P2,
+                    result: PlayerResult::Loss,
+                },
+            ],
+        }
+    );
+    assert_eq!(game.core().turn_number, 2);
+    for player in &game.players {
+        assert_eq!(player.visible_decision().unwrap(), None);
+        player.information_state().unwrap();
+    }
+
+    let (actor, request) = last.unwrap();
+    let late = DecisionResponseV3 {
+        schema_version: DECISION_RESPONSE_V3_SCHEMA.to_owned(),
+        player_decision_id: request.player_decision_id,
+        view_sequence: request.view_sequence,
+        answer: DecisionAnswerV2::SelectOne {
+            candidate_id: request.candidates[0].candidate_id,
+        },
+    };
+    let player = game
+        .players
+        .iter()
+        .find(|p| p.perspective() == actor)
+        .unwrap();
+    assert_eq!(
+        player.submit(late).unwrap().submission,
+        PlayerStepSubmissionV1::Rejected {
+            code: PlayerSubmissionCodeV1::EpisodeClosed,
+        }
+    );
+    assert_eq!(game.controller.checkpoint().unwrap(), checkpoint);
+
+    let report = game
+        .controller
+        .execute_replay(game.controller.export_replay().unwrap())
+        .unwrap();
+    assert_eq!(report.final_checkpoint, checkpoint);
 }
 
 #[test]

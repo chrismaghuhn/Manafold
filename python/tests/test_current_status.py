@@ -504,6 +504,7 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             "rules/land-play",
             "rules/mana-pool",
         }
+        production_turn_covered = {"rules/state-based-actions-empty-library"}
         entries = registry["entries"]
         entries_by_key = {entry["key"]: entry for entry in entries}
         self.assertEqual(len(entries_by_key), len(entries))
@@ -514,14 +515,25 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         )
         self.assertEqual(
             {key for key in entries_by_key if key not in historical_m3_covered},
-            phase9_specified,
+            phase9_specified | production_turn_covered,
         )
         self.assertEqual(
             {key for key in phase9_specified if entries_by_key[key]["lifecycle"] == "specified"},
             phase9_specified,
         )
+        self.assertEqual(
+            {
+                key
+                for key in production_turn_covered
+                if entries_by_key[key]["lifecycle"] == "covered"
+            },
+            production_turn_covered,
+        )
         self.assertTrue(all(entries_by_key[key]["version"] == "0.1.0" for key in phase9_specified))
-        self.assertEqual(len(entries), len(historical_m3_covered) + len(phase9_specified))
+        self.assertEqual(
+            len(entries),
+            len(historical_m3_covered) + len(phase9_specified) + len(production_turn_covered),
+        )
         turn_structure = next(entry for entry in entries if entry["key"] == "rules/turn-structure")
         zone_incarnation = next(
             entry for entry in entries if entry["key"] == "rules/zone-incarnation"
@@ -715,7 +727,10 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
 
         self.assertEqual(sum(entry["lifecycle"] == "specified" for entry in entries), 3)
         self.assertEqual(sum(entry["lifecycle"] == "implemented" for entry in entries), 0)
-        self.assertEqual(sum(entry["lifecycle"] == "covered" for entry in entries), 11)
+        self.assertEqual(
+            sum(entry["lifecycle"] == "covered" for entry in entries),
+            len(historical_m3_covered) + len(production_turn_covered),
+        )
         self.assertEqual(sum(entry["lifecycle"] == "certified" for entry in entries), 0)
         self.assertEqual(
             sum(len(entries_by_key[key].get("dependencies", [])) for key in historical_m3_covered),
