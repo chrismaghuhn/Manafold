@@ -944,5 +944,6 @@ A persisted reader MUST:
 # Evidence
 
 The known-answer and negative vectors under `persistence/golden` and
-`persistence/negative` pin these encodings. The Rust tests and the Python
-mechanical mirror check them.
+`persistence/negative` pin these encodings. The Rust tests check them; the
+Python client recomputes only the V8 checkpoint digest and the contract
+identities.

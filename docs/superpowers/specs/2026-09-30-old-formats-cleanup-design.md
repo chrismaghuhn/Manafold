@@ -125,6 +125,7 @@ Consumers are removed before what they consume, so every commit builds: replay u
   - rule events V2→V3
 - The current items left in historical-version files by D1, and every version suffix on current type names.
 - `mtgml-state/src/construction.rs` (the synthetic state builder that current-runtime tests use).
+- `EngineState::digest` and the V5 digest producer, kept during implementation as a test probe of the V5 input encoding (it is not the state identity; see its doc comment).
 
 ## 6. Verification
 

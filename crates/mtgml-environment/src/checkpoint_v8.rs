@@ -522,6 +522,32 @@ mod tests {
     }
 
     #[test]
+    fn restore_rejects_edited_state_with_a_stale_digest() {
+        let admission = admission();
+        let baseline = checkpoint(&admission);
+        let restore = |checkpoint: &EnvironmentCheckpointV8| {
+            checkpoint.restore_with_verified_contracts_for_basic_land_profile(
+                &admission,
+                admission.semantic_contract_manifest(),
+                admission.rules_contract_manifest(),
+                Some(admission.verified_catalog()),
+            )
+        };
+        restore(&baseline).unwrap();
+
+        let mut edited = baseline;
+        edited
+            .state
+            .predecessor_v5
+            .core
+            .players
+            .get_mut(&PlayerId(1))
+            .unwrap()
+            .life -= 1;
+        assert_eq!(restore(&edited), Err(CheckpointV8Error::StateDigest));
+    }
+
+    #[test]
     fn restore_rejects_attachment_without_admitted_profile_semantics() {
         let admission = crate::basic_land_runtime_v8::fixtures::game_admission();
         let restore = |state: EngineStatePartsV3| {

@@ -106,6 +106,6 @@ the digest over the decoded payload and reject forged digest values as closed
 semantic errors before any trusted value is constructed.
 
 `mtgml-persistence` separately owns the restricted canonical CBOR/envelope
-codec and the single `CheckpointDigestV3` calculation. M2.B does not introduce
-an `EnvironmentCheckpointV3` public JSON schema, Python checkpoint DTO,
-durable checkpoint file format, or public JSON `FullStateDigestInputV3` DTO.
+codec and the single `CheckpointDigestV8` calculation. There is no
+`EnvironmentCheckpointV8` public JSON schema, Python checkpoint DTO, durable
+checkpoint file format, or public JSON full-state-input DTO.

@@ -50,7 +50,8 @@ Stale/Invalid*      -> Running,     next_decision=Some(current actor request), o
 ```
 
 The local `PlayerStepV4` validator can require decision presence and prove the
-present request's actor and revision match the information-state perspective.
+present request's actor and `view_sequence` match the information-state
+perspective and its next visible sequence.
 It cannot prove that the request is byte-for-byte the product from before a
 rejected environment call. That unchanged-product parity is the separate
 FND-016B scope deferred to EVD-005; this batch does not claim EVD-005 closed.

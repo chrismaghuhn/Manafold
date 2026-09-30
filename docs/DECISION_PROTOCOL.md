@@ -161,7 +161,7 @@ second resolver check.
 2. typed response-local validation;
 3. endpoint episode state and visible-request availability;
 4. perspective-local player-decision identity;
-5. expected state revision;
+5. expected visible sequence (`view_sequence`);
 6. answer variant matches decision domain;
 7. candidate membership and uniqueness;
 8. canonical set/order representation;

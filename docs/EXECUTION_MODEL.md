@@ -140,19 +140,14 @@ M2 information projection additionally uses a per-perspective visible-sequence c
 
 ## Complete checkpoints
 
-The current runtime checkpoint contract is `EnvironmentCheckpointV3`, bound to
-`FullStateDigestV3`/`CheckpointDigestV3`. `EnvironmentCheckpointV2` is retired
-from the current runtime/controller API.
-
-After the M2 runtime state cut:
-
-- V2 is not reinterpreted against the new `EngineState`;
-- no duplicate legacy `EngineStateV2` is introduced merely to keep the V2 runtime checkpoint executable;
-- historical V2 support follows the fixed M2 matrix: FullStateDigestV2/ReplayV2 `READABLE_VERIFIABLE_ONLY`, EnvironmentCheckpointV2 `UNSUPPORTED` by the current engine;
-- V3 restore validates complete state, episode status, limit counters and codec identity before backend mutation.
+The current runtime checkpoint contract is `EnvironmentCheckpointV8`, bound to
+`FullStateDigestV7`/`CheckpointDigestV8` and the complete `ExecutionIdentityV1`.
+Restore validates the complete state, episode status, limit counters, codec
+identity and execution identity against the verified admission before backend
+mutation.
 
 `mtgml-persistence` owns the single checkpoint-digest input layout and
-calculation consumed by both environment and replay. M2.B does not create a
-public checkpoint JSON contract or a durable checkpoint file format.
+calculation consumed by both environment and replay. There is no public
+checkpoint JSON contract or durable checkpoint file format.
 
-The ADR-0038 V3 persisted digest bytes are specified in [`STATE_HASHING.md`](STATE_HASHING.md).
+The persisted digest bytes are specified in [`STATE_HASHING.md`](STATE_HASHING.md).
