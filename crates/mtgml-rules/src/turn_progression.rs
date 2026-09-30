@@ -225,12 +225,15 @@ fn validate_slice(
     if !hands_within_slice(state) {
         return Err(Error::TurnProgressUnsupported);
     }
-    for (object, location) in &parts.zones.locations {
-        if location.zone == ZoneKind::Battlefield {
-            crate::S1QueryAuthority::for_object(admission, state, *object)
-                .map_err(|_| Error::TurnProgressUnsupported)?;
-        }
-    }
+    let battlefield: Vec<GameObjectId> = parts
+        .zones
+        .locations
+        .iter()
+        .filter(|(_, location)| location.zone == ZoneKind::Battlefield)
+        .map(|(object, _)| *object)
+        .collect();
+    crate::S1QueryAuthority::for_objects(admission, state, &battlefield)
+        .map_err(|_| Error::TurnProgressUnsupported)?;
     Ok(())
 }
 
