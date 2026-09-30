@@ -1271,7 +1271,7 @@ mod tests {
             product.next_state.predecessor_v5.revision.0,
             before.predecessor_v5.revision.0 + 1
         );
-        crate::events_v3::validate_event_delta_state_v3_structural_only(
+        crate::events_v3::validate_events_for_built_delta_v3(
             before,
             &product.next_state,
             &product.events,
