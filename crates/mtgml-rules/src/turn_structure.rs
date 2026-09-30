@@ -1,47 +1,6 @@
 use mtgml_model::{GameObjectId, PlayerId, ZoneKind};
 use mtgml_state::{BeginningStep, CombatStep, EndingStep, ObjectSnapshot, TurnPosition};
 use std::collections::BTreeMap;
-use thiserror::Error;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
-pub enum TurnStructureError {
-    #[error("exactly two players required")]
-    UnsupportedPlayerCount,
-    #[error("active player is undeclared")]
-    ActivePlayerUndeclared,
-    #[error("other player derivation failed")]
-    OtherPlayerDerivation,
-    #[error("turn number is zero")]
-    ZeroTurnNumber,
-    #[error("pending decision is present")]
-    PendingDecision,
-    #[error("continuation state is present")]
-    ContinuationState,
-    #[error("stack state is present")]
-    StackState,
-    #[error("effect state is present")]
-    EffectState,
-    #[error("waiting trigger state is present")]
-    TriggerState,
-    #[error("delayed effect state is present")]
-    DelayedEffect,
-    #[error("format state is not None")]
-    FormatState,
-    #[error("combat state is active")]
-    CombatState,
-    #[error("priority is held")]
-    PriorityHeld,
-    #[error("turn number would overflow")]
-    TurnNumberOverflow,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum UnsupportedRulesBoundary {
-    BasicPriority,
-    DrawCard,
-    Combat,
-    CleanupReset,
-}
 
 pub fn temporal_successor(position: TurnPosition) -> TurnPosition {
     match position {
@@ -110,10 +69,7 @@ pub fn temporal_successor(position: TurnPosition) -> TurnPosition {
 ///   - controller == active_player
 ///   - tapped == true
 ///
-/// The returned vector is in strict ascending `GameObjectId` order. This is
-/// the single eligibility authority shared by `MagicRulesKernel` and
-/// `SemanticValidationCursor` so the two can never disagree about which objects
-/// ordinary Untap must affect.
+/// The returned vector is in strict ascending `GameObjectId` order.
 pub(crate) fn derive_ordinary_untap_affected_objects(
     snapshots: &BTreeMap<GameObjectId, ObjectSnapshot>,
     active_player: PlayerId,

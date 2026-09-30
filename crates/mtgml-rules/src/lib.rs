@@ -27,7 +27,7 @@ pub use basic_land_v4::{
     BasicLandTransitionProductV4,
 };
 pub(crate) use characteristic_query::{S1QueryAuthority, S1QueryError};
-pub use errors::{KernelExecutionError, ZoneIncarnationError};
+pub(crate) use errors::KernelExecutionError;
 pub use events::{
     AuthoritativeRuleEvent, AuthoritativeRuleEventKind, PerspectiveObservationPolicyV1,
 };
@@ -37,5 +37,5 @@ pub use events_v3::{
     EventDeltaV3Error, RuleEventCursorV3Error,
 };
 pub use turn_progression::{execute_magic_response_v4, validate_magic_pending_request_v4};
-pub use turn_structure::{temporal_successor, TurnStructureError, UnsupportedRulesBoundary};
-pub use validation::TransitionViolation;
+pub use turn_structure::temporal_successor;
+pub(crate) use validation::TransitionViolation;

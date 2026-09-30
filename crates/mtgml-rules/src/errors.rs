@@ -1,8 +1,6 @@
-use mtgml_random::RandomValidationError;
-use mtgml_state::{EngineStateViolation, IdentityAllocationError, StateDigestError};
+use mtgml_state::IdentityAllocationError;
 use thiserror::Error;
 
-use crate::turn_structure::{TurnStructureError, UnsupportedRulesBoundary};
 use crate::TransitionViolation;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
@@ -39,38 +37,14 @@ pub enum ZoneIncarnationError {
 
 #[derive(Debug, Error)]
 pub enum KernelExecutionError {
-    #[error("before state is invalid: {0}")]
-    BeforeState(EngineStateViolation),
-    #[error("revision would overflow")]
-    RevisionOverflow,
     #[error("rule event identity would overflow")]
     RuleEventIdOverflow,
-    #[error("visible sequence would overflow")]
-    VisibleSequenceOverflow,
-    #[error("state delta construction failed: {0}")]
-    Delta(StateDigestError),
-    #[error("after state is invalid: {0}")]
-    AfterState(EngineStateViolation),
     #[error("transition contract failed: {0}")]
     TransitionContract(TransitionViolation),
-    #[error("deterministic RNG service failed: {0}")]
-    Random(#[from] RandomValidationError),
     #[error("identity allocator failed: {0}")]
     IdentityAllocation(#[from] IdentityAllocationError),
     #[error("perspective lifecycle failed: {0}")]
     PerspectiveLifecycle(#[from] mtgml_state::LifecycleApplicationError),
-    #[error("{0} identity space is exhausted")]
-    Exhaustion(&'static str),
-    #[error("engine-offered decision stage path is unsupported in the active rules profile")]
-    UnsupportedStagePath,
     #[error("zone-incarnation request rejected: {0}")]
     ZoneIncarnation(ZoneIncarnationError),
-    #[error("turn structure validation failed: {0}")]
-    TurnStructure(TurnStructureError),
-    #[error("player response is not accepted on this no-choice Magic path")]
-    UnsupportedPlayerResponse,
-    #[error("successor basic-land transition rejected: {0}")]
-    BasicLandTransition(#[from] crate::BasicLandTransitionError),
-    #[error("unsupported rules boundary: {0:?}")]
-    UnsupportedRulesBoundary(UnsupportedRulesBoundary),
 }

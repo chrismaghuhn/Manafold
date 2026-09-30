@@ -173,8 +173,6 @@ pub enum BasicLandTransitionError {
     InvalidResult,
     #[error("the transition delta could not be constructed")]
     Delta,
-    #[error("the next turn boundary requires semantics outside this admitted profile")]
-    UnsupportedPriorityBoundary,
     #[error("the turn rules cannot progress from this state")]
     TurnProgressUnsupported,
 }

@@ -5,9 +5,7 @@
 //! change. One response is one transition (`StateRevision` +1, one
 //! `StateDeltaV3`). V3 validates turn-position, priority, active-player and
 //! turn-number events against the transition's endpoints, so each changed
-//! aspect gets exactly one net event. The old `MagicRulesKernel` is the
-//! differential oracle for this sequence (see the `oracle` tests); it is not
-//! called here.
+//! aspect gets exactly one net event.
 //!
 //! What a step reports, and what it does not:
 //! - A step that crosses several positions reports one
@@ -979,7 +977,7 @@ fn actor_only_request_matches(
 }
 
 /// CR 508.1: the active player declares attackers. The land-only slice has
-/// no creatures, so the request offers no candidates, as the oracle does.
+/// no creatures, so the request offers no candidates.
 fn install_attacker_request(
     next: &mut EngineStatePartsV3,
 ) -> Result<AuthoritativeDecisionRequestV4, Error> {
@@ -1565,7 +1563,7 @@ mod tests {
                 .is_some_and(|request| request.purpose == DecisionPurposeV4::AttackerDeclaration)
         });
         let after = pass(&admission, &state).0;
-        // Oracle: priority in declare attackers with an empty combat, then
+        // Priority in declare attackers with an empty combat, then
         // end of combat (blockers and damage skipped), then postcombat main.
         assert!(after
             .predecessor_v5
