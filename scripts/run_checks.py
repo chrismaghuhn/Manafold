@@ -105,6 +105,19 @@ INTEGRATION_EXTRA = [
         "-D",
         "warnings",
     ],
+    # The all-features lint never compiles the production-path tests (they
+    # build only without the historical runtime feature); lint them here.
+    [
+        "cargo",
+        "clippy",
+        "-p",
+        "mtgml-environment",
+        "--all-targets",
+        "--locked",
+        "--",
+        "-D",
+        "warnings",
+    ],
     ["cargo", "test", "--workspace", "--all-features", "--locked"],
     [sys.executable, "scripts/validate_maintainer_artifacts.py"],
 ]

@@ -74,7 +74,7 @@ fn play(seed: u64) -> (Vec<Entry>, TrustedEnvironmentController) {
         controller.bind_player(P1).unwrap(),
         controller.bind_player(P2).unwrap(),
     ];
-    let mut rng = SplitMix64(seed ^ 0x5EED_0F_A11C_E5);
+    let mut rng = SplitMix64(seed ^ 0x5EED_0FA1_1CE5);
     let mut trajectory = Vec::new();
     loop {
         let checkpoint = controller.checkpoint().unwrap();
