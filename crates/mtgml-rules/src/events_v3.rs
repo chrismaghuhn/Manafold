@@ -490,19 +490,51 @@ pub fn validate_event_delta_state_v3(
     events: &[AuthoritativeRuleEventV3],
     delta: &StateDeltaV3,
 ) -> Result<(), EventDeltaV3Error> {
-    validate_event_delta_state_v3_inner(before, after, events, delta, false)
+    validate_event_delta_state_v3_inner(before, after, events, delta, DeltaCheck::Apply)
 }
 
 /// Validates event/Delta/state consistency for a transaction whose exact
 /// profile-dependent Decision domain was already rederived by its RulesKernel
 /// owner. This does not independently admit the state.
+#[cfg(test)]
 pub(crate) fn validate_event_delta_state_v3_structural_only(
     before: &EngineStatePartsV3,
     after: &EngineStatePartsV3,
     events: &[AuthoritativeRuleEventV3],
     delta: &StateDeltaV3,
 ) -> Result<(), EventDeltaV3Error> {
-    validate_event_delta_state_v3_inner(before, after, events, delta, true)
+    validate_event_delta_state_v3_inner(
+        before,
+        after,
+        events,
+        delta,
+        DeltaCheck::ApplyStructuralOnly,
+    )
+}
+
+/// Validates the events of a transition this crate just produced, whose
+/// delta `StateDeltaV3::between_structural_only(before, after, ..)` has just
+/// built. That constructor validated both states and computed their digests,
+/// so the delta is checked against the same states without re-applying it
+/// (which would compute both digests again).
+pub(crate) fn validate_events_for_built_delta_v3(
+    before: &EngineStatePartsV3,
+    after: &EngineStatePartsV3,
+    events: &[AuthoritativeRuleEventV3],
+    delta: &StateDeltaV3,
+) -> Result<(), EventDeltaV3Error> {
+    validate_event_delta_state_v3_inner(before, after, events, delta, DeltaCheck::BuiltFrom)
+}
+
+/// How the delta is checked against the before and after states.
+enum DeltaCheck {
+    /// Apply the delta with full state admission.
+    Apply,
+    /// Apply the delta; the RulesKernel owner validated the decision domain.
+    #[cfg(test)]
+    ApplyStructuralOnly,
+    /// The delta was just built from these states; compare, do not apply.
+    BuiltFrom,
 }
 
 fn validate_event_delta_state_v3_inner(
@@ -510,16 +542,34 @@ fn validate_event_delta_state_v3_inner(
     after: &EngineStatePartsV3,
     events: &[AuthoritativeRuleEventV3],
     delta: &StateDeltaV3,
-    rules_domain_validated: bool,
+    check: DeltaCheck,
 ) -> Result<(), EventDeltaV3Error> {
-    let applied = if rules_domain_validated {
-        delta.apply_structural_only(before)
-    } else {
-        delta.apply(before)
-    }
-    .map_err(|_| EventDeltaV3Error::Mismatch)?;
-    if &applied != after {
-        return Err(EventDeltaV3Error::Mismatch);
+    match check {
+        DeltaCheck::Apply => {
+            let applied = delta
+                .apply(before)
+                .map_err(|_| EventDeltaV3Error::Mismatch)?;
+            if &applied != after {
+                return Err(EventDeltaV3Error::Mismatch);
+            }
+        }
+        #[cfg(test)]
+        DeltaCheck::ApplyStructuralOnly => {
+            let applied = delta
+                .apply_structural_only(before)
+                .map_err(|_| EventDeltaV3Error::Mismatch)?;
+            if &applied != after {
+                return Err(EventDeltaV3Error::Mismatch);
+            }
+        }
+        DeltaCheck::BuiltFrom => {
+            if delta.before_revision != before.predecessor_v5.revision
+                || delta.after_revision != after.predecessor_v5.revision
+                || delta.replacement != *after
+            {
+                return Err(EventDeltaV3Error::Mismatch);
+            }
+        }
     }
     validate_rule_event_cursor_v3(
         before.predecessor_v5.allocators.next_rule_event_id,

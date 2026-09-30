@@ -420,13 +420,8 @@ pub fn execute_basic_land_response_v4(
         .map_err(|_| crate::BasicLandTransitionError::InvalidResult)?;
     let delta = StateDeltaV3::between_structural_only(state, &next_state, operations)
         .map_err(|_| crate::BasicLandTransitionError::Delta)?;
-    crate::events_v3::validate_event_delta_state_v3_structural_only(
-        state,
-        &next_state,
-        &events,
-        &delta,
-    )
-    .map_err(|_| crate::BasicLandTransitionError::InvalidResult)?;
+    crate::events_v3::validate_events_for_built_delta_v3(state, &next_state, &events, &delta)
+        .map_err(|_| crate::BasicLandTransitionError::InvalidResult)?;
     Ok(BasicLandTransitionProductV4 {
         accepted: true,
         next_state,

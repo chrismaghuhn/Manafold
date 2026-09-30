@@ -849,7 +849,7 @@ fn finish(
         .map_err(|_| Error::InvalidResult)?;
     let delta = StateDeltaV3::between_structural_only(before, &next, operations)
         .map_err(|_| Error::Delta)?;
-    crate::events_v3::validate_event_delta_state_v3_structural_only(before, &next, &events, &delta)
+    crate::events_v3::validate_events_for_built_delta_v3(before, &next, &events, &delta)
         .map_err(|_| Error::InvalidResult)?;
     Ok(BasicLandTransitionProductV4 {
         accepted: true,
@@ -1448,6 +1448,28 @@ mod tests {
         assert_eq!(request.actor, P2);
         assert_eq!(request.purpose, DecisionPurposeV4::PriorityAction);
         assert!(!has_play_land(&after));
+    }
+
+    #[test]
+    fn built_delta_check_rejects_another_after_state() {
+        let (admission, state) = game(3);
+        let product = submit(&admission, &state, pass_answer(pending(&state))).unwrap();
+        crate::events_v3::validate_events_for_built_delta_v3(
+            &state,
+            &product.next_state,
+            &product.events,
+            &product.delta,
+        )
+        .unwrap();
+        let mut other = product.next_state.clone();
+        other.predecessor_v5.core.turn_number += 1;
+        assert!(crate::events_v3::validate_events_for_built_delta_v3(
+            &state,
+            &other,
+            &product.events,
+            &product.delta
+        )
+        .is_err());
     }
 
     #[test]
