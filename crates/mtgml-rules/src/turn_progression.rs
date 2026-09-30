@@ -8,6 +8,17 @@
 //! aspect gets exactly one net event. The old `MagicRulesKernel` is the
 //! differential oracle for this sequence (see the `oracle` tests); it is not
 //! called here.
+//!
+//! What a step reports, and what it does not:
+//! - A step that crosses several positions reports one
+//!   `TurnPositionChanged` from the first to the last. The positions in
+//!   between are not reported as positions, only through their effects:
+//!   end step to upkeep shows cleanup only as a discard and the turn change,
+//!   untap only as `UntapCompleted`.
+//! - Events are grouped by kind, not ordered by time: turn and combat events
+//!   first, then zone changes, then emptied mana pools, then the next
+//!   decision. A cleanup discard is therefore listed after the next turn's
+//!   untap, and a draw before the pools that emptied at the end of upkeep.
 
 use mtgml_card_ir::ExecutableProfileAdmissionV1;
 use mtgml_decision::{
