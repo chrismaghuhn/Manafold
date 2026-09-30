@@ -1,6 +1,6 @@
 # ML Environment
 
-**Status:** accepted API boundary; M2 semantic adapter provisional; production transport deferred to M5
+**Status:** accepted API boundary; production transport deferred to M5
 
 ## Controller and endpoints
 
@@ -19,7 +19,7 @@ The endpoint supplies the actor. It cannot select an arbitrary perspective.
 
 ## PlayerStep
 
-M2 `PlayerStepV2` contains:
+`PlayerStepV4` contains:
 
 ```text
 information_state   # includes exactly one current observation + retained knowledge
@@ -49,7 +49,7 @@ UnavailableDecision -> Running,     next_decision=None, observed_events=[]
 Stale/Invalid*      -> Running,     next_decision=Some(current actor request), observed_events=[]
 ```
 
-The local `PlayerStepV2` validator can require decision presence and prove the
+The local `PlayerStepV4` validator can require decision presence and prove the
 present request's actor and revision match the information-state perspective.
 It cannot prove that the request is byte-for-byte the product from before a
 rejected environment call. That unchanged-product parity is the separate
@@ -57,10 +57,10 @@ FND-016B scope deferred to EVD-005; this batch does not claim EVD-005 closed.
 
 Malformed/noncanonical wire bytes are not a semantic environment submission. They fail in the wire/adapter layer with a closed malformed-response code, invoke no `PlayerEndpoint::submit`, and produce no synthetic `PlayerStep`.
 
-`PlayerStepV2` is actor-submission-bound: its `submission` field describes the
+`PlayerStepV4` is actor-submission-bound: its `submission` field describes the
 typed response submitted by the perspective that receives the step. The
 foundation therefore does not construct or deliver a neutral non-actor
-`PlayerStepV2`; no current value of `submission` means "another perspective's
+`PlayerStepV4`; no current value of `submission` means "another perspective's
 accepted transition." Non-actor observed-event batches remain available to
 trusted production projection and replay/trajectory derivation, but live
 non-actor delivery is not a foundation API promise. A future neutral product or
@@ -90,9 +90,7 @@ Truncation is never labeled a rules draw and is not player knowledge state.
 
 The environment does not prescribe PPO, recurrent off-policy learning, behavior cloning, MCTS, CFR, or model architecture. It exposes semantic state/choices/outcomes. Rewards and model/policy recurrence remain external.
 
-## Rules-free Python boundary in M2
-
-M2 may use a temporary non-published subprocess semantic adapter solely to prove that Python can consume the real perspective-safe Rust API.
+## Rules-free Python boundary
 
 Python may:
 
@@ -100,8 +98,8 @@ Python may:
 - hold opaque perspective-bound endpoint tokens;
 - decode/encode public DTOs;
 - call observation/information/visible-decision;
-- submit `DecisionResponseV2`;
-- receive `PlayerStepV2`.
+- submit `DecisionResponseV3`;
+- receive `PlayerStepV4`.
 
 Python must not:
 
@@ -127,23 +125,18 @@ A future trusted search API may checkpoint/fork or sample states consistent with
 
 The player endpoint never exposes checkpoints.
 
-The current runtime uses `EnvironmentCheckpointV3`. `EnvironmentCheckpointV2`
-is retired from the current controller API and is preserved only as detached
-historical evidence; it is never deserialized into the changed `EngineState`.
+The current runtime uses `EnvironmentCheckpointV8`. It contains:
 
-The current checkpoint contains:
-
-- complete current `EngineState`;
-- typed `FullStateDigestV3`;
+- the complete current `EngineStatePartsV3`;
+- typed `FullStateDigestV7`;
 - `EpisodeStatus`;
 - decision, accepted-transition, emitted-rule-event, resource, and elapsed-wall-clock counters;
 - checkpoint codec identity/version;
-- typed `CheckpointDigestV3`.
+- the complete `ExecutionIdentityV1`;
+- typed `CheckpointDigestV8`.
 
-Restore validates the complete object before backend mutation. Fork and replay preserve equivalent status/counter/information behavior.
+Restore validates the complete object against the verified admission before backend mutation. Fork and replay preserve equivalent status/counter/information behavior.
 
-`mtgml-persistence` computes the single `CheckpointDigestV3` input/hash path
-used by environment and replay. Historical V2 semantics are preserved as
-immutable evidence/support classification; no legacy second `EngineState` is
-introduced merely to keep V2 executable. M2.B adds no public checkpoint JSON
-or Python checkpoint DTO.
+`mtgml-persistence` computes the single `CheckpointDigestV8` input/hash path
+used by environment and replay. There is no public checkpoint JSON or Python
+checkpoint DTO.

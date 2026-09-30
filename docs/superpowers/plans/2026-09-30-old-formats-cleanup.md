@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** DRAFT for owner review, 2026-09-30.
+**Status:** IMPLEMENTED on branch `chore/old-formats`, 2026-09-30 (approved by the owner; executed inline).
 
 **Goal:** Delete every historical format that no current type and no production path reaches, one format family per commit, leaving the current format byte-identical.
 
@@ -363,16 +363,16 @@ This task deletes dead code only and adds no behavior, so it has no failing-firs
 
 | Module | Tests that still exercise it |
 |---|---|
-| `mtgml-replay` `v8.rs` (+ kept items of `v2`, `v7`, `identity`, `validation`) | `v8::tests` (7), `v7::tests` if kept, Python `test_g0h_replay_v8`, the replay V8 goldens in `test_wire_contracts` |
-| `mtgml-environment` `checkpoint_v8.rs` | its module tests (ported, Task 3), `basic_land_runtime_v8` tests, `production_turn` |
-| `mtgml-environment` runtime, projection, boundary | `basic_land_runtime_v8` tests, `successor_turn_projection` (6), `magic_basic_land_observation`, `production_turn` (8), `current_successor_api`, `random_smoke` |
-| `mtgml-decision` `v4.rs`, `v3.rs` (response, candidates), `v2.rs` (domain, answer), `authoritative.rs` | `v4::tests` (12), `v4::hand_size_discard_tests`, remaining `v3::tests`, remaining `src/tests.rs`, Python `test_decision_v4`, `test_decision_response_v3` |
-| `mtgml-observation` `player_step_v4`, `observed_event_v4`, `detached_v2`, `magic_shared_execution_observation_v1`, V1 envelope, `information.rs` (V2) | `player_step_v4::tests`, `detached_v2::tests`, `magic_shared_execution_observation_v1::tests`, `provenance_tests`, Python `test_observation_v3`, `test_g0g_player_products`, `test_magic_shared_execution_observation_v1` |
-| `mtgml-state` digest V7 and the V6/V5 encoders | `g0e_digest` (18), `persisted_v7` tests, the V7 part of `src/tests/digest.rs` |
+| `mtgml-replay` `v8.rs` (+ kept items of `v2`, `v7`, `identity`, `validation`) | `v8::tests` (7), `v7::tests` (1), `tests/content_contract_material.rs` (4, ported in Task 1), Python `test_g0h_replay_v8` (6), the replay V8 goldens in `test_wire_contracts` |
+| `mtgml-environment` `checkpoint_v8.rs` | its module tests (3, ported in Tasks 2–3), `basic_land_runtime_v8` tests (18), `production_turn` (8) |
+| `mtgml-environment` runtime, projection, boundary | `basic_land_runtime_v8` tests (18), `successor_turn_projection` (6), `magic_basic_land_observation` (7), `production_turn` (8), `current_successor_api` (2), `random_smoke` (2) |
+| `mtgml-decision` `v4.rs`, `v3.rs` (response, candidates), `v2.rs` (domain, answer), `authoritative.rs` | `v4::tests` (12), `v4::hand_size_discard_tests` (1), `v3::tests` (6), `src/tests.rs` (incl. the ported answer/domain tests), Python `test_decision_v4` (14), `test_decision_response_v3` (2) |
+| `mtgml-observation` `player_step_v4`, `observed_event_v4`, `detached_v2`, `magic_shared_execution_observation_v1`, V1 envelope, `information.rs` (V2) | `player_step_v4::tests` (2), `detached_v2::tests` (2), `magic_shared_execution_observation_v1::tests` (4), `provenance_tests` (4), the basic-land and digest tests in `src/tests.rs`, Python `test_observation_v3` (5), `test_g0g_player_products` (3), `test_magic_shared_execution_observation_v1` (6) |
+| `mtgml-state` digest V7 and the V6/V5 encoders | `g0e_digest` (18), `persisted_v7` tests (5), `src/tests/digest.rs` (V6-layer tests through `decode_v6_payload`, V5-probe tests) |
 | `mtgml-state` delta operations, execution, parts V2/V3 | `g0e_digest` (`state_delta_v3_*`), `engine_state_parts_v2::tests` (8), `g0d_state_authority` (26), `semantic_mutations::tests` |
-| `mtgml-persistence` `checkpoint_digest.rs` (V8), `semantic_contract_digest.rs` | the persistence checkpoint V8 KAT test, `semantic_contract_digest_red`, Python `test_v5_contract_digest` |
+| `mtgml-persistence` `checkpoint_digest.rs` (V8), `semantic_contract_digest.rs` | `checkpoint_digest_v8_g0_known_answer`, the ported FND-017a tests, `semantic_contract_digest_red` (6), Python `test_v5_contract_digest` (6), Python `test_persistence_codec` |
 | `mtgml-wire` decision (V4/V3), observation (current impls), replay (V8), fixtures | `decision::successor_response_tests`, the V2/V3 digest KATs in `tests.rs`, the golden and negative fixture verification |
-| `mtgml-model` identities, semantic contract | `execution_identity_red`, `semantic_contract_red` (with the Task 3 tests), `tests.rs` |
+| `mtgml-model` identities, semantic contract | `execution_identity_red` (9), `semantic_contract_red` (20, with the Task 3 tests), unit tests in `lib.rs` |
 
 - [ ] **Step 4: Commit and run the full gate.** `git commit -m "docs: describe only current formats"`, then `.venv/Scripts/python.exe scripts/run_checks.py integration`. Expected: PASS, including the release `random_smoke` games. Then run the byte-identity command one last time. Expected: only allowed paths, and `semantic-contract-kat.v1.json` differing only by the two cases.
 - [ ] **Step 5: Report the known gap** (spec §6): the current `decision-response.v3` has no wire golden. Report it, do not fix it.

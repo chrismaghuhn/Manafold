@@ -457,17 +457,15 @@ Root seed and RNG internals are forbidden from published player trajectories.
 
 ## Full-state digest compatibility
 
-The current typed `RandomStateV1` representation is bound into `FullStateDigestInputV2` and the current
-`mtgml.full-state-digest.v2` domain. Its stream map uses the explicit canonical entry-array representation defined
-above. The historical V1 digest input/domain retain their original placeholder-RNG meaning and have no current-engine
-producer; they are not reinterpreted by this contract.
+The current typed `RandomStateV1` representation is bound into the `random_v1` full-state component
+(`docs/STATE_HASHING.md`), which `FullStateDigestV7` hashes. Its stream map uses the explicit canonical entry-array
+representation defined above.
 
 ## Replay and checkpoint versioning
 
-The current repository uses the typed `AuthoritativeReplayV2` identity and `EnvironmentCheckpointV2` identity rather than
-reinterpreting historical V1 randomness fields in place. V1 replay/checkpoint material remains historical migration
-evidence. This contract does not create another replay or checkpoint version and does not make the future durable
-persisted-checkpoint codec complete.
+Replay V8 carries the randomness identity (`mtgml.rng.v1` and the root seed) and must match the root seed in the
+admitted initial state; checkpoint V8 binds the complete RNG state through `FullStateDigestV7`. This contract does not
+create another replay or checkpoint version.
 
 ## Versioning rules
 

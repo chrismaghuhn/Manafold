@@ -240,9 +240,9 @@ Canonical ordering, candidate count/order, opaque IDs, event order/count, errors
 
 ## Observed events
 
-Authoritative events may include internal IDs and full RNG provenance. `ObservedEventV2` contains only perspective-authorized public/opaque values plus the perspective-local `VisibleSequence`.
+Authoritative events may include internal IDs and full RNG provenance. `ObservedEventEnvelopeV4` contains only perspective-authorized public/opaque values plus the perspective-local `VisibleSequence`.
 
-An emitted V2 `ObjectMoved` envelope contains at least one
+An emitted `object_moved` event contains at least one
 perspective-visible opaque object identity: `old_object` or `new_object` must
 be present. The fields remain optional because old-only, new-only, and
 both-present moves have distinct redaction meanings. Rules own the audience
@@ -255,24 +255,7 @@ For each perspective, visible events are assigned contiguous sequence values. Hi
 
 A visible random result may differ when the synthetic/rules visibility contract authorizes it. Root seed, typed stream key, derived key, stream cursor, raw words, rejection count, and hidden permutation remain trusted.
 
-## Historical M4 observed-event and PlayerStep successors (PR #248)
-
-The accepted M4 state-cut Semantic Spec allocates
-`ObservedEventEnvelopeV3` (`observed-event-envelope.v3`) and `PlayerStepV3`
-(`player-step.v3`). V3 supersedes the V2 `object_moved` payload with one
-expanded `object_moved` variant carrying explicit nullable entry face/tapped
-values; there is no second move-event tag. It adds public mana-pool,
-counter, attachment, and face events using only authorized public values and
-perspective-local opaque object identities. The V2 union and PlayerStep remain
-byte-exact historical contracts.
-
-`PlayerStepV3` embeds the V3 decision request and observed events while
-retaining `PlayerInformationStateV2`, unchanged DecisionResponseV2, and the
-existing revision, sequence, rejection, and endpoint-actor invariants. PR #248
-activated these successors for the bounded M4.2 slice. G0j supersedes them with
-V4 observed events and PlayerStep V4 while preserving the exact V3 meaning.
-
-## Current G0 player products (G0j)
+## Current player products
 
 The current bounded M4.2 endpoint composes ObservationEnvelopeV2,
 PlayerInformationStateV3 / InformationStateDigestV3, ObservedEventEnvelopeV4,

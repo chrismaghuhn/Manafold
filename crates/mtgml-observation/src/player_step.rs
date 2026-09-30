@@ -26,7 +26,7 @@ pub enum PlayerServiceErrorCodeV1 {
     ServiceUnavailable,
 }
 
-/// Versioned submission outcome carried by `PlayerStepV2`.
+/// Versioned submission outcome carried by `PlayerStepV4`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PlayerStepSubmissionV1 {

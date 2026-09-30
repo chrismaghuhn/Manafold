@@ -24,7 +24,7 @@ A wire failure:
 
 ### Typed player submission errors
 
-Once a valid `DecisionResponseV2` exists, semantic rejection uses closed perspective-safe codes such as:
+Once a valid `DecisionResponseV3` exists, semantic rejection uses closed perspective-safe codes such as:
 
 ```text
 stale_decision
@@ -89,7 +89,7 @@ Player-safe errors cannot contain:
 ```text
 bytes
   ↓ canonical decoder
-wire error OR typed DecisionResponseV2
+wire error OR typed DecisionResponseV3
                         ↓
                  PlayerEndpoint
                         ↓

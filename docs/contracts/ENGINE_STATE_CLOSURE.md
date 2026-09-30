@@ -113,48 +113,19 @@ The reference contract prefers correctness/auditability over compactness. A late
 
 ## Versioning
 
-M2 changes authoritative execution/knowledge/perspective-identity meaning and therefore requires a new V3 full-state identity. Historical V1/V2 state/checkpoint identities are never reinterpreted against the changed runtime `EngineState`.
+Each state format has one current version and is changed in place (AGENTS.md
+§4). The current aggregate is `EngineStatePartsV3`; `FullStateDigestV7` hashes
+it through the V6 and V5 input layers specified in
+[`../STATE_HASHING.md`](../STATE_HASHING.md).
 
-`FullStateDigestInputV2` and V3 remain detached historical evidence only.
-After the later M3 V4 cut and S3.P0 identity cut, the current runtime converts
-to `FullStateDigestInputV5` and constructs `FullStateDigestV5` through the
-accepted persisted semantic codec.
+## Combat state facts
 
-The detached V3 semantic digest mapping is specified in [`../STATE_HASHING.md`](../STATE_HASHING.md).
+`CombatState` records the attackers that became blocked, independently of live
+blocker references, and a flag recording that the combat-damage turn-based
+action completed. A blocked attacker remains blocked when its live blocker
+reference is absent.
 
-## V5 state and V6 checkpoint/replay identity (historical)
-
-ADR 0055 introduced `ExecutionIdentityV1` as the resumable checkpoint
-identity. S3.P0 added authoritative Magic SBA-order continuation state, making
-`FullStateDigestV5` the current identity at that historical cut. PR #248 later
-activated the M4 successor; `FullStateDigestV5` is now exact historical
-verification only, and V6 became historical after G0j. The detached V4 codec keeps
-its exact historical meaning and rejects the Magic continuation.
-
-`EnvironmentCheckpointV6` carries `FullStateDigestV5`,
-`execution_identity: ExecutionIdentityV1` (`program_kind: ExecutionProgramV1`,
-`semantic_contract_id: SemanticContractIdV1`), and `checkpoint_digest:
-CheckpointDigestV6`. Its V6 digest input binds the complete V5 full-state
-digest reference, status, environment counters, `in-memory-reference / 6`,
-and the full execution identity as the final element. Replay V6 uses those
-same V5/V6 typed identity references and retains one real
-`DecisionResponseV2` per replay step.
-
-`FullStateDigestV4`, `EnvironmentCheckpointV5`, `CheckpointDigestV5`, and
-Replay V5 retain their exact historical meanings. V4 digest and V5
-checkpoint/replay evidence are not reinterpreted by the V6 runtime. Neither
-V4→V5 nor V5→V6 automatic migration exists. A V6 checkpoint containing the
-Magic SBA-order continuation is not restore-executable under a semantic
-contract that does not admit S3.A.
-
-Block 6 extends authoritative `CombatState` with the attackers that became
-blocked, independently of live blocker references, and a flag recording that
-the combat-damage turn-based action completed. At the Block 6/M3 cut, these facts were validated as part of `EngineState`,
-included in the then-current V5 full-state identity, and preserved by V6
-checkpoints. PR #248 later activated the V6/V7 M4 successor on `master`. A blocked attacker remains blocked when its live
-blocker reference is absent.
-
-## Historical M4 state successor (PR #248)
+## Card-rules state families
 
 The accepted M4 state-cut Semantic Spec defines the next current EngineState
 shape with exactly six additional closed authoritative families:
@@ -166,11 +137,7 @@ PR #248 crossed the plan's final activation boundary for the bounded M4.2
 Mountain/Plains slice. These families remain part of the preserved state
 substrate; their presence does not claim broader card/deck support.
 
-That historical state used `FullStateDigestV6`, `StateDeltaV2`, and
-`EngineStatePartsV2`. G0j supersedes its writer family without changing its
-historical meaning or fixtures.
-
-## Current G0 state closure (G0j)
+## Current state closure
 
 The current authoritative aggregate is `EngineStatePartsV3`, with
 `ExecutionStateV4`, `PersistedExecutionV4`, `zones_v2`, typed stack records,

@@ -1,6 +1,6 @@
 # Old Formats Cleanup (Stage 2) — Design
 
-**Status:** APPROVED by the owner, 2026-09-30. During planning, §4 was reordered so that every commit builds (consumers before what they consume); the content is unchanged.
+**Status:** IMPLEMENTED on branch `chore/old-formats`, 2026-09-30 (approved by the owner; executed inline).
 
 **Goal:** delete every historical format that no current type and no production path reaches, so that R1/W1 card work starts on a base where each format exists once.
 

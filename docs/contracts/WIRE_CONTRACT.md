@@ -1,6 +1,6 @@
 # Wire Contract
 
-**Status:** provisional public wire contract; M2 V2 shapes are freeze candidates  
+**Status:** provisional public wire contract; the current family is listed under Versioning  
 **Stability:** normative
 
 ## Public wire codec
@@ -49,16 +49,16 @@ canonical JSON decoder/schema
    │           no PlayerStep
    │           no semantic submit/replay step
    │
-   └─ DecisionResponseV2
+   └─ DecisionResponseV3
           ↓
       PlayerEndpoint.submit
           ↓
-      accepted PlayerStepV2
-      OR typed rejected PlayerStepV2
+      accepted PlayerStepV4
+      OR typed rejected PlayerStepV4
       OR closed endpoint service failure
 ```
 
-The adapter/transport must not synthesize a semantic `PlayerStepV2` by reading current state after malformed bytes.
+The adapter/transport must not synthesize a semantic `PlayerStepV4` by reading current state after malformed bytes.
 
 ## M2 player identities
 
@@ -75,55 +75,20 @@ It must not contain internal `DecisionId`, `ContinuationId`, authoritative candi
 
 ## Versioning
 
-The accepted M4 state-cut design added `player-decision-request.v3`,
-`observed-event-envelope.v3`, `player-step.v3`, Replay V7, and the named
-payload codec `magic-basic-land-observation.v1`. PR #248 activated these
-successor identities for the bounded M4.2 Mountain/Plains slice; G0j retains
-them as exact historical contracts. DecisionResponseV2, ObservationEnvelopeV1,
-and InformationStateDigestV2 retain their exact meanings. Replay V7 carried the content child in the exact
-accepted transport form: lowercase ContentContractIdV1 plus the canonical
-ContentContractManifestV1 CBOR payload in bounded, canonical padded standard
-Base64. No JSON/Serde representation of the manifest is introduced. The
-predecessor readers/verifiers retain exact historical meanings and are not
-current writers.
-
-G0j's current bounded M4.2 wire family is Decision request V4 / response V3,
+The current wire family is Decision request V4 / response V3,
 ObservationEnvelopeV2, PlayerInformationStateV3 / InformationStateDigestV3,
-ObservedEventEnvelopeV4, PlayerStepV4, and
-`magic-shared-execution-observation.v1`. FullStateDigestV7 / Checkpoint V8 /
-Replay V8 bind these identities. The V8/V4 family preserves only the existing
-`basic-land@1.0.0` executable scope and does not introduce spell casting or
-broader card support.
+ObservedEventEnvelopeV4, PlayerStepV4, `magic-shared-execution-observation.v1`
+and `magic-basic-land-observation.v1`. FullStateDigestV7 / CheckpointDigestV8 /
+Replay V8 bind these identities. `ObservationEnvelopeV1` and
+`PlayerInformationStateV2` remain as the inner layers the V3 information state
+is produced through. Replay V8 carries the content child as lowercase
+ContentContractIdV1 plus the canonical ContentContractManifestV1 CBOR payload in
+bounded, canonical padded standard Base64; no JSON/Serde representation of the
+manifest is introduced.
 
-M2 uses new versions where meaning changes:
-
-- Decision request/response V2;
-- Information state V2;
-- Observed event V2;
-- PlayerStep V2;
-- replay V3;
-- replay V6 (S3.P0 state-identity cut); V5 remains detached historical evidence.
-
-`ObservationEnvelopeV1` may remain because its payload codec identity is independently versioned; M2 uses `synthetic-m2-observation.v1`.
-
-Old wire values retain their original meaning. A new reader may support multiple versions only through explicit per-version decode/validation; no enum/key value is repurposed.
-
-### Compatibility note (M2.D)
-
-`PlayerStepV2.submission` completes the previously incomplete
-M2 V2 freeze-candidate shape defined by `ML_ENVIRONMENT.md`/Issue #51.
-No historical V1 meaning is changed or reinterpreted. The field is required
-on all V2 player-step values; the closed code set is defined by
-`PlayerSubmissionCodeV1`.
-
-### Compatibility note (M2.E)
-
-`PlayerStepV2.observed_events` semantic validation closes the already
-accepted V2 shape: envelopes must carry exactly the step revision, strictly
-increasing perspective-local sequences, and sequences below the step's own
-next unused `VisibleSequence`. No field, variant, or encoding changes; the
-stronger transition-level no-gap proof (against the before cursor) remains
-environment-owned because a single step cannot know its before cursor.
+Each format has one current version and is changed in place (AGENTS.md §4).
+Earlier wire versions were removed; readers reject their names as unknown
+contracts.
 
 ## M2 digest and persistence ownership
 
