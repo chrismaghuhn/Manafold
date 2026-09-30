@@ -1,16 +1,16 @@
 # Production Full Turn Implementation Plan
 
-**Status:** ACCEPTED by the owner on 2026-09-30 with three amendments (temporary bridge → native port in Plan B, discard to hand size, random smoke gate); implementation not started
+**Status:** ACCEPTED by the owner on 2026-09-30 with three amendments (discard to hand size, random smoke gate, text pins on the Plan B list); amended the same day during Task 3 by owner decision: native turn progression instead of a bridge to the old kernel. Tasks 1–2 done.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** The production V8 runtime (`BasicLandEnvironmentRuntimeV8`) plays complete turns — untap, upkeep, draw, main, an empty combat, end, cleanup with discard to hand size, next turn — for two players with basic lands, and a random-vs-random smoke test proves 30-turn games run deterministically.
 
-**Architecture:** Reconnect, don't rewrite. The full-turn kernel (`MagicRulesKernel::apply_legacy` / `advance_forced_progress`, `crates/mtgml-rules/src/magic.rs`) already implements and tests these rules on the predecessor `EngineState`. A new bridge module in `mtgml-rules` converts the V8 state (`EngineStatePartsV3`) into the kernel's input, runs the kernel exactly like the predecessor response transaction does, and converts the product back to V3 state / V4 decisions / V3 events. Land plays and mana abilities keep using the existing basic-land path. **The bridge is temporary:** Plan B ports the kernel natively onto `EngineStatePartsV3`, uses the bridge as its differential oracle, and then deletes it.
+**Architecture:** The production path gets a native, V3-typed turn progression for the land-only slice. A new `turn_progression` module in `mtgml-rules` handles passing priority and every turn-based action (step changes, untap, draw, the combat skeleton, cleanup with discard, turn change) directly on `EngineStatePartsV3` and emits the same legacy rule events the old kernel emits. Land plays and mana abilities keep using the existing basic-land path. The old full-turn kernel (`MagicRulesKernel`, `magic.rs`) cannot run states with lands or mana abilities — its support profile admits only synthetic creatures (`state_based_actions.rs:199-265`) — so it is not called from production; it is the differential oracle for turn structure on land-free states. (The first version of this plan bridged to the old kernel; Task 3 found that profile and the owner chose the native path. The abandoned bridge is on branch `wip/turn-bridge-blocked`.)
 
 **Tech Stack:** Rust workspace (`mtgml-card-ir`, `mtgml-rules`, `mtgml-state`, `mtgml-environment`), Python check scripts.
 
-**Spec:** No separate spec. The behavior oracle is the predecessor test suite (`crates/mtgml-environment/src/tests/magic_rules_production.rs`, `crates/mtgml-rules/src/tests/magic_turn_structure.rs`); decisions are pinned in the *Decisions* section below.
+**Spec:** No separate spec. Behavior oracles: the predecessor test suite (`crates/mtgml-environment/src/tests/magic_rules_production.rs`, `crates/mtgml-rules/src/tests/magic_turn_structure.rs`) and the old kernel itself, run side by side on land-free states (D11). Decisions are pinned in the *Decisions* section below.
 
 ## Global Constraints
 
@@ -21,8 +21,8 @@
 - Unsupported rules return a typed error and leave every byte of runtime state unchanged.
 - No card-name dispatch. No project labels (`M3`, `G0j`, `Phase`, `Block`) in new identifiers.
 - Formats change in place (AGENTS.md §4): no new `V<n+1>` types; goldens/KATs that change are updated in the same commit.
-- The predecessor runtime and its tests stay green in this plan — they are the oracle. Only the hand-size tests change (Task 6: rejection → discard decision). Deleting the predecessor runtime is Plan B.
-- The bridge only translates between representations. Rules behavior lives in the kernel (`magic.rs`, `turn_structure.rs`, `zone_incarnation.rs`), never in the bridge (D11).
+- The predecessor runtime, the old kernel and their tests stay green and unchanged (beyond Task 1's admission-derived permissions) — they are the oracle. The only shared addition is `SelectedZoneTransitionKind::HandToOwnerGraveyard` (Task 6). Deleting the predecessor runtime is Plan B.
+- Turn rules for the production path live in `turn_progression.rs`. It may reuse state-level primitives (`turn_structure::temporal_successor`, `turn_structure::derive_ordinary_untap_affected_objects`, `zone_incarnation::apply_selected_zone_transition_in_workspace`) but never the old kernel's support-profile validators or `MagicRulesKernel`.
 - From Task 9 on, every PR keeps the random-vs-random smoke test green.
 - Production evidence = integration tests gated `#![cfg(not(feature = "historical-conformance-runtime"))]`, run with `cargo test -p mtgml-environment --test <name> --locked`.
 - Commit before running `scripts/run_checks.py` (some gates fail on a dirty checkout). On Windows call `.venv/Scripts/python.exe scripts/run_checks.py fast|integration`; `just` points at `.venv/bin/python`.
@@ -31,16 +31,19 @@
 
 - **D1 — Game rules are admitted by the game, not by cards.** `admit_executable_profile_v1` adds a fixed root set `MAGIC_GAME_RULE_ROOTS` (turn-structure, basic-priority, draw-card, combat-phase, declare-attackers, cleanup-reset; versions from `cards/capabilities/registry.json`) to the card-derived roots. Combat blockers/damage are *not* admitted yet.
 - **D2 — Kernel permissions come from the admission.** For `MagicKernelProfile::ExecutableBasicLand`, `allows_draw_card`, `allows_combat_attackers`, `allows_cleanup_reset` consult `admission_has` (like `allows_turn_structure` already does). `allows_combat_blockers` / `allows_combat_damage` stay false for this variant.
-- **D3 — Every pass priority goes through the turn kernel.** `PlayLand` / `ActivateManaAbility` keep the basic-land draft path. The basic-land path's own two-pass progression (`priority_window_after_second_pass`) is no longer reached from V4; it stays only for the historical V7 adapter.
-- **D4 — One response = kernel apply + at most one forced progress**, exactly as `response_transaction.rs:88-123`: `apply_legacy`; if accepted, no next decision and `Running`, call `advance_forced_progress` once; then `authorize_response_progress`.
-- **D5 — Decision identity comes from the kernel; the bridge only translates.** The kernel's input carries a pass-only V2 priority request with the *same* `DecisionId` and actor as the pending V4 request (built with `basic_priority::make_pass_request`). A kernel V2 priority request becomes the full V4 priority request (Pass + land plays + mana abilities) with the kernel's `DecisionId`. A kernel V2 `ChooseMany` attacker request becomes a V4 `AttackerDeclaration` request (same candidates, same `DecisionId`); a kernel V2 discard request (D10) becomes a V4 `HandSizeDiscard` request. Any other kernel decision ⇒ `UnsupportedNextDecision`.
+- **D3 — Passing priority runs the native turn progression.** `execute_magic_response_v4` handles `PassPriority` and the attacker declaration natively; `PlayLand` / `ActivateManaAbility` go to `execute_basic_land_response_v4` unchanged. The basic-land draft's own pass handling (`priority_window_after_second_pass`) is no longer reached from V4.
+- **D4 — One response = one V3 step.** The pass plus every turn-based action up to the next decision (or a failure) form one transition: `StateRevision` +1, one `StateDeltaV3`, all events stamped with the step revision (`docs/EXECUTION_MODEL.md:53`).
+- **D5 — Decision identity is allocated per request** exactly like `install_basic_land_request_v4`: next `DecisionId`, next `PlayerDecisionIdV1`, a `DecisionCreated` event, a `PendingRequestChanged` operation; the answered request gets `DecisionCleared`.
 - **D6 — Card-rules state follows the turn.** Whenever `core.position` changes, every non-empty mana pool empties (`ManaPoolChanged`, cause `Emptied`). Whenever `core.turn_number` changes, `turn_history` becomes exactly what `validate_turn_history_delta` (`delta_v3.rs:1031`) requires: new turn number, all player histories default, `target_occurrences` and `once_ability_used` empty.
 - **D7 — Untap is covered by `UntapCompleted`.** V3 delta validation treats `UntapCompleted { affected_objects }` as covering tapped→untapped for exactly those objects. The kernel is not changed.
 - **D8 — Observed events follow perspective occurrences.** In the successor projector, `PerspectiveOccurrence` events project through their per-perspective policy; pure turn-structure/priority events (`TurnPositionChanged`, `TurnNumberChanged`, `ActivePlayerChanged`, `PriorityChanged`, `UntapCompleted`, `EmptyCombatStepsSkipped`) produce no observed envelope — the observation snapshot already carries turn, position, priority and active player. A library→hand `ZoneTransition` never uses the hard-coded `reveals_new: true` path.
-- **D9 — Out of scope, fails closed:** creatures in play, blockers, combat damage, SBA graveyard order, drawing from an empty library (kernel rejects; loss not implemented), spells.
-- **D10 — Discard to hand size is an explicit decision (CR 514.1).** At cleanup, if the *active* player's hand exceeds 7 (`ORDINARY_MAXIMUM_HAND_SIZE`, `turn_structure.rs:347`), the kernel creates a decision instead of rejecting: `ChooseMany { minimum: n, maximum: n }` with n = hand size − 7, one `SelectObject` candidate per card in that player's hand, visible to the acting player only. V4 purpose: new `DecisionPurposeV4::HandSizeDiscard` (wire tag `hand_size_discard`, appended; existing tags unchanged). The answer moves exactly the chosen cards hand → owner graveyard through a new `SelectedZoneTransitionKind::HandToOwnerGraveyard` (graveyard is public, so discarded cards are revealed to both players; kept cards are not). Cleanup then continues as today (marked-damage reset, hand-off to the next turn). The kernel dispatches a pending `ChooseMany` at `EndingStep::Cleanup` to discard **before** the attacker-declaration branch. The non-active player never discards.
-- **D11 — The bridge is temporary.** Plan B replaces it with a native V3 kernel. Keep it a thin translation layer; no rules, no special cases, no new behavior beyond this plan's scope.
+- **D9 — Out of scope, fails closed:** creatures in play, blockers, combat damage, SBA graveyard order, drawing from an empty library (`TurnProgressUnsupported`; the CR 704.5b loss comes with Plan B's SBAs), spells.
+- **D10 — Discard to hand size is an explicit decision (CR 514.1).** At cleanup, if the *active* player's hand exceeds 7, the native progression creates `ChooseMany { minimum: n, maximum: n }` with n = hand size − 7, one `SelectObject` candidate per card in that player's hand, visible to the acting player only. V4 purpose: new `DecisionPurposeV4::HandSizeDiscard` (wire tag `hand_size_discard`, appended; existing tags unchanged). The answer moves exactly the chosen cards hand → owner graveyard through a new `SelectedZoneTransitionKind::HandToOwnerGraveyard` (graveyard is public, so discarded cards are revealed to both players; kept cards are not); then the turn ends as usual. The non-active player never discards. The old kernel keeps its fail-closed hand-size behavior.
+- **D11 — The old kernel is the oracle, not a dependency.** Production code never calls `MagicRulesKernel`. A test-only harness drives it and the native progression side by side on land-free states and compares the turn skeleton after every response: position, turn number, active player, priority holder, pending decision purpose and actor, hand/library/graveyard counts.
 - **D12 — Smoke policy sees only what a player sees.** The random policy chooses from the `PlayerDecisionRequestV4` returned by the player-facing `visible_decision`, never from trusted state. Its PRNG (SplitMix64, defined in the test) is seeded from the game seed and is independent of the engine RNG. Trajectory = ordered list of (actor, canonical `DecisionResponseV3` bytes, canonical `PlayerStepV4` bytes for both players, after-checkpoint digest).
+
+- **D13 — Slice support profile.** The native progression runs only when there are exactly two players, every battlefield object is an admitted basic land (`S1QueryAuthority`), and there are no foundation sources, counters, attachments, temporary effects, triggers, delayed effects, continuations or stack objects; otherwise `TurnProgressUnsupported`. Under this profile no state-based action can apply (no creatures, no damage, life never changes), so none is evaluated; the empty-library draw fails closed (D9).
+- **D14 — Turn skeleton mirrors the oracle.** Step order from `temporal_successor`; no priority in untap and cleanup (CR 502.4, 514.3); the starting player skips the turn-1 draw (CR 103.8a); at declare attackers the active player gets an `AttackerDeclaration` request with no candidates, as the oracle does — if V4 cannot represent a zero-candidate `ChooseMany`, stop and report; an empty declaration skips declare blockers and combat damage (CR 508.8).
 
 ## Review Focus
 
@@ -109,43 +112,45 @@ Also: `for_executable_profile` rejects an admission whose roots are the old thre
 - [ ] **Step 4: Run** `cargo test -p mtgml-state --locked` → PASS.
 - [ ] **Step 5: Commit** — `git commit -m "feat: cover untap in V3 state deltas"`
 
-### Task 3: Turn bridge — pass priority drives the turn kernel on V3 state
+### Task 3: Native turn progression for the land-only slice
 
 **Files:**
-- Create: `crates/mtgml-rules/src/magic_turn_bridge.rs` (module + `#[cfg(test)] mod tests`)
+- Create: `crates/mtgml-rules/src/turn_progression.rs` (module, `#[cfg(test)] mod tests`, `#[cfg(test)] mod oracle` for D11)
 - Modify: `crates/mtgml-rules/src/lib.rs` (module, exports)
-- Modify: `crates/mtgml-rules/src/basic_land.rs:177-197` (two new `BasicLandTransitionError` variants)
+- Modify: `crates/mtgml-rules/src/basic_land.rs:177-192` (`BasicLandTransitionError::TurnProgressUnsupported`)
 
 **Interfaces:**
-- Consumes: Task 1 admission, Task 2 coverage; existing `selected_basic_land_action_v4`, `execute_basic_land_response_v4`, `install_basic_land_request_v4`, `validate_basic_land_pending_request_v4` (`basic_land_v4.rs`), `MagicRulesKernel::{from_executable_admission, apply_legacy, advance_forced_progress, authorize_response_progress}`, `basic_priority::make_pass_request`, `StateDeltaV3::between_structural_only`, `validate_event_delta_state_v3_structural_only`.
+- Consumes: Task 1 admission (keys `rules/draw-card`, `rules/declare-attackers`, `rules/cleanup-reset` gate the matching steps; a content-only admission fails closed at those boundaries), Task 2 untap coverage; `selected_basic_land_action_v4`, `execute_basic_land_response_v4`, `derive_basic_land_candidates_v4`, `validate_basic_land_pending_request_v4` (`basic_land_v4.rs`), `S1QueryAuthority::for_object`, `turn_structure::temporal_successor`, `turn_structure::derive_ordinary_untap_affected_objects`, `zone_incarnation::apply_selected_zone_transition_in_workspace`, `StateDeltaV3::between_structural_only`, `events_v3::validate_event_delta_state_v3_structural_only`.
 - Produces:
-  - `pub fn execute_magic_response_v4(admission: &ExecutableProfileAdmissionV1, state: &EngineStatePartsV3, actor: PlayerId, response: &DecisionResponseV3, status: &EpisodeStatus) -> Result<BasicLandTransitionProductV4, BasicLandTransitionError>` — the single V4 entry point (D3–D6).
-  - `pub fn validate_magic_pending_request_v4(admission: &ExecutableProfileAdmissionV1, state: &EngineStatePartsV3, status: &EpisodeStatus) -> Result<(), BasicLandCandidateError>` — accepts the priority requests `validate_basic_land_pending_request_v4` accepts, plus the `AttackerDeclaration` request the kernel would create for this state.
-  - `BasicLandTransitionError::{TurnProgressUnsupported, UnsupportedNextDecision}`.
+  - `pub fn execute_magic_response_v4(admission: &ExecutableProfileAdmissionV1, state: &EngineStatePartsV3, actor: PlayerId, response: &DecisionResponseV3, status: &EpisodeStatus) -> Result<BasicLandTransitionProductV4, BasicLandTransitionError>` - the single V4 entry point (D3-D6, D13, D14).
+  - `pub fn validate_magic_pending_request_v4(admission: &ExecutableProfileAdmissionV1, state: &EngineStatePartsV3, status: &EpisodeStatus) -> Result<(), BasicLandCandidateError>` - accepts exactly the requests the progression would create for this state (priority windows via `validate_basic_land_pending_request_v4`, the attacker declaration, and from Task 6 the discard).
+  - `BasicLandTransitionError::TurnProgressUnsupported`.
 
-Test fixtures: build V3 states the way `basic_land_v4.rs` / `basic_land.rs` tests do (two players, Mountain/Plains definitions); add library cards as face-down basic lands. Use the predecessor tests named below as the oracle for positions, events and priority holders.
+Fixtures: start from `basic_land::s1_b_state_with_two_lands_fixture()` (P1 priority in precombat main, Mountain + Plains in hand, one Mountain with its mana ability on P1's battlefield) as V3 state, add face-down library cards with physical ids for both players, install P1's request. Drive real turns by responding; every accepted product must pass `validate_event_delta_state_v3_structural_only` and `apply_structural_only`.
 
-- [ ] **Step 1: Write failing tests** (all in `magic_turn_bridge.rs`):
+- [ ] **Step 1: Write failing tests** (in `turn_progression.rs`):
 
-| Test | Setup → action | Assert |
+| Test | Setup -> action | Assert |
 |---|---|---|
-| `first_pass_only_transfers_priority` | P1 has priority in PrecombatMain; P1 passes | same position; next request actor P2, purpose `PriorityAction`, candidates = Pass + P2's mana abilities, no `PlayLand` |
-| `main_passes_open_beginning_of_combat_priority` | both pass in PrecombatMain | position `BeginningOfCombat`, priority request for the active player; mana pools emptied |
-| `beginning_of_combat_passes_reach_empty_attacker_declaration` | both pass in BeginningOfCombat, no creatures | next request purpose `AttackerDeclaration`, `ChooseMany{0,0}`, no candidates, actor = active player (oracle: `explicit_empty_attack_skips_blockers_and_damage_then_ends_combat`) |
-| `empty_attack_declaration_ends_combat_without_damage` | answer the attacker request with no objects | no blockers/damage events; next priority request as in the oracle test |
-| `upkeep_passes_draw_one_card_for_the_active_player` | both pass in Upkeep, turn 2 | hand +1, library −1 for active player, position `Draw`, priority to active player (oracle: `ordinary_draw_uses_s2_and_opens_active_priority`) |
-| `end_step_passes_run_cleanup_and_open_next_upkeep` | both pass in End step, turn 1 | turn 2, active player P2, P2's tapped lands untapped, P1's stay tapped, priority P2 in Upkeep (oracle: `bounded_turn_cleanup_resets_marks_and_hands_off_through_next_upkeep`) |
-| `mana_pools_empty_when_the_step_changes` | P1 taps Mountain in Upkeep, both pass | P1 pool empty in Draw; `ManaPoolChanged { cause: Emptied }` event present |
-| `land_play_entitlement_resets_on_new_turn` | P1 played a land turn 1; advance to P1's turn 3 main | P1 request contains `PlayLand`; `turn_history` all players default except as required by D6 |
-| `draw_from_empty_library_fails_closed` | active library empty; both pass in Upkeep | `Err(TurnProgressUnsupported)` |
-| `products_validate_as_v3_deltas` | every accepted product above | `validate_event_delta_state_v3_structural_only(before, product)` is `Ok` and `delta.apply_structural_only(before) == next_state` |
+| `first_pass_only_transfers_priority` | P1 passes in precombat main | same position; request actor P2, purpose `PriorityAction`, Pass offered, no `PlayLand` |
+| `main_passes_open_beginning_of_combat_priority` | both pass in precombat main | position `BeginningOfCombat`, request actor P1 |
+| `mana_pools_empty_when_the_step_changes` | P1 taps the Mountain, both pass | P1 pool empty at `BeginningOfCombat`; `ManaPoolChanged { cause: Emptied }` event |
+| `beginning_of_combat_passes_reach_empty_attacker_declaration` | both pass at `BeginningOfCombat` | purpose `AttackerDeclaration`, `ChooseMany{0,0}`, no candidates, actor P1 |
+| `empty_attack_declaration_ends_combat_without_damage` | answer with no objects | no `BlockersDeclared`/`CombatDamageDealt`; next request is a priority window as in `explicit_empty_attack_skips_blockers_and_damage_then_ends_combat` |
+| `end_step_passes_run_cleanup_and_open_next_upkeep` | P1 taps the Mountain turn 1; both pass in end step | turn 2, active P2, priority P2 in upkeep, P1's Mountain still tapped |
+| `upkeep_passes_draw_one_card_for_the_active_player` | both pass in turn-2 upkeep | P2 hand +1, library -1, position `Draw`, request actor P2 |
+| `land_play_entitlement_resets_on_new_turn` | P1 plays a land turn 1; drive to turn 3 precombat main | `PlayLand` offered; P1's permanents untapped; `turn_history.turn_number == 3` |
+| `draw_from_empty_library_fails_closed` | empty libraries; both pass in turn-2 upkeep | `Err(TurnProgressUnsupported)` |
+| `content_only_admission_stops_at_the_draw_boundary` | same game, content-only admission (7-closure) | passing into turn 2's draw returns `Err(TurnProgressUnsupported)` |
+| `unsupported_state_fails_closed` | a foundation creature on the battlefield | first pass returns `Err(TurnProgressUnsupported)` |
+| `turn_skeleton_matches_old_kernel_on_land_free_states` (oracle) | land-free twin states (hands and libraries with physical cards, empty battlefield), both driven by passing for three turns | skeletons equal after every response (D11) |
 
-- [ ] **Step 2: Run** `cargo test -p mtgml-rules --locked --lib magic_turn_bridge` → FAIL (module missing).
-- [ ] **Step 3: Implement** `execute_magic_response_v4` and `validate_magic_pending_request_v4` per D3–D6. Kernel errors map to `TurnProgressUnsupported`; unmappable kernel decisions to `UnsupportedNextDecision`. Kernel events are wrapped as `AuthoritativeRuleEventKindV3::Existing`; D6 events are appended after them.
-- [ ] **Step 4: Run** `cargo test -p mtgml-rules --locked` → PASS, including all predecessor tests.
-- [ ] **Step 5: Commit** — `git commit -m "feat: drive the turn kernel from V4 priority passes"`
+- [ ] **Step 2: Run** `cargo test -p mtgml-rules --locked --lib turn_progression` -> FAIL (module missing).
+- [ ] **Step 3: Implement** D3-D6, D13, D14 in `turn_progression.rs`: priority passing (active with 0 passes -> non-active with 1; non-active with 1 -> step ends), step end (mana empties, `TurnPositionChanged`), turn-based actions per step, cleanup -> next turn (`ActivePlayerChanged`, `TurnNumberChanged`, untap via `UntapCompleted`, turn-history reset), request creation per D5. Emit the legacy event kinds the oracle emits, wrapped in `AuthoritativeRuleEventKindV3::Existing`.
+- [ ] **Step 4: Run** `cargo test -p mtgml-rules --locked --lib` -> PASS; `cargo test --workspace --all-features --locked` -> PASS.
+- [ ] **Step 5: Commit** - `git commit -m "feat: native turn progression for the land-only slice"`
 
-**Stop and report (do not work around)** if: a zero-candidate `ChooseMany` cannot be represented as a V4 request; the kernel product fails V3 delta/event validation for a reason other than untap; or the V4 `DecisionId` cannot equal the kernel's `DecisionId`.
+**Stop and report** if: V4 cannot represent a zero-candidate `ChooseMany`; a turn-structure event the oracle emits fails V3 event/delta validation for a reason other than untap; the oracle and the native skeleton disagree on a step order the Comprehensive Rules leave no choice about.
 
 ### Task 4: Successor observation for turn events and draws
 
@@ -183,34 +188,32 @@ Test fixtures: build V3 states the way `basic_land_v4.rs` / `basic_land.rs` test
 - [ ] **Step 4: Run** the same commands plus `.venv/Scripts/python.exe scripts/validate_schemas.py` → PASS.
 - [ ] **Step 5: Commit** — `git commit -m "feat: add hand-size discard decision purpose"`
 
-### Task 6: Discard to hand size in the kernel and bridge
+### Task 6: Discard to hand size at cleanup
 
 **Files:**
-- Modify: `crates/mtgml-rules/src/turn_structure.rs:347` (hand over maximum ⇒ discard required, not an error)
-- Modify: `crates/mtgml-rules/src/magic.rs` (cleanup path :2918-3137 creates the D10 decision; `apply_legacy` :332 dispatches a pending `ChooseMany` at Cleanup to a new `apply_hand_size_discard` before the attacker branch)
-- Modify: `crates/mtgml-rules/src/zone_incarnation.rs:21` (`HandToOwnerGraveyard`, with per-perspective reveal of the discarded card)
-- Modify: `crates/mtgml-rules/src/magic_turn_bridge.rs` (D5 mapping), `crates/mtgml-environment/src/successor_projection.rs` only if the Task 4 projection does not already cover the discard occurrence
-- Modify oracle tests to the new behavior: `magic_rules_production.rs` `bounded_cleanup_restore_rejects_active_hand_eight_atomically` (:4934) and the hand-limit tests in `crates/mtgml-rules/src/tests/magic_turn_structure.rs:1573-1623`
+- Modify: `crates/mtgml-rules/src/zone_incarnation.rs:21` (`SelectedZoneTransitionKind::HandToOwnerGraveyard`, per-perspective reveal of the discarded card)
+- Modify: `crates/mtgml-rules/src/turn_progression.rs` (cleanup creates the D10 request; its answer discards, then the turn ends; `validate_magic_pending_request_v4` accepts it)
+- Modify: `crates/mtgml-environment/src/successor_projection.rs` only if the Task 4 projection does not already cover the discard occurrence
 
 **Interfaces:**
-- Consumes: Task 3 bridge, Task 4 projection, Task 5 purpose.
+- Consumes: Task 3 progression, Task 4 projection, Task 5 purpose.
 - Produces: `execute_magic_response_v4` returns a `HandSizeDiscard` next decision at cleanup and accepts its answer.
 
-- [ ] **Step 1: Write failing tests** (bridge-level in `magic_turn_bridge.rs`, projection-level in `successor_turn_projection.rs`):
+- [ ] **Step 1: Write failing tests** (progression-level in `turn_progression.rs`, projection-level in `successor_turn_projection.rs`):
 
-| Test | Setup → action | Assert |
+| Test | Setup -> action | Assert |
 |---|---|---|
-| `cleanup_with_eight_cards_asks_active_player_to_discard_one` | active hand 8; both pass in End step | next request purpose `HandSizeDiscard`, `ChooseMany{1,1}`, 8 candidates, actor = active player; turn not yet advanced |
+| `cleanup_with_eight_cards_asks_active_player_to_discard_one` | active hand 8; both pass in end step | next request purpose `HandSizeDiscard`, `ChooseMany{1,1}`, 8 candidates, actor = active player; turn not yet advanced |
 | `cleanup_with_ten_cards_asks_for_three` | active hand 10 | `ChooseMany{3,3}` |
-| `discard_moves_chosen_card_then_next_turn_starts` | answer with one card | that card now in owner graveyard (new incarnation), hand 7, turn +1, next active player has Upkeep priority |
-| `discard_with_wrong_count_is_rejected_without_mutation` | answer with 0 or 2 cards | not accepted; state bytes unchanged |
-| `non_active_player_never_discards` | opponent hand 8, active hand 7 | no discard request; turn advances (oracle: `bounded_cleanup_accepts_active_hand_seven_and_ignores_opponent_hand_eight`) |
+| `discard_moves_chosen_card_then_next_turn_starts` | answer with one card | that card in owner graveyard (new incarnation), hand 7, turn +1, next active player has upkeep priority |
+| `discard_with_wrong_count_is_rejected_without_mutation` | answer with 0 or 2 cards | `Err(InvalidSelection)`; state bytes unchanged |
+| `non_active_player_never_discards` | opponent hand 8, active hand 7 | no discard request; turn advances (same behavior as `bounded_cleanup_accepts_active_hand_seven_and_ignores_opponent_hand_eight`) |
 | `opponent_sees_discarded_card_but_not_kept_cards` | two states differing only in one *kept* card | opponent `PlayerStepV4` bytes equal; the discarded card is visible to the opponent in the graveyard |
 
-- [ ] **Step 2: Run** `cargo test -p mtgml-rules --locked --lib magic_turn_bridge` and `cargo test -p mtgml-environment --locked --lib successor_turn_projection` → FAIL.
-- [ ] **Step 3: Implement D10** in the kernel, then the bridge mapping. Update the two oracle tests to expect the discard decision.
-- [ ] **Step 4: Run** `cargo test -p mtgml-rules --locked` and `cargo test --workspace --all-features --locked` → PASS.
-- [ ] **Step 5: Commit** — `git commit -m "feat: discard to maximum hand size at cleanup"`
+- [ ] **Step 2: Run** `cargo test -p mtgml-rules --locked --lib turn_progression` and `cargo test -p mtgml-environment --locked --lib successor_turn_projection` -> FAIL.
+- [ ] **Step 3: Implement D10** in `zone_incarnation.rs` and `turn_progression.rs`.
+- [ ] **Step 4: Run** `cargo test -p mtgml-rules --locked --lib` and `cargo test --workspace --all-features --locked` -> PASS.
+- [ ] **Step 5: Commit** - `git commit -m "feat: discard to maximum hand size at cleanup"`
 
 ### Task 7: V8 runtime plays full turns (production path)
 
@@ -275,6 +278,6 @@ Setup per game `i` (seed = `0x4D414E41 + i`): `two_player_land_game(20, 7, seed)
 
 ## Next plans (not part of this plan)
 
-- **Plan B — Native V3 kernel, one runtime.** Port `MagicRulesKernel` to operate directly on `EngineStatePartsV3`, V4 decisions and V3 events/deltas. Differential oracles: (1) the Plan A bridge, on random and scripted land/turn/discard games — native and bridge must produce identical trajectories (D12) and checkpoint digests; (2) for combat and SBA paths the bridge cannot reach, a test-only harness that runs the old `MagicRulesKernel` on the converted `EngineState` against the native port, plus the predecessor combat tests ported to the native kernel. Then delete the bridge, `controller_predecessor.rs`, `endpoint_predecessor.rs`, `controller_successor_v7.rs`, `endpoint_successor_v7.rs`, `reference.rs`, `response_transaction.rs`, `successor_runtime.rs`, `successor_transaction.rs`, the `historical-*` features and their CI gate scripts, V6/V7 formats, and the `#[cfg(test)]` module swap in `mtgml-environment/src/lib.rs`; rename `BasicLand*` runtime types to semantic names. The random smoke test stays green throughout.
-  Also delete checks that pin text instead of behavior: README/status string, registry-count and implementation-path pins in `python/tests/test_current_status.py`; token gates `scripts/run_v8_state_identity_gate.py` and `scripts/run_v5_execution_identity_gate.py`; the `scripts/run_m2_*_gates.py` scripts that pin test names. Keep a golden/KAT only if a test recomputes it from the real Rust or Python code; otherwise couple it to that code or delete it (example: `persistence/golden/content-contract-basic-land-v1-kat.v1.json` was pinned against itself and went stale unnoticed). Add to `AGENTS.md` §5: "Tests check behavior. Do not pin README text, source tokens, test names, or file lists."
-- **Plan C — Creatures and combat in production**, built on the native kernel (not the bridge): creatures the V8 catalog accepts (today `validate_catalog_state`, `checkpoint_v8.rs:425`, rejects the kernel's synthetic foundation creatures); admit declare-blockers / combat-damage / damage-and-life; a V4 purpose for blocker declaration; V3 delta coverage for `foundation_sources`; `BlockersDeclared` / `CombatDamageDealt` event projection (`events_v3.rs:1518`); SBA graveyard-order continuation; combat, life and graveyard in the V4 observation; game end at life 0; the smoke test grows creatures and must still end games deterministically.
+- **Plan B - Creatures and combat natively, then one runtime.** Extend `turn_progression` with creature combat (blockers with a new V4 purpose, combat damage, damage and life), state-based actions (incl. the SBA graveyard-order continuation and the CR 704.5b empty-library loss) and game end, with creatures the V8 catalog accepts. Differential oracle: the old kernel on the creature states its profile supports, plus the predecessor combat tests ported to the production path. Also fix the pre-existing priority deviation (a land play or mana ability by the non-active player must restart the pass sequence, CR 117.4). Then delete the old kernel's executable paths and the predecessor runtime: `controller_predecessor.rs`, `endpoint_predecessor.rs`, `controller_successor_v7.rs`, `endpoint_successor_v7.rs`, `reference.rs`, `response_transaction.rs`, `successor_runtime.rs`, `successor_transaction.rs`, the `historical-*` features and their CI gate scripts, V6/V7 formats, the content-only admission scope, and the `#[cfg(test)]` module swap in `mtgml-environment/src/lib.rs`; rename `BasicLand*` runtime types to semantic names. The random smoke test stays green throughout.
+  Also delete checks that pin text instead of behavior: README/status string, registry-count and implementation-path pins in `python/tests/test_current_status.py`; token gates `scripts/run_v8_state_identity_gate.py` and `scripts/run_v5_execution_identity_gate.py`; the `scripts/run_m2_*_gates.py` scripts that pin test names. Keep a golden/KAT only if a test recomputes it from the real Rust or Python code; otherwise couple it to that code or delete it (example: `persistence/golden/content-contract-basic-land-v1-kat.v1.json` was pinned against itself and went stale unnoticed). Add to `AGENTS.md` section 5: "Tests check behavior. Do not pin README text, source tokens, test names, or file lists."
+- **Plan C - First spells and the stack**, built on the native progression.
