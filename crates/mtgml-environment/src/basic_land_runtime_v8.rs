@@ -536,7 +536,7 @@ fn identity(checkpoint: &EnvironmentCheckpointV8) -> InitialEnvironmentIdentityV
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use mtgml_card_ir::{
         admit_executable_profile_v1, decode_content_manifest_v1, CardSemanticBindingV1,
@@ -558,10 +558,7 @@ mod tests {
     const RULES_SNAPSHOT: &str = "wotc-cr-2026-09-25-txt-20260925-sha256-8d860e451f20f38865b725b42d82feb714c725373dd8f3b32b8652b3eeb070ca";
 
     fn admission() -> ExecutableProfileAdmissionV1 {
-        let content_id =
-            mtgml_persistence::content_contract_digest::calculate_content_contract_id_v1(CONTENT)
-                .unwrap();
-        let closure = [
+        admission_with_closure(&[
             "rules/basic-land-mana",
             "rules/basic-priority",
             "rules/land-play",
@@ -569,13 +566,38 @@ mod tests {
             "rules/state-based-actions-combat",
             "rules/turn-structure",
             "rules/zone-incarnation",
-        ]
-        .into_iter()
-        .map(|key| CapabilityRequirementV1 {
-            key: key.to_owned(),
-            version: "0.1.0".to_owned(),
-        })
-        .collect();
+        ])
+    }
+
+    /// Content plus the game-rule roots: a complete two-player game.
+    pub(crate) fn game_admission() -> ExecutableProfileAdmissionV1 {
+        admission_with_closure(&[
+            "rules/basic-land-mana",
+            "rules/basic-priority",
+            "rules/cleanup-reset",
+            "rules/combat-phase",
+            "rules/declare-attackers",
+            "rules/draw-card",
+            "rules/land-play",
+            "rules/mana-pool",
+            "rules/state-based-actions-combat",
+            "rules/turn-structure",
+            "rules/zone-incarnation",
+        ])
+    }
+
+    fn admission_with_closure(keys: &[&str]) -> ExecutableProfileAdmissionV1 {
+        let content_id =
+            mtgml_persistence::content_contract_digest::calculate_content_contract_id_v1(CONTENT)
+                .unwrap();
+        let closure = keys
+            .iter()
+            .copied()
+            .map(|key| CapabilityRequirementV1 {
+                key: key.to_owned(),
+                version: "0.1.0".to_owned(),
+            })
+            .collect();
         let rules = RulesContractManifestV1 {
             rules_authority: RulesAuthorityV1::ComprehensiveRules {
                 snapshot_id: RULES_SNAPSHOT.to_owned(),
@@ -724,7 +746,7 @@ mod tests {
         v2
     }
 
-    fn state_with_two_lands() -> EngineStatePartsV3 {
+    pub(crate) fn state_with_two_lands() -> EngineStatePartsV3 {
         let v2 = state_with_two_lands_v2();
         EngineStatePartsV3::new(v2.predecessor_v5, Default::default(), v2.card_rules_state).unwrap()
     }

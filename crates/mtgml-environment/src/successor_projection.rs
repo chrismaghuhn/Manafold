@@ -257,9 +257,9 @@ pub fn project_successor_events_v4_for_basic_land_profile(
     events: &[mtgml_rules::AuthoritativeRuleEventV3],
     delta: Option<&mtgml_state::StateDeltaV3>,
 ) -> Result<BTreeMap<PlayerId, Vec<ObservedEventEnvelopeV4>>, SuccessorProjectionError> {
-    mtgml_rules::validate_basic_land_pending_request_v4(admission, before, before_status)
+    mtgml_rules::validate_magic_pending_request_v4(admission, before, before_status)
         .map_err(|_| SuccessorProjectionError::ObservationOccurrenceMismatch)?;
-    mtgml_rules::validate_basic_land_pending_request_v4(admission, after, after_status)
+    mtgml_rules::validate_magic_pending_request_v4(admission, after, after_status)
         .map_err(|_| SuccessorProjectionError::ObservationOccurrenceMismatch)?;
     project_successor_events_v4_inner(before, after, events, delta, true)
 }
@@ -1012,13 +1012,13 @@ pub fn project_successor_player_steps_v4(
     authority: SuccessorProjectionAuthority<'_>,
 ) -> Result<BTreeMap<PlayerId, mtgml_observation::PlayerStepV4>, ControllerError> {
     if let Some(admission) = authority.basic_land_admission {
-        mtgml_rules::validate_basic_land_pending_request_v4(
+        mtgml_rules::validate_magic_pending_request_v4(
             admission,
             transition.before,
             transition.before_status,
         )
         .map_err(|error| ControllerError::Backend(error.to_string()))?;
-        mtgml_rules::validate_basic_land_pending_request_v4(
+        mtgml_rules::validate_magic_pending_request_v4(
             admission,
             transition.after,
             transition.status,
