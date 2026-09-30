@@ -1,16 +1,12 @@
 use std::collections::BTreeMap;
 
-use mtgml_model::{FullStateDigestV5, GameObjectId, PlayerId};
+use mtgml_model::{GameObjectId, PlayerId};
 use mtgml_random::RootSeed256;
 use mtgml_state::{
     construct_synthetic_engine_state, BaseCharacteristics, BeginningStep, CombatState, CombatStep,
     ControlHistory, FoundationCreatureSource, FoundationSourceKind, PriorityState,
     SyntheticResetInputs, SyntheticV4Setup, TurnPosition,
 };
-
-fn current_digest_is_v5(state: &mtgml_state::EngineState) -> FullStateDigestV5 {
-    state.digest().unwrap()
-}
 
 #[test]
 fn p0_synthetic_reset_receives_v4_facts_as_explicit_setup_input() {
@@ -29,7 +25,6 @@ fn p0_synthetic_reset_receives_v4_facts_as_explicit_setup_input() {
     })
     .unwrap();
 
-    let _digest = current_digest_is_v5(&state);
     assert_eq!(
         state.core.position,
         TurnPosition::Beginning {

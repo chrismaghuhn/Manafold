@@ -585,7 +585,7 @@ fn fnd_006b_rejects_index_in_retired_last_known() {
 }
 
 #[test]
-fn fnd_002_invalid_chronology_cannot_obtain_a_v4_digest() {
+fn fnd_002_invalid_chronology_is_rejected() {
     let mut state = active_chronology_state();
     let record = state
         .knowledge
@@ -597,21 +597,21 @@ fn fnd_002_invalid_chronology_cannot_obtain_a_v4_digest() {
         .unwrap();
     record.acquisition = observed_public_at(4);
     record.historical_locations.push(observed_public_fact(3));
-    assert_eq!(state.digest(), Err(StateDigestError::StateInvariant));
+    assert!(validate_engine_state(&state).is_err());
 }
 
 #[test]
-fn fnd_006b_noncanonical_position_cannot_obtain_a_v4_digest() {
+fn fnd_006b_noncanonical_position_is_rejected() {
     let mut state = synthetic_state();
     set_object_two_position(&mut state, ZonePosition::Bottom { offset: 0 });
-    assert_eq!(state.digest(), Err(StateDigestError::StateInvariant));
+    assert!(validate_engine_state(&state).is_err());
 }
 
 #[test]
-fn fnd_006b_valid_canonical_reorder_changes_the_v4_digest() {
+fn fnd_006b_valid_canonical_reorder_changes_the_v7_digest() {
     let baseline = two_object_ordered_state();
     let mut reordered = baseline.clone();
     swap_canonical_two_object_order(&mut reordered);
     validate_engine_state(&reordered).unwrap();
-    assert_ne!(baseline.digest().unwrap(), reordered.digest().unwrap());
+    assert_ne!(v7_digest(&baseline), v7_digest(&reordered));
 }

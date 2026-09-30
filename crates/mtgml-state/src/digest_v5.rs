@@ -1,18 +1,18 @@
-//! The single typed producer for the current full-state V5 digest.
+//! Component encoders of the FullStateDigestV7 preimage that were introduced
+//! with the V5 input (core, zones, allocators, random, knowledge, identities,
+//! combat, foundation sources, format), plus the V3-execution encoders the V2
+//! state parts still validate with.
 //!
 //! The conversion deliberately does not use Rust/Serde output. Every field is
-//! mapped to the fixed semantic CBOR layout from STATE_HASHING.md. V5 retains
-//! every V4 state field and adds a closed canonical Magic continuation variant.
+//! mapped to the fixed semantic CBOR layout from STATE_HASHING.md.
 
 use mtgml_decision::{
-    AuthoritativeCandidateV2, AuthoritativeDecisionRequestV2, AuthoritativeDecisionRequestV3,
-    CandidateIntent, CandidateIntentV3, DecisionDomainV2, DecisionVisibility,
-    EngineCandidateBinding, EngineCandidateBindingV3,
+    AuthoritativeDecisionRequestV3, CandidateIntentV3, DecisionDomainV2, DecisionVisibility,
+    EngineCandidateBindingV3,
 };
-use mtgml_model::FullStateDigestV5;
 use mtgml_persistence::{
     cbor::{self, Value},
-    envelope, PersistenceDecodeErrorV1,
+    PersistenceDecodeErrorV1,
 };
 
 use crate::core::{
@@ -20,7 +20,7 @@ use crate::core::{
     TurnPosition,
 };
 use crate::digest::StateDigestError;
-use crate::engine::EngineState;
+use crate::engine::EngineStateParts;
 use crate::engine_state_shape::{
     AssemblyStageV2, ContinuationPayloadV2, KnowledgeInvalidationV2, KnowledgeRecordV2,
     KnownLocationFactV2, RetiredKnowledgeRecordV2,
@@ -29,127 +29,6 @@ use crate::execution::ExecutionStateV3;
 use crate::format::FormatState;
 use crate::knowledge::{KnowledgeAcquisitionReason, KnowledgeInvalidationReason};
 use crate::zones::{VisibilityPartition, ZoneKey, ZoneLocation, ZonePosition};
-
-pub const FULL_STATE_DIGEST_DOMAIN_V5: &str = "mtgml.full-state-digest.v5";
-pub const FULL_STATE_DIGEST_INPUT_SCHEMA_V5: &str = "full-state-digest-input.v5";
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct FullStateDigestInputV5 {
-    pub revision: u64,
-    pub core: Value,
-    pub zones: Value,
-    pub allocators: Value,
-    pub execution: Value,
-    pub random: Value,
-    pub knowledge: Value,
-    pub perspective_identities: Value,
-    pub combat: Value,
-    pub foundation_sources: Value,
-    pub format: Value,
-}
-
-impl FullStateDigestInputV5 {
-    pub fn canonical_value(&self) -> Result<Value, StateDigestError> {
-        let Value::Array(execution) = &self.execution else {
-            return Err(semantic_error());
-        };
-        if execution.len() != 5
-            || !matches!(execution.get(2), Some(Value::Array(values)) if values.is_empty())
-            || !matches!(execution.get(3), Some(Value::Array(values)) if values.is_empty())
-            || !matches!(execution.get(4), Some(Value::Array(values)) if values.is_empty())
-        {
-            return Err(semantic_error());
-        }
-        Ok(Value::Array(vec![
-            Value::Text(FULL_STATE_DIGEST_INPUT_SCHEMA_V5.to_owned()),
-            Value::Text(FULL_STATE_DIGEST_DOMAIN_V5.to_owned()),
-            Value::Unsigned(self.revision),
-            self.core.clone(),
-            self.zones.clone(),
-            self.allocators.clone(),
-            self.execution.clone(),
-            self.random.clone(),
-            self.knowledge.clone(),
-            self.perspective_identities.clone(),
-            self.combat.clone(),
-            self.foundation_sources.clone(),
-            self.format.clone(),
-        ]))
-    }
-
-    pub fn canonical_payload(&self) -> Result<Vec<u8>, StateDigestError> {
-        cbor::encode_canonical(&self.canonical_value()?).map_err(StateDigestError::Persistence)
-    }
-}
-
-pub(crate) fn calculate_full_state_digest_v5(
-    input: &FullStateDigestInputV5,
-) -> Result<FullStateDigestV5, StateDigestError> {
-    let payload = input.canonical_payload()?;
-    let envelope = envelope::encode_envelope(
-        FULL_STATE_DIGEST_DOMAIN_V5,
-        FULL_STATE_DIGEST_INPUT_SCHEMA_V5,
-        &payload,
-    )
-    .map_err(StateDigestError::Persistence)?;
-    Ok(FullStateDigestV5::from_digest_bytes(
-        envelope::hash_envelope(&envelope),
-    ))
-}
-
-pub(crate) fn calculate_full_state_digest_v5_for_state(
-    state: &EngineState,
-) -> Result<FullStateDigestV5, StateDigestError> {
-    calculate_full_state_digest_v5(&full_state_digest_input_v5(state)?)
-}
-
-pub(crate) fn full_state_digest_input_v5(
-    state: &EngineState,
-) -> Result<FullStateDigestInputV5, StateDigestError> {
-    // Keep this destructure exhaustive: adding an authoritative EngineState
-    // field must make the V5 digest mapping fail to compile until reviewed.
-    let EngineState {
-        revision,
-        core,
-        combat,
-        foundation_sources,
-        zones,
-        allocators,
-        execution,
-        random,
-        knowledge,
-        perspective_identities,
-        format,
-    } = state;
-    let _digest_reviewed_fields = (
-        revision,
-        core,
-        combat,
-        foundation_sources,
-        zones,
-        allocators,
-        execution,
-        random,
-        knowledge,
-        perspective_identities,
-        format,
-    );
-    crate::validation::validate_engine_state(state)
-        .map_err(|_| StateDigestError::StateInvariant)?;
-    Ok(FullStateDigestInputV5 {
-        revision: state.revision.0,
-        core: core_value(state),
-        zones: zones_value(state)?,
-        allocators: allocators_value(state),
-        execution: execution_value(state)?,
-        random: random_value(state),
-        knowledge: knowledge_value(state)?,
-        perspective_identities: perspective_identities_value(state)?,
-        combat: combat_value(state),
-        foundation_sources: foundation_sources_value(state),
-        format: format_value(&state.format)?,
-    })
-}
 
 fn semantic_error() -> StateDigestError {
     StateDigestError::Persistence(PersistenceDecodeErrorV1::SemanticValidation)
@@ -179,7 +58,7 @@ fn optional(value: Option<Value>) -> Value {
     value.unwrap_or(Value::Null)
 }
 
-fn core_value(state: &EngineState) -> Value {
+pub(crate) fn core_value(state: &EngineStateParts) -> Value {
     let players =
         state.core.players.iter().map(|(player, value)| {
             array([u(player.0), i(value.life), Value::Bool(value.has_lost)])
@@ -241,7 +120,7 @@ fn priority_value(priority: PriorityState) -> Value {
     }
 }
 
-fn combat_value(state: &EngineState) -> Value {
+pub(crate) fn combat_value(state: &EngineStateParts) -> Value {
     let Some(combat) = &state.combat else {
         return Value::Null;
     };
@@ -257,8 +136,8 @@ fn combat_value(state: &EngineState) -> Value {
     let attackers = array(combat.attackers.iter().map(|object| u(object.0)));
     let blockers = array(blockers);
     if !combat.damage_step_completed && combat.blocked_attackers == live_blocked {
-        // Preserve FullStateDigestV5 for every CombatState representable by
-        // the pre-Block-6 fields. The extended form below is emitted only
+        // The 3-element form keeps the bytes of every CombatState that the
+        // original three fields can represent. The extended form below is emitted only
         // when blocked history or completed-damage state adds information.
         array([u(combat.defending_player.0), attackers, blockers])
     } else {
@@ -272,7 +151,7 @@ fn combat_value(state: &EngineState) -> Value {
     }
 }
 
-fn foundation_sources_value(state: &EngineState) -> Value {
+pub(crate) fn foundation_sources_value(state: &EngineStateParts) -> Value {
     let sources = state.foundation_sources.iter().map(|(object, source)| {
         array([
             u(object.0),
@@ -310,15 +189,10 @@ fn control_history_value(value: ControlHistory) -> Value {
     }
 }
 
-fn zones_value(state: &EngineState) -> Result<Value, StateDigestError> {
-    if state
-        .zones
-        .stack_records
-        .values()
-        .any(|record| record.payload.is_some())
-    {
-        return Err(StateDigestError::StateInvariant);
-    }
+/// Objects, locations and ordered zones: the first three `zones_v2` elements.
+pub(crate) fn zone_contents_values(
+    state: &EngineStateParts,
+) -> Result<[Value; 3], StateDigestError> {
     let objects = state.zones.objects.values().map(|object| {
         array([
             u(object.id.0),
@@ -350,21 +224,11 @@ fn zones_value(state: &EngineState) -> Result<Value, StateDigestError> {
         .collect::<Result<Vec<_>, StateDigestError>>()?;
     ordered.sort_by(|left, right| left.0.cmp(&right.0));
 
-    let stack_records = state.zones.stack_records.values().map(|record| {
-        array([
-            u(record.id.0),
-            u(record.controller.0),
-            optional(record.source_object.map(|value| u(value.0))),
-            optional(record.source_ability.map(|value| u(value.0))),
-        ])
-    });
-    Ok(array([
+    Ok([
         array(objects),
         array(locations),
         array(ordered.into_iter().map(|(_, value)| value)),
-        array(stack_records),
-        array(state.zones.stack_order.iter().map(|id| u(id.0))),
-    ]))
+    ])
 }
 
 pub(crate) fn zone_key_value(key: &ZoneKey) -> Value {
@@ -418,7 +282,7 @@ fn visibility(value: VisibilityPartition) -> &'static str {
     }
 }
 
-fn allocators_value(state: &EngineState) -> Value {
+pub(crate) fn allocators_value(state: &EngineStateParts) -> Value {
     let a = &state.allocators;
     array([
         u(a.next_object_id.0),
@@ -430,33 +294,6 @@ fn allocators_value(state: &EngineState) -> Value {
         u(a.next_continuation_id.0),
         u(a.next_rule_event_id.0),
     ])
-}
-
-fn execution_value(state: &EngineState) -> Result<Value, StateDigestError> {
-    let pending = state
-        .execution
-        .pending_decision
-        .as_ref()
-        .map(|pending| decision_value(&pending.request));
-    let continuations = state
-        .execution
-        .continuations
-        .values()
-        .map(continuation_value)
-        .collect::<Result<Vec<_>, _>>()?;
-    if !state.execution.effects.is_empty()
-        || !state.execution.waiting_triggers.is_empty()
-        || !state.execution.delayed_effects.is_empty()
-    {
-        return Err(semantic_error());
-    }
-    Ok(array([
-        optional(pending),
-        array(continuations),
-        array([]),
-        array([]),
-        array([]),
-    ]))
 }
 
 /// Canonical producer for the frozen `PersistedExecutionV3` value. This is
@@ -552,19 +389,6 @@ fn trusted_binding_v3(value: &EngineCandidateBindingV3) -> Value {
     }
 }
 
-fn decision_value(request: &AuthoritativeDecisionRequestV2) -> Value {
-    array([
-        u(request.decision_id.0),
-        u(request.player_decision_id.0),
-        u(request.state_revision.0),
-        u(request.actor.0),
-        text(decision_visibility(request.visibility)),
-        decision_domain(&request.decision),
-        array(request.candidates.iter().map(candidate_value)),
-        optional(request.continuation_id.map(|value| u(value.0))),
-    ])
-}
-
 fn decision_visibility(value: DecisionVisibility) -> &'static str {
     match value {
         DecisionVisibility::Public => "public",
@@ -587,60 +411,6 @@ fn decision_domain(value: &DecisionDomainV2) -> Value {
             text("order"),
             array([u32_value(*minimum), u32_value(*maximum)]),
         ]),
-    }
-}
-
-fn candidate_value(candidate: &AuthoritativeCandidateV2) -> Value {
-    array([
-        u32_value(candidate.candidate_id.0),
-        visible_intent(&candidate.visible_intent),
-        trusted_binding(&candidate.trusted_binding),
-    ])
-}
-
-fn visible_intent(value: &CandidateIntent) -> Value {
-    match value {
-        CandidateIntent::PassPriority => array([text("pass_priority"), Value::Null]),
-        CandidateIntent::CastSpell { object } => array([text("cast_spell"), u(object.0)]),
-        CandidateIntent::ActivateAbility { ability } => {
-            array([text("activate_ability"), u(ability.0)])
-        }
-        CandidateIntent::SelectObject { object } => array([text("select_object"), u(object.0)]),
-        CandidateIntent::SelectPlayer { player } => array([text("select_player"), u(player.0)]),
-        CandidateIntent::SelectMode { mode_index } => {
-            array([text("select_mode"), u32_value(*mode_index)])
-        }
-        CandidateIntent::ChooseBoolean { value } => {
-            array([text("choose_boolean"), Value::Bool(*value)])
-        }
-        CandidateIntent::DeclareNumber { value } => array([text("declare_number"), i(*value)]),
-        CandidateIntent::Confirm => array([text("confirm"), Value::Null]),
-    }
-}
-
-fn trusted_binding(value: &EngineCandidateBinding) -> Value {
-    match value {
-        EngineCandidateBinding::PassPriority => array([text("pass_priority"), Value::Null]),
-        EngineCandidateBinding::CastSpell { object } => array([text("cast_spell"), u(object.0)]),
-        EngineCandidateBinding::ActivateAbility { ability } => {
-            array([text("activate_ability"), u(ability.0)])
-        }
-        EngineCandidateBinding::SelectObject { object } => {
-            array([text("select_object"), u(object.0)])
-        }
-        EngineCandidateBinding::SelectPlayer { player } => {
-            array([text("select_player"), u(player.0)])
-        }
-        EngineCandidateBinding::SelectMode { mode_index } => {
-            array([text("select_mode"), u32_value(*mode_index)])
-        }
-        EngineCandidateBinding::ChooseBoolean { value } => {
-            array([text("choose_boolean"), Value::Bool(*value)])
-        }
-        EngineCandidateBinding::DeclareNumber { value } => {
-            array([text("declare_number"), i(*value)])
-        }
-        EngineCandidateBinding::Confirm => array([text("confirm"), Value::Null]),
     }
 }
 
@@ -724,7 +494,7 @@ fn assembly_stage(value: AssemblyStageV2) -> &'static str {
     }
 }
 
-fn random_value(state: &EngineState) -> Value {
+pub(crate) fn random_value(state: &EngineStateParts) -> Value {
     let mut streams: Vec<_> = state
         .random
         .streams
@@ -747,7 +517,7 @@ fn random_value(state: &EngineState) -> Value {
     ])
 }
 
-fn knowledge_value(state: &EngineState) -> Result<Value, StateDigestError> {
+pub(crate) fn knowledge_value(state: &EngineStateParts) -> Result<Value, StateDigestError> {
     let players = state
         .knowledge
         .players
@@ -856,7 +626,9 @@ fn invalidation_reason(value: KnowledgeInvalidationReason) -> &'static str {
     }
 }
 
-fn perspective_identities_value(state: &EngineState) -> Result<Value, StateDigestError> {
+pub(crate) fn perspective_identities_value(
+    state: &EngineStateParts,
+) -> Result<Value, StateDigestError> {
     let players = state
         .perspective_identities
         .players
@@ -885,7 +657,7 @@ fn perspective_identities_value(state: &EngineState) -> Result<Value, StateDiges
     Ok(array(players))
 }
 
-fn format_value(format: &FormatState) -> Result<Value, StateDigestError> {
+pub(crate) fn format_value(format: &FormatState) -> Result<Value, StateDigestError> {
     match format {
         FormatState::None => Ok(array([text("none"), Value::Null])),
         FormatState::Commander { state } => {

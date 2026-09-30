@@ -330,9 +330,9 @@ def main() -> None:
             fail(f"state contract lacks {token}")
 
     for token in (
-        "FullStateDigestInputV5",
+        "full-state-digest-input.v7",
         "magic_sba_graveyard_order_v1",
-        "canonical_digest_bytes",
+        "canonical_state_bytes",
         "KnowledgeInvalidationReason",
         "KnowledgeAcquisitionReason",
     ):

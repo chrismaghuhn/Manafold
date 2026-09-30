@@ -332,8 +332,6 @@ macro_rules! raw_digest {
     };
 }
 
-raw_digest!(FullStateDigestV5, "mtgml.full-state-digest.v5");
-raw_digest!(FullStateDigestV6, "mtgml.full-state-digest.v6");
 raw_digest!(FullStateDigestV7, "mtgml.full-state-digest.v7");
 
 // === V5 contract identity and digest domains (spec §5) ===
@@ -405,32 +403,6 @@ macro_rules! reserved_digest {
 
 reserved_digest!(FormatContractIdV1, "mtgml.format-contract.v1");
 reserved_digest!(ContentContractIdV1, "mtgml.content-contract.v1");
-
-impl FullStateDigestV5 {
-    pub fn as_digest_reference(&self) -> DigestReferenceV1 {
-        DigestReferenceV1 {
-            envelope_version: "mtgml.digest-envelope.v1".to_owned(),
-            algorithm_id: "sha-256".to_owned(),
-            semantic_domain: Self::DOMAIN.to_owned(),
-            payload_codec_id: "mtgml.canonical-cbor.v1".to_owned(),
-            input_schema_id: "full-state-digest-input.v5".to_owned(),
-            digest_bytes: self.raw_bytes(),
-        }
-    }
-}
-
-impl FullStateDigestV6 {
-    pub fn as_digest_reference(&self) -> DigestReferenceV1 {
-        DigestReferenceV1 {
-            envelope_version: "mtgml.digest-envelope.v1".to_owned(),
-            algorithm_id: "sha-256".to_owned(),
-            semantic_domain: Self::DOMAIN.to_owned(),
-            payload_codec_id: "mtgml.canonical-cbor.v1".to_owned(),
-            input_schema_id: "full-state-digest-input.v6".to_owned(),
-            digest_bytes: self.raw_bytes(),
-        }
-    }
-}
 
 impl FullStateDigestV7 {
     pub fn as_digest_reference(&self) -> DigestReferenceV1 {
@@ -614,16 +586,6 @@ mod tests {
             ObservationDigest::parse(observation.as_str()).unwrap(),
             observation
         );
-    }
-
-    #[test]
-    fn full_state_digest_v6_has_distinct_typed_reference_identity() {
-        let digest = FullStateDigestV6::from_digest_bytes([0x6a; 32]);
-        let reference = digest.as_digest_reference();
-        assert_eq!(FullStateDigestV6::DOMAIN, "mtgml.full-state-digest.v6");
-        assert_eq!(reference.semantic_domain, FullStateDigestV6::DOMAIN);
-        assert_eq!(reference.input_schema_id, "full-state-digest-input.v6");
-        assert_eq!(reference.digest_bytes, [0x6a; 32]);
     }
 
     #[test]

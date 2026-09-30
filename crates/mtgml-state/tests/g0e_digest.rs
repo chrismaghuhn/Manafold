@@ -4,10 +4,10 @@ use mtgml_model::{
 };
 use mtgml_random::RootSeed256;
 use mtgml_state::{
-    calculate_full_state_digest_v7, calculate_full_state_digest_v7_payload,
-    canonical_state_bytes_v7, construct_synthetic_engine_state, ActionCostFacts,
-    CardRulesAuthoritativeStateV1, EffectExpiry, EngineStatePartsV3, ExecutionStateV4, ManaCost,
-    ManaPaymentStage, ManaPaymentStaging, ManaSourceActivation, ManaSourceActivationCost,
+    calculate_full_state_digest_v7, canonical_state_bytes_v7, construct_synthetic_engine_state,
+    full_state_digest_v7_from_payload, ActionCostFacts, CardRulesAuthoritativeStateV1,
+    EffectExpiry, EngineStatePartsV3, ExecutionStateV4, ManaCost, ManaPaymentStage,
+    ManaPaymentStaging, ManaSourceActivation, ManaSourceActivationCost,
     NonManaActivationContinuation, NonManaActivationStage, ReservedNonManaCost,
     SelectedCostOperand, StackItemPayload, StackRecord, StateDeltaV3, SyntheticResetInputs,
     SyntheticV4Setup, TemporaryEffectRecord, TemporaryOperation, VisibilityPartition, ZoneLocation,
@@ -270,7 +270,7 @@ fn v7_detached_g0c_identity_fixture_matches_its_domain_kat() {
         mtgml_model::FullStateDigestV7::parse(fixture["expected_digest"].as_str().unwrap())
             .unwrap();
     assert_eq!(
-        calculate_full_state_digest_v7_payload(&payload).unwrap(),
+        full_state_digest_v7_from_payload(&payload).unwrap(),
         expected
     );
 }
@@ -614,51 +614,6 @@ fn v7_digest_binds_pending_trigger_context_and_exact_candidate_binding() {
             trigger: mtgml_model::TriggerInstanceId(1),
         };
     assert_ne!(original, calculate_full_state_digest_v7(&state).unwrap());
-}
-
-#[test]
-fn v7_input_decoder_rejects_wrong_identity_truncation_and_unknown_stack_tags() {
-    let mut state = state();
-    insert_spell(&mut state, 50, 1);
-    state
-        .predecessor_v5
-        .zones
-        .stack_order
-        .push(StackObjectId(1));
-    let bytes = canonical_state_bytes_v7(&state).unwrap();
-    assert!(mtgml_state::FullStateDigestInputV7::from_canonical_payload(&bytes).is_ok());
-    assert!(
-        mtgml_state::FullStateDigestInputV7::from_canonical_payload(&bytes[..bytes.len() - 1])
-            .is_err()
-    );
-
-    let mut value = mtgml_persistence::cbor::decode_canonical(&bytes).unwrap();
-    let mtgml_persistence::cbor::Value::Array(fields) = &mut value else {
-        panic!("V7 input is an array")
-    };
-    fields[0] = mtgml_persistence::cbor::Value::Text("full-state-digest-input.v8".to_owned());
-    let wrong_identity = mtgml_persistence::cbor::encode_canonical(&value).unwrap();
-    assert!(mtgml_state::FullStateDigestInputV7::from_canonical_payload(&wrong_identity).is_err());
-
-    let mut value = mtgml_persistence::cbor::decode_canonical(&bytes).unwrap();
-    let mtgml_persistence::cbor::Value::Array(fields) = &mut value else {
-        panic!("V7 input is an array")
-    };
-    let mtgml_persistence::cbor::Value::Array(zones) = &mut fields[4] else {
-        panic!("V7 zones are an array")
-    };
-    let mtgml_persistence::cbor::Value::Array(records) = &mut zones[4] else {
-        panic!("V7 stack records are an array")
-    };
-    let mtgml_persistence::cbor::Value::Array(record) = &mut records[0] else {
-        panic!("V7 stack record is an array")
-    };
-    let mtgml_persistence::cbor::Value::Array(payload) = &mut record[2] else {
-        panic!("V7 stack payload is an array")
-    };
-    payload[0] = mtgml_persistence::cbor::Value::Text("unknown".to_owned());
-    let unknown_tag = mtgml_persistence::cbor::encode_canonical(&value).unwrap();
-    assert!(mtgml_state::FullStateDigestInputV7::from_canonical_payload(&unknown_tag).is_err());
 }
 
 #[test]

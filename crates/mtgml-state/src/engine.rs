@@ -1,18 +1,15 @@
 use std::collections::BTreeMap;
 
-use mtgml_model::{FullStateDigestV5, GameObjectId, StateRevision};
+use mtgml_model::{GameObjectId, StateRevision};
 use mtgml_random::RandomStateV1;
 use serde::{Deserialize, Serialize};
 
 use crate::core::{CombatState, CoreRulesState, FoundationCreatureSource};
-use crate::digest::StateDigestError;
 use crate::engine_state_shape::{KnowledgeStateV2, PerspectiveIdentityStateV2};
 use crate::execution::ExecutionState;
 use crate::format::FormatState;
 use crate::identity::IdentityAllocatorState;
 use crate::zones::ZoneState;
-
-pub const FULL_STATE_DIGEST_INPUT_SCHEMA: &str = "full-state-digest-input.v5";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -31,19 +28,6 @@ pub struct EngineState {
 }
 
 impl EngineState {
-    pub fn canonical_digest_bytes(&self) -> Result<Vec<u8>, StateDigestError> {
-        crate::digest_v5::full_state_digest_input_v5(self)?.canonical_payload()
-    }
-
-    /// The V5 digest of the predecessor layer only. It omits the card-rules
-    /// state and the V3/V4 execution owners, so it is NOT the state identity;
-    /// use `calculate_full_state_digest_v7` on `EngineStatePartsV3` for that.
-    /// It remains as a test probe of the V5 input encoding until the digest is
-    /// rebuilt in one pass.
-    pub fn digest(&self) -> Result<FullStateDigestV5, StateDigestError> {
-        crate::digest_v5::calculate_full_state_digest_v5_for_state(self)
-    }
-
     pub fn parts(&self) -> EngineStateParts {
         EngineStateParts {
             revision: self.revision,

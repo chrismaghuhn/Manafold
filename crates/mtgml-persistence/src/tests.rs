@@ -1,7 +1,7 @@
 use super::{cbor, checkpoint_digest, envelope, PersistenceDecodeErrorV1};
 use mtgml_model::{
     CheckpointCodecIdentity, EnvironmentLimitCounters, EpisodeStatus, ExecutionIdentityV1,
-    ExecutionProgramV1, FullStateDigestV6, FullStateDigestV7, SemanticContractIdV1,
+    ExecutionProgramV1, FullStateDigestV7, SemanticContractIdV1,
 };
 
 #[test]
@@ -696,9 +696,14 @@ fn checkpoint_digest_v8_g0_known_answer() {
         digest.to_string(),
         "1454acca17c4a4cb655d4b3201e4b5d10db3cb0a42513a33efb6f7d8eaa26025"
     );
-    let predecessor = FullStateDigestV6::from_digest_bytes(state_digest.raw_bytes());
+    // A reference to a predecessor full-state domain is rejected.
+    let predecessor = mtgml_model::DigestReferenceV1 {
+        semantic_domain: "mtgml.full-state-digest.v6".to_owned(),
+        input_schema_id: "full-state-digest-input.v6".to_owned(),
+        ..state_digest.as_digest_reference()
+    };
     assert!(checkpoint_digest::calculate_checkpoint_digest_v8(
-        &predecessor.as_digest_reference(),
+        &predecessor,
         &EpisodeStatus::Running,
         &EnvironmentLimitCounters::default(),
         &codec,

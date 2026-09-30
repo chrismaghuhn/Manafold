@@ -140,11 +140,7 @@ fn deterministic_structural_identity_repeats_exactly() {
     let state = synthetic_state();
     let rebuilt = synthetic_state();
     assert_eq!(state, rebuilt);
-    assert_eq!(state.digest().unwrap(), rebuilt.digest().unwrap());
-    assert_eq!(
-        state.canonical_digest_bytes().unwrap(),
-        rebuilt.canonical_digest_bytes().unwrap()
-    );
+    assert_eq!(v7_digest(&state), v7_digest(&rebuilt));
 }
 
 #[test]
@@ -173,11 +169,25 @@ fn synthetic_reset_is_exactly_deterministic_for_identical_inputs() {
     );
 }
 
-fn decode_hex(text: &str) -> Vec<u8> {
-    text.as_bytes()
-        .chunks_exact(2)
-        .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap())
-        .collect()
+/// The current-format state around a test `EngineState`: an empty execution
+/// and one empty mana pool and turn history per player.
+fn current_state(state: &EngineState) -> EngineStatePartsV3 {
+    let mut parts = state.parts();
+    parts.execution = Default::default();
+    let mut card_rules = CardRulesAuthoritativeStateV1::default();
+    for player in parts.core.players.keys().copied() {
+        card_rules.mana.pools.insert(player, Default::default());
+        card_rules
+            .turn_history
+            .players
+            .insert(player, Default::default());
+    }
+    card_rules.turn_history.turn_number = parts.core.turn_number;
+    EngineStatePartsV3::new(parts, ExecutionStateV4::default(), card_rules).unwrap()
+}
+
+fn v7_digest(state: &EngineState) -> mtgml_model::FullStateDigestV7 {
+    calculate_full_state_digest_v7(&current_state(state)).unwrap()
 }
 
 fn digest_payload_texts(state: &EngineState) -> Vec<String> {
@@ -192,7 +202,7 @@ fn digest_payload_texts(state: &EngineState) -> Vec<String> {
             _ => {}
         }
     }
-    let payload = state.canonical_digest_bytes().unwrap();
+    let payload = canonical_state_bytes_v7(&current_state(state)).unwrap();
     let decoded = mtgml_persistence::cbor::decode_canonical(&payload).unwrap();
     let mut texts = Vec::new();
     walk(&decoded, &mut texts);

@@ -20,7 +20,6 @@ fn global_decision_allocator_must_exceed_every_issued_identity() {
     );
     // A strictly greater cursor is accepted.
     validate_engine_state(&build(2)).unwrap();
-    assert!(build(2).digest().is_ok());
 }
 
 #[test]

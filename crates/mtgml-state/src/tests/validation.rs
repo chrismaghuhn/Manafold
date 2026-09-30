@@ -18,7 +18,6 @@ fn synthetic_state_is_the_current_engine_state_shape() {
 fn valid_empty_shell_passes_cross_component_validation() {
     let state = empty_shell();
     validate_engine_state(&state).unwrap();
-    assert!(state.digest().is_ok());
 }
 
 #[test]
@@ -199,10 +198,6 @@ fn commander_designation_membership_must_be_canonical() {
         Err(EngineStateViolation::FormatMismatch)
     );
     assert_eq!(permuted, before);
-    assert_eq!(
-        permuted.digest(),
-        Err(StateDigestError::StateInvariant)
-    );
 }
 
 #[test]

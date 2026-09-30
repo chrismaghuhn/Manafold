@@ -1,18 +1,19 @@
-//! Detached FullStateDigestV7 producer for the accepted G0 successor state.
-//!
-//! G0j alone changes the current writer alias. These APIs require an explicit
-//! successor aggregate and do not route through the current engine.
+//! FullStateDigestV7: validate the state once, encode its preimage once, and
+//! hash it once.
 
 use mtgml_model::FullStateDigestV7;
-use mtgml_persistence::envelope;
+use mtgml_persistence::{cbor, envelope};
 
 use crate::{
-    digest::StateDigestError, EngineStatePartsV3, FullStateDigestInputV7,
+    digest::StateDigestError, persisted_v7::state_value, EngineStatePartsV3,
     FULL_STATE_DIGEST_DOMAIN_V7, FULL_STATE_DIGEST_INPUT_SCHEMA_V7,
 };
 
 pub fn canonical_state_bytes_v7(state: &EngineStatePartsV3) -> Result<Vec<u8>, StateDigestError> {
-    FullStateDigestInputV7::from_successor(state)?.canonical_payload()
+    state
+        .validate()
+        .map_err(|_| StateDigestError::StateInvariant)?;
+    encode(state)
 }
 
 /// Canonicalizes a structurally valid state after a RulesKernel-owned exact
@@ -21,31 +22,35 @@ pub fn canonical_state_bytes_v7(state: &EngineStatePartsV3) -> Result<Vec<u8>, S
 pub(crate) fn canonical_state_bytes_v7_structural_only(
     state: &EngineStatePartsV3,
 ) -> Result<Vec<u8>, StateDigestError> {
-    FullStateDigestInputV7::from_successor_structural_only(state)?.canonical_payload()
+    state
+        .validate_structure()
+        .map_err(|_| StateDigestError::StateInvariant)?;
+    encode(state)
+}
+
+fn encode(state: &EngineStatePartsV3) -> Result<Vec<u8>, StateDigestError> {
+    cbor::encode_canonical(&state_value(state)?).map_err(StateDigestError::Persistence)
 }
 
 pub fn calculate_full_state_digest_v7(
     state: &EngineStatePartsV3,
 ) -> Result<FullStateDigestV7, StateDigestError> {
-    let payload = canonical_state_bytes_v7(state)?;
-    calculate_full_state_digest_v7_payload(&payload)
+    full_state_digest_v7_from_payload(&canonical_state_bytes_v7(state)?)
 }
 
 #[doc(hidden)]
 pub fn calculate_full_state_digest_v7_structural_only(
     state: &EngineStatePartsV3,
 ) -> Result<FullStateDigestV7, StateDigestError> {
-    let payload = canonical_state_bytes_v7_structural_only(state)?;
-    calculate_full_state_digest_v7_payload(&payload)
+    full_state_digest_v7_from_payload(&canonical_state_bytes_v7_structural_only(state)?)
 }
 
-pub fn calculate_full_state_digest_v7_payload(
+/// The hash step alone: envelope the preimage bytes and hash them. It does not
+/// decode or check the preimage, so it is only meaningful for bytes produced
+/// by `canonical_state_bytes_v7` (or a known-answer vector of them).
+pub fn full_state_digest_v7_from_payload(
     payload: &[u8],
 ) -> Result<FullStateDigestV7, StateDigestError> {
-    // This verifies canonical V7 bytes and computes their digest only. It is
-    // never proof that profile-dependent requests were admitted by the
-    // RulesKernel/Environment boundary.
-    FullStateDigestInputV7::from_canonical_payload(payload)?;
     let encoded = envelope::encode_envelope(
         FULL_STATE_DIGEST_DOMAIN_V7,
         FULL_STATE_DIGEST_INPUT_SCHEMA_V7,
@@ -55,15 +60,4 @@ pub fn calculate_full_state_digest_v7_payload(
     Ok(FullStateDigestV7::from_digest_bytes(
         envelope::hash_envelope(&encoded),
     ))
-}
-
-pub fn verify_full_state_digest_v7(
-    state: &EngineStatePartsV3,
-    expected: FullStateDigestV7,
-) -> Result<(), StateDigestError> {
-    if calculate_full_state_digest_v7(state)? == expected {
-        Ok(())
-    } else {
-        Err(StateDigestError::StateInvariant)
-    }
 }
