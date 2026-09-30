@@ -222,7 +222,6 @@ macro_rules! domain_digest {
 }
 
 domain_digest!(PublicStateDigest, "mtgml.public-state-digest.v1");
-domain_digest!(InformationStateDigest, "mtgml.information-state-digest.v1");
 domain_digest!(ObservationDigest, "mtgml.observation-digest.v1");
 domain_digest!(CandidateSetDigest, "mtgml.candidate-set-digest.v1");
 domain_digest!(ContentDigest, "mtgml.content-digest.v1");
@@ -583,10 +582,6 @@ mod tests {
         assert_eq!(
             PublicStateDigest::from_canonical_bytes(bytes).as_str(),
             "9ba50ec6cfe0ac09da1ce7844c3362bf8ea7643936a8384835d8718a3d25e442"
-        );
-        assert_eq!(
-            InformationStateDigest::from_canonical_bytes(bytes).as_str(),
-            "1bcb220ae39f043426dedf86a5422f95cc0a61cbeb3690efa4d853f0b0986a4c"
         );
         assert_eq!(
             ObservationDigest::from_canonical_bytes(bytes).as_str(),

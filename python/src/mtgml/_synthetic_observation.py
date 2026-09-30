@@ -5,9 +5,9 @@ from dataclasses import dataclass
 from .canonical import parse_uint, require_exact_keys, uint_wire
 from .errors import WireError
 
-SYNTHETIC_OBSERVATION_SCHEMA_V1 = "synthetic-m3-observation.v1"
-
 SYNTHETIC_BEGINNING_STEPS = frozenset({"untap", "upkeep", "draw"})
+
+
 SYNTHETIC_COMBAT_STEPS = frozenset(
     {
         "beginning_of_combat",
@@ -17,10 +17,16 @@ SYNTHETIC_COMBAT_STEPS = frozenset(
         "end_of_combat",
     }
 )
+
+
 SYNTHETIC_ENDING_STEPS = frozenset({"end_step", "cleanup"})
+
+
 SYNTHETIC_TURN_KINDS = frozenset(
     {"beginning", "precombat_main", "combat", "postcombat_main", "ending"}
 )
+
+
 SYNTHETIC_PRIORITY_KINDS = frozenset({"none", "held_by"})
 
 
@@ -114,79 +120,3 @@ class SyntheticPriority:
             raise WireError("decode.invalid_json", "unknown priority kind")
         SyntheticPriority.from_wire(result)
         return result
-
-
-@dataclass(frozen=True, slots=True)
-class SyntheticObservation:
-    schema_version: str
-    active_player: int
-    turn_number: str
-    turn_position: SyntheticTurnPosition
-    priority: SyntheticPriority
-
-    @classmethod
-    def from_wire(cls, value: object) -> SyntheticObservation:
-        obj = require_exact_keys(
-            value,
-            {
-                "schema_version",
-                "active_player",
-                "turn_number",
-                "turn_position",
-                "priority",
-            },
-        )
-        schema_raw = obj["schema_version"]
-        if not isinstance(schema_raw, str):
-            raise WireError("decode.invalid_json", "unsupported synthetic observation schema")
-        if schema_raw != SYNTHETIC_OBSERVATION_SCHEMA_V1:
-            raise WireError(
-                "semantic.synthetic_m3_observation", "unsupported synthetic observation schema"
-            )
-        active_player = parse_uint(obj["active_player"])
-        turn_number_raw = obj["turn_number"]
-        # turn_number is a canonical u64 decimal string on the wire. A
-        # non-string is a shape failure; a string that is not canonical
-        # u64 decimal is a synthetic observation identity failure.
-        if not isinstance(turn_number_raw, str):
-            raise WireError("decode.invalid_json", "turn number must be a string")
-        try:
-            parse_uint(turn_number_raw)
-        except WireError as exc:
-            raise WireError("semantic.synthetic_m3_observation", exc.message) from exc
-        result = cls(
-            SYNTHETIC_OBSERVATION_SCHEMA_V1,
-            active_player,
-            str(turn_number_raw),
-            SyntheticTurnPosition.from_wire(obj["turn_position"]),
-            SyntheticPriority.from_wire(obj["priority"]),
-        )
-        result.validate()
-        return result
-
-    def validate(self) -> None:
-        if not isinstance(self.schema_version, str):
-            raise WireError("decode.invalid_json", "unsupported synthetic observation schema")
-        if self.schema_version != SYNTHETIC_OBSERVATION_SCHEMA_V1:
-            raise WireError(
-                "semantic.synthetic_m3_observation", "unsupported synthetic observation schema"
-            )
-        uint_wire(self.active_player)
-        if not isinstance(self.turn_number, str):
-            raise WireError("decode.invalid_json", "turn number must be a string")
-        try:
-            parse_uint(self.turn_number)
-        except WireError as exc:
-            raise WireError("semantic.synthetic_m3_observation", exc.message) from exc
-        self.turn_position.to_wire()
-        self.priority.to_wire()
-
-    def to_wire(self) -> dict[str, object]:
-        self.validate()
-        return {
-            "active_player": uint_wire(self.active_player),
-            "priority": self.priority.to_wire(),
-            "schema_version": SYNTHETIC_OBSERVATION_SCHEMA_V1,
-            "turn_number": str(self.turn_number),
-            "turn_position": self.turn_position.to_wire(),
-        }

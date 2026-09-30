@@ -13,14 +13,6 @@
       "path": "episode-status-truncated-external-stop.v1.json"
     },
     {
-      "contract": "observed-event-envelope.v1",
-      "path": "observed-event-tapped.v1.json"
-    },
-    {
-      "contract": "observed-event-envelope.v1",
-      "path": "observed-event-ceased.v1.json"
-    },
-    {
       "contract": "player-decision-request.v1",
       "path": "player-decision-request.v1.json"
     },
@@ -65,104 +57,8 @@
       "path": "information-state-envelope.v2.json"
     },
     {
-      "contract": "observed-event-envelope.v2",
-      "path": "observed-event-envelope.v2.json"
-    },
-    {
-      "contract": "observed-event-envelope.v2",
-      "path": "observed-event-v2-object-moved.json"
-    },
-    {
-      "contract": "observed-event-envelope.v2",
-      "path": "observed-event-v2-object-ceased.json"
-    },
-    {
-      "contract": "observed-event-envelope.v2",
-      "path": "observed-event-v2-life-changed.json"
-    },
-    {
-      "contract": "observed-event-envelope.v2",
-      "path": "observed-event-v2-decision-available.json"
-    },
-    {
-      "contract": "observed-event-envelope.v2",
-      "path": "observed-event-v2-random-outcome.json"
-    },
-    {
-      "contract": "observed-event-envelope.v2",
-      "path": "observed-event-v2-public-outcome.json"
-    },
-    {
-      "contract": "player-step.v2",
-      "path": "player-step.v2.json"
-    },
-    {
-      "contract": "player-step.v2",
-      "path": "player-step.v2-events-running.json"
-    },
-    {
-      "contract": "player-step.v2",
-      "path": "player-step.v2-terminal-events.json"
-    },
-    {
-      "contract": "player-step.v2",
-      "path": "player-step.v2-episode-closed-rejected.json"
-    },
-    {
       "contract": "observation-envelope.v1",
       "path": "observation-envelope.v1.json"
-    },
-    {
-      "contract": "information-state-envelope.v1",
-      "path": "information-state-envelope.v1.json"
-    },
-    {
-      "contract": "player-step.v1",
-      "path": "player-step.v1.json"
-    },
-    {
-      "contract": "player-step.v2",
-      "path": "player-step-v2-rejected.json"
-    },
-    {
-      "contract": "synthetic-m3-observation.v1",
-      "path": "synthetic-m3-observation-beginning-untap.json"
-    },
-    {
-      "contract": "synthetic-m3-observation.v1",
-      "path": "synthetic-m3-observation-precombat-main.json"
-    },
-    {
-      "contract": "synthetic-m3-observation.v1",
-      "path": "synthetic-m3-observation-held-by.json"
-    },
-    {
-      "contract": "magic-m3-observation.v1",
-      "path": "magic-m3-observation-null.json"
-    },
-    {
-      "contract": "magic-m3-observation.v1",
-      "path": "magic-m3-observation-stage-0.json"
-    },
-    {
-      "contract": "magic-m3-observation.v1",
-      "path": "magic-m3-observation-stage-1-p1.json"
-    },
-    {
-      "contract": "magic-m3-observation.v1",
-      "path": "magic-m3-observation-stage-1-p2.json"
-    },
-    {
-      "contract": "magic-combat-observation.v2",
-      "path": "magic-combat-observation.v2.json"
-    },
-    {
-      "contract": "magic-combat-observation.v3",
-      "path": "magic-combat-observation.v3.json"
-    },
-    {
-      "contract": "magic-combat-observation.v4",
-      "path": "magic-combat-observation.v4.json"
     },
     {
       "contract": "observation-envelope.v2",

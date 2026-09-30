@@ -18,24 +18,12 @@ WIRE_MAPPING = {
     "decision-response.v2": "decision-response.v2.schema.json",
     "decision-response.v3": "decision-response.v3.schema.json",
     "episode-status.v1": "episode-status.v1.schema.json",
-    "observed-event-envelope.v1": "observed-event-envelope.v1.schema.json",
     "observation-envelope.v1": "observation-envelope.v1.schema.json",
     "observation-envelope.v2": "observation-envelope.v2.schema.json",
-    "information-state-envelope.v1": "information-state-envelope.v1.schema.json",
-    "player-step.v1": "player-step.v1.schema.json",
     "information-state-envelope.v2": "information-state-envelope.v2.schema.json",
     "information-state-envelope.v3": "information-state-envelope.v3.schema.json",
-    "observed-event-envelope.v2": "observed-event-envelope.v2.schema.json",
-    "observed-event-envelope.v3": "observed-event-envelope.v3.schema.json",
     "observed-event-envelope.v4": "observed-event-envelope.v4.schema.json",
-    "player-step.v2": "player-step.v2.schema.json",
-    "player-step.v3": "player-step.v3.schema.json",
     "player-step.v4": "player-step.v4.schema.json",
-    "magic-m3-observation.v1": "magic-m3-observation.v1.schema.json",
-    "magic-combat-observation.v2": "magic-combat-observation.v2.schema.json",
-    "magic-combat-observation.v3": "magic-combat-observation.v3.schema.json",
-    "magic-combat-observation.v4": "magic-combat-observation.v4.schema.json",
-    "synthetic-m3-observation.v1": "synthetic-m3-observation.v1.schema.json",
     "magic-basic-land-observation.v1": "magic-basic-land-observation.v1.schema.json",
     "magic-shared-execution-observation.v1": "magic-shared-execution-observation.v1.schema.json",
     "replay-manifest.v8": "replay-manifest.v8.schema.json",
@@ -221,14 +209,6 @@ SCHEMA_NEGATIVE_CASES = [
         "schemas/negative/player-decision-request-v4-synthetic-wrong-candidate-intent.json",
     ),
     (
-        "observed-event-envelope.v3.schema.json",
-        "schemas/negative/observed-event-v3-object-moved-missing-entry-fields.json",
-    ),
-    (
-        "observed-event-envelope.v3.schema.json",
-        "schemas/negative/observed-event-v3-unknown-kind.json",
-    ),
-    (
         "replay-manifest.v8.schema.json#content-contract-child",
         "schemas/negative/replay-v7-content-child-unknown-field.json",
     ),
@@ -322,42 +302,6 @@ SCHEMA_POSITIVE_CASES = [
     (
         "player-decision-request.v3.schema.json",
         "schemas/examples/player-decision-request-v3-ordering.json",
-    ),
-    (
-        "observed-event-envelope.v3.schema.json",
-        "schemas/examples/observed-event-v3-object-moved.json",
-    ),
-    (
-        "observed-event-envelope.v3.schema.json",
-        "schemas/examples/observed-event-v3-entry-back-tapped.json",
-    ),
-    (
-        "observed-event-envelope.v3.schema.json",
-        "schemas/examples/observed-event-v3-mana-pool-changed.json",
-    ),
-    (
-        "observed-event-envelope.v3.schema.json",
-        "schemas/examples/observed-event-v3-counters-changed.json",
-    ),
-    (
-        "observed-event-envelope.v3.schema.json",
-        "schemas/examples/observed-event-v3-attachment-changed.json",
-    ),
-    (
-        "observed-event-envelope.v3.schema.json",
-        "schemas/examples/observed-event-v3-face-changed.json",
-    ),
-    (
-        "player-step.v3.schema.json",
-        "schemas/examples/player-step-v3.json",
-    ),
-    (
-        "player-step.v3.schema.json",
-        "schemas/examples/player-step-v3-event-next-decision.json",
-    ),
-    (
-        "player-step.v3.schema.json",
-        "schemas/examples/player-step-v3-rejected-no-events.json",
     ),
     (
         "magic-basic-land-observation.v1.schema.json",

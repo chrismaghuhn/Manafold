@@ -4,7 +4,6 @@
   "additionalProperties": false,
   "properties": {
     "catalog_version": {"pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$", "type": "string"},
-    "observed_event_kinds": {"items": {"minLength": 1, "type": "string"}, "minItems": 1, "type": "array", "uniqueItems": true},
     "player_results": {"items": {"items": {"minLength": 1, "type": "string"}, "maxItems": 3, "minItems": 3, "type": "array"}, "minItems": 1, "type": "array"},
     "schema_ids": {"additionalProperties": {"minLength": 1, "type": "string"}, "minProperties": 1, "type": "object"},
     "schema_version": {"const": "contract-vocabulary-catalog.v1"},
@@ -14,7 +13,7 @@
     "truncation_reasons": {"items": {"items": {"minLength": 1, "type": "string"}, "maxItems": 3, "minItems": 3, "type": "array"}, "minItems": 1, "type": "array"},
     "zone_kinds": {"items": {"items": {"minLength": 1, "type": "string"}, "maxItems": 3, "minItems": 3, "type": "array"}, "minItems": 1, "type": "array"}
   },
-  "required": ["schema_version", "catalog_version", "scope", "terminal_reasons", "truncation_reasons", "player_results", "zone_kinds", "observed_event_kinds", "schema_ids", "stable_wire_error_codes"],
+  "required": ["schema_version", "catalog_version", "scope", "terminal_reasons", "truncation_reasons", "player_results", "zone_kinds", "schema_ids", "stable_wire_error_codes"],
   "title": "Contract Vocabulary Catalog v1",
   "type": "object"
 }

@@ -6,11 +6,9 @@ use mtgml_decision::{
 };
 use mtgml_model::EpisodeStatus;
 use mtgml_observation::{
-    InformationStateEnvelope, MagicBasicLandObservationV1, MagicObservation, MagicObservationV2,
-    MagicObservationV3, MagicObservationV4, MagicSharedExecutionObservationV1, ObservationEnvelope,
-    ObservationEnvelopeV2, ObservedEventEnvelope, ObservedEventEnvelopeV2, ObservedEventEnvelopeV3,
-    ObservedEventEnvelopeV4, PlayerInformationStateV2, PlayerInformationStateV3, PlayerStep,
-    PlayerStepV2, PlayerStepV3, PlayerStepV4, SyntheticObservation,
+    MagicBasicLandObservationV1, MagicSharedExecutionObservationV1, ObservationEnvelope,
+    ObservationEnvelopeV2, ObservedEventEnvelopeV4, PlayerInformationStateV2,
+    PlayerInformationStateV3, PlayerStepV4,
 };
 use mtgml_replay::{AuthoritativeReplayV8, ReplayManifestV8, ReplayStepV8};
 use serde::Deserialize;
@@ -106,38 +104,20 @@ fn decode_named(contract: &str, bytes: &[u8]) -> Result<(), WireError> {
         "decision-response.v3" => decode_canonical::<DecisionResponseV3>(bytes).map(drop),
         "observation-envelope.v1" => decode_canonical::<ObservationEnvelope>(bytes).map(drop),
         "observation-envelope.v2" => decode_canonical::<ObservationEnvelopeV2>(bytes).map(drop),
-        "information-state-envelope.v1" => {
-            decode_canonical::<InformationStateEnvelope>(bytes).map(drop)
-        }
-        "observed-event-envelope.v1" => decode_canonical::<ObservedEventEnvelope>(bytes).map(drop),
-        "player-step.v1" => decode_canonical::<PlayerStep>(bytes).map(drop),
         "information-state-envelope.v2" => {
             decode_canonical::<PlayerInformationStateV2>(bytes).map(drop)
         }
         "information-state-envelope.v3" => {
             decode_canonical::<PlayerInformationStateV3>(bytes).map(drop)
         }
-        "observed-event-envelope.v2" => {
-            decode_canonical::<ObservedEventEnvelopeV2>(bytes).map(drop)
-        }
         "observed-event-envelope.v4" => {
             decode_canonical::<ObservedEventEnvelopeV4>(bytes).map(drop)
         }
-        "player-step.v2" => decode_canonical::<PlayerStepV2>(bytes).map(drop),
-        "observed-event-envelope.v3" => {
-            decode_canonical::<ObservedEventEnvelopeV3>(bytes).map(drop)
-        }
-        "player-step.v3" => decode_canonical::<PlayerStepV3>(bytes).map(drop),
         "player-step.v4" => decode_canonical::<PlayerStepV4>(bytes).map(drop),
         "episode-status.v1" => decode_canonical::<EpisodeStatus>(bytes).map(drop),
         "replay-manifest.v8" => decode_canonical::<ReplayManifestV8>(bytes).map(drop),
         "replay-step.v8" => decode_canonical::<ReplayStepV8>(bytes).map(drop),
         "authoritative-replay.v8" => decode_canonical::<AuthoritativeReplayV8>(bytes).map(drop),
-        "synthetic-m3-observation.v1" => decode_canonical::<SyntheticObservation>(bytes).map(drop),
-        "magic-m3-observation.v1" => decode_canonical::<MagicObservation>(bytes).map(drop),
-        "magic-combat-observation.v2" => decode_canonical::<MagicObservationV2>(bytes).map(drop),
-        "magic-combat-observation.v3" => decode_canonical::<MagicObservationV3>(bytes).map(drop),
-        "magic-combat-observation.v4" => decode_canonical::<MagicObservationV4>(bytes).map(drop),
         "magic-basic-land-observation.v1" => {
             decode_canonical::<MagicBasicLandObservationV1>(bytes).map(drop)
         }

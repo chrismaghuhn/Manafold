@@ -1,11 +1,7 @@
 //! Passive public DTO for the synthetic turn and priority observation payload.
 
-use mtgml_model::{parse_canonical_u64, PlayerId};
+use mtgml_model::PlayerId;
 use serde::{Deserialize, Deserializer, Serialize};
-
-use crate::error::ObservationValidationError;
-
-pub const SYNTHETIC_OBSERVATION_SCHEMA_V1: &str = "synthetic-m3-observation.v1";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -211,26 +207,5 @@ impl<'de> Deserialize<'de> for SyntheticPriority {
         }
 
         deserializer.deserialize_map(PriorityVisitor)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct SyntheticObservation {
-    pub schema_version: String,
-    pub active_player: PlayerId,
-    pub turn_number: String,
-    pub turn_position: SyntheticTurnPosition,
-    pub priority: SyntheticPriority,
-}
-
-impl SyntheticObservation {
-    pub fn validate(&self) -> Result<(), ObservationValidationError> {
-        if self.schema_version != SYNTHETIC_OBSERVATION_SCHEMA_V1 {
-            return Err(ObservationValidationError::ObservationPayload);
-        }
-        parse_canonical_u64(&self.turn_number)
-            .map_err(|_| ObservationValidationError::ObservationPayload)?;
-        Ok(())
     }
 }

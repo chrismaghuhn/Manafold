@@ -3,18 +3,13 @@ import hashlib
 from dataclasses import dataclass
 from itertools import pairwise
 
-from ._events_v2 import (
-    OBSERVED_EVENT_SCHEMA_V2,
-    ObservedEventEnvelopeV2,
-    ObservedEventV2,
-)
-from ._events_v3 import ObservedEventEnvelopeV3, ObservedEventV3
+from ._events_v3 import ObservedEventV3
 from ._events_v4 import (
     OBSERVED_EVENT_SCHEMA_V4,
     ObservedEventEnvelopeV4,
     ObservedEventV4,
 )
-from ._generated_contract_vocab import OBSERVED_EVENT_KINDS, ZONE_KINDS
+from ._generated_contract_vocab import ZONE_KINDS
 from ._information_v2 import (
     INFORMATION_STATE_SCHEMA_V2,
     InformationStateDigestInputV2,
@@ -35,58 +30,26 @@ from ._magic_basic_land_observation_v1 import (
     MagicBasicLandObservationV1,
     ManaPoolObservationV1,
 )
-from ._magic_combat_observation import (
-    MAGIC_OBSERVATION_SCHEMA_V2,
-    MagicCombatBlockerAssignmentV2,
-    MagicCombatParticipationV2,
-    MagicObservationV2,
-)
-from ._magic_combat_observation_v3 import (
-    MAGIC_OBSERVATION_SCHEMA_V3,
-    MagicCombatBlockerAssignmentV3,
-    MagicCombatParticipationV3,
-    MagicObservationV3,
-)
-from ._magic_combat_observation_v4 import (
-    MAGIC_OBSERVATION_SCHEMA_V4,
-    MagicBlockedStatusV4,
-    MagicCombatBlockerAssignmentV4,
-    MagicCombatParticipationV4,
-    MagicMarkedDamageV4,
-    MagicObservationV4,
-    MagicPlayerLifeV4,
-)
 from ._magic_observation import (
-    MAGIC_OBSERVATION_SCHEMA_V1,
     MagicCompletedOrder,
-    MagicObservation,
     MagicPendingSbaOrdering,
 )
 from ._observation_v1 import (
-    INFORMATION_STATE_SCHEMA,
     OBSERVATION_SCHEMA,
-    PLAYER_STEP_SCHEMA,
-    InformationStateEnvelope,
     ObservationEnvelope,
-    PlayerStep,
     observation_digest_from_payload,
 )
 from ._player_step_v2 import (
-    PLAYER_STEP_SCHEMA_V2,
     PLAYER_SUBMISSION_CODES,
     PlayerStepSubmissionV1,
-    PlayerStepV2,
 )
-from ._player_step_v3 import PLAYER_STEP_SCHEMA_V3, PlayerStepV3
 from ._player_step_v4 import PLAYER_STEP_SCHEMA_V4, PlayerStepV4
 from ._synthetic_observation import (
     SYNTHETIC_BEGINNING_STEPS,
     SYNTHETIC_COMBAT_STEPS,
     SYNTHETIC_ENDING_STEPS,
-    SYNTHETIC_OBSERVATION_SCHEMA_V1,
     SYNTHETIC_PRIORITY_KINDS,
     SYNTHETIC_TURN_KINDS,
-    SyntheticObservation,
     SyntheticPriority,
     SyntheticTurnPosition,
 )
@@ -102,7 +65,6 @@ from .canonical import (
 from .decision import PlayerDecisionRequest, PlayerDecisionRequestV2
 from .episode import EpisodeStatus
 from .errors import WireError
-from .events import ObservedEventEnvelope
 from .magic_shared_execution_observation_v1 import (
     MAGIC_SHARED_EXECUTION_OBSERVATION_SCHEMA_V1,
     ActivatedAbilityStackItemV1,
@@ -127,29 +89,18 @@ from .observation_v3 import (
 
 __all__ = [
     "INFORMATION_STATE_DIGEST_INPUT_SCHEMA_V3",
-    "INFORMATION_STATE_SCHEMA",
     "INFORMATION_STATE_SCHEMA_V2",
     "INFORMATION_STATE_SCHEMA_V3",
     "MAGIC_BASIC_LAND_OBSERVATION_SCHEMA_V1",
-    "MAGIC_OBSERVATION_SCHEMA_V1",
-    "MAGIC_OBSERVATION_SCHEMA_V2",
-    "MAGIC_OBSERVATION_SCHEMA_V3",
-    "MAGIC_OBSERVATION_SCHEMA_V4",
     "MAGIC_SHARED_EXECUTION_OBSERVATION_SCHEMA_V1",
     "OBSERVATION_SCHEMA",
     "OBSERVATION_SCHEMA_V2",
-    "OBSERVED_EVENT_KINDS",
-    "OBSERVED_EVENT_SCHEMA_V2",
     "OBSERVED_EVENT_SCHEMA_V4",
-    "PLAYER_STEP_SCHEMA",
-    "PLAYER_STEP_SCHEMA_V2",
-    "PLAYER_STEP_SCHEMA_V3",
     "PLAYER_STEP_SCHEMA_V4",
     "PLAYER_SUBMISSION_CODES",
     "SYNTHETIC_BEGINNING_STEPS",
     "SYNTHETIC_COMBAT_STEPS",
     "SYNTHETIC_ENDING_STEPS",
-    "SYNTHETIC_OBSERVATION_SCHEMA_V1",
     "SYNTHETIC_PRIORITY_KINDS",
     "SYNTHETIC_TURN_KINDS",
     "ZONE_KINDS",
@@ -161,32 +112,14 @@ __all__ = [
     "GrantKeywordV1",
     "InformationStateDigestInputV2",
     "InformationStateDigestInputV3",
-    "InformationStateEnvelope",
     "MagicBasicLandObservationV1",
-    "MagicBlockedStatusV4",
-    "MagicCombatBlockerAssignmentV2",
-    "MagicCombatBlockerAssignmentV3",
-    "MagicCombatBlockerAssignmentV4",
-    "MagicCombatParticipationV2",
-    "MagicCombatParticipationV3",
-    "MagicCombatParticipationV4",
     "MagicCompletedOrder",
-    "MagicMarkedDamageV4",
-    "MagicObservation",
-    "MagicObservationV2",
-    "MagicObservationV3",
-    "MagicObservationV4",
     "MagicPendingSbaOrdering",
-    "MagicPlayerLifeV4",
     "MagicSharedExecutionObservationV1",
     "ManaPoolObservationV1",
     "ObservationEnvelope",
     "ObservationEnvelopeV2",
-    "ObservedEventEnvelope",
-    "ObservedEventEnvelopeV2",
-    "ObservedEventEnvelopeV3",
     "ObservedEventEnvelopeV4",
-    "ObservedEventV2",
     "ObservedEventV3",
     "ObservedEventV4",
     "PlayerDecisionRequest",
@@ -198,16 +131,12 @@ __all__ = [
     "PlayerKnownLocationFactV1",
     "PlayerKnownLocationV1",
     "PlayerKnownObjectV1",
-    "PlayerStep",
     "PlayerStepSubmissionV1",
-    "PlayerStepV2",
-    "PlayerStepV3",
     "PlayerStepV4",
     "PowerToughnessDeltaV1",
     "PublicModeV1",
     "PublicTemporaryEffectV1",
     "SpellStackItemV1",
-    "SyntheticObservation",
     "SyntheticPriority",
     "SyntheticTurnPosition",
     "TriggeredAbilityStackItemV1",

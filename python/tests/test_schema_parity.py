@@ -23,35 +23,6 @@ class SchemaParityTests(unittest.TestCase):
     def _schema_inventory(self) -> dict[str, object]:
         return json.loads((ROOT / "schemas" / "README.json").read_text(encoding="utf-8"))
 
-    def test_v4_combat_schema_rejects_multiple_blocker_scope(self) -> None:
-        if jsonschema is None:
-            self.skipTest("jsonschema is unavailable")
-        schema = json.loads(
-            (ROOT / "schemas" / "magic-combat-observation.v4.schema.json").read_text(
-                encoding="utf-8"
-            )
-        )
-        observation = json.loads(
-            (ROOT / "wire" / "golden" / "magic-combat-observation.v4.json").read_text(
-                encoding="utf-8"
-            )
-        )
-        validator = jsonschema.Draft202012Validator(schema)
-        validator.validate(observation)
-
-        observation["combat"]["attackers"] = ["3", "5"]
-        observation["combat"]["blockers"] = [
-            {"attacker": "3", "status": "blocked", "blocker": "4"},
-            {"attacker": "5", "status": "blocked", "blocker": "6"},
-        ]
-        self.assertTrue(list(validator.iter_errors(observation)))
-
-        observation["combat"]["blockers"] = [
-            {"attacker": "3", "status": "blocked", "blocker": None},
-            {"attacker": "5", "status": "blocked", "blocker": None},
-        ]
-        self.assertTrue(list(validator.iter_errors(observation)))
-
     def test_schema_readme_matches_wire_mapping(self) -> None:
         inventory = self._schema_inventory()
         validate_schemas.validate_wire_schema_inventory(inventory)
@@ -129,28 +100,6 @@ class SchemaParityTests(unittest.TestCase):
             instance = json.loads((directory / case["path"]).read_text(encoding="utf-8"))
             with self.subTest(case=case["path"]):
                 jsonschema.Draft202012Validator(schema).validate(instance)
-
-    def test_observed_event_schema_contains_all_seven_closed_variants(self) -> None:
-        schema = json.loads(
-            (ROOT / "schemas" / "observed-event-envelope.v1.schema.json").read_text(
-                encoding="utf-8"
-            )
-        )
-        variants = {
-            entry["properties"]["kind"]["const"] for entry in schema["properties"]["event"]["oneOf"]
-        }
-        self.assertEqual(
-            variants,
-            {
-                "object_moved",
-                "object_ceased_to_exist",
-                "life_changed",
-                "object_tapped",
-                "decision_available",
-                "random_outcome_visible",
-                "public_outcome",
-            },
-        )
 
     def test_episode_reasons_are_schema_enums_not_open_strings(self) -> None:
         schema = json.loads(

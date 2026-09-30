@@ -3,12 +3,9 @@ use crate::contract::WireContract;
 use crate::error::WireError;
 use mtgml_model::InformationStateDigestV3;
 use mtgml_observation::{
-    InformationStateDigestInputV2, InformationStateDigestInputV3, InformationStateEnvelope,
-    MagicBasicLandObservationV1, MagicObservation, MagicObservationV2, MagicObservationV3,
-    MagicObservationV4, MagicSharedExecutionObservationV1, ObservationEnvelope,
-    ObservationEnvelopeV2, ObservedEventEnvelope, ObservedEventEnvelopeV2, ObservedEventEnvelopeV3,
-    ObservedEventEnvelopeV4, PlayerInformationStateV2, PlayerInformationStateV3, PlayerStep,
-    PlayerStepV2, PlayerStepV3, PlayerStepV4, SyntheticObservation,
+    InformationStateDigestInputV2, InformationStateDigestInputV3, MagicBasicLandObservationV1,
+    MagicSharedExecutionObservationV1, ObservationEnvelope, ObservationEnvelopeV2,
+    ObservedEventEnvelopeV4, PlayerInformationStateV2, PlayerInformationStateV3, PlayerStepV4,
 };
 
 impl WireContract for ObservationEnvelope {
@@ -22,42 +19,6 @@ impl WireContract for ObservationEnvelopeV2 {
     fn validate_wire(&self) -> Result<(), WireError> {
         self.validate()
             .map_err(|error| WireError::new("semantic.observation", error.to_string()))
-    }
-}
-
-impl WireContract for SyntheticObservation {
-    fn validate_wire(&self) -> Result<(), WireError> {
-        self.validate()
-            .map_err(|error| WireError::new("semantic.synthetic_m3_observation", error.to_string()))
-    }
-}
-
-impl WireContract for MagicObservation {
-    fn validate_wire(&self) -> Result<(), WireError> {
-        self.validate()
-            .map_err(|error| WireError::new("semantic.magic_m3_observation", error.to_string()))
-    }
-}
-
-impl WireContract for MagicObservationV2 {
-    fn validate_wire(&self) -> Result<(), WireError> {
-        self.validate()
-            .map_err(|error| WireError::new("semantic.magic_combat_observation", error.to_string()))
-    }
-}
-
-impl WireContract for MagicObservationV3 {
-    fn validate_wire(&self) -> Result<(), WireError> {
-        self.validate()
-            .map_err(|error| WireError::new("semantic.magic_combat_observation", error.to_string()))
-    }
-}
-
-impl WireContract for MagicObservationV4 {
-    fn validate_wire(&self) -> Result<(), WireError> {
-        self.validate().map_err(|error| {
-            WireError::new("semantic.magic_combat_observation_v4", error.to_string())
-        })
     }
 }
 
@@ -76,13 +37,6 @@ impl WireContract for MagicSharedExecutionObservationV1 {
     fn validate_wire(&self) -> Result<(), WireError> {
         self.validate()
             .map_err(|error| WireError::new("semantic.observation", error.to_string()))
-    }
-}
-
-impl WireContract for InformationStateEnvelope {
-    fn validate_wire(&self) -> Result<(), WireError> {
-        self.validate()
-            .map_err(|error| WireError::new("semantic.information_state", error.to_string()))
     }
 }
 
@@ -169,40 +123,10 @@ fn verify_information_state_digest_v2(state: &PlayerInformationStateV2) -> Resul
     }
 }
 
-impl WireContract for ObservedEventEnvelopeV2 {
-    fn validate_wire(&self) -> Result<(), WireError> {
-        self.validate()
-            .map_err(|error| WireError::new("semantic.observed_event", error.to_string()))
-    }
-}
-
-impl WireContract for ObservedEventEnvelopeV3 {
-    fn validate_wire(&self) -> Result<(), WireError> {
-        self.validate()
-            .map_err(|error| WireError::new("semantic.observed_event_v3", error.to_string()))
-    }
-}
-
 impl WireContract for ObservedEventEnvelopeV4 {
     fn validate_wire(&self) -> Result<(), WireError> {
         self.validate()
             .map_err(|error| WireError::new("semantic.observed_event", error.to_string()))
-    }
-}
-
-impl WireContract for PlayerStepV2 {
-    fn validate_wire(&self) -> Result<(), WireError> {
-        self.validate()
-            .map_err(|error| WireError::new("semantic.player_step", error.to_string()))?;
-        verify_information_state_digest_v2(&self.information_state)
-    }
-}
-
-impl WireContract for PlayerStepV3 {
-    fn validate_wire(&self) -> Result<(), WireError> {
-        self.validate()
-            .map_err(|error| WireError::new("semantic.player_step_v3", error.to_string()))?;
-        verify_information_state_digest_v2(&self.information_state)
     }
 }
 
@@ -211,20 +135,6 @@ impl WireContract for PlayerStepV4 {
         self.validate()
             .map_err(|error| WireError::new("semantic.player_step", error.to_string()))?;
         verify_information_state_digest_v3(&self.information_state)
-    }
-}
-
-impl WireContract for ObservedEventEnvelope {
-    fn validate_wire(&self) -> Result<(), WireError> {
-        self.validate()
-            .map_err(|error| WireError::new("semantic.observed_event", error.to_string()))
-    }
-}
-
-impl WireContract for PlayerStep {
-    fn validate_wire(&self) -> Result<(), WireError> {
-        self.validate()
-            .map_err(|error| WireError::new("semantic.player_step", error.to_string()))
     }
 }
 

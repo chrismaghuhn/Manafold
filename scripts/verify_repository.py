@@ -112,8 +112,6 @@ def main() -> None:
         "crates/mtgml-wire/src/lib.rs",
         "crates/mtgml-state/src/lib.rs",
         "crates/mtgml-environment/src/lib.rs",
-        "schemas/observed-event-envelope.v1.schema.json",
-        "schemas/player-step.v1.schema.json",
         "schemas/episode-status.v1.schema.json",
         "schemas/capability-registry.v1.schema.json",
         "schemas/card-definition-manifest.v1.schema.json",
@@ -299,22 +297,6 @@ def main() -> None:
             fail(f"maintainer justfile lacks {recipe}")
     if (ROOT / ".github/workflows/ci.yml").exists():
         fail("legacy monolithic CI workflow must not coexist with V0.2.2 split profiles")
-
-    # Issue #62: the event-kind authority moved from lib.rs to
-    # observed_event.rs (structural consolidation); same evidence, new path.
-    events_rust = (ROOT / "crates/mtgml-observation/src/observed_event.rs").read_text(
-        encoding="utf-8"
-    )
-    events_python = (ROOT / "python/src/mtgml/events.py").read_text(encoding="utf-8")
-    events_schema = (ROOT / "schemas/observed-event-envelope.v1.schema.json").read_text(
-        encoding="utf-8"
-    )
-    for token in ("ObjectCeasedToExist", "ObjectTapped"):
-        if token not in events_rust:
-            fail(f"Rust observed events lack {token}")
-    for token in ("object_ceased_to_exist", "object_tapped"):
-        if token not in events_python or token not in events_schema:
-            fail(f"Python/schema observed events lack {token}")
 
     player_python = (ROOT / "python/src/mtgml/player_client.py").read_text(encoding="utf-8")
     for token in ("information_state", "PlayerStep", "visible_decision", "submit"):

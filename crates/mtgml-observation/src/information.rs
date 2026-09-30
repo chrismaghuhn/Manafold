@@ -1,42 +1,13 @@
 //! Ownership: information-state envelopes (V1) and the V2 player information
 //! state including its existing validation/digest-input construction.
 
-use mtgml_model::{
-    InformationStateDigest, InformationStateDigestV2, PlayerId, StateRevision, VisibleSequence,
-};
+use mtgml_model::{InformationStateDigestV2, PlayerId, StateRevision, VisibleSequence};
 use serde::{Deserialize, Serialize};
 
 use crate::error::ObservationValidationError;
 use crate::knowledge::{provenance_sequence, PlayerKnownObjectV1};
 use crate::observation::ObservationEnvelope;
-use crate::{INFORMATION_STATE_SCHEMA, INFORMATION_STATE_SCHEMA_V2};
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct InformationStateEnvelope {
-    pub schema_version: String,
-    pub perspective: PlayerId,
-    pub state_revision: StateRevision,
-    pub current_observation: ObservationEnvelope,
-    pub public_history_length: u64,
-    pub private_history_length: u64,
-    pub digest: InformationStateDigest,
-}
-
-impl InformationStateEnvelope {
-    pub fn validate(&self) -> Result<(), ObservationValidationError> {
-        if self.schema_version != INFORMATION_STATE_SCHEMA {
-            return Err(ObservationValidationError::SchemaOrCodec);
-        }
-        self.current_observation.validate()?;
-        if self.current_observation.perspective != self.perspective
-            || self.current_observation.state_revision != self.state_revision
-        {
-            return Err(ObservationValidationError::InformationStateMismatch);
-        }
-        Ok(())
-    }
-}
+use crate::INFORMATION_STATE_SCHEMA_V2;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
