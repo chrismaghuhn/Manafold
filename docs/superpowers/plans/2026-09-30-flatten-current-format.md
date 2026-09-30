@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Status:** APPROVED by the owner, 2026-09-30; being executed inline on branch `chore/flatten-current-format`.
+
 **Goal:** Dissolve the internal layering of the current format into one flat state, one digest encoder, one event enum, one operation enum and one information-state projection, without changing a single byte of any remaining fixture or of real games.
 
 **Architecture:**
