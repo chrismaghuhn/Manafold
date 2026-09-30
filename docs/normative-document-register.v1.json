@@ -1171,6 +1171,13 @@
     {
       "change_process": "process-pr",
       "owner_role": "maintainer",
+      "path": "docs/superpowers/plans/2026-09-30-one-runtime-cleanup.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
       "path": "docs/superpowers/plans/2026-09-30-per-step-digest-cost.md",
       "role": "process",
       "stability": "provisional"
