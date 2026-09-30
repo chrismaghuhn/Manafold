@@ -359,22 +359,12 @@ def main() -> None:
     env_prod = [p for p in sorted(env_src.glob("*.rs")) if p.name != "tests.rs"]
     env_rust = "\n".join(p.read_text(encoding="utf-8") for p in env_prod)
 
-    # Issue #62: test modules may be split into lexical include! fragments
-    # under src/tests/; evidence tokens span the whole module text.
-    def _test_module_text(src_dir):
-        parts = [(src_dir / "tests.rs").read_text(encoding="utf-8")]
-        fragment_dir = src_dir / "tests"
-        if fragment_dir.is_dir():
-            parts.extend(p.read_text(encoding="utf-8") for p in sorted(fragment_dir.glob("*.rs")))
-        return "\n".join(parts)
-
     if "Arc<Mutex" not in env_rust or re.search(r"fn\s+bind_player\s*\(\s*&self", env_rust) is None:
         fail("player endpoint handles still borrow the controller exclusively")
 
     state_src = ROOT / "crates/mtgml-state/src"
     production_files = [p for p in sorted(state_src.glob("*.rs")) if p.name != "tests.rs"]
     state_rust = "\n".join(p.read_text(encoding="utf-8") for p in production_files)
-    state_tests = _test_module_text(state_src)
     for token in (
         "validate_engine_state",
         "EngineStateParts",
