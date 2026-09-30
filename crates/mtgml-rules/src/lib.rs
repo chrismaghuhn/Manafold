@@ -2,7 +2,6 @@
 //! incarnation, characteristic queries, and authoritative V3 events.
 
 mod basic_land;
-mod basic_land_v4;
 mod characteristic_query;
 mod errors;
 mod events;
@@ -17,14 +16,10 @@ mod zone_incarnation;
 mod tests;
 
 pub use basic_land::{
-    derive_basic_land_candidates, AuthoritativeRuleEventKindV2, AuthoritativeRuleEventV2,
-    BasicLandCandidateError, BasicLandFaceV1, BasicLandTransitionError, MagicActionRequestV1,
-    SelectedSuccessorDecisionV1, SuccessorObservationPolicyV1,
-};
-pub use basic_land_v4::{
     derive_basic_land_candidates_v4, execute_basic_land_response_v4, install_basic_land_request_v4,
-    selected_basic_land_action_v4, validate_basic_land_pending_request_v4,
-    BasicLandTransitionProductV4,
+    selected_basic_land_action_v4, validate_basic_land_pending_request_v4, BasicLandCandidateError,
+    BasicLandTransitionError, BasicLandTransitionProductV4, MagicActionRequestV1,
+    SelectedSuccessorDecisionV1,
 };
 pub(crate) use characteristic_query::{S1QueryAuthority, S1QueryError};
 pub(crate) use errors::KernelExecutionError;

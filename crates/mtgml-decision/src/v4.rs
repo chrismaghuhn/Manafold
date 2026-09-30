@@ -1319,6 +1319,37 @@ impl PlayerDecisionRequestV4 {
 pub struct CandidateOrderingV3;
 
 impl CandidateOrderingV3 {
+    /// Orders trusted candidates by their public intent alone and assigns
+    /// dense request-local ids. Two candidates with one public key fail
+    /// closed, whatever their trusted bindings.
+    pub fn assign_dense(
+        candidates: Vec<(CandidateIntentV4, EngineCandidateBindingV4)>,
+    ) -> Result<Vec<AuthoritativeCandidateV4>, DecisionValidationError> {
+        crate::ordering::validate_candidate_capacity(candidates.len())?;
+        let mut candidates = candidates;
+        candidates.sort_by(|left, right| left.0.compare(&right.0));
+        if candidates
+            .windows(2)
+            .any(|pair| pair[0].0.compare(&pair[1].0) == Ordering::Equal)
+        {
+            return Err(DecisionValidationError::DuplicateOrderingKey);
+        }
+        candidates
+            .into_iter()
+            .enumerate()
+            .map(|(index, (visible_intent, trusted_binding))| {
+                Ok(AuthoritativeCandidateV4 {
+                    candidate_id: CandidateIdV1(
+                        u32::try_from(index)
+                            .map_err(|_| DecisionValidationError::CandidateCapacityExceeded)?,
+                    ),
+                    visible_intent,
+                    trusted_binding,
+                })
+            })
+            .collect()
+    }
+
     pub fn validate_public(
         candidates: &[VisibleCandidateV4],
     ) -> Result<(), DecisionValidationError> {
@@ -1347,6 +1378,187 @@ impl CandidateOrderingV3 {
 mod tests {
     use super::*;
     use serde_json::Value;
+
+    fn assign(
+        pairs: Vec<(CandidateIntentV4, EngineCandidateBindingV4)>,
+    ) -> Result<Vec<AuthoritativeCandidateV4>, DecisionValidationError> {
+        CandidateOrderingV3::assign_dense(pairs)
+    }
+
+    #[test]
+    fn assign_dense_orders_pass_then_play_land_then_cast() {
+        let assigned = assign(vec![
+            (
+                CandidateIntentV4::CastSpell {
+                    object: OpaqueObjectId(4),
+                },
+                EngineCandidateBindingV4::CastSpell {
+                    object: GameObjectId(40),
+                },
+            ),
+            (
+                CandidateIntentV4::PlayLand {
+                    object: OpaqueObjectId(9),
+                },
+                EngineCandidateBindingV4::PlayLand {
+                    object: GameObjectId(90),
+                },
+            ),
+            (
+                CandidateIntentV4::PassPriority,
+                EngineCandidateBindingV4::PassPriority,
+            ),
+        ])
+        .unwrap();
+        assert_eq!(
+            assigned
+                .iter()
+                .map(|candidate| candidate.candidate_id.0)
+                .collect::<Vec<_>>(),
+            vec![0, 1, 2]
+        );
+        assert_eq!(assigned[0].visible_intent, CandidateIntentV4::PassPriority);
+        assert!(matches!(
+            assigned[1].visible_intent,
+            CandidateIntentV4::PlayLand { .. }
+        ));
+        assert!(matches!(
+            assigned[2].visible_intent,
+            CandidateIntentV4::CastSpell { .. }
+        ));
+    }
+
+    #[test]
+    fn assign_dense_orders_play_lands_by_opaque_identity_only() {
+        let assigned = assign(vec![
+            (
+                CandidateIntentV4::PlayLand {
+                    object: OpaqueObjectId(8),
+                },
+                EngineCandidateBindingV4::PlayLand {
+                    object: GameObjectId(1),
+                },
+            ),
+            (
+                CandidateIntentV4::PlayLand {
+                    object: OpaqueObjectId(3),
+                },
+                EngineCandidateBindingV4::PlayLand {
+                    object: GameObjectId(999),
+                },
+            ),
+        ])
+        .unwrap();
+        assert_eq!(assigned[0].candidate_id.0, 0);
+        assert_eq!(
+            assigned[0].visible_intent,
+            CandidateIntentV4::PlayLand {
+                object: OpaqueObjectId(3)
+            }
+        );
+    }
+
+    #[test]
+    fn assign_dense_is_insertion_and_trusted_binding_independent() {
+        let intents = [
+            CandidateIntentV4::ActivateAbility {
+                ability: OpaqueAbilityId(2),
+            },
+            CandidateIntentV4::PassPriority,
+            CandidateIntentV4::PlayLand {
+                object: OpaqueObjectId(9),
+            },
+            CandidateIntentV4::PlayLand {
+                object: OpaqueObjectId(1),
+            },
+        ];
+        let binding = |intent: &CandidateIntentV4, offset: u64| match intent {
+            CandidateIntentV4::PassPriority => EngineCandidateBindingV4::PassPriority,
+            CandidateIntentV4::PlayLand { object } => EngineCandidateBindingV4::PlayLand {
+                object: GameObjectId(object.0 + offset),
+            },
+            CandidateIntentV4::ActivateAbility { ability } => {
+                EngineCandidateBindingV4::ActivateAbility {
+                    ability: AbilityInstanceId(ability.0 + offset),
+                }
+            }
+            _ => unreachable!(),
+        };
+        let mut reference = None;
+        for order in [[0, 1, 2, 3], [3, 2, 1, 0], [1, 3, 0, 2]] {
+            for offset in [100, 7_000] {
+                let visible: Vec<_> = assign(
+                    order
+                        .iter()
+                        .map(|index| (intents[*index].clone(), binding(&intents[*index], offset)))
+                        .collect(),
+                )
+                .unwrap()
+                .into_iter()
+                .map(|candidate| (candidate.candidate_id, candidate.visible_intent))
+                .collect();
+                match &reference {
+                    None => reference = Some(visible),
+                    Some(expected) => assert_eq!(&visible, expected),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn assign_dense_rejects_duplicate_public_keys() {
+        let pairs = vec![
+            (
+                CandidateIntentV4::PlayLand {
+                    object: OpaqueObjectId(4),
+                },
+                EngineCandidateBindingV4::PlayLand {
+                    object: GameObjectId(100),
+                },
+            ),
+            (
+                CandidateIntentV4::PlayLand {
+                    object: OpaqueObjectId(4),
+                },
+                EngineCandidateBindingV4::PlayLand {
+                    object: GameObjectId(200),
+                },
+            ),
+        ];
+        assert_eq!(
+            assign(pairs).map(|_| ()),
+            Err(DecisionValidationError::DuplicateOrderingKey)
+        );
+    }
+
+    #[test]
+    fn assign_dense_ids_are_dense_and_pass_public_validation() {
+        let assigned = assign(vec![
+            (
+                CandidateIntentV4::PlayLand {
+                    object: OpaqueObjectId(2),
+                },
+                EngineCandidateBindingV4::PlayLand {
+                    object: GameObjectId(20),
+                },
+            ),
+            (
+                CandidateIntentV4::PassPriority,
+                EngineCandidateBindingV4::PassPriority,
+            ),
+        ])
+        .unwrap();
+        let visible: Vec<_> = assigned
+            .iter()
+            .map(|candidate| VisibleCandidateV4 {
+                candidate_id: candidate.candidate_id,
+                intent: candidate.visible_intent.clone(),
+            })
+            .collect();
+        assert_eq!(visible[0].candidate_id, CandidateIdV1(0));
+        assert_eq!(visible[1].candidate_id, CandidateIdV1(1));
+        CandidateOrderingV3::validate_public(&visible).unwrap();
+    }
 
     const TRIGGERS: &str =
         include_str!("../../../schemas/examples/player-decision-request-v4-trigger-order.json");
