@@ -1,4 +1,4 @@
-use crate::hmac_counter::next_raw_u64;
+use crate::hmac_counter::RawStreamReader;
 use crate::seed::{RandomValidationError, RootSeed256};
 use crate::state::RandomStreamCursorV1;
 use crate::stream_key::RandomStreamKeyV1;
@@ -15,16 +15,26 @@ pub fn uniform_below_u64(
     if n == 1 {
         return Ok((0, 0, *cursor));
     }
+    let mut reader = RawStreamReader::new(root, key, *cursor);
+    let (value, consumed) = uniform_below_from(&mut reader, n)?;
+    Ok((value, consumed, reader.cursor()))
+}
+
+/// Rejection sampling of `[0, n)` for `n >= 2`: words below `2^64 mod n`
+/// are rejected so every value is equally likely. Returns the value and the
+/// number of raw words consumed.
+fn uniform_below_from(
+    reader: &mut RawStreamReader,
+    n: u64,
+) -> Result<(u64, u64), RandomValidationError> {
     let threshold = ((1u128 << 64) % (n as u128)) as u64;
-    let mut current = *cursor;
     let mut consumed = 0u64;
     loop {
-        let (word, next) = next_raw_u64(root, key, &current)?;
+        let word = reader.next_raw_u64()?;
         consumed += 1;
         if word >= threshold {
-            return Ok((word % n, consumed, next));
+            return Ok((word % n, consumed));
         }
-        current = next;
     }
 }
 
@@ -56,17 +66,16 @@ pub fn shuffle<T: Clone>(
         return Ok((0, *cursor));
     }
 
-    // Pre-compute all (i, j) swap pairs with a local cursor.
+    // Pre-compute all (i, j) swap pairs with one reader over the stream.
     // Only apply swaps if all draws succeed — no partial mutation on StreamExhausted.
-    let mut current = *cursor;
+    let mut reader = RawStreamReader::new(root, key, *cursor);
     let mut total_consumed = 0u64;
     let mut swaps: Vec<(usize, usize)> = Vec::with_capacity(values.len() - 1);
 
     for i in (1..values.len()).rev() {
         let bound = (i + 1) as u64;
-        let (j, consumed, next) = uniform_below_u64(root, key, &current, bound)?;
+        let (j, consumed) = uniform_below_from(&mut reader, bound)?;
         total_consumed += consumed;
-        current = next;
         swaps.push((i, j as usize));
     }
 
@@ -74,7 +83,7 @@ pub fn shuffle<T: Clone>(
         values.swap(i, j);
     }
 
-    Ok((total_consumed, current))
+    Ok((total_consumed, reader.cursor()))
 }
 
 #[cfg(test)]

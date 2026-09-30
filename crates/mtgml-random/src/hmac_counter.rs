@@ -75,6 +75,51 @@ pub fn next_raw_u64(
     ))
 }
 
+/// Draws consecutive raw words of one stream. The stream key is derived once
+/// and each 32-byte block computed once, where `next_raw_u64` recomputes both
+/// for every word. The words and cursors equal repeated `next_raw_u64` calls;
+/// only the cursor is state, the cache lives for one operation.
+pub struct RawStreamReader {
+    k_stream: [u8; 32],
+    cached: Option<(u64, [u8; 32])>,
+    cursor: RandomStreamCursorV1,
+}
+
+impl RawStreamReader {
+    pub fn new(root: &RootSeed256, key: &RandomStreamKeyV1, cursor: RandomStreamCursorV1) -> Self {
+        Self {
+            k_stream: derive_stream_key(root, key),
+            cached: None,
+            cursor,
+        }
+    }
+
+    pub fn next_raw_u64(&mut self) -> Result<u64, RandomValidationError> {
+        let i = self.cursor.next_raw_u64;
+        if i == u64::MAX {
+            return Err(RandomValidationError::StreamExhausted);
+        }
+        let block_index = i / 4;
+        let block = match self.cached {
+            Some((index, block)) if index == block_index => block,
+            _ => {
+                let block = raw_block(&self.k_stream, block_index);
+                self.cached = Some((block_index, block));
+                block
+            }
+        };
+        let value = raw_u64_at(&block, (i % 4) as usize)?;
+        self.cursor = RandomStreamCursorV1 {
+            next_raw_u64: i + 1,
+        };
+        Ok(value)
+    }
+
+    pub fn cursor(&self) -> RandomStreamCursorV1 {
+        self.cursor
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -194,6 +239,33 @@ mod tests {
         assert_eq!(new_cursor1.next_raw_u64, 1);
         let cursor2 = RandomStreamCursorV1::default();
         assert_eq!(cursor2.next_raw_u64, 0);
+    }
+
+    #[test]
+    fn reader_matches_single_draws_across_block_boundaries() {
+        let seed = RootSeed256::from_lower_hex(ALL_ZERO_SEED).unwrap();
+        let key = global_key();
+        for start in [0u64, 1, 3, 4, 7, u64::MAX - 6] {
+            let mut single = RandomStreamCursorV1 {
+                next_raw_u64: start,
+            };
+            let mut reader = RawStreamReader::new(&seed, &key, single);
+            for _ in 0..8 {
+                let expected = next_raw_u64(&seed, &key, &single);
+                let actual = reader.next_raw_u64();
+                assert_eq!(
+                    actual,
+                    expected
+                        .as_ref()
+                        .map(|(value, _)| *value)
+                        .map_err(|error| error.clone())
+                );
+                if let Ok((_, next)) = expected {
+                    single = next;
+                }
+                assert_eq!(reader.cursor(), single);
+            }
+        }
     }
 
     #[test]
