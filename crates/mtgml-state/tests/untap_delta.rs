@@ -141,3 +141,19 @@ fn untap_completed_does_not_cover_tapping() {
         DeltaApplicationV3Error::UncoveredMutation
     );
 }
+
+#[test]
+fn untap_completed_claims_only_objects_it_untapped() {
+    // 10 untaps, 11 stays tapped, 12 does not exist: listing 11 or 12 claims
+    // untaps that did not happen.
+    let before = state_with_tapped_permanents(&[10, 11]);
+    let after = untapped(&before, &[10]);
+
+    for claimed in [&[10, 11][..], &[10, 12][..]] {
+        assert_eq!(
+            StateDeltaV3::between_structural_only(&before, &after, vec![untap_completed(claimed)])
+                .unwrap_err(),
+            DeltaApplicationV3Error::UncoveredMutation
+        );
+    }
+}

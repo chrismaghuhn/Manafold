@@ -292,6 +292,18 @@ fn validate_delta_operation_coverage(
 
     let old_before = &before.predecessor_v5;
     let old_after = &after.predecessor_v5;
+    // An untap step claims exactly the permanents it untapped: each listed
+    // object was tapped before and is untapped after.
+    if has_legacy(&|operation| {
+        matches!(operation,
+            crate::SemanticDeltaOperation::UntapCompleted { affected_objects }
+                if affected_objects.iter().any(|object| {
+                    !(old_before.zones.objects.get(object).is_some_and(|old| old.tapped)
+                        && old_after.zones.objects.get(object).is_some_and(|new| !new.tapped))
+                }))
+    }) {
+        return uncovered();
+    }
     // Core rules state.
     if old_before.core.active_player != old_after.core.active_player
         && !has_legacy(&|operation| {
