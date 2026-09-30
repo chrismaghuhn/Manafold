@@ -56,6 +56,10 @@ pub(crate) struct S1QueryAuthority<'a> {
 }
 
 impl<'a> S1QueryAuthority<'a> {
+    // Current production callers query batches (`for_objects`); keep the
+    // single-object form for rules that ask about one object and for the
+    // unit witnesses, as with `derive_base_characteristics` below.
+    #[allow(dead_code)]
     pub(crate) fn for_object(
         admission: &'a ExecutableProfileAdmissionV1,
         state: &'a EngineStatePartsV3,
