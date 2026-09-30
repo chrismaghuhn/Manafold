@@ -1,7 +1,7 @@
 # Per-Step Digest Cost Implementation Plan
 
-**Status:** ACCEPTED by the owner on 2026-09-30 (execution: inline). In progress on
-branch `perf/digest-once-per-step` off `master` after PR #261 was merged.
+**Status:** IMPLEMENTED on branch `perf/digest-once-per-step` (accepted by the owner on
+2026-09-30, executed inline). Results below.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -200,6 +200,20 @@ fn built_delta_check_rejects_another_after_state() {
   - A samply summary per `docs/agents/profiling.md`: the digest share and its nearest callers.
   - Expected: the digest share drops well below 72%, and the smoke is at least 2x faster. If it is not, report the numbers; do not tune thresholds.
 - [ ] **Step 3:** Set this plan's status to implemented and commit: `docs: record per-step digest cost results`.
+
+## Results
+
+Measured 2026-09-30 on the owner's machine. Integration gate: 24/24 PASS at `cdddb8b` (242 s, down from 311 s).
+
+| Measure | Before | After |
+|---|---|---|
+| `random_games_run_thirty_turns_deterministically_and_replay`, Windows release, lower of two runs | 59.77 s (`eab21b1`) | 22.40 s (`cdddb8b`), 2.7x faster |
+| Same test under samply in WSL: samples | 68,630 (`db775ce`) | 23,401 (`cdddb8b`), 2.9x fewer |
+| Full-state digest share | 72.5% | 49.5% |
+| Full-state digest samples | 49,747 | 11,580, 4.3x fewer |
+| Digest callers | `apply_structural_only`, checkpoint `build`, checkpoint `validate_inner`, `between_structural_only` | `between_structural_only` (2/3), checkpoint `build` (1/3): 3 digests per accepted step |
+
+The next largest cost is `project_successor_player_steps_v4`, at 24.6% inclusive.
 
 ## Next (not in this plan)
 
