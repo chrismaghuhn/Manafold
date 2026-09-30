@@ -4,11 +4,6 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 
-[features]
-# Historical V5/V6 execution surfaces are retained only for the isolated
-# conformance and migration tools which explicitly request them.
-historical-conformance-runtime = ["mtgml-rules/historical-runtime-testkit"]
-
 [dependencies]
 base64.workspace = true
 mtgml-decision = { path = "../mtgml-decision" }

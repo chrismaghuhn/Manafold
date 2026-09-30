@@ -1,4 +1,3 @@
-#![cfg(not(feature = "historical-conformance-runtime"))]
 //! Random-vs-random smoke games through the production player endpoints.
 //!
 //! Each game: two players with seed-chosen basic lands (twenty in each

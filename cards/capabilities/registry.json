@@ -43,8 +43,7 @@
       ],
       "implementation_paths": [
         "crates/mtgml-rules/src/basic_priority.rs",
-        "crates/mtgml-rules/src/magic.rs",
-        "crates/mtgml-environment/src/tests/magic_rules_production.rs"
+        "crates/mtgml-rules/src/magic.rs"
       ],
       "information_risk": "medium",
       "key": "rules/basic-priority",
@@ -80,9 +79,7 @@
         "crates/mtgml-rules/src/turn_structure.rs",
         "crates/mtgml-rules/src/events.rs",
         "crates/mtgml-rules/src/semantic_cursor.rs",
-        "crates/mtgml-rules/src/contract.rs",
-        "crates/mtgml-environment/src/reference.rs",
-        "crates/mtgml-environment/src/tests/magic_rules_production.rs"
+        "crates/mtgml-rules/src/contract.rs"
       ],
       "information_risk": "high",
       "key": "rules/cleanup-reset",
@@ -121,11 +118,9 @@
         "crates/mtgml-rules/src/events.rs",
         "crates/mtgml-rules/src/semantic_cursor.rs",
         "crates/mtgml-rules/src/contract.rs",
-        "crates/mtgml-environment/src/reference.rs",
         "crates/mtgml-environment/src/player_projection.rs",
         "crates/mtgml-observation/src/magic_observation.rs",
-        "crates/mtgml-replay/src/v6.rs",
-        "crates/mtgml-environment/src/tests/magic_rules_production.rs"
+        "crates/mtgml-replay/src/v6.rs"
       ],
       "information_risk": "high",
       "key": "rules/combat-damage",
@@ -160,11 +155,9 @@
         "crates/mtgml-rules/src/basic_priority.rs",
         "crates/mtgml-rules/src/magic.rs",
         "crates/mtgml-rules/src/semantic_cursor.rs",
-        "crates/mtgml-environment/src/reference.rs",
         "crates/mtgml-environment/src/player_projection.rs",
         "crates/mtgml-observation/src/magic_observation.rs",
-        "crates/mtgml-replay/src/v6.rs",
-        "crates/mtgml-environment/src/tests/magic_rules_production.rs"
+        "crates/mtgml-replay/src/v6.rs"
       ],
       "information_risk": "medium",
       "key": "rules/combat-phase",
@@ -200,8 +193,7 @@
         "crates/mtgml-rules/src/events.rs",
         "crates/mtgml-rules/src/semantic_cursor.rs",
         "crates/mtgml-environment/src/player_projection.rs",
-        "crates/mtgml-observation/src/magic_observation.rs",
-        "crates/mtgml-environment/src/tests/magic_rules_production.rs"
+        "crates/mtgml-observation/src/magic_observation.rs"
       ],
       "information_risk": "high",
       "key": "rules/damage-and-life",
@@ -236,12 +228,10 @@
         "crates/mtgml-rules/src/events.rs",
         "crates/mtgml-rules/src/semantic_cursor.rs",
         "crates/mtgml-decision/src/v2.rs",
-        "crates/mtgml-environment/src/reference.rs",
         "crates/mtgml-environment/src/player_projection.rs",
         "crates/mtgml-observation/src/magic_observation.rs",
         "python/src/mtgml/_magic_combat_observation.py",
-        "crates/mtgml-replay/src/v6.rs",
-        "crates/mtgml-environment/src/tests/magic_rules_production.rs"
+        "crates/mtgml-replay/src/v6.rs"
       ],
       "information_risk": "high",
       "key": "rules/declare-attackers",
@@ -280,14 +270,12 @@
         "crates/mtgml-rules/src/magic.rs",
         "crates/mtgml-rules/src/contract.rs",
         "crates/mtgml-rules/src/semantic_cursor.rs",
-        "crates/mtgml-environment/src/reference.rs",
         "crates/mtgml-environment/src/player_projection.rs",
         "crates/mtgml-observation/src/magic_observation.rs",
         "crates/mtgml-replay/src/v6.rs",
         "python/src/mtgml/_magic_combat_observation_v3.py",
         "python/src/mtgml/_replay_v6.py",
-        "schemas/magic-combat-observation.v3.schema.json",
-        "crates/mtgml-environment/src/tests/magic_rules_production.rs"
+        "schemas/magic-combat-observation.v3.schema.json"
       ],
       "information_risk": "high",
       "key": "rules/declare-blockers",
@@ -321,9 +309,7 @@
       "implementation_paths": [
         "crates/mtgml-rules/src/magic.rs",
         "crates/mtgml-rules/src/contract.rs",
-        "crates/mtgml-rules/src/product.rs",
-        "crates/mtgml-environment/src/reference.rs",
-        "crates/mtgml-environment/src/tests/magic_rules_production.rs"
+        "crates/mtgml-rules/src/product.rs"
       ],
       "information_risk": "high",
       "key": "rules/draw-card",
@@ -403,9 +389,7 @@
       ],
       "implementation_paths": [
         "crates/mtgml-rules/src/state_based_actions.rs",
-        "crates/mtgml-rules/src/zone_incarnation.rs",
-        "crates/mtgml-environment/src/reference.rs",
-        "crates/mtgml-environment/src/tests/magic_rules_production.rs"
+        "crates/mtgml-rules/src/zone_incarnation.rs"
       ],
       "information_risk": "high",
       "key": "rules/state-based-actions-combat",
@@ -488,10 +472,7 @@
         "crates/mtgml-rules/src/magic.rs",
         "crates/mtgml-rules/src/contract.rs",
         "crates/mtgml-rules/src/semantic_cursor.rs",
-        "crates/mtgml-rules/src/program_kernel.rs",
-        "crates/mtgml-environment/src/semantic_catalog.rs",
-        "crates/mtgml-environment/src/lifecycle_projection.rs",
-        "crates/mtgml-environment/src/reference.rs"
+        "crates/mtgml-rules/src/program_kernel.rs"
       ],
       "information_risk": "low",
       "key": "rules/turn-structure",

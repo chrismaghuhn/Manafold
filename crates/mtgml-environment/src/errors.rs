@@ -34,36 +34,14 @@ pub enum EnvironmentCommitError {
 pub enum ReplayExecutionError {
     #[error("replay manifest does not match the starting checkpoint")]
     ManifestMismatch,
-    #[error("replay step {step_index} has no authorized pending actor")]
-    ActorUnavailable { step_index: u64 },
-    #[error("replay step {step_index} has the wrong player-decision identity")]
-    PlayerDecisionIdentityMismatch { step_index: u64 },
-    #[error("replay step {step_index} has the wrong before revision")]
-    BeforeRevisionMismatch { step_index: u64 },
     #[error("replay step {step_index} has the wrong before digest")]
     BeforeDigestMismatch { step_index: u64 },
-    #[error("replay step {step_index} has the wrong accepted outcome")]
-    OutcomeMismatch { step_index: u64 },
-    #[error("replay step {step_index} has the wrong after revision")]
-    AfterRevisionMismatch { step_index: u64 },
     #[error("replay step {step_index} has the wrong after digest")]
     AfterDigestMismatch { step_index: u64 },
     #[error("replay step {step_index} transition product differs")]
     TransitionMismatch { step_index: u64 },
-    #[error("replay step {step_index} environment counters differ")]
-    CounterMismatch { step_index: u64 },
     #[error("replay final identity differs")]
     FinalIdentityMismatch,
-    #[error("Replay V7 execution identity differs from the admitted profile")]
-    ReplayV7Identity,
-    #[error("Replay V7 initial identity differs from the supplied checkpoint")]
-    ReplayV7BeforeIdentity,
-    #[error("Replay V7 step {step_index} does not begin at the actual checkpoint")]
-    ReplayV7BeforeStep { step_index: u64 },
-    #[error("Replay V7 step {step_index} differs from authoritative re-execution")]
-    ReplayV7StepMismatch { step_index: u64 },
-    #[error("Replay V7 final identity differs from authoritative re-execution")]
-    ReplayV7FinalIdentity,
 }
 
 #[derive(Debug, Error)]
@@ -72,8 +50,6 @@ pub enum ControllerError {
     UnknownPlayer,
     #[error("controller lock is poisoned")]
     Poisoned,
-    #[error("checkpoint is invalid: {0}")]
-    InvalidCheckpoint(String),
     #[error("checkpoint validation failed: {0}")]
     CheckpointValidation(#[from] CheckpointValidationError),
     #[error("successor checkpoint validation failed: {0}")]
@@ -92,20 +68,8 @@ pub enum ControllerError {
     ReplayValidation(#[from] ReplayValidationError),
     #[error("replay execution failed: {0}")]
     ReplayExecution(#[from] ReplayExecutionError),
-    #[error("checkpoint codec is not supported by this backend")]
-    UnsupportedCheckpointCodec,
-    #[error("checkpoint state is not executable by the synthetic program")]
-    UnsupportedSyntheticState,
-    #[error("environment counter {counter} would overflow")]
-    CounterOverflow { counter: &'static str },
-    #[error("replay identity does not match this backend")]
-    ReplayIdentityMismatch,
-    #[error("program kind is incompatible with the rules contract authority")]
-    ProgramAuthorityMismatch,
     #[error("semantic contract is not supported by this runtime")]
     SemanticContractUnsupported,
-    #[error("engine state is not compatible with the execution program")]
-    ProgramStateIncompatible,
     #[error("backend failure: {0}")]
     Backend(String),
 }
