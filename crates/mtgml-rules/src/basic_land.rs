@@ -1058,19 +1058,6 @@ pub(crate) fn basic_land_admission_fixture() -> mtgml_card_ir::ExecutableProfile
 }
 
 #[cfg(test)]
-pub(crate) fn content_only_admission_fixture() -> mtgml_card_ir::ExecutableProfileAdmissionV1 {
-    tests::admission_with_closure(&[
-        "rules/basic-land-mana",
-        "rules/basic-priority",
-        "rules/land-play",
-        "rules/mana-pool",
-        "rules/state-based-actions-combat",
-        "rules/turn-structure",
-        "rules/zone-incarnation",
-    ])
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
     use mtgml_card_ir::{

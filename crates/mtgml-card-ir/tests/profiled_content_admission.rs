@@ -339,29 +339,7 @@ fn content_only_closure() -> Vec<CapabilityRequirementV1> {
 }
 
 #[test]
-fn content_only_closure_still_admits_without_game_rules() {
-    let bytes = manifest_bytes();
-    let id = calculate_content_contract_id_v1(&bytes).unwrap();
-    let provenance = provenance_bytes(&id);
-    let (rules, semantic, execution) = identities(id.clone(), content_only_closure());
-
-    let admission =
-        admit_executable_profile_v1(&bytes, &id, &provenance, &rules, &semantic, &execution)
-            .expect("historical content-only identities keep their exact meaning");
-
-    assert_eq!(
-        admission.direct_requirement_roots(),
-        vec![
-            requirement("rules/basic-land-mana"),
-            requirement("rules/land-play"),
-            requirement("rules/mana-pool"),
-        ]
-    );
-    assert_eq!(admission.resolved_capabilities(), content_only_closure());
-}
-
-#[test]
-fn closures_other_than_content_only_or_full_game_reject() {
+fn closures_other_than_the_full_game_reject() {
     let bytes = manifest_bytes();
     let id = calculate_content_contract_id_v1(&bytes).unwrap();
     let provenance = provenance_bytes(&id);
@@ -372,5 +350,22 @@ fn closures_other_than_content_only_or_full_game_reject() {
     assert!(
         admit_executable_profile_v1(&bytes, &id, &provenance, &rules, &semantic, &execution)
             .is_err()
+    );
+}
+
+#[test]
+fn only_the_full_game_closure_is_admitted() {
+    let bytes = manifest_bytes();
+    let id = calculate_content_contract_id_v1(&bytes).unwrap();
+    let provenance = provenance_bytes(&id);
+    let (rules, semantic, execution) = identities(id.clone(), content_only_closure());
+    assert!(
+        admit_executable_profile_v1(&bytes, &id, &provenance, &rules, &semantic, &execution)
+            .is_err()
+    );
+    let (rules, semantic, execution) = identities(id.clone(), complete_closure());
+    assert!(
+        admit_executable_profile_v1(&bytes, &id, &provenance, &rules, &semantic, &execution)
+            .is_ok()
     );
 }

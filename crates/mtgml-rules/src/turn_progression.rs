@@ -1702,19 +1702,6 @@ mod tests {
     }
 
     #[test]
-    fn content_only_admission_fails_closed_beyond_its_scope() {
-        let (admission, state) = game_with(crate::basic_land::content_only_admission_fixture(), 3);
-        let state = pass_until(&admission, state, at(BEGIN_COMBAT, 1));
-        let state = pass(&admission, &state).0;
-
-        assert_eq!(
-            submit(&admission, &state, pass_answer(pending(&state))),
-            Err(crate::BasicLandTransitionError::TurnProgressUnsupported),
-            "the content-only scope admits no attacker declaration"
-        );
-    }
-
-    #[test]
     fn unsupported_state_fails_closed() {
         let (admission, mut state) = game(3);
         let land = *state
@@ -1833,12 +1820,8 @@ mod tests {
     }
 
     #[test]
-    fn turn_requests_are_valid_only_under_the_rules_that_create_them() {
-        // An attacker declaration needs rules/declare-attackers and a
-        // hand-size discard rules/cleanup-reset; the content-only admission
-        // has neither, so a restored state carrying such a request fails.
+    fn restored_attacker_and_discard_requests_validate() {
         let status = EpisodeStatus::Running;
-        let content_only = crate::basic_land::content_only_admission_fixture();
         let (admission, state) = game(3);
         let state = pass_until(&admission, state, at(BEGIN_COMBAT, 1));
         let state = pass(&admission, &state).0;
@@ -1853,7 +1836,6 @@ mod tests {
         ] {
             assert_eq!(pending(&state).purpose, purpose);
             validate_magic_pending_request_v4(&admission, &state, &status).unwrap();
-            assert!(validate_magic_pending_request_v4(&content_only, &state, &status).is_err());
         }
     }
 

@@ -525,18 +525,6 @@ mod tests {
         include_bytes!("../../../cards/definitions/basic-land-v1/provenance.v1.cbor");
     const RULES_SNAPSHOT: &str = "wotc-cr-2026-09-25-txt-20260925-sha256-8d860e451f20f38865b725b42d82feb714c725373dd8f3b32b8652b3eeb070ca";
 
-    fn admission() -> ExecutableProfileAdmissionV1 {
-        admission_with_closure(&[
-            "rules/basic-land-mana",
-            "rules/basic-priority",
-            "rules/land-play",
-            "rules/mana-pool",
-            "rules/state-based-actions-combat",
-            "rules/turn-structure",
-            "rules/zone-incarnation",
-        ])
-    }
-
     /// Content plus the game-rule roots: a complete two-player game.
     pub(crate) fn game_admission() -> ExecutableProfileAdmissionV1 {
         admission_with_closure(&[
@@ -999,7 +987,7 @@ mod tests {
 
     #[test]
     fn v8_runtime_preserves_m42_direct_restore_fork_replay_and_rejection() {
-        let admission = admission();
+        let admission = game_admission();
         let mut state = state_with_two_lands();
         let status = EpisodeStatus::Running;
         mtgml_rules::install_basic_land_request_v4(&admission, &mut state, PlayerId(1), &status)
@@ -1169,7 +1157,7 @@ mod tests {
     fn paired_admitted_states_hide_stack_source_mapping_and_hidden_face_changes() {
         use base64::Engine as _;
 
-        let admission = admission();
+        let admission = game_admission();
         let manifest = decode_content_manifest_v1(CONTENT).unwrap();
         let definition_for = |subtype| {
             manifest
@@ -1365,7 +1353,7 @@ mod tests {
     fn public_stack_source_requires_authorized_object_and_ability_identity() {
         use base64::Engine as _;
 
-        let admission = admission();
+        let admission = game_admission();
         let mut state = state_with_two_lands();
         let source_object = *state
             .predecessor_v5
@@ -1516,7 +1504,7 @@ mod tests {
 
     #[test]
     fn same_transition_does_not_use_later_reveal_knowledge_for_earlier_stack_events() {
-        let admission = admission();
+        let admission = game_admission();
         let content = decode_content_manifest_v1(CONTENT).unwrap();
         let definition_for = |subtype| {
             content
@@ -1891,7 +1879,7 @@ mod tests {
 
     #[test]
     fn basic_land_checkpoint_constructor_rejects_foreign_execution_identity() {
-        let admission = admission();
+        let admission = game_admission();
         let foreign_identity = ExecutionIdentityV1 {
             program_kind: admission.execution_identity().program_kind,
             semantic_contract_id: mtgml_model::SemanticContractIdV1::from_digest_bytes([0xA5; 32]),
@@ -1923,7 +1911,7 @@ mod tests {
 
     #[test]
     fn basic_land_checkpoint_validation_rejects_foreign_execution_identity() {
-        let admission = admission();
+        let admission = game_admission();
         let status = EpisodeStatus::Truncated {
             reason: mtgml_model::TruncationReason::ExternalStop,
             players: [PlayerId(1), PlayerId(2)]
@@ -1961,7 +1949,7 @@ mod tests {
 
     #[test]
     fn runtime_rejects_manifest_missing_an_authoritative_player() {
-        let admission = admission();
+        let admission = game_admission();
         let mut state = state_with_two_lands();
         let status = EpisodeStatus::Running;
         mtgml_rules::install_basic_land_request_v4(&admission, &mut state, PlayerId(1), &status)
@@ -1995,7 +1983,7 @@ mod tests {
 
     #[test]
     fn restore_rejects_checkpoint_with_different_player_set_without_mutation() {
-        let admission = admission();
+        let admission = game_admission();
         let status = EpisodeStatus::Running;
         let mut initial_state = state_with_two_lands();
         mtgml_rules::install_basic_land_request_v4(
@@ -2064,7 +2052,7 @@ mod tests {
 
     #[test]
     fn terminal_basic_land_restore_rejects_unsupported_state_without_mutation() {
-        let admission = admission();
+        let admission = game_admission();
         let mut initial_state = state_with_two_lands();
         mtgml_rules::install_basic_land_request_v4(
             &admission,
@@ -2147,7 +2135,7 @@ mod tests {
 
     #[test]
     fn successor_projection_accepts_running_to_terminal_and_truncated_statuses() {
-        let admission = admission();
+        let admission = game_admission();
         let mut before = state_with_two_lands();
         mtgml_rules::install_basic_land_request_v4(
             &admission,
@@ -2214,7 +2202,7 @@ mod tests {
 
     #[test]
     fn successor_projection_uses_before_and_after_episode_status_separately() {
-        let admission = admission();
+        let admission = game_admission();
         let mut before = state_with_two_lands();
         mtgml_rules::install_basic_land_request_v4(
             &admission,
@@ -2281,7 +2269,7 @@ mod tests {
 
     #[test]
     fn runtime_rejects_manifest_with_a_different_rng_root_seed() {
-        let initial_admission = admission();
+        let initial_admission = game_admission();
         let mut state = state_with_two_lands();
         let status = EpisodeStatus::Running;
         mtgml_rules::install_basic_land_request_v4(
@@ -2311,7 +2299,7 @@ mod tests {
         )
         .is_err());
 
-        let admission = admission();
+        let admission = game_admission();
         let mut state = state_with_two_lands();
         mtgml_rules::install_basic_land_request_v4(
             &admission,
@@ -2344,7 +2332,7 @@ mod tests {
 
     #[test]
     fn restore_rebinds_empty_replay_segment_to_checkpoint_rng_provenance() {
-        let admission = admission();
+        let admission = game_admission();
         let mut state_a = state_with_two_lands();
         mtgml_rules::install_basic_land_request_v4(
             &admission,
@@ -2425,7 +2413,7 @@ mod tests {
 
     #[test]
     fn structural_digest_helpers_do_not_admit_forged_profile_decisions() {
-        let admission = admission();
+        let admission = game_admission();
         let mut state = state_with_two_lands();
         mtgml_rules::install_basic_land_request_v4(
             &admission,
@@ -2483,7 +2471,7 @@ mod tests {
     #[test]
     fn stale_v4_responses_report_stale_decision_without_mutation() {
         for stale_player_decision_id in [true, false] {
-            let admission = admission();
+            let admission = game_admission();
             let mut state = state_with_two_lands();
             let status = EpisodeStatus::Running;
             mtgml_rules::install_basic_land_request_v4(
@@ -2544,7 +2532,7 @@ mod tests {
     #[test]
     fn v8_runtime_preserves_m42_pass_and_mana_ability_across_resume_paths() {
         for candidate_id in [0, 3] {
-            let admission = admission();
+            let admission = game_admission();
             let mut state = state_with_two_lands();
             let status = EpisodeStatus::Running;
             mtgml_rules::install_basic_land_request_v4(
@@ -2652,7 +2640,7 @@ mod tests {
 
     #[test]
     fn a_transition_that_is_not_accepted_fails_closed() {
-        let admission = admission();
+        let admission = game_admission();
         let status = EpisodeStatus::Running;
         let v2 = state_with_two_lands_v2();
         let mut state =
