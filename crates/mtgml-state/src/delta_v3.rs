@@ -474,7 +474,14 @@ fn validate_delta_operation_coverage(
                     matches!(operation,
                         crate::SemanticDeltaOperation::ObjectTapped { object, from, to }
                             if *object == *id && *from == old_object.tapped && *to == new_object.tapped)
-                }) {
+                }) && !(old_object.tapped
+                    && !new_object.tapped
+                    && has_legacy(&|operation| {
+                        matches!(operation,
+                            crate::SemanticDeltaOperation::UntapCompleted { affected_objects }
+                                if affected_objects.contains(id))
+                    }))
+                {
                     return uncovered();
                 }
             }
