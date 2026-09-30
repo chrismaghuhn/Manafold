@@ -68,7 +68,8 @@ INTEGRATION_EXTRA = [
     # Exercise the public current endpoint and wire boundary under default
     # features; the all-features workspace tests intentionally select V2
     # historical aliases for conformance coverage. Run the complete default
-    # environment test target too, including mode-sensitive API fixtures.
+    # environment test target too, including mode-sensitive API fixtures and
+    # tests/production_turn.rs (complete turns through the production path).
     ["cargo", "test", "-p", "mtgml-environment", "--locked"],
     [
         "cargo",

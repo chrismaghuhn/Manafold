@@ -27,8 +27,9 @@ New contract versions, documents, gates, and refactors are not progress on
 their own. If a task would add ceremony without adding or protecting playable
 behavior, say so and propose something smaller.
 
-**Current focus:** reconnect the full turn (untap → cleanup, incl. combat) to
-the production runtime; then spells and the stack.
+**Current focus:** creatures and combat on the native turn progression, then
+one runtime (Plan B in `docs/superpowers/plans/2026-09-30-production-full-turn.md`);
+then spells and the stack.
 
 ## 3. Keep changes small
 
