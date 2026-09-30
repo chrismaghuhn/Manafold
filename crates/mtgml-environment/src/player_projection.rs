@@ -6,8 +6,7 @@
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use mtgml_model::{
-    ExecutionIdentityV1, ExecutionProgramV1, PlayerId, RulesAuthorityV1, RulesContractManifestV1,
-    SemanticContractManifestV1,
+    ExecutionIdentityV1, PlayerId, RulesContractManifestV1, SemanticContractManifestV1,
 };
 use mtgml_observation::{
     AttachmentObservationV1, CounterObservationV1, FaceObservationV1,
@@ -55,12 +54,7 @@ pub(crate) fn project_magic_basic_land_observation(
     let Some(expected_content_id) = semantic_manifest.content_contract_id.as_ref() else {
         return Err(PlayerEndpointError::ServiceUnavailable);
     };
-    if execution_identity.program_kind != ExecutionProgramV1::MagicRules
-        || !matches!(
-            &rules_manifest.rules_authority,
-            RulesAuthorityV1::ComprehensiveRules { .. }
-        )
-        || rules_id != semantic_manifest.rules_contract_id
+    if rules_id != semantic_manifest.rules_contract_id
         || semantic_id != execution_identity.semantic_contract_id
         || expected_content_id != catalog.content_contract_id()
         || parts.card_rules.faces.faces.len() != engine.zones.objects.len()

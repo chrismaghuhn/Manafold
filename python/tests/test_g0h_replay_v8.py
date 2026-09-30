@@ -10,6 +10,7 @@ from mtgml.errors import WireError
 from mtgml.replay import (
     AuthoritativeReplayV8,
     ContentContractMaterialV1,
+    ExecutionIdentityV1,
     ReplayManifestV8,
     SemanticContractMaterialV7,
     calculate_checkpoint_digest_v8,
@@ -52,6 +53,17 @@ class G0HReplayV8Tests(unittest.TestCase):
         fixture["manifest"]["initial_identity"]["checkpoint_digest"] = "0" * 64
         with self.assertRaises(WireError):
             AuthoritativeReplayV8.from_wire(fixture)
+
+    def test_execution_identity_validate_rejects_unknown_program_kind(self) -> None:
+        fixture = json.loads(
+            (ROOT / "schemas/examples/authoritative-replay-v8.json").read_text(encoding="utf-8")
+        )
+        identity = ExecutionIdentityV1(
+            program_kind="synthetic_rules_compat",
+            semantic_contract_id=fixture["manifest"]["execution_identity"]["semantic_contract_id"],
+        )
+        with self.assertRaises(WireError):
+            identity.validate()
 
     def test_replay_v8_rejects_steps_after_terminal_and_truncated_but_keeps_closed_files(
         self,

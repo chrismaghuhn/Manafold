@@ -10,7 +10,7 @@ use mtgml_card_ir::{
 };
 use mtgml_model::{
     CheckpointCodecIdentity, CheckpointDigestV8, EnvironmentLimitCounters, EpisodeStatus,
-    ExecutionIdentityV1, ExecutionProgramV1, FullStateDigestV7, PlayerId, RulesContractManifestV1,
+    ExecutionIdentityV1, FullStateDigestV7, PlayerId, RulesContractManifestV1,
     SemanticContractManifestV1,
 };
 use mtgml_state::{EngineState, StackItemPayload};
@@ -261,12 +261,8 @@ impl EnvironmentCheckpointV8 {
             _ => false,
         };
         if !content_matches
-            || !mtgml_model::execution_program_matches_rules_authority(
-                self.execution_identity.program_kind,
-                &rules_manifest.rules_authority,
-            )
-            || (self.execution_identity.program_kind == ExecutionProgramV1::MagicRules
-                && (semantic_manifest.content_contract_id.is_none() || content_catalog.is_none()))
+            || semantic_manifest.content_contract_id.is_none()
+            || content_catalog.is_none()
         {
             return Err(CheckpointV8Error::ContractBinding);
         }

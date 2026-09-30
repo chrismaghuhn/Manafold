@@ -25,18 +25,24 @@ class ExecutionIdentityV1:
     @classmethod
     def from_wire(cls, value: object) -> ExecutionIdentityV1:
         obj = require_exact_keys(value, {"program_kind", "semantic_contract_id"})
-        program_kind = require_nonempty(obj["program_kind"], "program_kind")
-        if program_kind not in _VALID_PROGRAM_KINDS:
-            raise WireError("decode.invalid_json", "unknown execution program kind")
-        return cls(
-            program_kind=program_kind,
+        result = cls(
+            program_kind=require_nonempty(obj["program_kind"], "program_kind"),
             semantic_contract_id=require_digest(obj["semantic_contract_id"]),
         )
+        result.validate()
+        return result
+
+    def validate(self) -> None:
+        require_nonempty(self.program_kind, "program_kind")
+        if self.program_kind not in _VALID_PROGRAM_KINDS:
+            raise WireError("decode.invalid_json", "unknown execution program kind")
+        require_digest(self.semantic_contract_id)
 
     def to_wire(self) -> dict[str, object]:
+        self.validate()
         return {
-            "program_kind": require_nonempty(self.program_kind, "program_kind"),
-            "semantic_contract_id": require_digest(self.semantic_contract_id),
+            "program_kind": self.program_kind,
+            "semantic_contract_id": self.semantic_contract_id,
         }
 
 

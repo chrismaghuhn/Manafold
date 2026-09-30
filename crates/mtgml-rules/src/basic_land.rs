@@ -13,10 +13,7 @@ use mtgml_decision::{
     CandidateOrderingV3, DecisionAnswerV2, DecisionDomainV2, DecisionPurposeV4, DecisionResponseV3,
     DecisionVisibility, EngineCandidateBindingV4,
 };
-use mtgml_model::{
-    DecisionId, EpisodeStatus, ExecutionProgramV1, PlayerDecisionIdV1, PlayerId, RuleEventId,
-    ZoneKind,
-};
+use mtgml_model::{DecisionId, EpisodeStatus, PlayerDecisionIdV1, PlayerId, RuleEventId, ZoneKind};
 use mtgml_state::{
     apply_perspective_lifecycle, IdentityMutationV1, KnowledgeAcquisitionCause,
     KnowledgeAcquisitionReason, KnowledgeHistoryChannel, KnowledgeMutationV1, KnownLocationFactV2,
@@ -682,9 +679,7 @@ pub fn derive_basic_land_candidates_v4(
         .counters
         .validate_decision_boundary()
         .map_err(|_| BasicLandCandidateError::InvalidState)?;
-    if admission.execution_identity().program_kind != ExecutionProgramV1::MagicRules
-        || admission.content_contract_id() != admission.verified_catalog().content_contract_id()
-    {
+    if admission.content_contract_id() != admission.verified_catalog().content_contract_id() {
         return Err(BasicLandCandidateError::WrongExecutionIdentity);
     }
     if !matches!(status, EpisodeStatus::Running) {
@@ -864,9 +859,7 @@ pub fn derive_basic_land_candidates_v4(
     let authorities = crate::S1QueryAuthority::for_objects(admission, state, &objects)
         .map_err(map_s1_query_error)?;
     for (authority, object) in authorities.iter().zip(&objects) {
-        if authority.queried_object().object != *object
-            || authority.execution_identity().program_kind != ExecutionProgramV1::MagicRules
-        {
+        if authority.queried_object().object != *object {
             return Err(BasicLandCandidateError::WrongExecutionIdentity);
         }
     }
@@ -1245,7 +1238,7 @@ mod tests {
         };
         let semantic_id = calculate_semantic_contract_id_v1(&semantic).unwrap();
         let execution = ExecutionIdentityV1 {
-            program_kind: ExecutionProgramV1::MagicRules,
+            program_kind: mtgml_model::ExecutionProgramV1::MagicRules,
             semantic_contract_id: semantic_id,
         };
         admit_executable_profile_v1(MANIFEST, &id, PROVENANCE, &rules, &semantic, &execution)
@@ -1717,10 +1710,6 @@ mod tests {
         assert_eq!(queried.controller, object.controller);
         assert_eq!(queried.zone, location.zone);
         assert_eq!(queried.face_key.0, 0);
-        assert_eq!(
-            authority.execution_identity(),
-            admission.execution_identity()
-        );
         assert_eq!(state, before);
     }
 

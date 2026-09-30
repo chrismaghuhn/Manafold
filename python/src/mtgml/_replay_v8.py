@@ -245,18 +245,10 @@ class ReplayManifestV8:
             raise WireError("semantic.replay_manifest", "execution identity differs")
         if self.initial_identity.execution_identity != self.execution_identity:
             raise WireError("semantic.replay_manifest", "initial execution identity differs")
-        authority = self.semantic_contract.rules_manifest.get("rules_authority")
-        if not isinstance(authority, dict):
-            raise WireError("semantic.replay_manifest", "rules authority is malformed")
-        program_authority = {"magic_rules": "comprehensive_rules"}
-        if program_authority.get(self.execution_identity.program_kind) != authority.get("variant"):
-            raise WireError(
-                "semantic.replay_manifest", "execution program and rules authority do not match"
-            )
-        if (
-            authority.get("variant") == "comprehensive_rules"
-            and authority.get("snapshot_id") != self.rules_snapshot
-        ):
+        self.execution_identity.validate()
+        # The semantic contract already admits only the comprehensive_rules authority.
+        authority = self.semantic_contract.rules_manifest["rules_authority"]
+        if not isinstance(authority, dict) or authority.get("snapshot_id") != self.rules_snapshot:
             raise WireError("semantic.replay_manifest", "rules snapshot does not match")
         players: list[int] = []
         for deck in self.decks:

@@ -4,9 +4,8 @@ use std::collections::BTreeSet;
 
 use mtgml_decision::DecisionResponseV3;
 use mtgml_model::{
-    execution_program_matches_rules_authority, CheckpointCodecIdentity, CheckpointDigestV8,
-    EnvironmentLimitCounters, EpisodeStatus, ExecutionIdentityV1, FullStateDigestV7, PlayerId,
-    RulesAuthorityV1, StateRevision,
+    CheckpointCodecIdentity, CheckpointDigestV8, EnvironmentLimitCounters, EpisodeStatus,
+    ExecutionIdentityV1, FullStateDigestV7, PlayerId, RulesAuthorityV1, StateRevision,
 };
 use mtgml_random::types::validate_seed_hex;
 use serde::{Deserialize, Serialize};
@@ -120,12 +119,6 @@ impl ReplayManifestV8 {
             return Err(ReplayValidationError::SchemaVersion);
         }
         self.semantic_contract.validate()?;
-        if !execution_program_matches_rules_authority(
-            self.execution_identity.program_kind,
-            &self.semantic_contract.rules_manifest.rules_authority,
-        ) {
-            return Err(ReplayValidationError::SemanticContractMismatch);
-        }
         let required = [
             self.engine_build.as_str(),
             self.kernel.implementation_id.as_str(),

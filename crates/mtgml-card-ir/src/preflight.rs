@@ -6,9 +6,8 @@ use crate::{
     VerifiedContentCatalogV1, BASIC_LAND_PROFILE_ID_V1,
 };
 use mtgml_model::{
-    execution_program_matches_rules_authority, CapabilityRequirementV1, CardDefinitionId,
-    ContentContractIdV1, ExecutionIdentityV1, ExecutionProgramV1, RulesAuthorityV1,
-    RulesContractManifestV1, SemanticContractIdV1, SemanticContractManifestV1,
+    CapabilityRequirementV1, CardDefinitionId, ContentContractIdV1, ExecutionIdentityV1,
+    RulesAuthorityV1, RulesContractManifestV1, SemanticContractIdV1, SemanticContractManifestV1,
 };
 use mtgml_persistence::semantic_contract_digest::{
     calculate_rules_contract_id_v1, calculate_semantic_contract_id_v1,
@@ -338,14 +337,6 @@ pub fn admit_executable_profile_v1(
     {
         return Err(ContentPreflightErrorV1::RulesSnapshotMismatch);
     }
-    if !execution_program_matches_rules_authority(
-        execution_identity.program_kind,
-        &rules_manifest.rules_authority,
-    ) || execution_identity.program_kind != ExecutionProgramV1::MagicRules
-    {
-        return Err(ContentPreflightErrorV1::ExecutionIdentityMismatch);
-    }
-
     if rules_manifest.capability_closure.as_ref() != Some(&resolved_capabilities) {
         return Err(ContentPreflightErrorV1::CapabilityClosureMismatch);
     }

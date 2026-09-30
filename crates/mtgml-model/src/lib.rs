@@ -12,9 +12,7 @@ pub use generated_contract_vocab::{
 
 mod execution_identity;
 mod semantic_contract;
-pub use execution_identity::{
-    execution_program_matches_rules_authority, ExecutionIdentityV1, ExecutionProgramV1,
-};
+pub use execution_identity::{ExecutionIdentityV1, ExecutionProgramV1};
 pub use semantic_contract::{
     CapabilityRequirementV1, RulesAuthorityV1, RulesContractManifestV1,
     RulesContractManifestValidationError, SemanticContractManifestV1,

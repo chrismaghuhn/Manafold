@@ -9,7 +9,7 @@ use mtgml_card_ir::{
     FaceDefinitionV1, FaceKey, ManaColorV1, PrintedManaSymbolV1, VerifiedContentCatalogV1,
     BASIC_LAND_PROFILE_ID_V1,
 };
-use mtgml_model::{CardDefinitionId, ExecutionIdentityV1, GameObjectId, PlayerId, ZoneKind};
+use mtgml_model::{CardDefinitionId, GameObjectId, PlayerId, ZoneKind};
 use mtgml_state::{EngineState, EngineStatePartsV3Error, GameObject, ZoneLocation};
 use std::collections::BTreeSet;
 use thiserror::Error;
@@ -46,7 +46,6 @@ pub(crate) struct S1BaseCharacteristicsV1 {
 /// construction.
 #[derive(Debug)]
 pub(crate) struct S1QueryAuthority<'a> {
-    admission: &'a ExecutableProfileAdmissionV1,
     _state: &'a EngineState,
     queried: QueriedObjectV1,
     _object: &'a GameObject,
@@ -146,7 +145,6 @@ impl<'a> S1QueryAuthority<'a> {
         }
 
         Ok(Self {
-            admission,
             _state: state,
             queried: QueriedObjectV1 {
                 object: object_id,
@@ -165,10 +163,6 @@ impl<'a> S1QueryAuthority<'a> {
 
     pub(crate) fn queried_object(&self) -> QueriedObjectV1 {
         self.queried
-    }
-
-    pub(crate) fn execution_identity(&self) -> &ExecutionIdentityV1 {
-        self.admission.execution_identity()
     }
 
     // The current admitted M4.2 Basic Land transition does not need to branch
