@@ -1,6 +1,6 @@
 # One Runtime Cleanup (Stage 1) Implementation Plan
 
-**Status:** DRAFT for owner review, 2026-09-30. Execution method chosen by the owner: inline.
+**Status:** IMPLEMENTED on branch `chore/one-runtime`, 2026-09-30 (approved by the owner; executed inline).
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

@@ -1,10 +1,10 @@
 # M4 Shared S1 — Characteristic and Object Query Authority Implementation Plan
 
 **Task:** `M4_SHARED_S1_CHARACTERISTIC_OBJECT_QUERY_AUTHORITY`
-**Status:** PROPOSED — PENDING DESIGN REVIEW
+**Status:** S1-A and S1-B implemented and used in production (`crates/mtgml-rules/src/characteristic_query.rs`); S1-C and S1-D open.
 **Spec:** [`2026-09-28-m4-shared-s1-characteristic-object-query-authority.md`](../specs/2026-09-28-m4-shared-s1-characteristic-object-query-authority.md)
 **Subordination:** This Plan is subordinate to the S1 Spec and the accepted Shared/G0 specifications. It sequences work and tests; it does not add semantic rules.
-**Implementation authorized:** NO — this Plan requests review only.
+**Implementation authorized:** S1-A and S1-B (done); S1-C and S1-D are implemented when a card needs them.
 
 ## 1. Exact implementation starting point
 

@@ -27,9 +27,8 @@ New contract versions, documents, gates, and refactors are not progress on
 their own. If a task would add ceremony without adding or protecting playable
 behavior, say so and propose something smaller.
 
-**Current focus:** creatures and combat on the native turn progression, then
-one runtime (Plan B in `docs/superpowers/plans/2026-09-30-production-full-turn.md`);
-then spells and the stack.
+**Current focus:** creatures and combat on the native turn progression; then
+spells and the stack.
 
 ## 3. Keep changes small
 
@@ -53,19 +52,15 @@ Manafold has no external users and no persisted data that must stay readable.
 - When something is replaced, delete the old code path in the same change.
 - There is exactly one runtime. Tests must not compile different runtime
   modules than production (no `#[cfg(test)]` / feature swaps of runtime
-  modules). *Currently violated in `mtgml-environment`; being removed.*
-- Where older docs or ADRs demand a new version identity for every change,
-  this section takes precedence until those docs are updated.
+  modules).
+- Older docs and ADRs that demand a new version identity for every change
+  are superseded by this section.
 
 ## 5. Tests must exercise the real engine
 
-- Test through the same code path production uses. Feature-gated historical
-  or testkit runtimes are not evidence that the engine works.
-- Cargo unifies features across the workspace: because `mtgml-conformance`
-  enables `historical-conformance-runtime`, even `cargo test --workspace`
-  without `--all-features` runs the old runtime. Until those features are
-  removed, production behavior is only proven by
-  `cargo test -p mtgml-environment --locked` (its `tests/` integration tests).
+- Test through the same code path production uses. Feature-gated or testkit
+  runtimes are not evidence that the engine works.
+- `cargo test --workspace --locked` runs the one production runtime.
 - For rule changes: first write a failing test that shows the behavior in a
   real game flow, then implement.
 - Every PR keeps the random-vs-random smoke games green:
@@ -86,7 +81,7 @@ Manafold has no external users and no persisted data that must stay readable.
 
 ```bash
 just check-fast                          # quick loop while working
-cargo test -p mtgml-environment --locked # production runtime path
+cargo test --workspace --locked          # every crate, one runtime
 just check                               # before opening a PR
 just doctor                              # toolchain problems
 ```

@@ -1,6 +1,6 @@
 # One Runtime Cleanup (Stage 1) — Design
 
-**Status:** DRAFT for owner review, 2026-09-30. Design approved in conversation; this document awaits review before planning.
+**Status:** IMPLEMENTED on branch `chore/one-runtime`, 2026-09-30 (approved by the owner; executed inline).
 
 **Goal:** leave exactly one execution path, the production V8 runtime, so that R1/W1 card work starts on a base where every test exercises production code and no document or gate asks for the old paths.
 

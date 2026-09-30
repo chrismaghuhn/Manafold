@@ -234,6 +234,8 @@ The authoritative replay container remains canonical JSON unless/until a separat
 
 ## Historical support policy
 
+> **Superseded by AGENTS.md §4.** Formats now have one current version that is changed in place, and the old code path is deleted in the same change. Where this section requires a new version identity per change, it no longer applies.
+
 When M2 changes `EngineState`:
 
 - do not reinterpret `FullStateDigestV2`;
