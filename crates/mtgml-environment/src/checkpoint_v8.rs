@@ -57,7 +57,7 @@ impl EnvironmentCheckpointV8 {
         if &execution_identity != admission.execution_identity() {
             return Err(CheckpointV8Error::ContractBinding);
         }
-        mtgml_rules::validate_basic_land_pending_request_v4(admission, &state, &status)
+        mtgml_rules::validate_magic_pending_request_v4(admission, &state, &status)
             .map_err(|_| CheckpointV8Error::State)?;
         Self::build(state, status, limit_counters, execution_identity, true)
     }
@@ -101,11 +101,8 @@ impl EnvironmentCheckpointV8 {
             execution_identity,
             checkpoint_digest,
         };
-        if structurally_validated_by_rules {
-            value.validate_structural_only()?;
-        } else {
-            value.validate()?;
-        }
+        // Both digests were just computed from these fields; check the rest.
+        value.validate_fields(structurally_validated_by_rules, false)?;
         Ok(value)
     }
 
@@ -126,7 +123,7 @@ impl EnvironmentCheckpointV8 {
         if &self.execution_identity != admission.execution_identity() {
             return Err(CheckpointV8Error::ContractBinding);
         }
-        mtgml_rules::validate_basic_land_pending_request_v4(admission, &self.state, &self.status)
+        mtgml_rules::validate_magic_pending_request_v4(admission, &self.state, &self.status)
             .map_err(|_| CheckpointV8Error::State)?;
         self.validate_inner(true)
     }
@@ -134,6 +131,18 @@ impl EnvironmentCheckpointV8 {
     fn validate_inner(
         &self,
         structurally_validated_by_rules: bool,
+    ) -> Result<(), CheckpointV8Error> {
+        self.validate_fields(structurally_validated_by_rules, true)
+    }
+
+    /// Every checkpoint check, in one fixed order. `recompute_digests` is
+    /// false only in `build`, which computed both digests from these fields a
+    /// moment before; every other caller validates input from outside and
+    /// recomputes them.
+    fn validate_fields(
+        &self,
+        structurally_validated_by_rules: bool,
+        recompute_digests: bool,
     ) -> Result<(), CheckpointV8Error> {
         if self.schema_version != ENVIRONMENT_CHECKPOINT_SCHEMA_V8
             || self.codec.codec_id != CHECKPOINT_CODEC_ID_V8
@@ -158,24 +167,26 @@ impl EnvironmentCheckpointV8 {
         self.limit_counters
             .validate()
             .map_err(|_| CheckpointV8Error::LimitCounters)?;
-        let actual_state = if structurally_validated_by_rules {
-            mtgml_state::calculate_full_state_digest_v7_structural_only(&self.state)
-        } else {
-            mtgml_state::calculate_full_state_digest_v7(&self.state)
-        }
-        .map_err(|_| CheckpointV8Error::StateDigest)?;
-        if actual_state != self.state_digest {
-            return Err(CheckpointV8Error::StateDigest);
-        }
-        if calculate_checkpoint_digest_v8(
-            &self.state_digest,
-            &self.status,
-            &self.limit_counters,
-            &self.codec,
-            &self.execution_identity,
-        )? != self.checkpoint_digest
-        {
-            return Err(CheckpointV8Error::CheckpointDigest);
+        if recompute_digests {
+            let actual_state = if structurally_validated_by_rules {
+                mtgml_state::calculate_full_state_digest_v7_structural_only(&self.state)
+            } else {
+                mtgml_state::calculate_full_state_digest_v7(&self.state)
+            }
+            .map_err(|_| CheckpointV8Error::StateDigest)?;
+            if actual_state != self.state_digest {
+                return Err(CheckpointV8Error::StateDigest);
+            }
+            if calculate_checkpoint_digest_v8(
+                &self.state_digest,
+                &self.status,
+                &self.limit_counters,
+                &self.codec,
+                &self.execution_identity,
+            )? != self.checkpoint_digest
+            {
+                return Err(CheckpointV8Error::CheckpointDigest);
+            }
         }
         if !matches!(self.status, EpisodeStatus::Running)
             && self.state.execution_v4.pending_decision.is_some()

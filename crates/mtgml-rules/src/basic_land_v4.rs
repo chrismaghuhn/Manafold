@@ -74,10 +74,11 @@ pub fn derive_basic_land_candidates_v4(
         actor,
         status,
     )?;
+    let mut objects = Vec::new();
     for candidate in &candidates {
-        let object = match &candidate.trusted_binding {
-            EngineCandidateBindingV3::PlayLand { object } => Some(*object),
-            EngineCandidateBindingV3::ActivateAbility { ability } => Some(
+        match &candidate.trusted_binding {
+            EngineCandidateBindingV3::PlayLand { object } => objects.push(*object),
+            EngineCandidateBindingV3::ActivateAbility { ability } => objects.push(
                 state
                     .card_rules_state
                     .abilities
@@ -86,16 +87,16 @@ pub fn derive_basic_land_candidates_v4(
                     .ok_or(BasicLandCandidateError::InvalidState)?
                     .source,
             ),
-            _ => None,
-        };
-        if let Some(object) = object {
-            let authority = crate::S1QueryAuthority::for_object(admission, state, object)
-                .map_err(map_s1_query_error)?;
-            if authority.queried_object().object != object
-                || authority.execution_identity().program_kind != ExecutionProgramV1::MagicRules
-            {
-                return Err(BasicLandCandidateError::WrongExecutionIdentity);
-            }
+            _ => {}
+        }
+    }
+    let authorities = crate::S1QueryAuthority::for_objects(admission, state, &objects)
+        .map_err(map_s1_query_error)?;
+    for (authority, object) in authorities.iter().zip(&objects) {
+        if authority.queried_object().object != *object
+            || authority.execution_identity().program_kind != ExecutionProgramV1::MagicRules
+        {
+            return Err(BasicLandCandidateError::WrongExecutionIdentity);
         }
     }
     candidates
@@ -419,13 +420,8 @@ pub fn execute_basic_land_response_v4(
         .map_err(|_| crate::BasicLandTransitionError::InvalidResult)?;
     let delta = StateDeltaV3::between_structural_only(state, &next_state, operations)
         .map_err(|_| crate::BasicLandTransitionError::Delta)?;
-    crate::events_v3::validate_event_delta_state_v3_structural_only(
-        state,
-        &next_state,
-        &events,
-        &delta,
-    )
-    .map_err(|_| crate::BasicLandTransitionError::InvalidResult)?;
+    crate::events_v3::validate_events_for_built_delta_v3(state, &next_state, &events, &delta)
+        .map_err(|_| crate::BasicLandTransitionError::InvalidResult)?;
     Ok(BasicLandTransitionProductV4 {
         accepted: true,
         next_state,

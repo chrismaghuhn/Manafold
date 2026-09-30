@@ -56,30 +56,44 @@ pub(crate) struct S1QueryAuthority<'a> {
 }
 
 impl<'a> S1QueryAuthority<'a> {
+    // Current production callers query batches (`for_objects`); keep the
+    // single-object form for rules that ask about one object and for the
+    // unit witnesses, as with `derive_base_characteristics` below.
+    #[allow(dead_code)]
     pub(crate) fn for_object(
         admission: &'a ExecutableProfileAdmissionV1,
         state: &'a EngineStatePartsV3,
         object_id: GameObjectId,
     ) -> Result<Self, S1QueryError> {
         validate_admission_binding(admission)?;
+        validate_query_state(state, object_id)?;
+        Self::in_validated_state(admission, state, object_id)
+    }
 
-        if let Err(error) = state.validate_structure() {
-            let object_is_live = state.predecessor_v5.zones.objects.contains_key(&object_id);
-            if object_is_live
-                && !state
-                    .predecessor_v5
-                    .zones
-                    .locations
-                    .contains_key(&object_id)
-            {
-                return Err(S1QueryError::MissingZoneLocation(object_id));
-            }
-            if object_is_live && !state.card_rules_state.faces.faces.contains_key(&object_id) {
-                return Err(S1QueryError::FaceStateMissing(object_id));
-            }
-            return Err(S1QueryError::InconsistentState(error));
-        }
+    /// Queries several objects of one state, validating the admission and
+    /// the state once. The result equals calling `for_object` on each object
+    /// in order and stopping at the first error.
+    pub(crate) fn for_objects(
+        admission: &'a ExecutableProfileAdmissionV1,
+        state: &'a EngineStatePartsV3,
+        objects: &[GameObjectId],
+    ) -> Result<Vec<Self>, S1QueryError> {
+        let Some(first) = objects.first() else {
+            return Ok(Vec::new());
+        };
+        validate_admission_binding(admission)?;
+        validate_query_state(state, *first)?;
+        objects
+            .iter()
+            .map(|object| Self::in_validated_state(admission, state, *object))
+            .collect()
+    }
 
+    fn in_validated_state(
+        admission: &'a ExecutableProfileAdmissionV1,
+        state: &'a EngineStatePartsV3,
+        object_id: GameObjectId,
+    ) -> Result<Self, S1QueryError> {
         let object = state
             .predecessor_v5
             .zones
@@ -218,6 +232,31 @@ fn derive_base_characteristics(
             .power_toughness
             .map(|(power, toughness)| (i64::from(power), i64::from(toughness))),
     }
+}
+
+/// Validates the state a query reads. An invalid state is reported through
+/// `object_id` where the object's own records explain it.
+fn validate_query_state(
+    state: &EngineStatePartsV3,
+    object_id: GameObjectId,
+) -> Result<(), S1QueryError> {
+    let Err(error) = state.validate_structure() else {
+        return Ok(());
+    };
+    let object_is_live = state.predecessor_v5.zones.objects.contains_key(&object_id);
+    if object_is_live
+        && !state
+            .predecessor_v5
+            .zones
+            .locations
+            .contains_key(&object_id)
+    {
+        return Err(S1QueryError::MissingZoneLocation(object_id));
+    }
+    if object_is_live && !state.card_rules_state.faces.faces.contains_key(&object_id) {
+        return Err(S1QueryError::FaceStateMissing(object_id));
+    }
+    Err(S1QueryError::InconsistentState(error))
 }
 
 fn validate_admission_binding(

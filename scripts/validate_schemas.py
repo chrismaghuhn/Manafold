@@ -88,6 +88,10 @@ ARTIFACT_CASES = [
 SCHEMA_NEGATIVE_CASES = [
     (
         "player-decision-request.v4.schema.json",
+        "schemas/negative/player-decision-request-v4-hand-size-discard-public.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
         "schemas/negative/player-decision-request-v4-cost-route-normal-with-ordinal.json",
     ),
     (
@@ -308,6 +312,14 @@ SCHEMA_POSITIVE_CASES = [
     (
         "player-decision-request.v4.schema.json",
         "schemas/examples/player-decision-request-v4-attacker-declaration.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/examples/player-decision-request-v4-hand-size-discard.json",
+    ),
+    (
+        "player-step.v4.schema.json",
+        "schemas/examples/player-step-v4-hand-size-discard.json",
     ),
     (
         "player-decision-request.v4.schema.json",

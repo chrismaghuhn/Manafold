@@ -420,6 +420,34 @@
     },
     {
       "authority_refs": [
+        "wotc-cr-2026-09-25-txt-20260925-sha256-8d860e451f20f38865b725b42d82feb714c725373dd8f3b32b8652b3eeb070ca"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [
+        "drawing_from_an_empty_library_loses_the_game",
+        "drawing_from_an_empty_library_ends_the_game"
+      ],
+      "dependencies": [
+        "rules/draw-card",
+        "rules/turn-structure"
+      ],
+      "implementation_paths": [
+        "crates/mtgml-rules/src/turn_progression.rs"
+      ],
+      "information_risk": "low",
+      "key": "rules/state-based-actions-empty-library",
+      "lifecycle": "covered",
+      "notes": "Covered for two-player land games on the native turn progression by the listed rules and production-endpoint cases. Other state-based actions, multiple draws and more than two players fail closed.",
+      "owners": [
+        "state_based_actions"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/state-based-actions-empty-library.md",
+      "summary": "A player who draws from an empty library in the draw step loses the game.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
         "docs/adr/0054-m3-pre-t0-hardening.md",
         "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
         "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f"

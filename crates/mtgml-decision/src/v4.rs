@@ -66,6 +66,8 @@ pub enum SyntheticAssemblyStageV1 {
 pub enum DecisionPurposeV4 {
     PriorityAction,
     AttackerDeclaration,
+    /// CR 514.1: the active player discards down to maximum hand size.
+    HandSizeDiscard,
     SbaGraveyardOrder,
     CastCostRoute,
     ModeSelection {
@@ -97,6 +99,12 @@ pub enum DecisionPurposeV4 {
 
 impl DecisionPurposeV4 {
     fn allows_domain(&self, domain: &DecisionDomainV2) -> bool {
+        // An exact, positive number of cards is discarded.
+        if let (Self::HandSizeDiscard, DecisionDomainV2::ChooseMany { minimum, maximum }) =
+            (self, domain)
+        {
+            return minimum == maximum && *minimum >= 1;
+        }
         matches!(
             (self, domain),
             (
@@ -155,7 +163,7 @@ impl DecisionPurposeV4 {
                     | CandidateIntentV4::CastSpell { .. }
                     | CandidateIntentV4::ActivateAbility { .. }
             ) | (
-                Self::AttackerDeclaration,
+                Self::AttackerDeclaration | Self::HandSizeDiscard,
                 CandidateIntentV4::SelectObject { .. }
             ) | (
                 Self::SbaGraveyardOrder,
@@ -200,6 +208,7 @@ impl DecisionPurposeV4 {
     fn visibility_is_valid(&self, visibility: DecisionVisibility) -> bool {
         match self {
             Self::AttackerDeclaration
+            | Self::HandSizeDiscard
             | Self::CastCostRoute
             | Self::SbaGraveyardOrder
             | Self::TriggerOrder => visibility == DecisionVisibility::ActingPlayerOnly,
@@ -1191,6 +1200,7 @@ impl DecisionPurposeV4 {
             self,
             Self::PriorityAction
                 | Self::AttackerDeclaration
+                | Self::HandSizeDiscard
                 | Self::CastCostRoute
                 | Self::ModeSelection { .. }
                 | Self::TargetSelection { .. }
@@ -1783,5 +1793,41 @@ mod tests {
             CandidateOrderingV3::validate_public(&out_of_order),
             Err(DecisionValidationError::NoncanonicalCandidateOrder)
         );
+    }
+}
+
+#[cfg(test)]
+mod hand_size_discard_tests {
+    use super::*;
+
+    const HAND_SIZE_DISCARD: &str =
+        include_str!("../../../schemas/examples/player-decision-request-v4-hand-size-discard.json");
+
+    #[test]
+    fn hand_size_discard_requires_exact_choose_many_over_objects() {
+        let request: PlayerDecisionRequestV4 = serde_json::from_str(HAND_SIZE_DISCARD).unwrap();
+        request.validate().unwrap();
+        assert_eq!(request.purpose, DecisionPurposeV4::HandSizeDiscard);
+
+        let rejects = |edit: &dyn Fn(&mut PlayerDecisionRequestV4)| {
+            let mut edited = request.clone();
+            edit(&mut edited);
+            assert!(edited.validate().is_err());
+        };
+        rejects(&|request| {
+            request.decision_domain_v2 = DecisionDomainV2::ChooseMany {
+                minimum: 1,
+                maximum: 2,
+            }
+        });
+        rejects(&|request| {
+            request.decision_domain_v2 = DecisionDomainV2::ChooseMany {
+                minimum: 0,
+                maximum: 0,
+            }
+        });
+        rejects(&|request| request.visibility = DecisionVisibility::Public);
+        rejects(&|request| request.candidates[0].intent = CandidateIntentV4::PassPriority);
+        assert!(DecisionPurposeV4::HandSizeDiscard.is_profile_dependent());
     }
 }

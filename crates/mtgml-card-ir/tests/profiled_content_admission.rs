@@ -58,9 +58,14 @@ fn complete_closure() -> Vec<CapabilityRequirementV1> {
     [
         "rules/basic-land-mana",
         "rules/basic-priority",
+        "rules/cleanup-reset",
+        "rules/combat-phase",
+        "rules/declare-attackers",
+        "rules/draw-card",
         "rules/land-play",
         "rules/mana-pool",
         "rules/state-based-actions-combat",
+        "rules/state-based-actions-empty-library",
         "rules/turn-structure",
         "rules/zone-incarnation",
     ]
@@ -132,8 +137,15 @@ fn mountain_plains_derive_the_closed_roots_and_recursive_registry_closure() {
         admission.direct_requirement_roots(),
         vec![
             requirement("rules/basic-land-mana"),
+            requirement("rules/basic-priority"),
+            requirement("rules/cleanup-reset"),
+            requirement("rules/combat-phase"),
+            requirement("rules/declare-attackers"),
+            requirement("rules/draw-card"),
             requirement("rules/land-play"),
             requirement("rules/mana-pool"),
+            requirement("rules/state-based-actions-empty-library"),
+            requirement("rules/turn-structure"),
         ]
     );
     assert_eq!(admission.resolved_capabilities(), complete_closure());
@@ -194,6 +206,11 @@ fn profile_roots_cannot_be_suppressed_and_transitive_requirements_are_mandatory(
         "rules/state-based-actions-combat",
         "rules/turn-structure",
         "rules/zone-incarnation",
+        "rules/draw-card",
+        "rules/combat-phase",
+        "rules/declare-attackers",
+        "rules/cleanup-reset",
+        "rules/state-based-actions-empty-library",
     ] {
         let incomplete = complete_closure()
             .into_iter()
@@ -263,4 +280,97 @@ fn noncanonical_content_bytes_do_not_enter_profile_admission() {
         &execution,
     )
     .is_err());
+}
+
+#[test]
+fn executable_admission_adds_game_rule_roots_to_card_roots() {
+    let bytes = manifest_bytes();
+    let id = calculate_content_contract_id_v1(&bytes).unwrap();
+    let provenance = provenance_bytes(&id);
+    let (rules, semantic, execution) = identities(id.clone(), complete_closure());
+
+    let admission =
+        admit_executable_profile_v1(&bytes, &id, &provenance, &rules, &semantic, &execution)
+            .expect("a game admits the turn rules every Magic game needs");
+
+    let roots: std::collections::BTreeSet<&str> = admission
+        .direct_requirement_roots()
+        .iter()
+        .map(|root| root.key.as_str())
+        .collect();
+    assert_eq!(
+        roots,
+        std::collections::BTreeSet::from([
+            "rules/basic-land-mana",
+            "rules/land-play",
+            "rules/mana-pool",
+            "rules/turn-structure",
+            "rules/basic-priority",
+            "rules/draw-card",
+            "rules/combat-phase",
+            "rules/declare-attackers",
+            "rules/cleanup-reset",
+            "rules/state-based-actions-empty-library",
+        ])
+    );
+    assert_eq!(admission.resolved_capabilities(), complete_closure());
+    let resolved: Vec<&str> = admission
+        .resolved_capabilities()
+        .iter()
+        .map(|capability| capability.key.as_str())
+        .collect();
+    assert!(!resolved.contains(&"rules/declare-blockers"));
+    assert!(!resolved.contains(&"rules/combat-damage"));
+}
+
+fn content_only_closure() -> Vec<CapabilityRequirementV1> {
+    [
+        "rules/basic-land-mana",
+        "rules/basic-priority",
+        "rules/land-play",
+        "rules/mana-pool",
+        "rules/state-based-actions-combat",
+        "rules/turn-structure",
+        "rules/zone-incarnation",
+    ]
+    .into_iter()
+    .map(requirement)
+    .collect()
+}
+
+#[test]
+fn content_only_closure_still_admits_without_game_rules() {
+    let bytes = manifest_bytes();
+    let id = calculate_content_contract_id_v1(&bytes).unwrap();
+    let provenance = provenance_bytes(&id);
+    let (rules, semantic, execution) = identities(id.clone(), content_only_closure());
+
+    let admission =
+        admit_executable_profile_v1(&bytes, &id, &provenance, &rules, &semantic, &execution)
+            .expect("historical content-only identities keep their exact meaning");
+
+    assert_eq!(
+        admission.direct_requirement_roots(),
+        vec![
+            requirement("rules/basic-land-mana"),
+            requirement("rules/land-play"),
+            requirement("rules/mana-pool"),
+        ]
+    );
+    assert_eq!(admission.resolved_capabilities(), content_only_closure());
+}
+
+#[test]
+fn closures_other_than_content_only_or_full_game_reject() {
+    let bytes = manifest_bytes();
+    let id = calculate_content_contract_id_v1(&bytes).unwrap();
+    let provenance = provenance_bytes(&id);
+    let mut partial = content_only_closure();
+    partial.push(requirement("rules/draw-card"));
+    partial.sort_by(|left, right| left.key.cmp(&right.key));
+    let (rules, semantic, execution) = identities(id.clone(), partial);
+    assert!(
+        admit_executable_profile_v1(&bytes, &id, &provenance, &rules, &semantic, &execution)
+            .is_err()
+    );
 }

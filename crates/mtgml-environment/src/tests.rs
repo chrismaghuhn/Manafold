@@ -22,6 +22,7 @@ use mtgml_replay::{
 };
 
 mod magic_basic_land_observation;
+mod successor_turn_projection;
 
 #[test]
 fn successor_event_projection_uses_only_policy_authorized_opaque_identity() {

@@ -398,7 +398,10 @@ pub fn validate_occurrence_pairing(
                 return Err(OccurrencePairingError::IdentityMismatch);
             }
             match &mutation.knowledge {
-                Some(KnowledgeMutationV1::Acquire { acquisition, .. }) => {
+                Some(
+                    KnowledgeMutationV1::Acquire { acquisition, .. }
+                    | KnowledgeMutationV1::AcquireShiftingKnownMembers { acquisition, .. },
+                ) => {
                     if !matches!(
                         acquisition,
                         KnowledgeAcquisitionReason::Observed {
