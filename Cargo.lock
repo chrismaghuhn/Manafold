@@ -75,17 +75,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "getrandom"
-version = "0.2.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "335ff9f135e4384c8150d6f27c6daed433577f86b4750418338c01a1a2528592"
-dependencies = [
- "cfg-if",
- "libc",
- "wasi",
-]
-
-[[package]]
 name = "hmac"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -116,23 +105,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2"
 
 [[package]]
-name = "m2-semantic-adapter"
-version = "0.2.2"
-dependencies = [
- "base64",
- "getrandom",
- "mtgml-decision",
- "mtgml-environment",
- "mtgml-model",
- "mtgml-observation",
- "mtgml-random",
- "mtgml-replay",
- "mtgml-wire",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "memchr"
 version = "2.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -155,24 +127,6 @@ version = "0.2.2"
 dependencies = [
  "mtgml-model",
  "mtgml-state",
- "thiserror",
-]
-
-[[package]]
-name = "mtgml-conformance"
-version = "0.2.2"
-dependencies = [
- "base64",
- "mtgml-decision",
- "mtgml-environment",
- "mtgml-model",
- "mtgml-observation",
- "mtgml-random",
- "mtgml-replay",
- "mtgml-rules",
- "mtgml-state",
- "mtgml-wire",
- "serde_json",
  "thiserror",
 ]
 
@@ -426,9 +380,3 @@ name = "unicode-ident"
 version = "1.0.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
-
-[[package]]
-name = "wasi"
-version = "0.11.1+wasi-snapshot-preview1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ccf3ec651a847eb01de73ccad15eb7d99f80485de043efb2f370cd654f4ea44b"

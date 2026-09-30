@@ -94,7 +94,7 @@ from .persistence import (
     calculate_checkpoint_digest_v7,
     calculate_checkpoint_digest_v8,
 )
-from .player_client import HistoricalPlayerClientV2, HistoricalPlayerClientV3, PlayerClient
+from .player_client import PlayerClient
 from .replay import (
     AuthoritativeReplayV1,
     AuthoritativeReplayV2,
@@ -184,8 +184,6 @@ __all__ = [
     "EpisodeStatus",
     "ExecutionIdentityV1",
     "FaceObservationV1",
-    "HistoricalPlayerClientV2",
-    "HistoricalPlayerClientV3",
     "InformationStateDigestInputV2",
     "InformationStateDigestInputV3",
     "InformationStateEnvelope",
