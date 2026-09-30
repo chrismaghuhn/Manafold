@@ -318,6 +318,10 @@ SCHEMA_POSITIVE_CASES = [
         "schemas/examples/player-decision-request-v4-hand-size-discard.json",
     ),
     (
+        "player-step.v4.schema.json",
+        "schemas/examples/player-step-v4-hand-size-discard.json",
+    ),
+    (
         "player-decision-request.v4.schema.json",
         "schemas/examples/player-decision-request-v4-synthetic-entry.json",
     ),
