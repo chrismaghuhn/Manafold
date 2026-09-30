@@ -8,7 +8,7 @@ use mtgml_observation::{
     PlayerStepSubmissionV1, PlayerSubmissionCodeV1,
 };
 use mtgml_rules::AuthoritativeRuleEventKindV3;
-use mtgml_state::{EngineStatePartsV3, PerspectiveIdentityRecordV2};
+use mtgml_state::{EngineState, PerspectiveIdentityRecordV2};
 
 use crate::errors::ControllerError;
 
@@ -41,8 +41,8 @@ pub struct SuccessorProjectionAuthority<'a> {
 }
 
 pub struct SuccessorTransitionV4Projection<'a> {
-    pub before: &'a EngineStatePartsV3,
-    pub after: &'a EngineStatePartsV3,
+    pub before: &'a EngineState,
+    pub after: &'a EngineState,
     pub before_status: &'a mtgml_model::EpisodeStatus,
     pub events: &'a [mtgml_rules::AuthoritativeRuleEventV3],
     pub delta: Option<&'a mtgml_state::StateDeltaV3>,
@@ -54,8 +54,8 @@ pub struct SuccessorTransitionV4Projection<'a> {
 }
 
 struct V4PublicSourceEventContext<'a> {
-    before: &'a EngineStatePartsV3,
-    after: &'a EngineStatePartsV3,
+    before: &'a EngineState,
+    after: &'a EngineState,
     perspective: PlayerId,
     before_identity: &'a PerspectiveIdentityRecordV2,
     after_identity: &'a PerspectiveIdentityRecordV2,
@@ -84,8 +84,8 @@ fn resolve(
 /// result; only the perspective's already-authoritative visible sequence is
 /// used for public chronology.
 pub fn project_successor_events_v4(
-    before: &EngineStatePartsV3,
-    after: &EngineStatePartsV3,
+    before: &EngineState,
+    after: &EngineState,
     events: &[mtgml_rules::AuthoritativeRuleEventV3],
 ) -> Result<BTreeMap<PlayerId, Vec<ObservedEventEnvelopeV4>>, SuccessorProjectionError> {
     project_successor_events_v4_inner(before, after, events, None, false)
@@ -93,9 +93,9 @@ pub fn project_successor_events_v4(
 
 pub fn project_successor_events_v4_for_basic_land_profile(
     admission: &mtgml_card_ir::ExecutableProfileAdmissionV1,
-    before: &EngineStatePartsV3,
+    before: &EngineState,
     before_status: &mtgml_model::EpisodeStatus,
-    after: &EngineStatePartsV3,
+    after: &EngineState,
     after_status: &mtgml_model::EpisodeStatus,
     events: &[mtgml_rules::AuthoritativeRuleEventV3],
     delta: Option<&mtgml_state::StateDeltaV3>,
@@ -108,8 +108,8 @@ pub fn project_successor_events_v4_for_basic_land_profile(
 }
 
 fn project_successor_events_v4_inner(
-    before: &EngineStatePartsV3,
-    after: &EngineStatePartsV3,
+    before: &EngineState,
+    after: &EngineState,
     events: &[mtgml_rules::AuthoritativeRuleEventV3],
     delta: Option<&mtgml_state::StateDeltaV3>,
     rules_domain_validated: bool,
@@ -121,14 +121,14 @@ fn project_successor_events_v4_inner(
     };
     state_validation.map_err(|_| SuccessorProjectionError::ObservationOccurrenceMismatch)?;
     mtgml_rules::validate_rule_event_cursor_v3(
-        before.predecessor_v5.allocators.next_rule_event_id,
-        after.predecessor_v5.allocators.next_rule_event_id,
-        after.predecessor_v5.revision,
+        before.allocators.next_rule_event_id,
+        after.allocators.next_rule_event_id,
+        after.revision,
         events,
     )
     .map_err(|_| SuccessorProjectionError::ObservationOccurrenceMismatch)?;
-    let before_engine: mtgml_state::EngineState = before.predecessor_v5.clone().into();
-    let after_engine: mtgml_state::EngineState = after.predecessor_v5.clone().into();
+    let before_engine = before;
+    let after_engine = after;
     let mut projected: BTreeMap<_, Vec<_>> = before_engine
         .knowledge
         .players
@@ -150,7 +150,7 @@ fn project_successor_events_v4_inner(
     // transition must not authorize an earlier event projection.
     let mut identities = before_engine.perspective_identities.players.clone();
     let mut knowledge_states = before_engine.knowledge.players.clone();
-    let mut working_stack_order = before.predecessor_v5.zones.stack_order.clone();
+    let mut working_stack_order = before.zones.stack_order.clone();
     let mut stack_order_before_event = BTreeMap::new();
     for event in events {
         match &event.event {
@@ -181,7 +181,7 @@ fn project_successor_events_v4_inner(
             _ => {}
         }
     }
-    if working_stack_order != after.predecessor_v5.zones.stack_order {
+    if working_stack_order != after.zones.stack_order {
         return Err(SuccessorProjectionError::FinalStackOrderMismatch);
     }
 
@@ -308,8 +308,8 @@ fn project_successor_events_v4_inner(
 
 fn requires_all_player_audience(
     event: &mtgml_rules::AuthoritativeRuleEventV3,
-    before: &EngineStatePartsV3,
-    after: &EngineStatePartsV3,
+    before: &EngineState,
+    after: &EngineState,
 ) -> Result<bool, SuccessorProjectionError> {
     use AuthoritativeRuleEventKindV3 as Event;
     match &event.event {
@@ -335,24 +335,22 @@ fn requires_all_player_audience(
 
 pub(crate) fn public_face_up_battlefield_object(
     object: mtgml_model::GameObjectId,
-    before: &EngineStatePartsV3,
-    after: &EngineStatePartsV3,
+    before: &EngineState,
+    after: &EngineState,
 ) -> bool {
     let Some(object_state) = after
-        .predecessor_v5
         .zones
         .objects
         .get(&object)
-        .or_else(|| before.predecessor_v5.zones.objects.get(&object))
+        .or_else(|| before.zones.objects.get(&object))
     else {
         return false;
     };
     let Some(location) = after
-        .predecessor_v5
         .zones
         .locations
         .get(&object)
-        .or_else(|| before.predecessor_v5.zones.locations.get(&object))
+        .or_else(|| before.zones.locations.get(&object))
     else {
         return false;
     };
@@ -428,7 +426,6 @@ fn project_v4_public_source_event(
             ..
         } => {
             let controller = after
-                .predecessor_v5
                 .zones
                 .stack_records
                 .get(stack_object)
@@ -454,7 +451,6 @@ fn project_v4_public_source_event(
             result,
         } => {
             let controller = before
-                .predecessor_v5
                 .zones
                 .stack_records
                 .get(stack_object)
@@ -574,7 +570,7 @@ fn project_v4_public_source_event(
 }
 
 fn project_v4_legacy_observation_policy(
-    after: &EngineStatePartsV3,
+    after: &EngineState,
     policy: &mtgml_rules::PerspectiveObservationPolicyV1,
     before_identity: &PerspectiveIdentityRecordV2,
     after_identity: &PerspectiveIdentityRecordV2,
@@ -582,13 +578,13 @@ fn project_v4_legacy_observation_policy(
 ) -> Result<Option<ObservedEventKindV4>, SuccessorProjectionError> {
     use mtgml_rules::PerspectiveObservationPolicyV1 as Policy;
     let public_face = |object: mtgml_model::GameObjectId| {
-        let Some(object_state) = after.predecessor_v5.zones.objects.get(&object) else {
+        let Some(object_state) = after.zones.objects.get(&object) else {
             return Err(SuccessorProjectionError::BattlefieldEntryFactsMismatch);
         };
         if object_state.face_down {
             return Ok(None);
         }
-        match after.card_rules_state.faces.faces.get(&object).copied() {
+        match after.card_rules.faces.faces.get(&object).copied() {
             Some(0) => Ok(Some(ObservedFaceV1::Front)),
             Some(1) => Ok(Some(ObservedFaceV1::Back)),
             _ => Err(SuccessorProjectionError::BattlefieldEntryFactsMismatch),
@@ -615,7 +611,6 @@ fn project_v4_legacy_observation_policy(
             tapped: if *to_zone == mtgml_model::ZoneKind::Battlefield && *reveals_new {
                 Some(
                     after
-                        .predecessor_v5
                         .zones
                         .objects
                         .get(new_object)
@@ -643,7 +638,6 @@ fn project_v4_legacy_observation_policy(
             tapped: if *to_zone == mtgml_model::ZoneKind::Battlefield {
                 Some(
                     after
-                        .predecessor_v5
                         .zones
                         .objects
                         .get(new_object)
@@ -784,7 +778,7 @@ pub fn project_successor_player_steps_v4(
             .and(transition.after.validate())
             .map_err(|error| ControllerError::Backend(error.to_string()))?;
     }
-    if transition.next_request != transition.after.execution_v4.pending_decision.as_ref() {
+    if transition.next_request != transition.after.execution.pending_decision.as_ref() {
         return Err(ControllerError::Backend(
             "projected V4 request differs from the authoritative pending request".into(),
         ));
@@ -803,14 +797,7 @@ pub fn project_successor_player_steps_v4(
         project_successor_events_v4(transition.before, transition.after, transition.events)
     }
     .map_err(|error| ControllerError::Backend(error.to_string()))?;
-    let players: BTreeSet<_> = transition
-        .after
-        .predecessor_v5
-        .core
-        .players
-        .keys()
-        .copied()
-        .collect();
+    let players: BTreeSet<_> = transition.after.core.players.keys().copied().collect();
     let mut steps = BTreeMap::new();
     for perspective in players {
         let information_state = if authority.basic_land_admission.is_some() {

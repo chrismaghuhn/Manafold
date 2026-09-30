@@ -80,7 +80,7 @@ fn play(seed: u64, last_turn: u64) -> (Vec<Entry>, TrustedEnvironmentController)
     let mut trajectory = Vec::new();
     loop {
         let checkpoint = controller.checkpoint().unwrap();
-        if checkpoint.state.predecessor_v5.core.turn_number > last_turn
+        if checkpoint.state.core.turn_number > last_turn
             || !matches!(checkpoint.status, EpisodeStatus::Running)
         {
             return (trajectory, controller);
@@ -167,11 +167,7 @@ fn random_games_run_thirty_turns_deterministically_and_replay() {
         let seed = FIRST_SEED + game;
         let (trajectory, controller) = play(seed, LAST_TURN);
         let last = controller.checkpoint().unwrap();
-        assert_eq!(
-            last.state.predecessor_v5.core.turn_number,
-            LAST_TURN + 1,
-            "seed {seed:#x}"
-        );
+        assert_eq!(last.state.core.turn_number, LAST_TURN + 1, "seed {seed:#x}");
 
         let (again, _) = play(seed, LAST_TURN);
         assert_eq!(

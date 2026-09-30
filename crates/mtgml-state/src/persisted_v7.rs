@@ -15,12 +15,11 @@ use crate::digest_v5;
 use crate::{
     AbilitySourceContext, ActionCostFacts, AssemblyStageV2, AttackerFact, CastContinuation,
     CastContinuationStage, ContinuationPayloadV3, ContinuationRecordV3, CostFacts, CostRoute,
-    DamageKind, DamageRecipient, EffectExpiry, EffectTimestamp, EngineStateParts,
-    EngineStatePartsV3, ExecutionStateV4, LifeChangeCause, ManaCost, ManaPaymentStage,
-    ManaPaymentStaging, ManaSourceActivation, ManaSourceActivationCost, ModeBinding,
-    NonManaActivationContinuation, NonManaActivationStage, PendingTriggerRecord,
-    ReservedNonManaCost, SelectedCostOperand, SourceContext, StackItemPayload,
-    StackResolutionContinuation, StackResolutionStage, TargetBinding, TargetRef,
+    DamageKind, DamageRecipient, EffectExpiry, EffectTimestamp, EngineState, ExecutionStateV4,
+    LifeChangeCause, ManaCost, ManaPaymentStage, ManaPaymentStaging, ManaSourceActivation,
+    ManaSourceActivationCost, ModeBinding, NonManaActivationContinuation, NonManaActivationStage,
+    PendingTriggerRecord, ReservedNonManaCost, SelectedCostOperand, SourceContext,
+    StackItemPayload, StackResolutionContinuation, StackResolutionStage, TargetBinding, TargetRef,
     TemporaryEffectRecord, TemporaryKeyword, TemporaryOperation, TriggerActorRequestRoot,
     TriggerEventSnapshot, TriggerPlacementContinuation, TriggerTargetTiming,
     FULL_STATE_DIGEST_DOMAIN_V7, FULL_STATE_DIGEST_INPUT_SCHEMA_V7,
@@ -50,25 +49,21 @@ fn optional(value: Option<Value>) -> Value {
 /// exhaustive: a new state field must fail to compile here until its digest
 /// encoding is decided. The legacy execution slot is always empty (validated)
 /// and is not encoded.
-pub(crate) fn state_value(state: &EngineStatePartsV3) -> Result<Value, crate::StateDigestError> {
-    let EngineStatePartsV3 {
-        predecessor_v5: parts,
-        execution_v4,
-        card_rules_state,
-    } = state;
-    let EngineStateParts {
+pub(crate) fn state_value(state: &EngineState) -> Result<Value, crate::StateDigestError> {
+    let EngineState {
         revision,
         core: _,
         combat: _,
-        foundation_sources: _,
         zones: _,
         allocators: _,
-        execution: _,
+        execution,
         random: _,
         knowledge: _,
         perspective_identities: _,
         format,
-    } = parts;
+        card_rules,
+    } = state;
+    let parts = state;
     Ok(array([
         text(FULL_STATE_DIGEST_INPUT_SCHEMA_V7),
         text(FULL_STATE_DIGEST_DOMAIN_V7),
@@ -76,20 +71,21 @@ pub(crate) fn state_value(state: &EngineStatePartsV3) -> Result<Value, crate::St
         digest_v5::core_value(parts),
         zones_v2_value(parts)?,
         digest_v5::allocators_value(parts),
-        execution_v4_value(execution_v4)?,
+        execution_v4_value(execution)?,
         digest_v5::random_value(parts),
         digest_v5::knowledge_value(parts)?,
         digest_v5::perspective_identities_value(parts)?,
         digest_v5::combat_value(parts),
-        digest_v5::foundation_sources_value(parts),
+        // The foundation-source slot of the preimage is always empty.
+        array([]),
         digest_v5::format_value(format)?,
-        card_rules_state
+        card_rules
             .canonical_value()
             .map_err(|_| crate::StateDigestError::StateInvariant)?,
     ]))
 }
 
-fn zones_v2_value(state: &EngineStateParts) -> Result<Value, crate::StateDigestError> {
+fn zones_v2_value(state: &EngineState) -> Result<Value, crate::StateDigestError> {
     let [objects, locations, ordered] = digest_v5::zone_contents_values(state)?;
     Ok(array([
         text("zones_v2"),

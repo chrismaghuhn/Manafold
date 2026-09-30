@@ -6,41 +6,26 @@ use mtgml_model::{
 };
 use mtgml_random::RootSeed256;
 use mtgml_state::{
-    construct_synthetic_engine_state, AbilitySourceContext, CardRulesAuthoritativeStateV1,
-    EngineStatePartsV2, EngineStatePartsV3, ExecutionStateV4, ManaCost, ManaPaymentStage,
-    ManaPaymentStaging, ManaPoolV1, ManaSourceActivation, ManaSourceActivationCost,
-    NonManaActivationContinuation, NonManaActivationStage, PlayerTurnHistoryV1,
-    ReservedNonManaCost, SelectedCostOperand, StackItemPayload, StackRecord, SyntheticResetInputs,
-    SyntheticV4Setup, VisibilityPartition, ZoneLocation, ZonePosition,
+    construct_synthetic_engine_state, AbilitySourceContext, EngineState, ExecutionStateV4,
+    ManaCost, ManaPaymentStage, ManaPaymentStaging, ManaSourceActivation, ManaSourceActivationCost,
+    NonManaActivationContinuation, NonManaActivationStage, ReservedNonManaCost,
+    SelectedCostOperand, StackItemPayload, StackRecord, SyntheticResetInputs, SyntheticV4Setup,
+    VisibilityPartition, ZoneLocation, ZonePosition,
 };
 
-fn root() -> EngineStatePartsV3 {
-    let mut state = construct_synthetic_engine_state(SyntheticResetInputs {
+fn root() -> EngineState {
+    construct_synthetic_engine_state(SyntheticResetInputs {
         players: [PlayerId(1), PlayerId(2)],
         root_seed: RootSeed256::from_lower_hex(&"11".repeat(32)).unwrap(),
         setup: SyntheticV4Setup::synthetic_compatibility(),
     })
-    .unwrap();
-    state.execution = Default::default();
-    let mut card_rules_state = CardRulesAuthoritativeStateV1::default();
-    for player in state.core.players.keys().copied() {
-        card_rules_state
-            .mana
-            .pools
-            .insert(player, ManaPoolV1::default());
-        card_rules_state
-            .turn_history
-            .players
-            .insert(player, PlayerTurnHistoryV1::default());
-    }
-    card_rules_state.turn_history.turn_number = state.core.turn_number;
-    EngineStatePartsV3::new(state.parts(), ExecutionStateV4::default(), card_rules_state).unwrap()
+    .unwrap()
 }
 
-fn add_stack_spell(state: &mut EngineStatePartsV3, object_id: u64, stack_id: u64) {
+fn add_stack_spell(state: &mut EngineState, object_id: u64, stack_id: u64) {
     let object = GameObjectId(object_id);
     let card_definition = CardDefinitionId(object_id);
-    state.predecessor_v5.zones.objects.insert(
+    state.zones.objects.insert(
         object,
         mtgml_state::GameObject {
             id: object,
@@ -52,7 +37,7 @@ fn add_stack_spell(state: &mut EngineStatePartsV3, object_id: u64, stack_id: u64
             face_down: false,
         },
     );
-    state.predecessor_v5.zones.locations.insert(
+    state.zones.locations.insert(
         object,
         ZoneLocation {
             zone: ZoneKind::Stack,
@@ -62,15 +47,13 @@ fn add_stack_spell(state: &mut EngineStatePartsV3, object_id: u64, stack_id: u64
             partition: None,
         },
     );
-    state.predecessor_v5.allocators.next_object_id = GameObjectId(object_id + 1);
-    state.predecessor_v5.allocators.next_stack_object_id = StackObjectId(stack_id + 1);
-    state.predecessor_v5.zones.stack_records.insert(
+    state.allocators.next_object_id = GameObjectId(object_id + 1);
+    state.allocators.next_stack_object_id = StackObjectId(stack_id + 1);
+    state.zones.stack_records.insert(
         StackObjectId(stack_id),
         StackRecord {
             id: StackObjectId(stack_id),
             controller: PlayerId(1),
-            source_object: None,
-            source_ability: None,
             payload: Some(StackItemPayload::Spell {
                 stack_card_object: object,
                 card_definition_id: card_definition,
@@ -82,11 +65,7 @@ fn add_stack_spell(state: &mut EngineStatePartsV3, object_id: u64, stack_id: u64
             }),
         },
     );
-    state
-        .predecessor_v5
-        .zones
-        .stack_order
-        .push(StackObjectId(stack_id));
+    state.zones.stack_order.push(StackObjectId(stack_id));
 }
 
 fn pending_trigger(id: u64, controller: PlayerId) -> mtgml_state::PendingTriggerRecord {
@@ -122,10 +101,10 @@ fn pending_trigger(id: u64, controller: PlayerId) -> mtgml_state::PendingTrigger
     }
 }
 
-fn staged_blight_activation() -> (EngineStatePartsV3, ContinuationId) {
+fn staged_blight_activation() -> (EngineState, ContinuationId) {
     let mut state = root();
     let source_object = GameObjectId(3);
-    state.predecessor_v5.zones.objects.insert(
+    state.zones.objects.insert(
         source_object,
         mtgml_state::GameObject {
             id: source_object,
@@ -137,7 +116,7 @@ fn staged_blight_activation() -> (EngineStatePartsV3, ContinuationId) {
             face_down: false,
         },
     );
-    state.predecessor_v5.zones.locations.insert(
+    state.zones.locations.insert(
         source_object,
         ZoneLocation {
             zone: ZoneKind::Battlefield,
@@ -147,26 +126,26 @@ fn staged_blight_activation() -> (EngineStatePartsV3, ContinuationId) {
             partition: None,
         },
     );
-    state.predecessor_v5.allocators.next_object_id = GameObjectId(4);
-    state.predecessor_v5.allocators.next_ability_id = AbilityInstanceId(3);
-    state.predecessor_v5.allocators.next_continuation_id = ContinuationId(2);
-    state.predecessor_v5.allocators.next_decision_id = DecisionId(3);
-    state.card_rules_state.abilities.by_instance.insert(
+    state.allocators.next_object_id = GameObjectId(4);
+    state.allocators.next_ability_id = AbilityInstanceId(3);
+    state.allocators.next_continuation_id = ContinuationId(2);
+    state.allocators.next_decision_id = DecisionId(3);
+    state.card_rules.abilities.by_instance.insert(
         AbilityInstanceId(1),
         mtgml_state::AbilityAuthorityV1 {
             source: source_object,
             ability_key: 4,
         },
     );
-    state.card_rules_state.abilities.by_instance.insert(
+    state.card_rules.abilities.by_instance.insert(
         AbilityInstanceId(2),
         mtgml_state::AbilityAuthorityV1 {
             source: GameObjectId(1),
             ability_key: 9,
         },
     );
-    for object in state.predecessor_v5.zones.objects.keys().copied() {
-        state.card_rules_state.faces.faces.insert(object, 0);
+    for object in state.zones.objects.keys().copied() {
+        state.card_rules.faces.faces.insert(object, 0);
     }
     let continuation_id = ContinuationId(1);
     let action_cost_facts = mtgml_state::ActionCostFacts {
@@ -182,11 +161,11 @@ fn staged_blight_activation() -> (EngineStatePartsV3, ContinuationId) {
             count: 2,
         }],
     };
-    state.execution_v4.continuations.insert(
+    state.execution.continuations.insert(
         continuation_id,
         mtgml_state::ContinuationRecordV3 {
             id: continuation_id,
-            created_at_revision: state.predecessor_v5.revision,
+            created_at_revision: state.revision,
             payload: mtgml_state::ContinuationPayloadV3::NonManaActivation(
                 NonManaActivationContinuation {
                     actor: PlayerId(1),
@@ -216,11 +195,11 @@ fn staged_blight_activation() -> (EngineStatePartsV3, ContinuationId) {
             ),
         },
     );
-    let view_sequence = state.predecessor_v5.knowledge.players[&PlayerId(1)].next_visible_sequence;
-    state.execution_v4.pending_decision = Some(mtgml_decision::AuthoritativeDecisionRequestV4 {
+    let view_sequence = state.knowledge.players[&PlayerId(1)].next_visible_sequence;
+    state.execution.pending_decision = Some(mtgml_decision::AuthoritativeDecisionRequestV4 {
         decision_id: DecisionId(2),
         player_decision_id: PlayerDecisionIdV1(1),
-        state_revision: StateRevision(state.predecessor_v5.revision.0),
+        state_revision: StateRevision(state.revision.0),
         view_sequence,
         actor: PlayerId(1),
         visibility: mtgml_decision::DecisionVisibility::ActingPlayerOnly,
@@ -243,18 +222,16 @@ fn staged_blight_activation() -> (EngineStatePartsV3, ContinuationId) {
 fn successor_authority_has_one_v3_root_and_v4_execution_owner() {
     let state = root();
     state.validate().unwrap();
-    assert_eq!(state.execution_v4, ExecutionStateV4::default());
+    assert_eq!(state.execution, ExecutionStateV4::default());
 }
 
-#[test]
-fn m42_priority_candidate_is_structural_but_not_rules_admitted() {
-    let mut state = root();
+/// Issues one pending pass-priority request to player 1 and returns its
+/// trusted decision identity.
+fn issue_pass_priority_request(state: &mut EngineState) -> DecisionId {
     let actor = PlayerId(1);
-    let decision_id = state.predecessor_v5.allocators.next_decision_id;
-    state.predecessor_v5.allocators.next_decision_id =
-        DecisionId(decision_id.0.checked_add(1).unwrap());
+    let decision_id = state.allocators.next_decision_id;
+    state.allocators.next_decision_id = DecisionId(decision_id.0.checked_add(1).unwrap());
     let identity = state
-        .predecessor_v5
         .perspective_identities
         .players
         .get_mut(&actor)
@@ -262,11 +239,11 @@ fn m42_priority_candidate_is_structural_but_not_rules_admitted() {
     let player_decision_id = identity.next_player_decision_id;
     identity.next_player_decision_id =
         PlayerDecisionIdV1(player_decision_id.0.checked_add(1).unwrap());
-    let view_sequence = state.predecessor_v5.knowledge.players[&actor].next_visible_sequence;
-    state.execution_v4.pending_decision = Some(mtgml_decision::AuthoritativeDecisionRequestV4 {
+    let view_sequence = state.knowledge.players[&actor].next_visible_sequence;
+    state.execution.pending_decision = Some(mtgml_decision::AuthoritativeDecisionRequestV4 {
         decision_id,
         player_decision_id,
-        state_revision: state.predecessor_v5.revision,
+        state_revision: state.revision,
         view_sequence,
         actor,
         visibility: mtgml_decision::DecisionVisibility::Public,
@@ -280,7 +257,13 @@ fn m42_priority_candidate_is_structural_but_not_rules_admitted() {
             trusted_binding: mtgml_decision::EngineCandidateBindingV4::PassPriority,
         }],
     });
+    decision_id
+}
 
+#[test]
+fn m42_priority_candidate_is_structural_but_not_rules_admitted() {
+    let mut state = root();
+    issue_pass_priority_request(&mut state);
     assert!(state.validate_structure().is_ok());
     assert_eq!(
         state.validate(),
@@ -289,45 +272,41 @@ fn m42_priority_candidate_is_structural_but_not_rules_admitted() {
 }
 
 #[test]
-fn predecessor_execution_cannot_duplicate_the_successor_execution_owner() {
-    let state = root();
-    let mut predecessor = state.predecessor_v5;
-    predecessor.execution.effects.insert(
-        mtgml_model::EffectInstanceId(1),
-        mtgml_state::EffectRecord {
-            id: mtgml_model::EffectInstanceId(1),
-            label: "legacy-placeholder".to_owned(),
-        },
-    );
+fn pending_request_decision_identity_must_stay_below_the_allocator() {
+    let build = |offset: i64| {
+        let mut state = root();
+        let issued = issue_pass_priority_request(&mut state);
+        state.allocators.next_decision_id =
+            DecisionId(issued.0.checked_add_signed(offset).unwrap());
+        state
+    };
+    // next == issued must fail closed.
     assert_eq!(
-        EngineStatePartsV3::new(
-            predecessor,
-            ExecutionStateV4::default(),
-            state.card_rules_state,
-        ),
-        Err(mtgml_state::EngineStatePartsV3Error::DuplicateExecutionAuthority)
+        build(0).validate_structure(),
+        Err(mtgml_state::EngineStatePartsV3Error::PendingDecision)
     );
+    // next < issued must fail closed.
+    assert_eq!(
+        build(-1).validate_structure(),
+        Err(mtgml_state::EngineStatePartsV3Error::PendingDecision)
+    );
+    // A strictly greater cursor is accepted.
+    build(1).validate_structure().unwrap();
 }
 
 #[test]
 fn successor_stack_records_require_one_typed_payload_owner() {
     let mut state = root();
-    state.predecessor_v5.zones.stack_records.insert(
+    state.zones.stack_records.insert(
         StackObjectId(1),
         StackRecord {
             id: StackObjectId(1),
             controller: PlayerId(1),
-            source_object: None,
-            source_ability: None,
             payload: None,
         },
     );
-    state
-        .predecessor_v5
-        .zones
-        .stack_order
-        .push(StackObjectId(1));
-    state.predecessor_v5.allocators.next_stack_object_id = StackObjectId(2);
+    state.zones.stack_order.push(StackObjectId(1));
+    state.allocators.next_stack_object_id = StackObjectId(2);
     assert_eq!(
         state.validate(),
         Err(mtgml_state::EngineStatePartsV3Error::MissingStackPayload)
@@ -338,7 +317,7 @@ fn successor_stack_records_require_one_typed_payload_owner() {
 fn stack_zone_card_requires_exactly_one_spell_payload() {
     let mut state = root();
     let card = GameObjectId(3);
-    state.predecessor_v5.zones.objects.insert(
+    state.zones.objects.insert(
         card,
         mtgml_state::GameObject {
             id: card,
@@ -350,7 +329,7 @@ fn stack_zone_card_requires_exactly_one_spell_payload() {
             face_down: false,
         },
     );
-    state.predecessor_v5.zones.locations.insert(
+    state.zones.locations.insert(
         card,
         ZoneLocation {
             zone: ZoneKind::Stack,
@@ -360,7 +339,7 @@ fn stack_zone_card_requires_exactly_one_spell_payload() {
             partition: None,
         },
     );
-    state.predecessor_v5.allocators.next_object_id = GameObjectId(4);
+    state.allocators.next_object_id = GameObjectId(4);
     assert_eq!(
         state.validate(),
         Err(mtgml_state::EngineStatePartsV3Error::StackCardReference)
@@ -373,12 +352,12 @@ fn paused_stack_resolution_must_reference_the_current_top_item() {
     add_stack_spell(&mut state, 3, 1);
     add_stack_spell(&mut state, 4, 2);
     let id = ContinuationId(1);
-    state.predecessor_v5.allocators.next_continuation_id = ContinuationId(2);
-    state.execution_v4.continuations.insert(
+    state.allocators.next_continuation_id = ContinuationId(2);
+    state.execution.continuations.insert(
         id,
         mtgml_state::ContinuationRecordV3 {
             id,
-            created_at_revision: state.predecessor_v5.revision,
+            created_at_revision: state.revision,
             payload: mtgml_state::ContinuationPayloadV3::StackResolution(
                 mtgml_state::StackResolutionContinuation {
                     resolving_stack_object: StackObjectId(1),
@@ -399,12 +378,12 @@ fn paused_stack_resolution_must_reference_the_current_top_item() {
 fn stack_resolution_continuation_must_keep_the_resolving_item_in_the_stack_owner() {
     let mut state = root();
     let id = mtgml_model::ContinuationId(1);
-    state.predecessor_v5.allocators.next_continuation_id = mtgml_model::ContinuationId(2);
-    state.execution_v4.continuations.insert(
+    state.allocators.next_continuation_id = mtgml_model::ContinuationId(2);
+    state.execution.continuations.insert(
         id,
         mtgml_state::ContinuationRecordV3 {
             id,
-            created_at_revision: state.predecessor_v5.revision,
+            created_at_revision: state.revision,
             payload: mtgml_state::ContinuationPayloadV3::StackResolution(
                 mtgml_state::StackResolutionContinuation {
                     resolving_stack_object: StackObjectId(1),
@@ -425,12 +404,12 @@ fn stack_resolution_continuation_must_keep_the_resolving_item_in_the_stack_owner
 fn v3_continuation_preserves_frozen_synthetic_and_sba_stage_invariants() {
     let mut synthetic = root();
     let synthetic_id = ContinuationId(1);
-    synthetic.predecessor_v5.allocators.next_continuation_id = ContinuationId(2);
-    synthetic.execution_v4.continuations.insert(
+    synthetic.allocators.next_continuation_id = ContinuationId(2);
+    synthetic.execution.continuations.insert(
         synthetic_id,
         mtgml_state::ContinuationRecordV3 {
             id: synthetic_id,
-            created_at_revision: synthetic.predecessor_v5.revision,
+            created_at_revision: synthetic.revision,
             payload: mtgml_state::ContinuationPayloadV3::SyntheticAssembly {
                 actor: PlayerId(1),
                 stage: mtgml_state::AssemblyStageV2::ChooseCount,
@@ -447,14 +426,14 @@ fn v3_continuation_preserves_frozen_synthetic_and_sba_stage_invariants() {
 
     let mut sba = root();
     let sba_id = ContinuationId(1);
-    sba.predecessor_v5.allocators.next_continuation_id = ContinuationId(2);
-    sba.execution_v4.continuations.insert(
+    sba.allocators.next_continuation_id = ContinuationId(2);
+    sba.execution.continuations.insert(
         sba_id,
         mtgml_state::ContinuationRecordV3 {
             id: sba_id,
-            created_at_revision: sba.predecessor_v5.revision,
+            created_at_revision: sba.revision,
             payload: mtgml_state::ContinuationPayloadV3::MagicSbaGraveyardOrderV1 {
-                round_start_revision: sba.predecessor_v5.revision,
+                round_start_revision: sba.revision,
                 selected_sba_actions: vec![],
                 apnap_owners: vec![PlayerId(1)],
                 next_owner_index: 0,
@@ -472,7 +451,7 @@ fn v3_continuation_preserves_frozen_synthetic_and_sba_stage_invariants() {
 fn temporary_effect_expiry_is_bound_to_the_authoritative_turn() {
     let mut state = root();
     let id = mtgml_model::EffectInstanceId(1);
-    state.predecessor_v5.allocators.next_effect_id = mtgml_model::EffectInstanceId(2);
+    state.allocators.next_effect_id = mtgml_model::EffectInstanceId(2);
     let effect = mtgml_state::TemporaryEffectRecord {
         id,
         affected_objects: vec![GameObjectId(1)],
@@ -480,23 +459,23 @@ fn temporary_effect_expiry_is_bound_to_the_authoritative_turn() {
             keyword: mtgml_state::TemporaryKeyword::DoubleStrike,
         },
         expiry: mtgml_state::EffectExpiry::UntilEndOfTurn {
-            turn_number: state.predecessor_v5.core.turn_number,
+            turn_number: state.core.turn_number,
         },
         timestamp: Some(mtgml_state::EffectTimestamp {
-            creation_revision: state.predecessor_v5.revision,
+            creation_revision: state.revision,
             operation_ordinal: 0,
         }),
     };
-    state.execution_v4.effects.insert(id, effect.clone());
+    state.execution.effects.insert(id, effect.clone());
     state.validate().unwrap();
 
     let mut expired_later = root();
-    expired_later.predecessor_v5.allocators.next_effect_id = mtgml_model::EffectInstanceId(2);
+    expired_later.allocators.next_effect_id = mtgml_model::EffectInstanceId(2);
     let mut invalid = effect;
     invalid.expiry = mtgml_state::EffectExpiry::UntilEndOfTurn {
-        turn_number: expired_later.predecessor_v5.core.turn_number + 1,
+        turn_number: expired_later.core.turn_number + 1,
     };
-    expired_later.execution_v4.effects.insert(id, invalid);
+    expired_later.execution.effects.insert(id, invalid);
     assert_eq!(
         expired_later.validate(),
         Err(mtgml_state::EngineStatePartsV3Error::TemporaryEffectExpiry)
@@ -516,7 +495,7 @@ fn selected_blight_operand_request_is_not_admitted_until_rules_domain_generation
 fn blight_operand_must_be_a_controlled_battlefield_incarnation() {
     let (mut state, continuation_id) = staged_blight_activation();
     let operand = GameObjectId(4);
-    state.predecessor_v5.zones.objects.insert(
+    state.zones.objects.insert(
         operand,
         mtgml_state::GameObject {
             id: operand,
@@ -528,7 +507,7 @@ fn blight_operand_must_be_a_controlled_battlefield_incarnation() {
             face_down: false,
         },
     );
-    state.predecessor_v5.zones.locations.insert(
+    state.zones.locations.insert(
         operand,
         ZoneLocation {
             zone: ZoneKind::Graveyard,
@@ -538,10 +517,10 @@ fn blight_operand_must_be_a_controlled_battlefield_incarnation() {
             partition: None,
         },
     );
-    state.predecessor_v5.allocators.next_object_id = GameObjectId(5);
-    state.card_rules_state.faces.faces.insert(operand, 0);
+    state.allocators.next_object_id = GameObjectId(5);
+    state.card_rules.faces.faces.insert(operand, 0);
     let record = state
-        .execution_v4
+        .execution
         .continuations
         .get_mut(&continuation_id)
         .unwrap();
@@ -564,7 +543,7 @@ fn blight_operand_must_be_a_controlled_battlefield_incarnation() {
 fn tap_reserved_activation_source_is_not_a_mana_source() {
     let (mut state, continuation_id) = staged_blight_activation();
     let record = state
-        .execution_v4
+        .execution
         .continuations
         .get_mut(&continuation_id)
         .unwrap();
@@ -590,7 +569,7 @@ fn tap_reserved_activation_source_is_not_a_mana_source() {
 fn provisional_source_output_overflow_fails_closed() {
     let (mut state, _) = staged_blight_activation();
     state
-        .card_rules_state
+        .card_rules
         .mana
         .pools
         .get_mut(&PlayerId(1))
@@ -606,13 +585,13 @@ fn provisional_source_output_overflow_fails_closed() {
 fn pending_v4_request_must_match_its_perspective_local_visible_cursor() {
     let (mut state, _) = staged_blight_activation();
     let stale = VisibleSequence(
-        state.predecessor_v5.knowledge.players[&PlayerId(1)]
+        state.knowledge.players[&PlayerId(1)]
             .next_visible_sequence
             .0
             + 1,
     );
     state
-        .execution_v4
+        .execution
         .pending_decision
         .as_mut()
         .unwrap()
@@ -630,20 +609,12 @@ fn profile_dependent_pending_request_is_fail_closed_at_state_admission() {
         state.validate(),
         Err(mtgml_state::EngineStatePartsV3Error::ProfileDependentDecisionNotAdmitted)
     );
-    assert_eq!(
-        EngineStatePartsV3::new(
-            state.predecessor_v5.clone(),
-            state.execution_v4.clone(),
-            state.card_rules_state.clone(),
-        ),
-        Err(mtgml_state::EngineStatePartsV3Error::ProfileDependentDecisionNotAdmitted)
-    );
 }
 
 #[test]
 fn pending_request_purpose_must_match_mana_staging_stage() {
     let (mut state, _) = staged_blight_activation();
-    let request = state.execution_v4.pending_decision.as_mut().unwrap();
+    let request = state.execution.pending_decision.as_mut().unwrap();
     request.purpose = mtgml_decision::DecisionPurposeV4::ManaPayment;
     request.candidates = vec![mtgml_decision::AuthoritativeCandidateV4 {
         candidate_id: CandidateIdV1(0),
@@ -664,7 +635,7 @@ fn pending_request_purpose_must_match_mana_staging_stage() {
 fn pending_finalize_binding_must_name_its_exact_continuation() {
     let (mut state, _) = staged_blight_activation();
     state
-        .execution_v4
+        .execution
         .pending_decision
         .as_mut()
         .unwrap()
@@ -681,11 +652,10 @@ fn pending_finalize_binding_must_name_its_exact_continuation() {
 #[test]
 fn mana_source_candidate_rejects_the_tap_reserved_activation_source() {
     let (mut state, _) = staged_blight_activation();
-    let location = state.predecessor_v5.zones.locations[&GameObjectId(3)].clone();
+    let location = state.zones.locations[&GameObjectId(3)].clone();
     let opaque_object = mtgml_model::OpaqueObjectId(2);
     let opaque_ability = mtgml_model::OpaqueAbilityId(1);
     let identity = state
-        .predecessor_v5
         .perspective_identities
         .players
         .get_mut(&PlayerId(1))
@@ -705,7 +675,6 @@ fn mana_source_candidate_rejects_the_tap_reserved_activation_source() {
         .insert(AbilityInstanceId(1), opaque_ability);
     identity.next_opaque_ability_id = mtgml_model::OpaqueAbilityId(2);
     state
-        .predecessor_v5
         .knowledge
         .players
         .get_mut(&PlayerId(1))
@@ -726,7 +695,7 @@ fn mana_source_candidate_rejects_the_tap_reserved_activation_source() {
             },
         );
     let output = [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0];
-    let request = state.execution_v4.pending_decision.as_mut().unwrap();
+    let request = state.execution.pending_decision.as_mut().unwrap();
     request.candidates = vec![mtgml_decision::AuthoritativeCandidateV4 {
         candidate_id: CandidateIdV1(0),
         visible_intent: mtgml_decision::CandidateIntentV4::SelectManaSource {
@@ -753,7 +722,7 @@ fn mana_source_candidate_rejects_the_tap_reserved_activation_source() {
 fn profile_dependent_v4_response_is_not_selected_without_rules_domain_generation() {
     let (state, _) = staged_blight_activation();
     let before = state.clone();
-    let request = state.execution_v4.pending_decision.as_ref().unwrap();
+    let request = state.execution.pending_decision.as_ref().unwrap();
     let response = mtgml_decision::DecisionResponseV3 {
         schema_version: mtgml_decision::DECISION_RESPONSE_V3_SCHEMA.to_owned(),
         player_decision_id: request.player_decision_id,
@@ -773,7 +742,7 @@ fn profile_dependent_v4_response_is_not_selected_without_rules_domain_generation
 fn v4_parent_decision_must_precede_its_child_identity() {
     let (mut state, _) = staged_blight_activation();
     state
-        .execution_v4
+        .execution
         .pending_decision
         .as_mut()
         .unwrap()
@@ -788,24 +757,24 @@ fn v4_parent_decision_must_precede_its_child_identity() {
 fn trigger_placement_progress_must_follow_apnap_and_completed_prefix() {
     let make_state = |apnap_actors: Vec<PlayerId>, current_actor_index| {
         let mut state = root();
-        state.predecessor_v5.allocators.next_object_id = GameObjectId(4);
-        state.predecessor_v5.allocators.next_ability_id = AbilityInstanceId(2);
-        state.predecessor_v5.allocators.next_trigger_id = mtgml_model::TriggerInstanceId(3);
+        state.allocators.next_object_id = GameObjectId(4);
+        state.allocators.next_ability_id = AbilityInstanceId(2);
+        state.allocators.next_trigger_id = mtgml_model::TriggerInstanceId(3);
         let id = ContinuationId(1);
-        state.predecessor_v5.allocators.next_continuation_id = ContinuationId(2);
-        state.execution_v4.waiting_triggers.insert(
+        state.allocators.next_continuation_id = ContinuationId(2);
+        state.execution.waiting_triggers.insert(
             mtgml_model::TriggerInstanceId(1),
             pending_trigger(1, PlayerId(1)),
         );
-        state.execution_v4.waiting_triggers.insert(
+        state.execution.waiting_triggers.insert(
             mtgml_model::TriggerInstanceId(2),
             pending_trigger(2, PlayerId(2)),
         );
-        state.execution_v4.continuations.insert(
+        state.execution.continuations.insert(
             id,
             mtgml_state::ContinuationRecordV3 {
                 id,
-                created_at_revision: state.predecessor_v5.revision,
+                created_at_revision: state.revision,
                 payload: mtgml_state::ContinuationPayloadV3::TriggerPlacement(
                     mtgml_state::TriggerPlacementContinuation {
                         apnap_actors,
@@ -840,14 +809,14 @@ fn trigger_placement_progress_must_follow_apnap_and_completed_prefix() {
 #[test]
 fn trigger_order_request_is_bound_to_the_current_apnap_group_not_trigger_ids() {
     let mut state = root();
-    state.predecessor_v5.allocators.next_object_id = GameObjectId(4);
-    state.predecessor_v5.allocators.next_ability_id = AbilityInstanceId(2);
-    state.predecessor_v5.allocators.next_trigger_id = mtgml_model::TriggerInstanceId(3);
-    state.predecessor_v5.allocators.next_continuation_id = ContinuationId(2);
-    state.predecessor_v5.allocators.next_decision_id = DecisionId(3);
+    state.allocators.next_object_id = GameObjectId(4);
+    state.allocators.next_ability_id = AbilityInstanceId(2);
+    state.allocators.next_trigger_id = mtgml_model::TriggerInstanceId(3);
+    state.allocators.next_continuation_id = ContinuationId(2);
+    state.allocators.next_decision_id = DecisionId(3);
     let trigger_source = pending_trigger(1, PlayerId(1)).source_context;
     for (id, drawn_player) in [(1, PlayerId(1)), (2, PlayerId(2))] {
-        state.execution_v4.waiting_triggers.insert(
+        state.execution.waiting_triggers.insert(
             mtgml_model::TriggerInstanceId(id),
             mtgml_state::PendingTriggerRecord {
                 id: mtgml_model::TriggerInstanceId(id),
@@ -861,11 +830,11 @@ fn trigger_order_request_is_bound_to_the_current_apnap_group_not_trigger_ids() {
         );
     }
     let continuation_id = ContinuationId(1);
-    state.execution_v4.continuations.insert(
+    state.execution.continuations.insert(
         continuation_id,
         mtgml_state::ContinuationRecordV3 {
             id: continuation_id,
-            created_at_revision: state.predecessor_v5.revision,
+            created_at_revision: state.revision,
             payload: mtgml_state::ContinuationPayloadV3::TriggerPlacement(
                 mtgml_state::TriggerPlacementContinuation {
                     apnap_actors: vec![PlayerId(1)],
@@ -890,11 +859,11 @@ fn trigger_order_request_is_bound_to_the_current_apnap_group_not_trigger_ids() {
         event_kind: mtgml_decision::TriggerEventKindV1::CardDrawn,
         subject: mtgml_decision::SafeTriggerSubjectV1::CardDrawn { player },
     };
-    state.execution_v4.pending_decision = Some(mtgml_decision::AuthoritativeDecisionRequestV4 {
+    state.execution.pending_decision = Some(mtgml_decision::AuthoritativeDecisionRequestV4 {
         decision_id: DecisionId(2),
         player_decision_id: PlayerDecisionIdV1(1),
-        state_revision: StateRevision(state.predecessor_v5.revision.0),
-        view_sequence: state.predecessor_v5.knowledge.players[&PlayerId(1)].next_visible_sequence,
+        state_revision: StateRevision(state.revision.0),
+        view_sequence: state.knowledge.players[&PlayerId(1)].next_visible_sequence,
         actor: PlayerId(1),
         visibility: mtgml_decision::DecisionVisibility::ActingPlayerOnly,
         decision_domain_v2: mtgml_decision::DecisionDomainV2::Order {
@@ -929,7 +898,7 @@ fn trigger_order_request_is_bound_to_the_current_apnap_group_not_trigger_ids() {
 
     let mut rebound = state.clone();
     rebound
-        .execution_v4
+        .execution
         .pending_decision
         .as_mut()
         .unwrap()
@@ -963,17 +932,9 @@ fn typed_spell_stack_payload_matches_the_live_stack_card_incarnation() {
         visibility: VisibilityPartition::Public,
         partition: None,
     };
-    state
-        .predecessor_v5
-        .zones
-        .objects
-        .insert(object, game_object.clone());
-    state
-        .predecessor_v5
-        .zones
-        .locations
-        .insert(object, stack_location);
-    state.predecessor_v5.allocators.next_object_id = GameObjectId(4);
+    state.zones.objects.insert(object, game_object.clone());
+    state.zones.locations.insert(object, stack_location);
+    state.allocators.next_object_id = GameObjectId(4);
     let payload = StackItemPayload::Spell {
         stack_card_object: object,
         card_definition_id: game_object.card_definition,
@@ -983,27 +944,20 @@ fn typed_spell_stack_payload_matches_the_live_stack_card_incarnation() {
         targets: vec![],
         cost_facts: Default::default(),
     };
-    state.predecessor_v5.zones.stack_records.insert(
+    state.zones.stack_records.insert(
         StackObjectId(1),
         StackRecord {
             id: StackObjectId(1),
             controller: PlayerId(1),
-            source_object: None,
-            source_ability: None,
             payload: Some(payload),
         },
     );
-    state
-        .predecessor_v5
-        .zones
-        .stack_order
-        .push(StackObjectId(1));
-    state.predecessor_v5.allocators.next_stack_object_id = StackObjectId(2);
-    assert!(mtgml_state::validate_engine_state(&state.predecessor_v5.clone().into()).is_ok());
+    state.zones.stack_order.push(StackObjectId(1));
+    state.allocators.next_stack_object_id = StackObjectId(2);
+    assert!(mtgml_state::validate_engine_state(&state.clone()).is_ok());
     state.validate().unwrap();
     let mut zero_target = state.clone();
     let Some(StackItemPayload::Spell { targets, .. }) = zero_target
-        .predecessor_v5
         .zones
         .stack_records
         .get_mut(&StackObjectId(1))
@@ -1019,20 +973,14 @@ fn typed_spell_stack_payload_matches_the_live_stack_card_incarnation() {
         zero_target.validate(),
         Err(mtgml_state::EngineStatePartsV3Error::TargetReference)
     );
-    let legacy: mtgml_state::EngineState = state.predecessor_v5.clone().into();
-    let old_v6 = EngineStatePartsV2::from_state(&legacy, state.card_rules_state.clone());
-    assert_eq!(
-        old_v6.validate(),
-        Err(mtgml_state::EngineStatePartsV2Error::UnsupportedStackPayload)
-    );
 }
 
 #[test]
 fn activated_stack_payload_keeps_lki_after_its_source_has_left() {
     let mut state = root();
-    state.predecessor_v5.allocators.next_object_id = GameObjectId(4);
-    state.predecessor_v5.allocators.next_ability_id = AbilityInstanceId(2);
-    state.predecessor_v5.allocators.next_stack_object_id = StackObjectId(2);
+    state.allocators.next_object_id = GameObjectId(4);
+    state.allocators.next_ability_id = AbilityInstanceId(2);
+    state.allocators.next_stack_object_id = StackObjectId(2);
     let source_context = AbilitySourceContext {
         source: mtgml_state::SourceContext {
             snapshot: mtgml_state::ObjectSnapshot {
@@ -1057,13 +1005,11 @@ fn activated_stack_payload_keeps_lki_after_its_source_has_left() {
         ability_instance_id: AbilityInstanceId(1),
         ability_key: mtgml_card_ir::AbilityKey(4),
     };
-    state.predecessor_v5.zones.stack_records.insert(
+    state.zones.stack_records.insert(
         StackObjectId(1),
         StackRecord {
             id: StackObjectId(1),
             controller: PlayerId(1),
-            source_object: None,
-            source_ability: None,
             payload: Some(StackItemPayload::ActivatedAbility {
                 source_context,
                 modes: vec![mtgml_state::ModeBinding {
@@ -1075,14 +1021,10 @@ fn activated_stack_payload_keeps_lki_after_its_source_has_left() {
             }),
         },
     );
-    state
-        .predecessor_v5
-        .zones
-        .stack_order
-        .push(StackObjectId(1));
+    state.zones.stack_order.push(StackObjectId(1));
     state.validate().unwrap();
     assert!(matches!(
-        &state.predecessor_v5.zones.stack_records[&StackObjectId(1)].payload,
+        &state.zones.stack_records[&StackObjectId(1)].payload,
         Some(StackItemPayload::ActivatedAbility { modes, .. })
             if modes == &[mtgml_state::ModeBinding { mode_slot: 0, selected_mode: 1 }]
     ));
@@ -1091,10 +1033,10 @@ fn activated_stack_payload_keeps_lki_after_its_source_has_left() {
 #[test]
 fn triggered_stack_payload_captures_every_closed_event_fact_across_source_departure() {
     let mut state = root();
-    state.predecessor_v5.allocators.next_object_id = GameObjectId(4);
-    state.predecessor_v5.allocators.next_ability_id = AbilityInstanceId(2);
-    state.predecessor_v5.allocators.next_stack_object_id = StackObjectId(2);
-    state.predecessor_v5.allocators.next_trigger_id = mtgml_model::TriggerInstanceId(2);
+    state.allocators.next_object_id = GameObjectId(4);
+    state.allocators.next_ability_id = AbilityInstanceId(2);
+    state.allocators.next_stack_object_id = StackObjectId(2);
+    state.allocators.next_trigger_id = mtgml_model::TriggerInstanceId(2);
     let source_context = AbilitySourceContext {
         source: mtgml_state::SourceContext {
             snapshot: mtgml_state::ObjectSnapshot {
@@ -1155,7 +1097,7 @@ fn triggered_stack_payload_captures_every_closed_event_fact_across_source_depart
         },
         mtgml_state::TriggerEventSnapshot::BeginningOfCombat {
             active_player: PlayerId(1),
-            turn_number: state.predecessor_v5.core.turn_number,
+            turn_number: state.core.turn_number,
         },
         mtgml_state::TriggerEventSnapshot::AttackDeclared {
             controller: PlayerId(1),
@@ -1187,13 +1129,11 @@ fn triggered_stack_payload_captures_every_closed_event_fact_across_source_depart
         },
     ];
     for trigger_context in events {
-        state.predecessor_v5.zones.stack_records.insert(
+        state.zones.stack_records.insert(
             StackObjectId(1),
             StackRecord {
                 id: StackObjectId(1),
                 controller: PlayerId(1),
-                source_object: None,
-                source_ability: None,
                 payload: Some(StackItemPayload::TriggeredAbility {
                     originating_trigger: mtgml_model::TriggerInstanceId(1),
                     source_context: source_context.clone(),
@@ -1202,12 +1142,12 @@ fn triggered_stack_payload_captures_every_closed_event_fact_across_source_depart
                 }),
             },
         );
-        state.predecessor_v5.zones.stack_order = vec![StackObjectId(1)];
+        state.zones.stack_order = vec![StackObjectId(1)];
         state.validate().unwrap();
     }
-    state.predecessor_v5.zones.stack_records.clear();
-    state.predecessor_v5.zones.stack_order.clear();
-    state.execution_v4.waiting_triggers.insert(
+    state.zones.stack_records.clear();
+    state.zones.stack_order.clear();
+    state.execution.waiting_triggers.insert(
         mtgml_model::TriggerInstanceId(1),
         mtgml_state::PendingTriggerRecord {
             id: mtgml_model::TriggerInstanceId(1),
@@ -1226,63 +1166,15 @@ fn triggered_stack_payload_captures_every_closed_event_fact_across_source_depart
 }
 
 #[test]
-fn typed_stack_payload_cannot_be_serialized_through_the_legacy_serde_shape() {
-    let payload = StackItemPayload::ActivatedAbility {
-        source_context: AbilitySourceContext {
-            source: mtgml_state::SourceContext {
-                snapshot: mtgml_state::ObjectSnapshot {
-                    object: GameObjectId(3),
-                    physical_card: None,
-                    card_definition: CardDefinitionId(2),
-                    owner: PlayerId(1),
-                    controller: PlayerId(1),
-                    tapped: false,
-                    face_down: false,
-                    location: ZoneLocation {
-                        zone: ZoneKind::Battlefield,
-                        player: None,
-                        position: ZonePosition::Unordered,
-                        visibility: VisibilityPartition::Public,
-                        partition: None,
-                    },
-                },
-                face_key: FaceKey(0),
-                semantic_profile_id: CardSemanticProfileId::parse("test/profile@1.0.0").unwrap(),
-            },
-            ability_instance_id: mtgml_model::AbilityInstanceId(1),
-            ability_key: mtgml_card_ir::AbilityKey(1),
-        },
-        modes: vec![],
-        targets: vec![],
-        cost_facts: Default::default(),
-    };
-    let record = StackRecord {
-        id: StackObjectId(1),
-        controller: PlayerId(1),
-        source_object: None,
-        source_ability: None,
-        payload: Some(payload),
-    };
-    assert!(serde_json::to_value(record).is_err());
-
-    let mut unknown_successor_field = serde_json::json!({
-        "id": 1,
-        "controller": 1,
-        "payload": {"kind": "spell"}
-    });
-    unknown_successor_field["source_object"] = serde_json::Value::Null;
-    unknown_successor_field["source_ability"] = serde_json::Value::Null;
-    assert!(serde_json::from_value::<StackRecord>(unknown_successor_field).is_err());
-
-    let legacy_record = StackRecord {
-        id: StackObjectId(1),
-        controller: PlayerId(1),
-        source_object: None,
-        source_ability: None,
-        payload: None,
-    };
-    let legacy_value = serde_json::to_value(legacy_record).unwrap();
-    assert!(legacy_value.get("payload").is_none());
-    assert!(legacy_value.get("source_object").is_none());
-    assert!(legacy_value.get("source_ability").is_none());
+fn flat_state_exposes_every_component_at_the_top_level() {
+    let state = construct_synthetic_engine_state(SyntheticResetInputs {
+        players: [PlayerId(1), PlayerId(2)],
+        root_seed: RootSeed256::from_lower_hex(&"11".repeat(32)).unwrap(),
+        setup: SyntheticV4Setup::synthetic_compatibility(),
+    })
+    .unwrap();
+    assert_eq!(state.card_rules.mana.pools.len(), 2);
+    assert!(state.execution.pending_decision.is_none());
+    assert_eq!(state.allocators.next_decision_id, DecisionId(2));
+    state.validate_structure().unwrap();
 }

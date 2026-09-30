@@ -11,7 +11,6 @@ mod digest;
 mod digest_v5;
 mod digest_v7;
 mod engine;
-mod engine_state_parts_v2;
 mod engine_state_parts_v3;
 mod engine_state_shape;
 mod execution;
@@ -36,8 +35,7 @@ pub use construction::{
     SyntheticV4Setup,
 };
 pub use core::{
-    BaseCharacteristics, BeginningStep, CombatBlockerAssignmentV1, CombatState, CombatStep,
-    ControlHistory, CoreRulesState, EndingStep, FoundationCreatureSource, FoundationSourceKind,
+    BeginningStep, CombatBlockerAssignmentV1, CombatState, CombatStep, CoreRulesState, EndingStep,
     PlayerState, PriorityState, TurnPosition,
 };
 pub use damage::{DamageAssignmentV1, DamageRecipientV1};
@@ -50,18 +48,15 @@ pub use digest_v7::{
     calculate_full_state_digest_v7, calculate_full_state_digest_v7_structural_only,
     canonical_state_bytes_v7, full_state_digest_v7_from_payload,
 };
-pub use engine::{EngineState, EngineStateParts};
-pub use engine_state_parts_v2::{EngineStatePartsV2, EngineStatePartsV2Error};
-pub use engine_state_parts_v3::{EngineStatePartsV3, EngineStatePartsV3Error};
+pub use engine::EngineState;
+pub use engine_state_parts_v3::EngineStatePartsV3Error;
 pub use engine_state_shape::{
-    AssemblyStageV2, ContinuationPayloadV2, ContinuationRecordV2, KnowledgeInvalidationV2,
-    KnowledgeRecordV2, KnowledgeStateV2, KnownLocationFactV2, PendingDecisionRecordV2,
-    PerspectiveIdentityRecordV2, PerspectiveIdentityStateV2, PlayerKnowledgeStateV2,
-    RetiredKnowledgeRecordV2, SbaGraveyardOwnerOrderV1, SbaObjectCauseV1, SbaSelectedActionV1,
-    SYNTHETIC_COUNT_MAX, SYNTHETIC_COUNT_MIN,
+    AssemblyStageV2, KnowledgeInvalidationV2, KnowledgeRecordV2, KnowledgeStateV2,
+    KnownLocationFactV2, PerspectiveIdentityRecordV2, PerspectiveIdentityStateV2,
+    PlayerKnowledgeStateV2, RetiredKnowledgeRecordV2, SbaGraveyardOwnerOrderV1, SbaObjectCauseV1,
+    SbaSelectedActionV1, SYNTHETIC_COUNT_MAX,
 };
-pub use execution::{EffectRecord, ExecutionState, TriggerRecord};
-pub use execution::{ExecutionStateV3, ExecutionStateV4};
+pub use execution::{EffectRecord, ExecutionStateV4};
 pub use format::{CommanderState, FormatState};
 pub use identity::{IdentityAllocationError, IdentityAllocatorState};
 pub use knowledge::{
@@ -76,8 +71,8 @@ pub use lifecycle::{
 pub use persisted_v6::{
     AbilityAuthorityStateV1, AbilityAuthorityV1, AttachmentStateV1, AttachmentTimestampV1,
     AttachmentV1, CardRulesAuthoritativeStateV1, CounterKindV1, CounterStateV1, FaceStateV1,
-    ManaColorV1, ManaPoolV1, ManaRestrictionV1, ManaStateV1, PersistedExecutionV3,
-    PersistedV6Error, PlayerTurnHistoryV1, TurnHistoryStateV1,
+    ManaColorV1, ManaPoolV1, ManaRestrictionV1, ManaStateV1, PersistedV6Error, PlayerTurnHistoryV1,
+    TurnHistoryStateV1,
 };
 pub use semantic_mutations::{
     AttachmentChangeV1, CounterAnnihilationChangeV1, RoleAttachmentRetirementV1,

@@ -6,33 +6,17 @@
 //! The conversion deliberately does not use Rust/Serde output. Every field is
 //! mapped to the fixed semantic CBOR layout from STATE_HASHING.md.
 
-use mtgml_decision::{
-    AuthoritativeDecisionRequestV3, CandidateIntentV3, DecisionDomainV2, DecisionVisibility,
-    EngineCandidateBindingV3,
-};
-use mtgml_persistence::{
-    cbor::{self, Value},
-    PersistenceDecodeErrorV1,
-};
+use mtgml_persistence::cbor::{self, Value};
 
-use crate::core::{
-    BaseCharacteristics, BeginningStep, CombatStep, ControlHistory, EndingStep, PriorityState,
-    TurnPosition,
-};
+use crate::core::{BeginningStep, CombatStep, EndingStep, PriorityState, TurnPosition};
 use crate::digest::StateDigestError;
-use crate::engine::EngineStateParts;
+use crate::engine::EngineState;
 use crate::engine_state_shape::{
-    AssemblyStageV2, ContinuationPayloadV2, KnowledgeInvalidationV2, KnowledgeRecordV2,
-    KnownLocationFactV2, RetiredKnowledgeRecordV2,
+    KnowledgeInvalidationV2, KnowledgeRecordV2, KnownLocationFactV2, RetiredKnowledgeRecordV2,
 };
-use crate::execution::ExecutionStateV3;
 use crate::format::FormatState;
 use crate::knowledge::{KnowledgeAcquisitionReason, KnowledgeInvalidationReason};
 use crate::zones::{VisibilityPartition, ZoneKey, ZoneLocation, ZonePosition};
-
-fn semantic_error() -> StateDigestError {
-    StateDigestError::Persistence(PersistenceDecodeErrorV1::SemanticValidation)
-}
 
 fn u(value: u64) -> Value {
     Value::Unsigned(value)
@@ -58,7 +42,7 @@ fn optional(value: Option<Value>) -> Value {
     value.unwrap_or(Value::Null)
 }
 
-pub(crate) fn core_value(state: &EngineStateParts) -> Value {
+pub(crate) fn core_value(state: &EngineState) -> Value {
     let players =
         state.core.players.iter().map(|(player, value)| {
             array([u(player.0), i(value.life), Value::Bool(value.has_lost)])
@@ -120,7 +104,7 @@ fn priority_value(priority: PriorityState) -> Value {
     }
 }
 
-pub(crate) fn combat_value(state: &EngineStateParts) -> Value {
+pub(crate) fn combat_value(state: &EngineState) -> Value {
     let Some(combat) = &state.combat else {
         return Value::Null;
     };
@@ -151,48 +135,8 @@ pub(crate) fn combat_value(state: &EngineStateParts) -> Value {
     }
 }
 
-pub(crate) fn foundation_sources_value(state: &EngineStateParts) -> Value {
-    let sources = state.foundation_sources.iter().map(|(object, source)| {
-        array([
-            u(object.0),
-            text(match source.source_kind {
-                crate::core::FoundationSourceKind::Creature => "creature",
-            }),
-            base_characteristics_value(source.base_characteristics),
-            u(source.marked_damage),
-            control_history_value(source.control_history),
-        ])
-    });
-    array(sources)
-}
-
-fn base_characteristics_value(value: BaseCharacteristics) -> Value {
-    match value {
-        BaseCharacteristics::Simple { power, toughness } => {
-            array([text("simple"), array([i(power), i(toughness)])])
-        }
-    }
-}
-
-fn control_history_value(value: ControlHistory) -> Value {
-    match value {
-        ControlHistory::BeforeTurnStart { turn_number } => {
-            array([text("before_turn_start"), u(turn_number)])
-        }
-        ControlHistory::DuringTurn {
-            turn_number,
-            boundary,
-        } => array([
-            text("during_turn"),
-            array([u(turn_number), turn_position_value(boundary)]),
-        ]),
-    }
-}
-
 /// Objects, locations and ordered zones: the first three `zones_v2` elements.
-pub(crate) fn zone_contents_values(
-    state: &EngineStateParts,
-) -> Result<[Value; 3], StateDigestError> {
+pub(crate) fn zone_contents_values(state: &EngineState) -> Result<[Value; 3], StateDigestError> {
     let objects = state.zones.objects.values().map(|object| {
         array([
             u(object.id.0),
@@ -282,7 +226,7 @@ fn visibility(value: VisibilityPartition) -> &'static str {
     }
 }
 
-pub(crate) fn allocators_value(state: &EngineStateParts) -> Value {
+pub(crate) fn allocators_value(state: &EngineState) -> Value {
     let a = &state.allocators;
     array([
         u(a.next_object_id.0),
@@ -296,205 +240,7 @@ pub(crate) fn allocators_value(state: &EngineStateParts) -> Value {
     ])
 }
 
-/// Canonical producer for the frozen `PersistedExecutionV3` value. This is
-/// intentionally separate from the historical V5 execution encoder.
-pub(crate) fn successor_execution_value_v3(
-    state: &ExecutionStateV3,
-) -> Result<Value, StateDigestError> {
-    if !state.effects.is_empty()
-        || !state.waiting_triggers.is_empty()
-        || !state.delayed_effects.is_empty()
-    {
-        return Err(semantic_error());
-    }
-    let pending = state.pending_decision.as_ref().map(decision_v3_value);
-    let continuations = state
-        .continuations
-        .values()
-        .map(continuation_value)
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(array([
-        optional(pending),
-        array(continuations),
-        array([]),
-        array([]),
-        array([]),
-    ]))
-}
-
-fn decision_v3_value(request: &AuthoritativeDecisionRequestV3) -> Value {
-    array([
-        u(request.decision_id.0),
-        u(request.player_decision_id.0),
-        u(request.state_revision.0),
-        u(request.actor.0),
-        text(decision_visibility(request.visibility)),
-        decision_domain(&request.decision),
-        array(request.candidates.iter().map(|candidate| {
-            array([
-                u32_value(candidate.candidate_id.0),
-                visible_intent_v3(&candidate.visible_intent),
-                trusted_binding_v3(&candidate.trusted_binding),
-            ])
-        })),
-        optional(request.continuation_id.map(|value| u(value.0))),
-    ])
-}
-
-fn visible_intent_v3(value: &CandidateIntentV3) -> Value {
-    match value {
-        CandidateIntentV3::PassPriority => array([text("pass_priority"), Value::Null]),
-        CandidateIntentV3::PlayLand { object } => array([text("play_land"), u(object.0)]),
-        CandidateIntentV3::CastSpell { object } => array([text("cast_spell"), u(object.0)]),
-        CandidateIntentV3::ActivateAbility { ability } => {
-            array([text("activate_ability"), u(ability.0)])
-        }
-        CandidateIntentV3::SelectObject { object } => array([text("select_object"), u(object.0)]),
-        CandidateIntentV3::SelectPlayer { player } => array([text("select_player"), u(player.0)]),
-        CandidateIntentV3::SelectMode { mode_index } => {
-            array([text("select_mode"), u32_value(*mode_index)])
-        }
-        CandidateIntentV3::ChooseBoolean { value } => {
-            array([text("choose_boolean"), Value::Bool(*value)])
-        }
-        CandidateIntentV3::DeclareNumber { value } => array([text("declare_number"), i(*value)]),
-        CandidateIntentV3::Confirm => array([text("confirm"), Value::Null]),
-    }
-}
-
-fn trusted_binding_v3(value: &EngineCandidateBindingV3) -> Value {
-    match value {
-        EngineCandidateBindingV3::PassPriority => array([text("pass_priority"), Value::Null]),
-        EngineCandidateBindingV3::PlayLand { object } => array([text("play_land"), u(object.0)]),
-        EngineCandidateBindingV3::CastSpell { object } => array([text("cast_spell"), u(object.0)]),
-        EngineCandidateBindingV3::ActivateAbility { ability } => {
-            array([text("activate_ability"), u(ability.0)])
-        }
-        EngineCandidateBindingV3::SelectObject { object } => {
-            array([text("select_object"), u(object.0)])
-        }
-        EngineCandidateBindingV3::SelectPlayer { player } => {
-            array([text("select_player"), u(player.0)])
-        }
-        EngineCandidateBindingV3::SelectMode { mode_index } => {
-            array([text("select_mode"), u32_value(*mode_index)])
-        }
-        EngineCandidateBindingV3::ChooseBoolean { value } => {
-            array([text("choose_boolean"), Value::Bool(*value)])
-        }
-        EngineCandidateBindingV3::DeclareNumber { value } => {
-            array([text("declare_number"), i(*value)])
-        }
-        EngineCandidateBindingV3::Confirm => array([text("confirm"), Value::Null]),
-    }
-}
-
-fn decision_visibility(value: DecisionVisibility) -> &'static str {
-    match value {
-        DecisionVisibility::Public => "public",
-        DecisionVisibility::ActingPlayerOnly => "acting_player_only",
-        DecisionVisibility::Mixed => "mixed",
-    }
-}
-
-fn decision_domain(value: &DecisionDomainV2) -> Value {
-    match value {
-        DecisionDomainV2::ChooseOne => array([text("choose_one"), Value::Null]),
-        DecisionDomainV2::ChooseMany { minimum, maximum } => array([
-            text("choose_many"),
-            array([u32_value(*minimum), u32_value(*maximum)]),
-        ]),
-        DecisionDomainV2::ChooseNumber { minimum, maximum } => {
-            array([text("choose_number"), array([i(*minimum), i(*maximum)])])
-        }
-        DecisionDomainV2::Order { minimum, maximum } => array([
-            text("order"),
-            array([u32_value(*minimum), u32_value(*maximum)]),
-        ]),
-    }
-}
-
-fn continuation_value(
-    record: &crate::engine_state_shape::ContinuationRecordV2,
-) -> Result<Value, StateDigestError> {
-    let payload = match &record.payload {
-        ContinuationPayloadV2::SyntheticM2Assembly {
-            stage,
-            selected_count,
-            selected_piece_keys,
-            ordered_piece_keys,
-        } => array([
-            text("synthetic_m2_assembly"),
-            array([
-                array([text(assembly_stage(*stage)), Value::Null]),
-                optional(selected_count.map(u32_value)),
-                array(selected_piece_keys.iter().copied().map(u32_value)),
-                array(ordered_piece_keys.iter().copied().map(u32_value)),
-            ]),
-        ]),
-        ContinuationPayloadV2::MagicSbaGraveyardOrderV1 {
-            round_start_revision,
-            selected_sba_actions,
-            apnap_owners,
-            next_owner_index,
-            completed_owner_orders,
-        } => array([
-            text("magic_sba_graveyard_order_v1"),
-            array([
-                u(round_start_revision.0),
-                array(selected_sba_actions.iter().map(|action| match action {
-                    crate::engine_state_shape::SbaSelectedActionV1::PlayerLoses { player } => {
-                        array([text("player_loses"), u(player.0)])
-                    }
-                    crate::engine_state_shape::SbaSelectedActionV1::ObjectToOwnerGraveyard {
-                        object,
-                        causes,
-                    } => array([
-                        text("object_to_owner_graveyard"),
-                        array([
-                            u(object.0),
-                            array(causes.iter().map(|cause| {
-                                text(match cause {
-                                    crate::engine_state_shape::SbaObjectCauseV1::ZeroToughness => {
-                                        "zero_toughness"
-                                    }
-                                    crate::engine_state_shape::SbaObjectCauseV1::LethalDamage => {
-                                        "lethal_damage"
-                                    }
-                                })
-                            })),
-                        ]),
-                    ]),
-                })),
-                array(apnap_owners.iter().map(|owner| u(owner.0))),
-                u(u64::from(*next_owner_index)),
-                array(completed_owner_orders.iter().map(|order| {
-                    array([
-                        u(order.owner.0),
-                        array(order.top_to_bottom.iter().map(|object| u(object.0))),
-                    ])
-                })),
-            ]),
-        ]),
-    };
-    Ok(array([
-        u(record.id.0),
-        u(record.actor.0),
-        u(record.created_at_revision.0),
-        u(u64::from(record.stage_index)),
-        payload,
-    ]))
-}
-
-fn assembly_stage(value: AssemblyStageV2) -> &'static str {
-    match value {
-        AssemblyStageV2::ChooseCount => "choose_count",
-        AssemblyStageV2::ChooseMembers => "choose_members",
-        AssemblyStageV2::OrderMembers => "order_members",
-    }
-}
-
-pub(crate) fn random_value(state: &EngineStateParts) -> Value {
+pub(crate) fn random_value(state: &EngineState) -> Value {
     let mut streams: Vec<_> = state
         .random
         .streams
@@ -517,7 +263,7 @@ pub(crate) fn random_value(state: &EngineStateParts) -> Value {
     ])
 }
 
-pub(crate) fn knowledge_value(state: &EngineStateParts) -> Result<Value, StateDigestError> {
+pub(crate) fn knowledge_value(state: &EngineState) -> Result<Value, StateDigestError> {
     let players = state
         .knowledge
         .players
@@ -626,9 +372,7 @@ fn invalidation_reason(value: KnowledgeInvalidationReason) -> &'static str {
     }
 }
 
-pub(crate) fn perspective_identities_value(
-    state: &EngineStateParts,
-) -> Result<Value, StateDigestError> {
+pub(crate) fn perspective_identities_value(state: &EngineState) -> Result<Value, StateDigestError> {
     let players = state
         .perspective_identities
         .players

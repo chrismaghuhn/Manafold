@@ -6,8 +6,6 @@ pub enum EngineStateViolation {
     PriorityState,
     #[error("combat state is structurally invalid")]
     CombatState,
-    #[error("foundation source state is structurally invalid")]
-    FoundationSource,
     #[error("object map key does not equal object identity")]
     ObjectKeyMismatch,
     #[error("object owner/controller or zone player is absent")]
@@ -22,12 +20,6 @@ pub enum EngineStateViolation {
     StackMismatch,
     #[error("an identity allocator does not exceed every allocated identity")]
     AllocatorBehind,
-    #[error("pending decision is invalid for this state")]
-    PendingDecisionMismatch,
-    #[error("continuation reference is missing")]
-    MissingContinuation,
-    #[error("execution record keys do not match their embedded identities")]
-    ExecutionMismatch,
     #[error("perspective identities are not bijective or reference missing objects")]
     PerspectiveIdentityMismatch,
     #[error("knowledge state references an absent player/object or has invalid provenance")]
@@ -42,7 +34,6 @@ pub enum EngineStateViolation {
 
 mod allocators_execution;
 mod core;
-mod decision;
 mod format;
 mod information;
 mod random;
@@ -50,24 +41,19 @@ mod zones;
 
 use std::collections::BTreeSet;
 
-use mtgml_decision::{EngineCandidateBinding, VisibleCandidateV2};
 use thiserror::Error;
 
 use crate::engine::EngineState;
 use crate::engine_state_shape::validate_engine_state_shape;
 
-use self::allocators_execution::validate_allocators_and_execution;
+use self::allocators_execution::validate_allocators;
 use self::core::validate_core_structure;
-use self::decision::validate_pending_authoritative_request;
 use self::format::validate_commander_format_references;
 use self::information::{
     validate_perspective_identity_relationships, validate_retained_knowledge_against_live_state,
 };
 use self::random::validate_authoritative_random_state;
 use self::zones::validate_zone_structure;
-
-#[allow(dead_code)]
-fn _binding_type_marker(_: &EngineCandidateBinding, _: &VisibleCandidateV2) {}
 
 /// Ordered coordinator over the extracted CURRENT validation segments.
 ///
@@ -76,21 +62,12 @@ fn _binding_type_marker(_: &EngineCandidateBinding, _: &VisibleCandidateV2) {}
 pub fn validate_engine_state(state: &EngineState) -> Result<(), EngineStateViolation> {
     validate_zone_structure(state)?;
     validate_core_structure(state)?;
-    validate_allocators_and_execution(state)?;
+    validate_allocators(state)?;
 
     let players: BTreeSet<_> = state.core.players.keys().copied().collect();
-    validate_engine_state_shape(
-        state.revision,
-        &players,
-        &state.zones.objects,
-        state.execution.pending_decision.as_ref(),
-        &state.execution.continuations,
-        &state.knowledge,
-        &state.perspective_identities,
-    )?;
+    validate_engine_state_shape(&players, &state.knowledge, &state.perspective_identities)?;
 
     validate_retained_knowledge_against_live_state(state, &players)?;
-    validate_pending_authoritative_request(state)?;
     validate_perspective_identity_relationships(state)?;
     validate_commander_format_references(state)?;
     validate_authoritative_random_state(state)?;

@@ -65,9 +65,3 @@ pub enum DecisionValidationError {
     #[error("response view sequence does not match the request")]
     VisibleSequenceMismatch,
 }
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
-pub enum CandidateBindingError {
-    #[error("visible candidate does not exactly match its authoritative binding")]
-    Mismatch,
-}

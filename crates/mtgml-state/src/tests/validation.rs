@@ -6,10 +6,7 @@ fn synthetic_state_is_the_current_engine_state_shape() {
     let state = synthetic_state();
     validate_engine_state(&state).unwrap();
     assert_eq!(state.revision, StateRevision(0));
-    assert!(state.execution.pending_decision.is_some());
-    assert!(state.execution.effects.is_empty());
-    assert!(state.execution.waiting_triggers.is_empty());
-    assert!(state.execution.delayed_effects.is_empty());
+    assert_eq!(state.execution, crate::ExecutionStateV4::default());
     assert_eq!(state.knowledge.players.len(), 2);
     assert_eq!(state.perspective_identities.players.len(), 2);
 }
@@ -20,17 +17,6 @@ fn valid_empty_shell_passes_cross_component_validation() {
     validate_engine_state(&state).unwrap();
 }
 
-#[test]
-fn pending_decision_must_match_state_revision() {
-    let mut state = synthetic_state();
-    state.revision = StateRevision(7);
-    assert!(matches!(
-        validate_engine_state(&state),
-        Err(EngineStateViolation::EngineStateShape(
-            EngineStateShapeViolation::PendingDecision
-        ))
-    ));
-}
 
 #[test]
 fn unordered_object_must_not_appear_in_ordered_zones() {
@@ -90,43 +76,7 @@ fn duplicate_live_physical_card_incarnation_rejected() {
     ));
 }
 
-#[test]
-fn pending_candidate_binding_must_match_authoritative_binding() {
-    let mut state = synthetic_state();
-    let pending = state.execution.pending_decision.as_mut().unwrap();
-    pending.request.candidates[0].trusted_binding =
-        mtgml_decision::EngineCandidateBinding::SelectObject {
-            object: GameObjectId(2),
-        };
-    assert!(matches!(
-        validate_engine_state(&state),
-        Err(EngineStateViolation::PendingDecisionMismatch)
-    ));
-}
 
-#[test]
-fn pending_select_player_must_reference_a_declared_player() {
-    let mut state = synthetic_state();
-    let candidate = &mut state
-        .execution
-        .pending_decision
-        .as_mut()
-        .unwrap()
-        .request
-        .candidates[0];
-    candidate.visible_intent = mtgml_decision::CandidateIntent::SelectPlayer {
-        player: PlayerId(999),
-    };
-    candidate.trusted_binding = mtgml_decision::EngineCandidateBinding::SelectPlayer {
-        player: PlayerId(999),
-    };
-    let before = state.clone();
-    assert_eq!(
-        validate_engine_state(&state),
-        Err(EngineStateViolation::PendingDecisionMismatch)
-    );
-    assert_eq!(state, before);
-}
 
 #[test]
 fn opaque_allocator_must_reference_declared_player() {
@@ -254,22 +204,6 @@ fn empty_ordered_zone_keys_must_reference_declared_players() {
 
 
 
-#[test]
-fn unsupported_effect_machinery_is_rejected() {
-    let mut state = empty_shell();
-    state.execution.effects.insert(
-        mtgml_model::EffectInstanceId(1),
-        EffectRecord {
-            id: mtgml_model::EffectInstanceId(1),
-            label: "unsupported".into(),
-        },
-    );
-    state.allocators.next_effect_id = mtgml_model::EffectInstanceId(2);
-    assert!(matches!(
-        validate_engine_state(&state),
-        Err(EngineStateViolation::ExecutionMismatch)
-    ));
-}
 
 #[test]
 fn simultaneous_violations_preserve_the_existing_error_precedence() {
@@ -291,9 +225,9 @@ fn simultaneous_violations_preserve_the_existing_error_precedence() {
         Err(EngineStateViolation::OrderedZoneMismatch)
     ));
 
-    // M2-shape violations win over format-segment violations.
+    // Shape violations win over format-segment violations.
     let mut state = synthetic_state();
-    state.revision = StateRevision(7);
+    state.knowledge.players.remove(&PlayerId(2));
     state.format = FormatState::Commander {
         state: CommanderState {
             designations: BTreeMap::from([(PlayerId(2), vec![PhysicalCardId(1)])]),
@@ -304,7 +238,7 @@ fn simultaneous_violations_preserve_the_existing_error_precedence() {
     assert!(matches!(
         validate_engine_state(&state),
         Err(EngineStateViolation::EngineStateShape(
-            EngineStateShapeViolation::PendingDecision
+            EngineStateShapeViolation::PlayerCoverage
         ))
     ));
 }

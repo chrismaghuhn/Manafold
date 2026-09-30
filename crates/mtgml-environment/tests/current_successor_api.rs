@@ -15,9 +15,9 @@ use mtgml_model::{CardDefinitionId, PlayerId};
 use mtgml_observation::{ObservationEnvelopeV2, PlayerInformationStateV3, PlayerStepV4};
 use mtgml_replay::AuthoritativeReplayV8;
 use mtgml_state::{
-    AbilityAuthorityStateV1, AbilityAuthorityV1, CardRulesAuthoritativeStateV1, EngineStatePartsV2,
-    EngineStatePartsV3, FaceStateV1, ManaStateV1, PlayerTurnHistoryV1, TurnHistoryStateV1,
-    TurnPosition, VisibilityPartition, ZoneKey, ZoneLocation, ZonePosition,
+    AbilityAuthorityStateV1, AbilityAuthorityV1, CardRulesAuthoritativeStateV1, EngineState,
+    FaceStateV1, ManaStateV1, PlayerTurnHistoryV1, TurnHistoryStateV1, TurnPosition,
+    VisibilityPartition, ZoneKey, ZoneLocation, ZonePosition,
 };
 
 struct ProductionAliasProbe {
@@ -276,7 +276,7 @@ fn add_object(
     id
 }
 
-fn basic_land_state() -> EngineStatePartsV3 {
+fn basic_land_state() -> EngineState {
     let definitions = decode_content_manifest_v1(CONTENT).unwrap();
     let find_definition = |subtype| {
         definitions
@@ -363,9 +363,10 @@ fn basic_land_state() -> EngineStatePartsV3 {
         abilities,
         ..Default::default()
     };
-    let mut state = EngineStatePartsV2::from_state(&engine, card_rules);
-    state.predecessor_v5.allocators.next_ability_id = mtgml_model::AbilityInstanceId(2);
-    for (player, identity) in &mut state.predecessor_v5.perspective_identities.players {
+    let mut state = engine;
+    state.card_rules = card_rules;
+    state.allocators.next_ability_id = mtgml_model::AbilityInstanceId(2);
+    for (player, identity) in &mut state.perspective_identities.players {
         let opaque = mtgml_model::OpaqueAbilityId(player.0);
         identity
             .ability_to_opaque
@@ -375,10 +376,5 @@ fn basic_land_state() -> EngineStatePartsV3 {
             .insert(opaque, mtgml_model::AbilityInstanceId(1));
         identity.next_opaque_ability_id.0 = identity.next_opaque_ability_id.0.max(player.0 + 1);
     }
-    EngineStatePartsV3::new(
-        state.predecessor_v5,
-        Default::default(),
-        state.card_rules_state,
-    )
-    .unwrap()
+    state
 }

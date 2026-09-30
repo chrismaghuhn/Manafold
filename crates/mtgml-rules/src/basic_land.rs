@@ -23,7 +23,7 @@ use mtgml_state::{
     PerspectiveLifecycleAuditV1, PerspectiveLifecycleMutationV1, SemanticDeltaOperationV3,
     VisibilityPartition, ZoneLocation, ZonePosition,
 };
-use mtgml_state::{EngineStatePartsV3, StateDeltaV3, TurnPosition};
+use mtgml_state::{EngineState, StateDeltaV3, TurnPosition};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum BasicLandCandidateError {
@@ -97,40 +97,29 @@ enum DraftEvent {
 /// The next state, the delta operations in their final order, and the rule
 /// events in their final order, not yet numbered.
 struct BasicLandDraft {
-    next_state: EngineStatePartsV3,
+    next_state: EngineState,
     operations: Vec<SemanticDeltaOperationV3>,
     events: Vec<DraftEvent>,
 }
 
 fn apply_lifecycle(
-    state: &mut EngineStatePartsV3,
+    state: &mut EngineState,
     audit: &PerspectiveLifecycleAuditV1,
 ) -> Result<(), BasicLandTransitionError> {
-    let mut engine: mtgml_state::EngineState = state.predecessor_v5.clone().into();
-    apply_perspective_lifecycle(&mut engine, audit)
-        .map_err(|_| BasicLandTransitionError::InvalidResult)?;
-    state.predecessor_v5 = engine.parts();
-    Ok(())
+    apply_perspective_lifecycle(state, audit).map_err(|_| BasicLandTransitionError::InvalidResult)
 }
 
 /// Every perspective observes the public event at `source`: each visible
 /// cursor advances, in `knowledge.players` order.
 fn push_visible_occurrences(
-    state: &mut EngineStatePartsV3,
+    state: &mut EngineState,
     events: &mut Vec<DraftEvent>,
     operations: &mut Vec<SemanticDeltaOperationV3>,
     source: usize,
 ) -> Result<(), BasicLandTransitionError> {
-    let perspectives: Vec<_> = state
-        .predecessor_v5
-        .knowledge
-        .players
-        .keys()
-        .copied()
-        .collect();
+    let perspectives: Vec<_> = state.knowledge.players.keys().copied().collect();
     for perspective in perspectives {
         let current = state
-            .predecessor_v5
             .knowledge
             .players
             .get(&perspective)
@@ -156,11 +145,11 @@ fn push_visible_occurrences(
 /// without a pending request, with an empty execution.
 fn draft_basic_land_action(
     admission: &ExecutableProfileAdmissionV1,
-    state: &EngineStatePartsV3,
+    state: &EngineState,
     pending_decision_id: mtgml_model::DecisionId,
     decision: SelectedSuccessorDecisionV1,
 ) -> Result<BasicLandDraft, BasicLandTransitionError> {
-    let old_revision = state.predecessor_v5.revision;
+    let old_revision = state.revision;
     let next_revision = mtgml_model::StateRevision(
         old_revision
             .0
@@ -168,8 +157,8 @@ fn draft_basic_land_action(
             .ok_or(BasicLandTransitionError::IdentityExhausted)?,
     );
     let mut next = state.clone();
-    next.predecessor_v5.revision = next_revision;
-    next.execution_v4.pending_decision = None;
+    next.revision = next_revision;
+    next.execution.pending_decision = None;
     let mut operations = vec![SemanticDeltaOperationV3::DecisionCleared {
         decision: pending_decision_id,
     }];
@@ -189,14 +178,12 @@ fn draft_basic_land_action(
             object,
         }) => {
             let old = next
-                .predecessor_v5
                 .zones
                 .objects
                 .get(&object)
                 .cloned()
                 .ok_or(BasicLandTransitionError::InvalidLand)?;
             let from = next
-                .predecessor_v5
                 .zones
                 .locations
                 .get(&object)
@@ -214,16 +201,15 @@ fn draft_basic_land_action(
                 return Err(BasicLandTransitionError::InvalidLand);
             };
             if profile_id.as_str() != BASIC_LAND_PROFILE_ID_V1
-                || next.card_rules_state.faces.faces.get(&object) != Some(&0)
+                || next.card_rules.faces.faces.get(&object) != Some(&0)
             {
                 return Err(BasicLandTransitionError::InvalidLand);
             }
             let new_object = next
-                .predecessor_v5
                 .allocators
                 .allocate_object_id()
                 .map_err(|_| BasicLandTransitionError::IdentityExhausted)?;
-            if next.predecessor_v5.zones.objects.contains_key(&new_object) {
+            if next.zones.objects.contains_key(&new_object) {
                 return Err(BasicLandTransitionError::InvalidResult);
             }
             let to = ZoneLocation {
@@ -243,12 +229,11 @@ fn draft_basic_land_action(
                 face_down: old.face_down,
                 location: from.clone(),
             };
-            next.predecessor_v5.zones.objects.remove(&object);
-            next.predecessor_v5.zones.locations.remove(&object);
+            next.zones.objects.remove(&object);
+            next.zones.locations.remove(&object);
             if matches!(from.position, ZonePosition::Top { .. }) {
                 let key = from.key();
                 let ordered = next
-                    .predecessor_v5
                     .zones
                     .ordered_zones
                     .get_mut(&key)
@@ -259,11 +244,10 @@ fn draft_basic_land_action(
                     .ok_or(BasicLandTransitionError::InvalidLand)?;
                 ordered.remove(index);
                 if ordered.is_empty() {
-                    next.predecessor_v5.zones.ordered_zones.remove(&key);
+                    next.zones.ordered_zones.remove(&key);
                 } else {
                     for (offset, member) in ordered.iter().enumerate() {
                         let location = next
-                            .predecessor_v5
                             .zones
                             .locations
                             .get_mut(member)
@@ -286,14 +270,8 @@ fn draft_basic_land_action(
                 tapped: false,
                 face_down: false,
             };
-            next.predecessor_v5
-                .zones
-                .objects
-                .insert(new_object, new.clone());
-            next.predecessor_v5
-                .zones
-                .locations
-                .insert(new_object, to.clone());
+            next.zones.objects.insert(new_object, new.clone());
+            next.zones.locations.insert(new_object, to.clone());
             let new_snapshot = mtgml_state::ObjectSnapshot {
                 object: new_object,
                 physical_card: new.physical_card,
@@ -304,21 +282,16 @@ fn draft_basic_land_action(
                 face_down: false,
                 location: to.clone(),
             };
-            let live: std::collections::BTreeSet<_> =
-                next.predecessor_v5.zones.objects.keys().copied().collect();
-            next.card_rules_state.counters.prune_departed_objects(&live);
-            next.card_rules_state
-                .attachments
-                .prune_departed_objects(&live);
-            next.card_rules_state.faces.prune_departed_objects(&live);
-            next.card_rules_state
-                .abilities
-                .prune_departed_objects(&live);
+            let live: std::collections::BTreeSet<_> = next.zones.objects.keys().copied().collect();
+            next.card_rules.counters.prune_departed_objects(&live);
+            next.card_rules.attachments.prune_departed_objects(&live);
+            next.card_rules.faces.prune_departed_objects(&live);
+            next.card_rules.abilities.prune_departed_objects(&live);
             // Opaque ability identities for the departed incarnation are
             // permanently retired before the new incarnation gets its own
             // allocator-assigned authority and perspective IDs.
             let departed_abilities: std::collections::BTreeSet<_> = state
-                .card_rules_state
+                .card_rules
                 .abilities
                 .by_instance
                 .iter()
@@ -326,7 +299,7 @@ fn draft_basic_land_action(
                     (authority.source == object).then_some(*instance)
                 })
                 .collect();
-            for (instance, authority) in &state.card_rules_state.abilities.by_instance {
+            for (instance, authority) in &state.card_rules.abilities.by_instance {
                 if authority.source == object {
                     operations.push(SemanticDeltaOperationV3::AbilityAuthorityRemoved {
                         instance: *instance,
@@ -335,31 +308,24 @@ fn draft_basic_land_action(
                     });
                 }
             }
-            next.card_rules_state
+            next.card_rules
                 .turn_history
                 .target_occurrences
                 .retain(|(target, _)| live.contains(target));
-            next.card_rules_state
+            next.card_rules
                 .turn_history
                 .once_ability_used
                 .retain(|(source, _)| live.contains(source));
 
-            let mut materialized: mtgml_state::EngineState = next.predecessor_v5.clone().into();
             let mut occurrences = Vec::new();
-            for perspective in materialized
-                .core
-                .players
-                .keys()
-                .copied()
-                .collect::<Vec<_>>()
-            {
-                let identity = materialized
+            for perspective in next.core.players.keys().copied().collect::<Vec<_>>() {
+                let identity = next
                     .perspective_identities
                     .players
                     .get(&perspective)
                     .ok_or(BasicLandTransitionError::InvalidResult)?;
                 let old_opaque = identity.object_to_opaque.get(&object).copied();
-                let knowledge = materialized
+                let knowledge = next
                     .knowledge
                     .players
                     .get(&perspective)
@@ -418,7 +384,7 @@ fn draft_basic_land_action(
                         knowledge: knowledge_mutation,
                     },
                 };
-                apply_perspective_lifecycle(&mut materialized, &audit)
+                apply_perspective_lifecycle(&mut next, &audit)
                     .map_err(|_| BasicLandTransitionError::InvalidResult)?;
                 operations.push(SemanticDeltaOperationV3::PerspectiveLifecycle {
                     lifecycle: audit.clone(),
@@ -426,13 +392,7 @@ fn draft_basic_land_action(
                 // The occurrence follows the zone transition it observes.
                 occurrences.push(audit);
             }
-            next.predecessor_v5 = materialized.parts();
-            for (perspective, identity) in next
-                .predecessor_v5
-                .perspective_identities
-                .players
-                .iter_mut()
-            {
+            for (perspective, identity) in next.perspective_identities.players.iter_mut() {
                 for instance in &departed_abilities {
                     if let Some(opaque) = identity.ability_to_opaque.remove(instance) {
                         identity.opaque_to_ability.remove(&opaque);
@@ -446,17 +406,17 @@ fn draft_basic_land_action(
                     }
                 }
             }
-            next.card_rules_state
+            next.card_rules
                 .faces
                 .set(new_object, 0, &live)
                 .map_err(|_| BasicLandTransitionError::InvalidResult)?;
-            let mut next_ability_id = next.predecessor_v5.allocators.next_ability_id;
+            let mut next_ability_id = next.allocators.next_ability_id;
             let abilities = next
-                .card_rules_state
+                .card_rules
                 .abilities
                 .allocate_for_source(&mut next_ability_id, new_object, [0], &live)
                 .map_err(|_| BasicLandTransitionError::IdentityExhausted)?;
-            next.predecessor_v5.allocators.next_ability_id = next_ability_id;
+            next.allocators.next_ability_id = next_ability_id;
             let ability = *abilities
                 .first()
                 .ok_or(BasicLandTransitionError::InvalidResult)?;
@@ -465,12 +425,7 @@ fn draft_basic_land_action(
                 source: new_object,
                 ability_key: 0,
             });
-            for (perspective, identity) in next
-                .predecessor_v5
-                .perspective_identities
-                .players
-                .iter_mut()
-            {
+            for (perspective, identity) in next.perspective_identities.players.iter_mut() {
                 let opaque = identity.next_opaque_ability_id;
                 identity.next_opaque_ability_id = mtgml_model::OpaqueAbilityId(
                     opaque
@@ -490,7 +445,7 @@ fn draft_basic_land_action(
                     to: Some(opaque),
                 });
             }
-            next.card_rules_state
+            next.card_rules
                 .turn_history
                 .record_land_play(actor)
                 .map_err(|_| BasicLandTransitionError::InvalidLand)?;
@@ -533,20 +488,18 @@ fn draft_basic_land_action(
             ability,
         }) => {
             let authority = next
-                .card_rules_state
+                .card_rules
                 .abilities
                 .by_instance
                 .get(&ability)
                 .copied()
                 .ok_or(BasicLandTransitionError::InvalidAbility)?;
             let object = next
-                .predecessor_v5
                 .zones
                 .objects
                 .get_mut(&authority.source)
                 .ok_or(BasicLandTransitionError::InvalidAbility)?;
             let location = next
-                .predecessor_v5
                 .zones
                 .locations
                 .get(&authority.source)
@@ -555,7 +508,7 @@ fn draft_basic_land_action(
                 || object.controller != actor
                 || object.tapped
                 || location.zone != ZoneKind::Battlefield
-                || next.card_rules_state.faces.faces.get(&authority.source) != Some(&0)
+                || next.card_rules.faces.faces.get(&authority.source) != Some(&0)
             {
                 return Err(BasicLandTransitionError::InvalidAbility);
             }
@@ -564,7 +517,7 @@ fn draft_basic_land_action(
                 .get(admission.content_contract_id(), object.card_definition)
                 .map_err(|_| BasicLandTransitionError::InvalidAbility)?;
             let current_face = next
-                .card_rules_state
+                .card_rules
                 .faces
                 .faces
                 .get(&authority.source)
@@ -590,12 +543,12 @@ fn draft_basic_land_action(
             let from_tapped = object.tapped;
             object.tapped = true;
             let pool_before = *next
-                .card_rules_state
+                .card_rules
                 .mana
                 .pools
                 .get(&actor)
                 .ok_or(BasicLandTransitionError::InvalidResult)?;
-            next.card_rules_state
+            next.card_rules
                 .mana
                 .add(
                     actor,
@@ -605,7 +558,7 @@ fn draft_basic_land_action(
                 )
                 .map_err(|_| BasicLandTransitionError::InvalidResult)?;
             let pool_after = *next
-                .card_rules_state
+                .card_rules
                 .mana
                 .pools
                 .get(&actor)
@@ -645,7 +598,7 @@ fn draft_basic_land_action(
 
     // CR 117.3c, 117.4: the acting player receives priority again, and the
     // action ends any succession of passes.
-    let from_priority = next.predecessor_v5.core.priority;
+    let from_priority = next.core.priority;
     if let mtgml_state::PriorityState::HeldBy {
         player,
         consecutive_passes,
@@ -656,7 +609,7 @@ fn draft_basic_land_action(
                 player,
                 consecutive_passes: 0,
             };
-            next.predecessor_v5.core.priority = to_priority;
+            next.core.priority = to_priority;
             operations.push(SemanticDeltaOperationV3::PriorityChanged {
                 from: from_priority,
                 to: to_priority,
@@ -682,7 +635,7 @@ fn draft_basic_land_action(
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BasicLandTransitionProductV4 {
     pub accepted: bool,
-    pub next_state: EngineStatePartsV3,
+    pub next_state: EngineState,
     pub delta: StateDeltaV3,
     pub events: Vec<crate::AuthoritativeRuleEventV3>,
     pub next_decision: Option<AuthoritativeDecisionRequestV4>,
@@ -692,20 +645,17 @@ pub struct BasicLandTransitionProductV4 {
 /// The state candidates are derived from: the current state without its
 /// pending request. The bounded profile owns no stack, continuation, effect or
 /// trigger state.
-fn candidate_state(
-    state: &EngineStatePartsV3,
-) -> Result<EngineStatePartsV3, BasicLandCandidateError> {
+fn candidate_state(state: &EngineState) -> Result<EngineState, BasicLandCandidateError> {
     let mut state = state.clone();
-    state.execution_v4.pending_decision = None;
+    state.execution.pending_decision = None;
     state
         .validate_structure()
         .map_err(|_| BasicLandCandidateError::InvalidState)?;
-    if !state.execution_v4.continuations.is_empty()
-        || !state.execution_v4.effects.is_empty()
-        || !state.execution_v4.waiting_triggers.is_empty()
-        || !state.execution_v4.delayed_effects.is_empty()
+    if !state.execution.continuations.is_empty()
+        || !state.execution.effects.is_empty()
+        || !state.execution.waiting_triggers.is_empty()
+        || !state.execution.delayed_effects.is_empty()
         || state
-            .predecessor_v5
             .zones
             .stack_records
             .values()
@@ -722,13 +672,13 @@ fn candidate_state(
 /// closed rather than receiving placeholder public IDs.
 pub fn derive_basic_land_candidates_v4(
     admission: &ExecutableProfileAdmissionV1,
-    state: &EngineStatePartsV3,
+    state: &EngineState,
     actor: PlayerId,
     status: &EpisodeStatus,
 ) -> Result<Vec<AuthoritativeCandidateV4>, BasicLandCandidateError> {
     let state = &candidate_state(state)?;
     state
-        .card_rules_state
+        .card_rules
         .counters
         .validate_decision_boundary()
         .map_err(|_| BasicLandCandidateError::InvalidState)?;
@@ -740,7 +690,7 @@ pub fn derive_basic_land_candidates_v4(
     if !matches!(status, EpisodeStatus::Running) {
         return Err(BasicLandCandidateError::InvalidState);
     }
-    let core = &state.predecessor_v5.core;
+    let core = &state.core;
     if !core.players.contains_key(&actor) {
         return Err(BasicLandCandidateError::InvalidState);
     }
@@ -750,9 +700,9 @@ pub fn derive_basic_land_candidates_v4(
         TurnPosition::PrecombatMain | TurnPosition::PostcombatMain
     );
     let active = core.active_player == actor;
-    let stack_empty = state.predecessor_v5.zones.stack_order.is_empty();
+    let stack_empty = state.zones.stack_order.is_empty();
     let player_history = state
-        .card_rules_state
+        .card_rules
         .turn_history
         .players
         .get(&actor)
@@ -770,7 +720,6 @@ pub fn derive_basic_land_candidates_v4(
         .iter()
         .any(|requirement| requirement.key == "rules/basic-priority");
     let identity = state
-        .predecessor_v5
         .perspective_identities
         .players
         .get(&actor)
@@ -783,9 +732,8 @@ pub fn derive_basic_land_candidates_v4(
             EngineCandidateBindingV4::PassPriority,
         ));
     }
-    for (object_id, object) in &state.predecessor_v5.zones.objects {
+    for (object_id, object) in &state.zones.objects {
         let location = state
-            .predecessor_v5
             .zones
             .locations
             .get(object_id)
@@ -795,7 +743,7 @@ pub fn derive_basic_land_candidates_v4(
             .get(admission.content_contract_id(), object.card_definition)
             .map_err(|_| BasicLandCandidateError::InvalidDefinition)?;
         let face_key = *state
-            .card_rules_state
+            .card_rules
             .faces
             .faces
             .get(object_id)
@@ -805,7 +753,7 @@ pub fn derive_basic_land_candidates_v4(
             .iter()
             .any(|face| face.face_key.0 == face_key)
             || state
-                .card_rules_state
+                .card_rules
                 .abilities
                 .by_instance
                 .values()
@@ -851,7 +799,7 @@ pub fn derive_basic_land_candidates_v4(
             && face_key == 0
         {
             public_object.ok_or(BasicLandCandidateError::InvalidState)?;
-            for (ability_id, authority) in &state.card_rules_state.abilities.by_instance {
+            for (ability_id, authority) in &state.card_rules.abilities.by_instance {
                 if authority.source != *object_id || authority.ability_key != 0 {
                     continue;
                 }
@@ -883,18 +831,15 @@ pub fn derive_basic_land_candidates_v4(
     }
     let candidates = CandidateOrderingV3::assign_dense(raw)
         .map_err(|_| BasicLandCandidateError::CandidateOrdering)?;
-    let live: std::collections::BTreeSet<_> =
-        state.predecessor_v5.zones.objects.keys().copied().collect();
+    let live: std::collections::BTreeSet<_> = state.zones.objects.keys().copied().collect();
     if candidates
         .iter()
         .any(|candidate| match &candidate.trusted_binding {
             EngineCandidateBindingV4::PassPriority => false,
             EngineCandidateBindingV4::PlayLand { object } => !live.contains(object),
-            EngineCandidateBindingV4::ActivateAbility { ability } => !state
-                .card_rules_state
-                .abilities
-                .by_instance
-                .contains_key(ability),
+            EngineCandidateBindingV4::ActivateAbility { ability } => {
+                !state.card_rules.abilities.by_instance.contains_key(ability)
+            }
             _ => true,
         })
     {
@@ -906,7 +851,7 @@ pub fn derive_basic_land_candidates_v4(
             EngineCandidateBindingV4::PlayLand { object } => objects.push(*object),
             EngineCandidateBindingV4::ActivateAbility { ability } => objects.push(
                 state
-                    .card_rules_state
+                    .card_rules
                     .abilities
                     .by_instance
                     .get(ability)
@@ -950,13 +895,13 @@ fn map_s1_query_error(error: crate::S1QueryError) -> BasicLandCandidateError {
 
 pub fn validate_basic_land_pending_request_v4(
     admission: &ExecutableProfileAdmissionV1,
-    state: &EngineStatePartsV3,
+    state: &EngineState,
     status: &EpisodeStatus,
 ) -> Result<(), BasicLandCandidateError> {
     state
         .validate_structure()
         .map_err(|_| BasicLandCandidateError::InvalidState)?;
-    let Some(request) = state.execution_v4.pending_decision.as_ref() else {
+    let Some(request) = state.execution.pending_decision.as_ref() else {
         // Closed episodes have no pending request, but they remain subject to
         // the same Basic-Land profile state boundary. Do not let terminal or
         // truncated checkpoints bypass rejection of stack/effect/trigger
@@ -972,22 +917,19 @@ pub fn validate_basic_land_pending_request_v4(
         .map_err(|_| BasicLandCandidateError::PendingCandidateSetMismatch)?;
     let expected = derive_basic_land_candidates_v4(admission, state, request.actor, status)?;
     let view_sequence = state
-        .predecessor_v5
         .knowledge
         .players
         .get(&request.actor)
         .ok_or(BasicLandCandidateError::InvalidState)?
         .next_visible_sequence;
     let identity = state
-        .predecessor_v5
         .perspective_identities
         .players
         .get(&request.actor)
         .ok_or(BasicLandCandidateError::InvalidState)?;
-    if request.decision_id.0.checked_add(1)
-        != Some(state.predecessor_v5.allocators.next_decision_id.0)
+    if request.decision_id.0.checked_add(1) != Some(state.allocators.next_decision_id.0)
         || request.player_decision_id.0.checked_add(1) != Some(identity.next_player_decision_id.0)
-        || request.state_revision != state.predecessor_v5.revision
+        || request.state_revision != state.revision
         || request.view_sequence != view_sequence
         || request.visibility != DecisionVisibility::Public
         || request.decision_domain_v2 != DecisionDomainV2::ChooseOne
@@ -1004,11 +946,11 @@ pub fn validate_basic_land_pending_request_v4(
 
 pub fn install_basic_land_request_v4(
     admission: &ExecutableProfileAdmissionV1,
-    state: &mut EngineStatePartsV3,
+    state: &mut EngineState,
     actor: PlayerId,
     status: &EpisodeStatus,
 ) -> Result<AuthoritativeDecisionRequestV4, BasicLandCandidateError> {
-    if state.execution_v4.pending_decision.is_some() {
+    if state.execution.pending_decision.is_some() {
         return Err(BasicLandCandidateError::InvalidState);
     }
     let candidates = derive_basic_land_candidates_v4(admission, state, actor, status)?;
@@ -1016,19 +958,17 @@ pub fn install_basic_land_request_v4(
         return Err(BasicLandCandidateError::NoCandidates);
     }
     let view_sequence = state
-        .predecessor_v5
         .knowledge
         .players
         .get(&actor)
         .ok_or(BasicLandCandidateError::InvalidState)?
         .next_visible_sequence;
     let identity = state
-        .predecessor_v5
         .perspective_identities
         .players
         .get(&actor)
         .ok_or(BasicLandCandidateError::InvalidState)?;
-    let decision_id = state.predecessor_v5.allocators.next_decision_id;
+    let decision_id = state.allocators.next_decision_id;
     let player_decision_id = identity.next_player_decision_id;
     let next_decision_id = DecisionId(
         decision_id
@@ -1045,7 +985,7 @@ pub fn install_basic_land_request_v4(
     let request = AuthoritativeDecisionRequestV4 {
         decision_id,
         player_decision_id,
-        state_revision: state.predecessor_v5.revision,
+        state_revision: state.revision,
         view_sequence,
         actor,
         visibility: DecisionVisibility::Public,
@@ -1060,15 +1000,14 @@ pub fn install_basic_land_request_v4(
         .map_err(|_| BasicLandCandidateError::CandidateOrdering)?;
 
     let mut candidate_state = state.clone();
-    candidate_state.predecessor_v5.allocators.next_decision_id = next_decision_id;
+    candidate_state.allocators.next_decision_id = next_decision_id;
     candidate_state
-        .predecessor_v5
         .perspective_identities
         .players
         .get_mut(&actor)
         .ok_or(BasicLandCandidateError::InvalidState)?
         .next_player_decision_id = next_player_decision_id;
-    candidate_state.execution_v4.pending_decision = Some(request.clone());
+    candidate_state.execution.pending_decision = Some(request.clone());
     candidate_state
         .validate_structure()
         .map_err(|_| BasicLandCandidateError::InvalidState)?;
@@ -1078,14 +1017,14 @@ pub fn install_basic_land_request_v4(
 
 pub fn selected_basic_land_action_v4(
     admission: &ExecutableProfileAdmissionV1,
-    state: &EngineStatePartsV3,
+    state: &EngineState,
     actor: PlayerId,
     response: &DecisionResponseV3,
     status: &EpisodeStatus,
 ) -> Result<SelectedSuccessorDecisionV1, BasicLandCandidateError> {
     validate_basic_land_pending_request_v4(admission, state, status)?;
     let request = state
-        .execution_v4
+        .execution
         .pending_decision
         .as_ref()
         .ok_or(BasicLandCandidateError::InvalidState)?;
@@ -1135,13 +1074,13 @@ pub fn selected_basic_land_action_v4(
 
 pub fn execute_basic_land_response_v4(
     admission: &ExecutableProfileAdmissionV1,
-    state: &EngineStatePartsV3,
+    state: &EngineState,
     actor: PlayerId,
     response: &DecisionResponseV3,
     status: &EpisodeStatus,
 ) -> Result<BasicLandTransitionProductV4, BasicLandTransitionError> {
     let request = state
-        .execution_v4
+        .execution
         .pending_decision
         .as_ref()
         .ok_or(BasicLandTransitionError::InvalidSelection)?;
@@ -1161,7 +1100,7 @@ pub fn execute_basic_land_response_v4(
     } = draft_basic_land_action(admission, &before, request.decision_id, selected)?;
 
     // Number the events from the state's cursor, in their final order.
-    let first = state.predecessor_v5.allocators.next_rule_event_id;
+    let first = state.allocators.next_rule_event_id;
     let event_id = |index: usize| {
         u64::try_from(index)
             .ok()
@@ -1169,7 +1108,7 @@ pub fn execute_basic_land_response_v4(
             .map(RuleEventId)
             .ok_or(BasicLandTransitionError::IdentityExhausted)
     };
-    let revision = next_state.predecessor_v5.revision;
+    let revision = next_state.revision;
     let mut events = Vec::with_capacity(draft_events.len() + 1);
     for (index, draft) in draft_events.into_iter().enumerate() {
         let event = match draft {
@@ -1187,12 +1126,12 @@ pub fn execute_basic_land_response_v4(
             event,
         });
     }
-    next_state.predecessor_v5.allocators.next_rule_event_id = event_id(events.len())?;
+    next_state.allocators.next_rule_event_id = event_id(events.len())?;
 
     let next_request = install_basic_land_request_v4(admission, &mut next_state, actor, status)
         .map_err(|_| BasicLandTransitionError::InvalidResult)?;
-    let decision_event_id = next_state.predecessor_v5.allocators.next_rule_event_id;
-    next_state.predecessor_v5.allocators.next_rule_event_id = RuleEventId(
+    let decision_event_id = next_state.allocators.next_rule_event_id;
+    next_state.allocators.next_rule_event_id = RuleEventId(
         decision_event_id
             .0
             .checked_add(1)
@@ -1229,7 +1168,7 @@ pub fn execute_basic_land_response_v4(
 }
 
 #[cfg(test)]
-pub(crate) fn s1_b_state_with_two_lands_fixture() -> mtgml_state::EngineStatePartsV2 {
+pub(crate) fn s1_b_state_with_two_lands_fixture() -> EngineState {
     tests::state_with_two_lands()
 }
 
@@ -1254,7 +1193,6 @@ mod tests {
             calculate_rules_contract_id_v1, calculate_semantic_contract_id_v1,
         },
     };
-    use mtgml_state::EngineStatePartsV2;
     use mtgml_state::{
         AbilityAuthorityStateV1, AbilityAuthorityV1, CardRulesAuthoritativeStateV1, FaceStateV1,
         ManaStateV1, PlayerTurnHistoryV1, TurnHistoryStateV1,
@@ -1314,17 +1252,7 @@ mod tests {
             .unwrap()
     }
 
-    /// The current-format state around a fixture.
-    fn current(state: EngineStatePartsV2) -> EngineStatePartsV3 {
-        EngineStatePartsV3::new(
-            state.predecessor_v5,
-            Default::default(),
-            state.card_rules_state,
-        )
-        .unwrap()
-    }
-
-    pub(super) fn state_with_two_lands() -> EngineStatePartsV2 {
+    pub(super) fn state_with_two_lands() -> EngineState {
         let admission = admission();
         let manifest = decode_content_manifest_v1(MANIFEST).unwrap();
         let mountain = manifest
@@ -1410,9 +1338,9 @@ mod tests {
             },
             ..CardRulesAuthoritativeStateV1::default()
         };
-        let mut state = EngineStatePartsV2::from_state(&engine, cards);
-        state.predecessor_v5.allocators.next_ability_id = mtgml_model::AbilityInstanceId(2);
-        state.execution_v3.pending_decision = None;
+        let mut state = engine;
+        state.card_rules = cards;
+        state.allocators.next_ability_id = mtgml_model::AbilityInstanceId(2);
         // The variable prevents an accidental fixture regression that omits
         // one of the two distinct legal land candidates.
         assert_ne!(mountain_id, plains_id);
@@ -1481,7 +1409,7 @@ mod tests {
         state.validate().unwrap();
         let candidates = derive_basic_land_candidates_v4(
             &admission,
-            &current(state),
+            &state,
             PlayerId(1),
             &EpisodeStatus::Running,
         )
@@ -1513,12 +1441,7 @@ mod tests {
     fn v4_priority_domain_reuses_exact_m42_candidate_order_and_bindings() {
         let admission = admission();
         let v2 = state_with_two_lands();
-        let mut state = mtgml_state::EngineStatePartsV3::new(
-            v2.predecessor_v5,
-            Default::default(),
-            v2.card_rules_state,
-        )
-        .unwrap();
+        let mut state = v2;
         let candidates = crate::derive_basic_land_candidates_v4(
             &admission,
             &state,
@@ -1618,12 +1541,7 @@ mod tests {
     fn v4_mana_ability_transition_preserves_atomic_tap_and_pool_outcome() {
         let admission = admission();
         let v2 = state_with_two_lands();
-        let mut state = mtgml_state::EngineStatePartsV3::new(
-            v2.predecessor_v5,
-            Default::default(),
-            v2.card_rules_state,
-        )
-        .unwrap();
+        let mut state = v2;
         let request = crate::install_basic_land_request_v4(
             &admission,
             &mut state,
@@ -1650,13 +1568,13 @@ mod tests {
         assert!(transition.accepted);
         let source = match request.candidates[3].trusted_binding {
             mtgml_decision::EngineCandidateBindingV4::ActivateAbility { ability } => {
-                state.card_rules_state.abilities.by_instance[&ability].source
+                state.card_rules.abilities.by_instance[&ability].source
             }
             _ => panic!("candidate 3 is the intrinsic mana ability"),
         };
-        assert!(transition.next_state.predecessor_v5.zones.objects[&source].tapped);
+        assert!(transition.next_state.zones.objects[&source].tapped);
         assert_eq!(
-            transition.next_state.card_rules_state.mana.pools[&PlayerId(1)].unrestricted[3],
+            transition.next_state.card_rules.mana.pools[&PlayerId(1)].unrestricted[3],
             1
         );
         assert_eq!(
@@ -1669,12 +1587,7 @@ mod tests {
     fn v4_basic_land_admission_rejects_structural_but_unsupported_cast_action() {
         let admission = admission();
         let v2 = state_with_two_lands();
-        let mut state = mtgml_state::EngineStatePartsV3::new(
-            v2.predecessor_v5,
-            Default::default(),
-            v2.card_rules_state,
-        )
-        .unwrap();
+        let mut state = v2;
         let request = crate::install_basic_land_request_v4(
             &admission,
             &mut state,
@@ -1686,8 +1599,8 @@ mod tests {
             mtgml_decision::EngineCandidateBindingV4::PlayLand { object } => object,
             _ => panic!("candidate 1 is a legal PlayLand"),
         };
-        let opaque_object = state.predecessor_v5.perspective_identities.players[&PlayerId(1)]
-            .object_to_opaque[&land_object];
+        let opaque_object =
+            state.perspective_identities.players[&PlayerId(1)].object_to_opaque[&land_object];
         let mut forged = request;
         forged.candidates.insert(
             3,
@@ -1705,7 +1618,7 @@ mod tests {
             candidate.candidate_id = mtgml_model::CandidateIdV1(index as u32);
         }
         forged.project_player_request().unwrap();
-        state.execution_v4.pending_decision = Some(forged);
+        state.execution.pending_decision = Some(forged);
         state.validate_structure().unwrap();
         assert!(crate::validate_basic_land_pending_request_v4(
             &admission,
@@ -1719,12 +1632,12 @@ mod tests {
     fn illegal_play_land_windows_produce_no_land_candidates() {
         let admission = admission();
         let mut state = state_with_two_lands();
-        state.predecessor_v5.core.position = TurnPosition::Beginning {
+        state.core.position = TurnPosition::Beginning {
             step: mtgml_state::BeginningStep::Upkeep,
         };
         let candidates = derive_basic_land_candidates_v4(
             &admission,
-            &current(state.clone()),
+            &state,
             PlayerId(1),
             &EpisodeStatus::Running,
         )
@@ -1739,25 +1652,25 @@ mod tests {
     fn land_candidates_require_active_player_priority_and_remaining_entitlement() {
         let admission = admission();
         let mut state = state_with_two_lands();
-        state.predecessor_v5.core.priority = mtgml_state::PriorityState::HeldBy {
+        state.core.priority = mtgml_state::PriorityState::HeldBy {
             player: PlayerId(2),
             consecutive_passes: 0,
         };
         let candidates = derive_basic_land_candidates_v4(
             &admission,
-            &current(state.clone()),
+            &state,
             PlayerId(1),
             &EpisodeStatus::Running,
         )
         .unwrap();
         assert!(candidates.is_empty());
 
-        state.predecessor_v5.core.priority = mtgml_state::PriorityState::HeldBy {
+        state.core.priority = mtgml_state::PriorityState::HeldBy {
             player: PlayerId(1),
             consecutive_passes: 0,
         };
         state
-            .card_rules_state
+            .card_rules
             .turn_history
             .players
             .get_mut(&PlayerId(1))
@@ -1765,7 +1678,7 @@ mod tests {
             .land_plays_used = 1;
         let candidates = derive_basic_land_candidates_v4(
             &admission,
-            &current(state.clone()),
+            &state,
             PlayerId(1),
             &EpisodeStatus::Running,
         )
@@ -1783,33 +1696,22 @@ mod tests {
             .any(|candidate| matches!(candidate.visible_intent, CandidateIntentV4::PassPriority)));
     }
 
-    fn successor_state_with_two_lands() -> mtgml_state::EngineStatePartsV3 {
-        let state = state_with_two_lands();
-        mtgml_state::EngineStatePartsV3::new(
-            state.predecessor_v5,
-            Default::default(),
-            state.card_rules_state,
-        )
-        .unwrap()
+    fn successor_state_with_two_lands() -> mtgml_state::EngineState {
+        state_with_two_lands()
     }
 
     #[test]
     fn s1_a_resolves_exact_admitted_live_object_without_mutation() {
         let admission = admission();
         let state = successor_state_with_two_lands();
-        let object_id = *state.predecessor_v5.zones.objects.keys().next().unwrap();
+        let object_id = *state.zones.objects.keys().next().unwrap();
         let before = state.clone();
         let authority = crate::S1QueryAuthority::for_object(&admission, &state, object_id).unwrap();
         let queried = authority.queried_object();
 
         assert_eq!(queried.object, object_id);
-        let object = state.predecessor_v5.zones.objects.get(&object_id).unwrap();
-        let location = state
-            .predecessor_v5
-            .zones
-            .locations
-            .get(&object_id)
-            .unwrap();
+        let object = state.zones.objects.get(&object_id).unwrap();
+        let location = state.zones.locations.get(&object_id).unwrap();
         assert_eq!(queried.card_definition, object.card_definition);
         assert_eq!(queried.owner, object.owner);
         assert_eq!(queried.controller, object.controller);
@@ -1827,7 +1729,6 @@ mod tests {
         let admission = admission();
         let state = successor_state_with_two_lands();
         let objects: Vec<_> = state
-            .predecessor_v5
             .zones
             .objects
             .iter()
@@ -1855,11 +1756,7 @@ mod tests {
         );
 
         let mut missing_location = state.clone();
-        missing_location
-            .predecessor_v5
-            .zones
-            .locations
-            .remove(&objects[1]);
+        missing_location.zones.locations.remove(&objects[1]);
         for order in [[objects[0], objects[1]], [objects[1], objects[0]]] {
             assert_eq!(
                 crate::S1QueryAuthority::for_objects(&admission, &missing_location, &order)
@@ -1878,7 +1775,7 @@ mod tests {
         let mut seen_mountain = false;
         let mut seen_plains = false;
 
-        for (object_id, object) in &state.predecessor_v5.zones.objects {
+        for (object_id, object) in &state.zones.objects {
             // The shared synthetic setup also contains a face-down object.
             // S1-B production positives cover only the admitted face-up land
             // objects; face-down rejection remains an S1-A negative case.
@@ -1925,18 +1822,16 @@ mod tests {
     fn s1_a_rejects_unknown_definition_without_fallback_or_mutation() {
         let admission = admission();
         let mut state = successor_state_with_two_lands();
-        let object_id = *state.predecessor_v5.zones.objects.keys().next().unwrap();
+        let object_id = *state.zones.objects.keys().next().unwrap();
         state
-            .predecessor_v5
             .zones
             .objects
             .get_mut(&object_id)
             .unwrap()
             .card_definition = CardDefinitionId(999_999);
-        for (player, identity) in &state.predecessor_v5.perspective_identities.players {
+        for (player, identity) in &state.perspective_identities.players {
             if let Some(opaque) = identity.object_to_opaque.get(&object_id) {
                 if let Some(record) = state
-                    .predecessor_v5
                     .knowledge
                     .players
                     .get_mut(player)
@@ -1963,14 +1858,10 @@ mod tests {
     fn s1_a_distinguishes_missing_location_face_and_unknown_face() {
         let admission = admission();
         let state = successor_state_with_two_lands();
-        let object_id = *state.predecessor_v5.zones.objects.keys().next().unwrap();
+        let object_id = *state.zones.objects.keys().next().unwrap();
 
         let mut missing_location = state.clone();
-        missing_location
-            .predecessor_v5
-            .zones
-            .locations
-            .remove(&object_id);
+        missing_location.zones.locations.remove(&object_id);
         assert!(matches!(
             crate::S1QueryAuthority::for_object(&admission, &missing_location, object_id),
             Err(crate::S1QueryError::MissingZoneLocation(id)) if id == object_id
@@ -1978,7 +1869,6 @@ mod tests {
 
         let mut mismatched_object_id = state.clone();
         mismatched_object_id
-            .predecessor_v5
             .zones
             .objects
             .get_mut(&object_id)
@@ -1990,7 +1880,7 @@ mod tests {
         ));
 
         let mut missing_face = state.clone();
-        missing_face.card_rules_state.faces.faces.remove(&object_id);
+        missing_face.card_rules.faces.faces.remove(&object_id);
         assert!(matches!(
             crate::S1QueryAuthority::for_object(&admission, &missing_face, object_id),
             Err(crate::S1QueryError::FaceStateMissing(id)) if id == object_id
@@ -1998,11 +1888,11 @@ mod tests {
 
         let mut unknown_face = state;
         unknown_face
-            .card_rules_state
+            .card_rules
             .faces
             .faces
             .insert(object_id, u32::MAX);
-        let definition = unknown_face.predecessor_v5.zones.objects[&object_id].card_definition;
+        let definition = unknown_face.zones.objects[&object_id].card_definition;
         assert!(matches!(
             crate::S1QueryAuthority::for_object(&admission, &unknown_face, object_id),
             Err(crate::S1QueryError::UnknownFace { definition: found, face_key })
@@ -2061,15 +1951,8 @@ mod tests {
         ));
 
         let mut face_down = successor_state_with_two_lands();
-        let object_id = *face_down
-            .predecessor_v5
-            .zones
-            .objects
-            .keys()
-            .next()
-            .unwrap();
+        let object_id = *face_down.zones.objects.keys().next().unwrap();
         face_down
-            .predecessor_v5
             .zones
             .objects
             .get_mut(&object_id)

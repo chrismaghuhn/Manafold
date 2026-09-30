@@ -46,42 +46,6 @@ fn validate_old_references(
             ZoneIncarnationError::CombatReference,
         ));
     }
-    if state
-        .zones
-        .stack_records
-        .values()
-        .any(|record| record.source_object == Some(object))
-    {
-        return Err(KernelExecutionError::ZoneIncarnation(
-            ZoneIncarnationError::StackSourceReference,
-        ));
-    }
-    if state
-        .execution
-        .pending_decision
-        .as_ref()
-        .is_some_and(|pending| {
-            pending.request.candidates.iter().any(|candidate| {
-                matches!(
-                    candidate.trusted_binding,
-                    mtgml_decision::EngineCandidateBinding::CastSpell { object: bound }
-                        | mtgml_decision::EngineCandidateBinding::SelectObject { object: bound }
-                        if bound == object
-                )
-            })
-        })
-    {
-        return Err(KernelExecutionError::ZoneIncarnation(
-            ZoneIncarnationError::PendingDecisionReference,
-        ));
-    }
-    if matches!(kind, SelectedZoneTransitionKind::LibraryTopToOwnerHand)
-        && state.foundation_sources.contains_key(&object)
-    {
-        return Err(KernelExecutionError::ZoneIncarnation(
-            ZoneIncarnationError::UnsupportedSourceProfile,
-        ));
-    }
     if matches!(kind, SelectedZoneTransitionKind::LibraryTopToOwnerHand)
         && state
             .perspective_identities
@@ -307,7 +271,6 @@ pub(crate) fn apply_selected_zone_transition_in_workspace(
     }
     match request.kind {
         SelectedZoneTransitionKind::HandToOwnerGraveyard => {
-            next.foundation_sources.remove(&request.object);
             if let Some(existing) = next.zones.ordered_zones.get(&graveyard_key).cloned() {
                 for member in existing {
                     let location = next.zones.locations.get_mut(&member).ok_or(

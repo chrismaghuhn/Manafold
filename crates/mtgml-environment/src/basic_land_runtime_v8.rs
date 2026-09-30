@@ -14,14 +14,14 @@ use mtgml_replay::{
     AuthoritativeReplayV8, InitialEnvironmentIdentityV8, ReplayManifestV8, ReplayRecorderV8,
     ReplayStepV8,
 };
-use mtgml_state::{EngineStatePartsV3, StateDeltaV3};
+use mtgml_state::{EngineState, StateDeltaV3};
 
 use crate::{ControllerError, EnvironmentCheckpointV8};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BasicLandRuntimeOutputV8 {
     pub accepted: bool,
-    pub next_state: EngineStatePartsV3,
+    pub next_state: EngineState,
     pub delta: Option<StateDeltaV3>,
     pub events: Vec<mtgml_rules::AuthoritativeRuleEventV3>,
     pub checkpoint: EnvironmentCheckpointV8,
@@ -48,12 +48,12 @@ pub struct BasicLandEnvironmentRuntimeV8 {
 impl BasicLandEnvironmentRuntimeV8 {
     pub fn new(
         admission: ExecutableProfileAdmissionV1,
-        state: EngineStatePartsV3,
+        state: EngineState,
         status: EpisodeStatus,
         limit_counters: EnvironmentLimitCounters,
         manifest: ReplayManifestV8,
     ) -> Result<Self, ControllerError> {
-        let root_seed = state.predecessor_v5.random.root_seed.to_lower_hex();
+        let root_seed = state.random.root_seed.to_lower_hex();
         verify_manifest_admission(&admission, &manifest, &root_seed)?;
         verify_manifest_player_set(&manifest, &state)?;
         let checkpoint = EnvironmentCheckpointV8::new_for_basic_land_profile(
@@ -81,14 +81,7 @@ impl BasicLandEnvironmentRuntimeV8 {
     }
 
     pub fn players(&self) -> Vec<PlayerId> {
-        self.current
-            .state
-            .predecessor_v5
-            .core
-            .players
-            .keys()
-            .copied()
-            .collect()
+        self.current.state.core.players.keys().copied().collect()
     }
 
     pub fn checkpoint(&self) -> Result<EnvironmentCheckpointV8, ControllerError> {
@@ -124,12 +117,7 @@ impl BasicLandEnvironmentRuntimeV8 {
         )?;
         let mut manifest = self.replay.manifest().clone();
         manifest.initial_identity = identity(&checkpoint);
-        manifest.randomness.root_seed_hex = checkpoint
-            .state
-            .predecessor_v5
-            .random
-            .root_seed
-            .to_lower_hex();
+        manifest.randomness.root_seed_hex = checkpoint.state.random.root_seed.to_lower_hex();
         manifest.validate()?;
         verify_manifest_admission(
             &self.admission,
@@ -149,11 +137,11 @@ impl BasicLandEnvironmentRuntimeV8 {
         perspective: PlayerId,
     ) -> Result<Option<PlayerDecisionRequestV4>, crate::PlayerEndpointError> {
         let state = &self.current.state;
-        if !state.predecessor_v5.core.players.contains_key(&perspective) {
+        if !state.core.players.contains_key(&perspective) {
             return Err(crate::PlayerEndpointError::ServiceUnavailable);
         }
         state
-            .execution_v4
+            .execution
             .pending_decision
             .as_ref()
             .filter(|request| request.actor == perspective)
@@ -182,18 +170,12 @@ impl BasicLandEnvironmentRuntimeV8 {
         response: DecisionResponseV3,
     ) -> Result<BasicLandRuntimeOutputV8, crate::PlayerEndpointError> {
         let before = &self.current;
-        if !before
-            .state
-            .predecessor_v5
-            .core
-            .players
-            .contains_key(&perspective)
-        {
+        if !before.state.core.players.contains_key(&perspective) {
             return Err(crate::PlayerEndpointError::ServiceUnavailable);
         }
         let rejected_code = basic_land_rejection_code(
             &before.status,
-            before.state.execution_v4.pending_decision.as_ref(),
+            before.state.execution.pending_decision.as_ref(),
             perspective,
             &response,
         );
@@ -227,7 +209,7 @@ impl BasicLandEnvironmentRuntimeV8 {
                 delta: delta.as_ref(),
                 accepted,
                 status: &checkpoint.status,
-                next_request: checkpoint.state.execution_v4.pending_decision.as_ref(),
+                next_request: checkpoint.state.execution.pending_decision.as_ref(),
                 actor: perspective,
                 rejected_code,
             },
@@ -248,10 +230,10 @@ impl BasicLandEnvironmentRuntimeV8 {
                 step_index,
                 actor: perspective,
                 checkpoint_digest_before: before.checkpoint_digest.clone(),
-                state_revision_before: before.state.predecessor_v5.revision,
+                state_revision_before: before.state.revision,
                 response,
                 accepted: true,
-                state_revision_after: checkpoint.state.predecessor_v5.revision,
+                state_revision_after: checkpoint.state.revision,
                 full_state_digest_after: checkpoint.state_digest.clone(),
                 episode_status_after: checkpoint.status.clone(),
                 environment_limit_counters_after: checkpoint.limit_counters.clone(),
@@ -281,13 +263,7 @@ impl BasicLandEnvironmentRuntimeV8 {
         replay: AuthoritativeReplayV8,
     ) -> Result<BasicLandReplayV8ExecutionReport, ControllerError> {
         replay.validate()?;
-        let root_seed = self
-            .replay_origin
-            .state
-            .predecessor_v5
-            .random
-            .root_seed
-            .to_lower_hex();
+        let root_seed = self.replay_origin.state.random.root_seed.to_lower_hex();
         verify_manifest_admission(&self.admission, &replay.manifest, &root_seed)?;
         verify_manifest_player_set(&replay.manifest, &self.replay_origin.state)?;
         if replay.manifest.initial_identity != identity(&self.replay_origin) {
@@ -318,7 +294,7 @@ impl BasicLandEnvironmentRuntimeV8 {
             }
             let before = runtime.checkpoint()?;
             if before.checkpoint_digest != step.checkpoint_digest_before
-                || before.state.predecessor_v5.revision != step.state_revision_before
+                || before.state.revision != step.state_revision_before
             {
                 return Err(crate::ReplayExecutionError::BeforeDigestMismatch {
                     step_index: index as u64,
@@ -331,7 +307,7 @@ impl BasicLandEnvironmentRuntimeV8 {
                     step_index: index as u64,
                 })?;
             if !output.accepted
-                || output.checkpoint.state.predecessor_v5.revision != step.state_revision_after
+                || output.checkpoint.state.revision != step.state_revision_after
                 || output.checkpoint.state_digest != step.full_state_digest_after
                 || output.checkpoint.status != step.episode_status_after
                 || output.checkpoint.limit_counters != step.environment_limit_counters_after
@@ -396,9 +372,9 @@ fn next_checkpoint(
     )
     .map_err(|_| crate::PlayerEndpointError::ServiceUnavailable)?;
     let delta = &transition.delta;
-    if delta.before_revision != before.state.predecessor_v5.revision
+    if delta.before_revision != before.state.revision
         || delta.before_digest != before.state_digest
-        || delta.after_revision != checkpoint.state.predecessor_v5.revision
+        || delta.after_revision != checkpoint.state.revision
         || delta.after_digest != checkpoint.state_digest
         || delta.replacement != checkpoint.state
     {
@@ -471,15 +447,9 @@ fn verify_manifest_admission(
 
 fn verify_manifest_player_set(
     manifest: &ReplayManifestV8,
-    state: &EngineStatePartsV3,
+    state: &EngineState,
 ) -> Result<(), ControllerError> {
-    let state_players = state
-        .predecessor_v5
-        .core
-        .players
-        .keys()
-        .copied()
-        .collect::<BTreeSet<_>>();
+    let state_players = state.core.players.keys().copied().collect::<BTreeSet<_>>();
     let manifest_players = manifest
         .decks
         .iter()
@@ -493,7 +463,7 @@ fn verify_manifest_player_set(
 
 fn identity(checkpoint: &EnvironmentCheckpointV8) -> InitialEnvironmentIdentityV8 {
     InitialEnvironmentIdentityV8 {
-        state_revision: checkpoint.state.predecessor_v5.revision,
+        state_revision: checkpoint.state.revision,
         full_state_digest: checkpoint.state_digest.clone(),
         episode_status: checkpoint.status.clone(),
         environment_limit_counters: checkpoint.limit_counters.clone(),
@@ -514,9 +484,9 @@ mod tests {
         RulesAuthorityV1, RulesContractManifestV1, SemanticContractManifestV1,
     };
     use mtgml_state::{
-        AbilityAuthorityStateV1, AbilityAuthorityV1, CardRulesAuthoritativeStateV1,
-        EngineStatePartsV2, FaceStateV1, ManaStateV1, PlayerTurnHistoryV1, TurnHistoryStateV1,
-        TurnPosition, VisibilityPartition, ZoneKey, ZoneLocation, ZonePosition,
+        AbilityAuthorityStateV1, AbilityAuthorityV1, CardRulesAuthoritativeStateV1, FaceStateV1,
+        ManaStateV1, PlayerTurnHistoryV1, TurnHistoryStateV1, TurnPosition, VisibilityPartition,
+        ZoneKey, ZoneLocation, ZonePosition,
     };
 
     const CONTENT: &[u8] =
@@ -587,11 +557,7 @@ mod tests {
         .unwrap()
     }
 
-    fn state_with_two_lands_v2() -> EngineStatePartsV2 {
-        state_with_players_v2([PlayerId(1), PlayerId(2)])
-    }
-
-    fn state_with_players_v2(players: [PlayerId; 2]) -> EngineStatePartsV2 {
+    fn state_with_players(players: [PlayerId; 2]) -> EngineState {
         let manifest = decode_content_manifest_v1(CONTENT).unwrap();
         let mountain = manifest
             .definitions
@@ -685,10 +651,10 @@ mod tests {
             abilities,
             ..Default::default()
         };
-        let mut v2 = EngineStatePartsV2::from_state(&engine, card_rules);
-        v2.predecessor_v5.allocators.next_ability_id = mtgml_model::AbilityInstanceId(2);
-        v2.execution_v3.pending_decision = None;
-        for (player, identity) in &mut v2.predecessor_v5.perspective_identities.players {
+        let mut v2 = engine;
+        v2.card_rules = card_rules;
+        v2.allocators.next_ability_id = mtgml_model::AbilityInstanceId(2);
+        for (player, identity) in &mut v2.perspective_identities.players {
             let opaque = mtgml_model::OpaqueAbilityId(player.0);
             identity
                 .ability_to_opaque
@@ -703,14 +669,8 @@ mod tests {
         v2
     }
 
-    pub(crate) fn state_with_two_lands() -> EngineStatePartsV3 {
-        let v2 = state_with_two_lands_v2();
-        EngineStatePartsV3::new(v2.predecessor_v5, Default::default(), v2.card_rules_state).unwrap()
-    }
-
-    fn state_with_players(players: [PlayerId; 2]) -> EngineStatePartsV3 {
-        let v2 = state_with_players_v2(players);
-        EngineStatePartsV3::new(v2.predecessor_v5, Default::default(), v2.card_rules_state).unwrap()
+    pub(crate) fn state_with_two_lands() -> EngineState {
+        state_with_players([PlayerId(1), PlayerId(2)])
     }
 
     fn temporary_haste_effect(
@@ -730,40 +690,36 @@ mod tests {
     fn hidden_stack_source_world(
         source_definition: CardDefinitionId,
         keep_opponent_mapping: bool,
-    ) -> EngineStatePartsV3 {
+    ) -> EngineState {
         let mut state = state_with_two_lands();
         let hidden_source = *state
-            .predecessor_v5
             .zones
             .locations
             .iter()
             .find(|(object, location)| {
                 location.zone == mtgml_model::ZoneKind::Hand
-                    && state.predecessor_v5.zones.objects[object].owner == PlayerId(1)
-                    && state.predecessor_v5.perspective_identities.players[&PlayerId(1)]
+                    && state.zones.objects[object].owner == PlayerId(1)
+                    && state.perspective_identities.players[&PlayerId(1)]
                         .object_to_opaque
                         .contains_key(object)
             })
             .map(|(object, _)| object)
             .unwrap();
         state
-            .predecessor_v5
             .zones
             .objects
             .get_mut(&hidden_source)
             .unwrap()
             .card_definition = source_definition;
         let owner_identity = state
-            .predecessor_v5
             .perspective_identities
             .players
             .get(&PlayerId(1))
             .unwrap();
         let owner_opaque = owner_identity.object_to_opaque[&hidden_source];
-        let source_object = &state.predecessor_v5.zones.objects[&hidden_source];
-        let source_location = state.predecessor_v5.zones.locations[&hidden_source].clone();
+        let source_object = &state.zones.objects[&hidden_source];
+        let source_location = state.zones.locations[&hidden_source].clone();
         state
-            .predecessor_v5
             .knowledge
             .players
             .get_mut(&PlayerId(1))
@@ -782,7 +738,6 @@ mod tests {
                 acquisition: mtgml_state::KnowledgeAcquisitionReason::InitialConfiguration,
             });
         state
-            .predecessor_v5
             .knowledge
             .players
             .get_mut(&PlayerId(1))
@@ -793,7 +748,6 @@ mod tests {
             .card_definition = Some(source_definition);
 
         let opponent_identity = state
-            .predecessor_v5
             .perspective_identities
             .players
             .get_mut(&PlayerId(2))
@@ -804,7 +758,6 @@ mod tests {
             .copied();
         if let Some(opaque) = opponent_opaque {
             state
-                .predecessor_v5
                 .knowledge
                 .players
                 .get_mut(&PlayerId(2))
@@ -818,17 +771,16 @@ mod tests {
         }
 
         let ability_instance = mtgml_model::AbilityInstanceId(2);
-        state.card_rules_state.abilities.by_instance.insert(
+        state.card_rules.abilities.by_instance.insert(
             ability_instance,
             mtgml_state::AbilityAuthorityV1 {
                 source: hidden_source,
                 ability_key: 0,
             },
         );
-        state.predecessor_v5.allocators.next_ability_id = mtgml_model::AbilityInstanceId(3);
+        state.allocators.next_ability_id = mtgml_model::AbilityInstanceId(3);
         for perspective in [PlayerId(1), PlayerId(2)] {
             let identity = state
-                .predecessor_v5
                 .perspective_identities
                 .players
                 .get_mut(&perspective)
@@ -842,7 +794,7 @@ mod tests {
             identity.opaque_to_ability.insert(opaque, ability_instance);
         }
 
-        let object = &state.predecessor_v5.zones.objects[&hidden_source];
+        let object = &state.zones.objects[&hidden_source];
         let source_context = mtgml_state::AbilitySourceContext {
             source: mtgml_state::SourceContext {
                 snapshot: mtgml_state::ObjectSnapshot {
@@ -853,7 +805,7 @@ mod tests {
                     controller: object.controller,
                     tapped: object.tapped,
                     face_down: object.face_down,
-                    location: state.predecessor_v5.zones.locations[&hidden_source].clone(),
+                    location: state.zones.locations[&hidden_source].clone(),
                 },
                 face_key: mtgml_card_ir::FaceKey(0),
                 semantic_profile_id: mtgml_card_ir::CardSemanticProfileId::parse(
@@ -882,20 +834,18 @@ mod tests {
             (mtgml_model::StackObjectId(1), activated),
             (mtgml_model::StackObjectId(2), triggered),
         ] {
-            state.predecessor_v5.zones.stack_records.insert(
+            state.zones.stack_records.insert(
                 id,
                 mtgml_state::StackRecord {
                     id,
                     controller: PlayerId(1),
-                    source_object: None,
-                    source_ability: None,
                     payload: Some(payload),
                 },
             );
-            state.predecessor_v5.zones.stack_order.push(id);
+            state.zones.stack_order.push(id);
         }
-        state.predecessor_v5.allocators.next_stack_object_id = mtgml_model::StackObjectId(3);
-        state.predecessor_v5.allocators.next_trigger_id = mtgml_model::TriggerInstanceId(2);
+        state.allocators.next_stack_object_id = mtgml_model::StackObjectId(3);
+        state.allocators.next_trigger_id = mtgml_model::TriggerInstanceId(2);
         state.validate_structure().unwrap();
         state
     }
@@ -975,12 +925,7 @@ mod tests {
         manifest.decks.push(player_two);
         manifest.rules_snapshot = RULES_SNAPSHOT.to_owned();
         manifest.card_bundle = admission.content_contract_id().to_string();
-        manifest.randomness.root_seed_hex = checkpoint
-            .state
-            .predecessor_v5
-            .random
-            .root_seed
-            .to_lower_hex();
+        manifest.randomness.root_seed_hex = checkpoint.state.random.root_seed.to_lower_hex();
         manifest.initial_identity = identity(checkpoint);
         manifest
     }
@@ -1100,7 +1045,6 @@ mod tests {
     fn temporary_effect_projection_requires_public_information_not_opaque_mapping_alone() {
         let state = state_with_two_lands();
         let target = *state
-            .predecessor_v5
             .zones
             .locations
             .iter()
@@ -1108,11 +1052,11 @@ mod tests {
             .map(|(object, _)| object)
             .unwrap();
         let effect = temporary_haste_effect(target);
-        let project_effect = |candidate: &EngineStatePartsV3| {
+        let project_effect = |candidate: &EngineState| {
             crate::player_projection::project_public_temporary_effect_v1(
                 candidate,
-                &candidate.predecessor_v5.perspective_identities.players[&PlayerId(1)],
-                &candidate.predecessor_v5.knowledge.players[&PlayerId(1)],
+                &candidate.perspective_identities.players[&PlayerId(1)],
+                &candidate.knowledge.players[&PlayerId(1)],
                 &effect,
             )
         };
@@ -1120,13 +1064,9 @@ mod tests {
         assert_eq!(public_projection.affected_objects.len(), 1);
 
         let mut mapped_without_knowledge = state.clone();
-        let opaque = mapped_without_knowledge
-            .predecessor_v5
-            .perspective_identities
-            .players[&PlayerId(1)]
+        let opaque = mapped_without_knowledge.perspective_identities.players[&PlayerId(1)]
             .object_to_opaque[&target];
         mapped_without_knowledge
-            .predecessor_v5
             .knowledge
             .players
             .get_mut(&PlayerId(1))
@@ -1137,7 +1077,6 @@ mod tests {
 
         let mut unmapped_without_knowledge = mapped_without_knowledge.clone();
         let identity = unmapped_without_knowledge
-            .predecessor_v5
             .perspective_identities
             .players
             .get_mut(&PlayerId(1))
@@ -1188,7 +1127,7 @@ mod tests {
             )
             .unwrap();
         }
-        let project = |state: &EngineStatePartsV3| {
+        let project = |state: &EngineState| {
             crate::project_successor_information_state_v3(
                 state,
                 PlayerId(2),
@@ -1253,7 +1192,6 @@ mod tests {
         )));
         let mut missing_owner_ability_identity = with_internal_mapping.clone();
         let owner_identity = missing_owner_ability_identity
-            .predecessor_v5
             .perspective_identities
             .players
             .get_mut(&PlayerId(1))
@@ -1278,24 +1216,22 @@ mod tests {
         ));
 
         let hidden_object = *with_internal_mapping
-            .predecessor_v5
             .zones
             .locations
             .iter()
             .find(|(object, location)| {
                 location.zone == mtgml_model::ZoneKind::Hand
-                    && with_internal_mapping.predecessor_v5.zones.objects[object].owner
-                        == PlayerId(1)
+                    && with_internal_mapping.zones.objects[object].owner == PlayerId(1)
             })
             .map(|(object, _)| object)
             .unwrap();
         let mut hidden_effect_worlds = [with_internal_mapping, without_internal_mapping];
         for state in &mut hidden_effect_worlds {
-            state.execution_v4.effects.insert(
+            state.execution.effects.insert(
                 mtgml_model::EffectInstanceId(1),
                 temporary_haste_effect(hidden_object),
             );
-            state.predecessor_v5.allocators.next_effect_id = mtgml_model::EffectInstanceId(2);
+            state.allocators.next_effect_id = mtgml_model::EffectInstanceId(2);
             state.validate_structure().unwrap();
             EnvironmentCheckpointV8::new(
                 state.clone(),
@@ -1319,19 +1255,17 @@ mod tests {
 
         let mut public_effect_state = state_with_two_lands();
         let public_target = *public_effect_state
-            .predecessor_v5
             .zones
             .locations
             .iter()
             .find(|(_, location)| location.zone == mtgml_model::ZoneKind::Battlefield)
             .map(|(object, _)| object)
             .unwrap();
-        public_effect_state.execution_v4.effects.insert(
+        public_effect_state.execution.effects.insert(
             mtgml_model::EffectInstanceId(1),
             temporary_haste_effect(public_target),
         );
-        public_effect_state.predecessor_v5.allocators.next_effect_id =
-            mtgml_model::EffectInstanceId(2);
+        public_effect_state.allocators.next_effect_id = mtgml_model::EffectInstanceId(2);
         let public_information = crate::project_successor_information_state_v3(
             &public_effect_state,
             PlayerId(2),
@@ -1356,14 +1290,13 @@ mod tests {
         let admission = game_admission();
         let mut state = state_with_two_lands();
         let source_object = *state
-            .predecessor_v5
             .zones
             .locations
             .iter()
             .find(|(_, location)| location.zone == mtgml_model::ZoneKind::Battlefield)
             .map(|(object, _)| object)
             .unwrap();
-        let source = &state.predecessor_v5.zones.objects[&source_object];
+        let source = &state.zones.objects[&source_object];
         let source_context = mtgml_state::AbilitySourceContext {
             source: mtgml_state::SourceContext {
                 snapshot: mtgml_state::ObjectSnapshot {
@@ -1374,7 +1307,7 @@ mod tests {
                     controller: source.controller,
                     tapped: source.tapped,
                     face_down: source.face_down,
-                    location: state.predecessor_v5.zones.locations[&source_object].clone(),
+                    location: state.zones.locations[&source_object].clone(),
                 },
                 face_key: mtgml_card_ir::FaceKey(0),
                 semantic_profile_id: mtgml_card_ir::CardSemanticProfileId::parse(
@@ -1385,17 +1318,16 @@ mod tests {
             ability_instance_id: mtgml_model::AbilityInstanceId(2),
             ability_key: mtgml_card_ir::AbilityKey(0),
         };
-        state.card_rules_state.abilities.by_instance.insert(
+        state.card_rules.abilities.by_instance.insert(
             source_context.ability_instance_id,
             mtgml_state::AbilityAuthorityV1 {
                 source: source_object,
                 ability_key: source_context.ability_key.0,
             },
         );
-        state.predecessor_v5.allocators.next_ability_id = mtgml_model::AbilityInstanceId(3);
+        state.allocators.next_ability_id = mtgml_model::AbilityInstanceId(3);
         for perspective in [PlayerId(1), PlayerId(2)] {
             let identity = state
-                .predecessor_v5
                 .perspective_identities
                 .players
                 .get_mut(&perspective)
@@ -1415,22 +1347,16 @@ mod tests {
             targets: Vec::new(),
             cost_facts: mtgml_state::CostFacts::default(),
         };
-        state.predecessor_v5.zones.stack_records.insert(
+        state.zones.stack_records.insert(
             mtgml_model::StackObjectId(1),
             mtgml_state::StackRecord {
                 id: mtgml_model::StackObjectId(1),
                 controller: PlayerId(1),
-                source_object: None,
-                source_ability: None,
                 payload: Some(payload),
             },
         );
-        state
-            .predecessor_v5
-            .zones
-            .stack_order
-            .push(mtgml_model::StackObjectId(1));
-        state.predecessor_v5.allocators.next_stack_object_id = mtgml_model::StackObjectId(2);
+        state.zones.stack_order.push(mtgml_model::StackObjectId(1));
+        state.allocators.next_stack_object_id = mtgml_model::StackObjectId(2);
         state.validate_structure().unwrap();
         EnvironmentCheckpointV8::new(
             state.clone(),
@@ -1440,7 +1366,7 @@ mod tests {
         )
         .unwrap();
 
-        let project = |candidate: &EngineStatePartsV3| {
+        let project = |candidate: &EngineState| {
             crate::player_projection::project_successor_information_state_v3_structural_only(
                 candidate,
                 PlayerId(2),
@@ -1466,13 +1392,9 @@ mod tests {
         ));
 
         let mut missing_source_knowledge = state.clone();
-        let source_opaque = missing_source_knowledge
-            .predecessor_v5
-            .perspective_identities
-            .players[&PlayerId(2)]
+        let source_opaque = missing_source_knowledge.perspective_identities.players[&PlayerId(2)]
             .object_to_opaque[&source_object];
         missing_source_knowledge
-            .predecessor_v5
             .knowledge
             .players
             .get_mut(&PlayerId(2))
@@ -1486,7 +1408,6 @@ mod tests {
 
         let mut missing_ability_mapping = state;
         let identity = missing_ability_mapping
-            .predecessor_v5
             .perspective_identities
             .players
             .get_mut(&PlayerId(2))
@@ -1523,18 +1444,16 @@ mod tests {
         let project_pair = |source_definition| {
             let mut before = state_with_two_lands();
             let source_object = *before
-                .predecessor_v5
                 .zones
                 .locations
                 .iter()
                 .find(|(object, location)| {
                     location.zone == mtgml_model::ZoneKind::Hand
-                        && before.predecessor_v5.zones.objects[object].owner == PlayerId(1)
+                        && before.zones.objects[object].owner == PlayerId(1)
                 })
                 .map(|(object, _)| object)
                 .unwrap();
             let public_object = *before
-                .predecessor_v5
                 .zones
                 .locations
                 .iter()
@@ -1542,19 +1461,17 @@ mod tests {
                 .map(|(object, _)| object)
                 .unwrap();
             before
-                .predecessor_v5
                 .zones
                 .objects
                 .get_mut(&source_object)
                 .unwrap()
                 .card_definition = source_definition;
-            let source_location = before.predecessor_v5.zones.locations[&source_object].clone();
+            let source_location = before.zones.locations[&source_object].clone();
 
             for perspective in [PlayerId(1), PlayerId(2)] {
-                let identity = &before.predecessor_v5.perspective_identities.players[&perspective];
+                let identity = &before.perspective_identities.players[&perspective];
                 let opaque = identity.object_to_opaque[&source_object];
                 let knowledge = &mut before
-                    .predecessor_v5
                     .knowledge
                     .players
                     .get_mut(&perspective)
@@ -1580,12 +1497,10 @@ mod tests {
                     );
                 }
 
-                let public_opaque = before.predecessor_v5.perspective_identities.players
-                    [&perspective]
+                let public_opaque = before.perspective_identities.players[&perspective]
                     .object_to_opaque[&public_object];
-                let public_object_state = &before.predecessor_v5.zones.objects[&public_object];
+                let public_object_state = &before.zones.objects[&public_object];
                 before
-                    .predecessor_v5
                     .knowledge
                     .players
                     .get_mut(&perspective)
@@ -1598,8 +1513,7 @@ mod tests {
                             physical_card: public_object_state.physical_card,
                             card_definition: Some(public_object_state.card_definition),
                             known_location: Some(mtgml_state::KnownLocationFactV2 {
-                                location: before.predecessor_v5.zones.locations[&public_object]
-                                    .clone(),
+                                location: before.zones.locations[&public_object].clone(),
                                 provenance:
                                     mtgml_state::KnowledgeAcquisitionReason::InitialConfiguration,
                             }),
@@ -1609,24 +1523,17 @@ mod tests {
                         },
                     );
             }
-            before
-                .predecessor_v5
-                .zones
-                .objects
-                .get_mut(&public_object)
-                .unwrap()
-                .tapped = false;
-            before.card_rules_state.abilities.by_instance.insert(
+            before.zones.objects.get_mut(&public_object).unwrap().tapped = false;
+            before.card_rules.abilities.by_instance.insert(
                 mtgml_model::AbilityInstanceId(2),
                 mtgml_state::AbilityAuthorityV1 {
                     source: source_object,
                     ability_key: 0,
                 },
             );
-            before.predecessor_v5.allocators.next_ability_id = mtgml_model::AbilityInstanceId(3);
+            before.allocators.next_ability_id = mtgml_model::AbilityInstanceId(3);
             for perspective in [PlayerId(1), PlayerId(2)] {
                 let identity = before
-                    .predecessor_v5
                     .perspective_identities
                     .players
                     .get_mut(&perspective)
@@ -1641,7 +1548,7 @@ mod tests {
                     .insert(opaque, mtgml_model::AbilityInstanceId(2));
             }
 
-            let source_state = &before.predecessor_v5.zones.objects[&source_object];
+            let source_state = &before.zones.objects[&source_object];
             let source_context = mtgml_state::AbilitySourceContext {
                 source: mtgml_state::SourceContext {
                     snapshot: mtgml_state::ObjectSnapshot {
@@ -1669,40 +1576,24 @@ mod tests {
                 targets: Vec::new(),
                 cost_facts: mtgml_state::CostFacts::default(),
             };
-            let first_event_id = before.predecessor_v5.allocators.next_rule_event_id;
+            let first_event_id = before.allocators.next_rule_event_id;
             let mut after = before.clone();
-            after.predecessor_v5.zones.stack_records.insert(
+            after.zones.stack_records.insert(
                 mtgml_model::StackObjectId(1),
                 mtgml_state::StackRecord {
                     id: mtgml_model::StackObjectId(1),
                     controller: PlayerId(1),
-                    source_object: None,
-                    source_ability: None,
                     payload: Some(activated),
                 },
             );
-            after
-                .predecessor_v5
-                .zones
-                .stack_order
-                .push(mtgml_model::StackObjectId(1));
-            after.predecessor_v5.allocators.next_stack_object_id = mtgml_model::StackObjectId(2);
-            after
-                .predecessor_v5
-                .zones
-                .objects
-                .get_mut(&public_object)
-                .unwrap()
-                .tapped = true;
-            after.predecessor_v5.revision =
-                mtgml_model::StateRevision(before.predecessor_v5.revision.0 + 1);
+            after.zones.stack_order.push(mtgml_model::StackObjectId(1));
+            after.allocators.next_stack_object_id = mtgml_model::StackObjectId(2);
+            after.zones.objects.get_mut(&public_object).unwrap().tapped = true;
+            after.revision = mtgml_model::StateRevision(before.revision.0 + 1);
 
-            let p1_sequence =
-                before.predecessor_v5.knowledge.players[&PlayerId(1)].next_visible_sequence;
-            let p2_sequence =
-                before.predecessor_v5.knowledge.players[&PlayerId(2)].next_visible_sequence;
-            let p2_source_opaque = before.predecessor_v5.perspective_identities.players
-                [&PlayerId(2)]
+            let p1_sequence = before.knowledge.players[&PlayerId(1)].next_visible_sequence;
+            let p2_sequence = before.knowledge.players[&PlayerId(2)].next_visible_sequence;
+            let p2_source_opaque = before.perspective_identities.players[&PlayerId(2)]
                 .object_to_opaque[&source_object];
             let lifecycle = |perspective, sequence, mutation| {
                 Box::new(mtgml_state::PerspectiveLifecycleAuditV1 {
@@ -1721,7 +1612,7 @@ mod tests {
                     },
                 }
             };
-            let revision = after.predecessor_v5.revision;
+            let revision = after.revision;
             let tapped_event_id = mtgml_model::RuleEventId(first_event_id.0 + 1);
             let events = vec![
                 mtgml_rules::AuthoritativeRuleEventV3 {
@@ -1729,8 +1620,7 @@ mod tests {
                     state_revision: revision,
                     event: mtgml_rules::AuthoritativeRuleEventKindV3::StackItemAdded {
                         stack_object: mtgml_model::StackObjectId(1),
-                        payload: after.predecessor_v5.zones.stack_records
-                            [&mtgml_model::StackObjectId(1)]
+                        payload: after.zones.stack_records[&mtgml_model::StackObjectId(1)]
                             .payload
                             .clone()
                             .unwrap(),
@@ -1798,9 +1688,9 @@ mod tests {
                     tapped_event_id,
                 ),
             ];
-            after.predecessor_v5.allocators.next_rule_event_id =
+            after.allocators.next_rule_event_id =
                 mtgml_model::RuleEventId(first_event_id.0 + events.len() as u64);
-            let mut after_engine: mtgml_state::EngineState = after.predecessor_v5.clone().into();
+            let mut after_engine: mtgml_state::EngineState = after.clone();
             for event in &events {
                 if let mtgml_rules::AuthoritativeRuleEventKindV3::PerspectiveObservationOccurrence {
                     lifecycle,
@@ -1814,7 +1704,7 @@ mod tests {
                     .unwrap();
                 }
             }
-            after.predecessor_v5 = after_engine.parts();
+            after = after_engine;
             after.validate().unwrap();
             for state in [&before, &after] {
                 EnvironmentCheckpointV8::new(
@@ -1841,13 +1731,9 @@ mod tests {
                 .unwrap();
             assert!(matches!(
                 stack_added,
-                mtgml_observation::PublicStackItemV1::ActivatedAbility {
-                    source_object: None,
-                    source_ability: None,
-                    ..
-                }
+                mtgml_observation::PublicStackItemV1::ActivatedAbility { .. }
             ));
-            assert!(after.predecessor_v5.knowledge.players[&PlayerId(2)]
+            assert!(after.knowledge.players[&PlayerId(2)]
                 .active
                 .values()
                 .any(|record| record.card_definition == Some(source_definition)));
@@ -2027,7 +1913,6 @@ mod tests {
         assert_eq!(
             replacement_checkpoint
                 .state
-                .predecessor_v5
                 .core
                 .players
                 .keys()
@@ -2088,19 +1973,17 @@ mod tests {
         };
         let mut unsupported_state = state_with_two_lands();
         let affected = *unsupported_state
-            .predecessor_v5
             .zones
             .locations
             .iter()
             .find(|(_, location)| location.zone == mtgml_model::ZoneKind::Battlefield)
             .map(|(object, _)| object)
             .unwrap();
-        unsupported_state.execution_v4.effects.insert(
+        unsupported_state.execution.effects.insert(
             mtgml_model::EffectInstanceId(1),
             temporary_haste_effect(affected),
         );
-        unsupported_state.predecessor_v5.allocators.next_effect_id =
-            mtgml_model::EffectInstanceId(2);
+        unsupported_state.allocators.next_effect_id = mtgml_model::EffectInstanceId(2);
         unsupported_state.validate_structure().unwrap();
 
         // A terminal checkpoint with no unsupported Shared state remains an
@@ -2143,7 +2026,7 @@ mod tests {
         )
         .unwrap();
         let mut after = before.clone();
-        after.execution_v4.pending_decision = None;
+        after.execution.pending_decision = None;
         let closed_statuses = [
             EpisodeStatus::Terminal {
                 reason: mtgml_model::TerminalReason::Concession,
@@ -2210,7 +2093,7 @@ mod tests {
         )
         .unwrap();
         let mut after = before.clone();
-        after.execution_v4.pending_decision = None;
+        after.execution.pending_decision = None;
 
         let closed_statuses = [
             EpisodeStatus::Terminal {
@@ -2365,7 +2248,7 @@ mod tests {
             &EpisodeStatus::Running,
         )
         .unwrap();
-        state_b.predecessor_v5.random.root_seed = mtgml_random::RootSeed256([0x42; 32]);
+        state_b.random.root_seed = mtgml_random::RootSeed256([0x42; 32]);
         let checkpoint_b = EnvironmentCheckpointV8::new_for_basic_land_profile(
             &admission,
             state_b,
@@ -2420,13 +2303,13 @@ mod tests {
             &EpisodeStatus::Running,
         )
         .unwrap();
-        let request = state.execution_v4.pending_decision.clone().unwrap();
+        let request = state.execution.pending_decision.clone().unwrap();
         let land_object = match request.candidates[1].trusted_binding {
             mtgml_decision::EngineCandidateBindingV4::PlayLand { object } => object,
             _ => panic!("candidate 1 is the legal PlayLand"),
         };
-        let opaque_object = state.predecessor_v5.perspective_identities.players[&PlayerId(1)]
-            .object_to_opaque[&land_object];
+        let opaque_object =
+            state.perspective_identities.players[&PlayerId(1)].object_to_opaque[&land_object];
         let mut forged = request;
         forged.candidates.insert(
             3,
@@ -2444,7 +2327,7 @@ mod tests {
             candidate.candidate_id = mtgml_model::CandidateIdV1(index as u32);
         }
         forged.project_player_request().unwrap();
-        state.execution_v4.pending_decision = Some(forged);
+        state.execution.pending_decision = Some(forged);
 
         state.validate_structure().unwrap();
         mtgml_state::calculate_full_state_digest_v7_structural_only(&state).unwrap();
@@ -2562,7 +2445,7 @@ mod tests {
                 let ability = match direct
                     .current
                     .state
-                    .execution_v4
+                    .execution
                     .pending_decision
                     .as_ref()
                     .unwrap()
@@ -2574,7 +2457,7 @@ mod tests {
                     }
                     _ => panic!("candidate 3 is the intrinsic mana ability"),
                 };
-                Some(direct.current.state.card_rules_state.abilities.by_instance[&ability].source)
+                Some(direct.current.state.card_rules.abilities.by_instance[&ability].source)
             } else {
                 None
             };
@@ -2604,7 +2487,7 @@ mod tests {
             assert!(direct_output.accepted);
             if candidate_id == 0 {
                 assert!(matches!(
-                    direct_output.next_state.predecessor_v5.core.priority,
+                    direct_output.next_state.core.priority,
                     mtgml_state::PriorityState::HeldBy {
                         player: PlayerId(2),
                         consecutive_passes: 1,
@@ -2613,7 +2496,7 @@ mod tests {
                 assert_eq!(
                     direct_output
                         .next_state
-                        .execution_v4
+                        .execution
                         .pending_decision
                         .as_ref()
                         .unwrap()
@@ -2622,10 +2505,9 @@ mod tests {
                 );
             } else {
                 let source = mana_source.unwrap();
-                assert!(direct_output.next_state.predecessor_v5.zones.objects[&source].tapped);
+                assert!(direct_output.next_state.zones.objects[&source].tapped);
                 assert_eq!(
-                    direct_output.next_state.card_rules_state.mana.pools[&PlayerId(1)].unrestricted
-                        [3],
+                    direct_output.next_state.card_rules.mana.pools[&PlayerId(1)].unrestricted[3],
                     1
                 );
             }
@@ -2640,10 +2522,7 @@ mod tests {
     fn a_transition_that_is_not_accepted_fails_closed() {
         let admission = game_admission();
         let status = EpisodeStatus::Running;
-        let v2 = state_with_two_lands_v2();
-        let mut state =
-            EngineStatePartsV3::new(v2.predecessor_v5, Default::default(), v2.card_rules_state)
-                .unwrap();
+        let mut state = state_with_two_lands();
         mtgml_rules::install_basic_land_request_v4(&admission, &mut state, PlayerId(1), &status)
             .unwrap();
         let before = EnvironmentCheckpointV8::new_for_basic_land_profile(
@@ -2654,7 +2533,7 @@ mod tests {
             admission.execution_identity().clone(),
         )
         .unwrap();
-        let request = state.execution_v4.pending_decision.clone().unwrap();
+        let request = state.execution.pending_decision.clone().unwrap();
         let response = DecisionResponseV3 {
             schema_version: mtgml_decision::DECISION_RESPONSE_V3_SCHEMA.to_owned(),
             player_decision_id: request.player_decision_id,
@@ -2694,7 +2573,7 @@ pub(crate) mod fixtures {
         super::tests::game_admission()
     }
 
-    pub(crate) fn state_with_two_lands() -> mtgml_state::EngineStatePartsV3 {
+    pub(crate) fn state_with_two_lands() -> mtgml_state::EngineState {
         super::tests::state_with_two_lands()
     }
 }

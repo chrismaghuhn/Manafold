@@ -13,8 +13,8 @@ use mtgml_model::{
 use mtgml_observation::MagicSharedExecutionObservationV1;
 use mtgml_state::{
     AbilityAuthorityStateV1, AttachmentStateV1, CardRulesAuthoritativeStateV1, CounterKindV1,
-    CounterStateV1, EngineStatePartsV3, ExecutionStateV4, FaceStateV1, ManaPoolV1, ManaStateV1,
-    PlayerTurnHistoryV1, TurnHistoryStateV1,
+    CounterStateV1, EngineState, FaceStateV1, ManaPoolV1, ManaStateV1, PlayerTurnHistoryV1,
+    TurnHistoryStateV1,
 };
 use std::collections::BTreeMap;
 
@@ -145,7 +145,7 @@ fn execution_authority(
     )
 }
 
-pub(crate) fn basic_land_state(root_seed: mtgml_random::RootSeed256) -> EngineStatePartsV3 {
+pub(crate) fn basic_land_state(root_seed: mtgml_random::RootSeed256) -> EngineState {
     let mut state =
         mtgml_state::construct_synthetic_engine_state(mtgml_state::SyntheticResetInputs {
             players: [PlayerId(1), PlayerId(2)],
@@ -194,25 +194,19 @@ pub(crate) fn basic_land_state(root_seed: mtgml_random::RootSeed256) -> EngineSt
             BTreeMap::from([(CounterKindV1::PlusOnePlusOne, 2)]),
         );
     }
-    let mut parts = state.parts();
-    parts.execution = Default::default();
-    EngineStatePartsV3::new(
-        parts,
-        ExecutionStateV4::default(),
-        CardRulesAuthoritativeStateV1 {
-            mana,
-            turn_history: TurnHistoryStateV1 {
-                turn_number: state.core.turn_number,
-                players: history,
-                ..TurnHistoryStateV1::default()
-            },
-            counters,
-            attachments: AttachmentStateV1::default(),
-            faces,
-            abilities: AbilityAuthorityStateV1::default(),
+    state.card_rules = CardRulesAuthoritativeStateV1 {
+        mana,
+        turn_history: TurnHistoryStateV1 {
+            turn_number: state.core.turn_number,
+            players: history,
+            ..TurnHistoryStateV1::default()
         },
-    )
-    .unwrap()
+        counters,
+        attachments: AttachmentStateV1::default(),
+        faces,
+        abilities: AbilityAuthorityStateV1::default(),
+    };
+    state
 }
 
 #[test]
@@ -286,7 +280,7 @@ fn g0g_information_projection_uses_shared_stack_codec_without_global_revision() 
     assert!(observation.temporary_effects.is_empty());
 
     let mut later_global_revision = successor.clone();
-    later_global_revision.predecessor_v5.revision.0 += 11;
+    later_global_revision.revision.0 += 11;
     let later_information = crate::player_projection::project_successor_information_state_v3(
         &later_global_revision,
         PlayerId(1),
@@ -307,7 +301,6 @@ fn g0g_information_projection_uses_shared_stack_codec_without_global_revision() 
 fn g0g_projection_adds_shared_views_and_hides_revision_and_allocator_history() {
     let mut state = basic_land_state(seed());
     let target_object = state
-        .predecessor_v5
         .zones
         .locations
         .iter()
@@ -319,7 +312,7 @@ fn g0g_projection_adds_shared_views_and_hides_revision_and_allocator_history() {
     let stack_card = CardDefinitionId(50);
     let stack_object = mtgml_model::GameObjectId(50);
     let stack_id = mtgml_model::StackObjectId(1);
-    state.predecessor_v5.zones.objects.insert(
+    state.zones.objects.insert(
         stack_object,
         mtgml_state::GameObject {
             id: stack_object,
@@ -331,7 +324,7 @@ fn g0g_projection_adds_shared_views_and_hides_revision_and_allocator_history() {
             face_down: false,
         },
     );
-    state.predecessor_v5.zones.locations.insert(
+    state.zones.locations.insert(
         stack_object,
         mtgml_state::ZoneLocation {
             zone: mtgml_model::ZoneKind::Stack,
@@ -341,18 +334,16 @@ fn g0g_projection_adds_shared_views_and_hides_revision_and_allocator_history() {
             partition: None,
         },
     );
-    state.predecessor_v5.allocators.next_object_id = mtgml_model::GameObjectId(51);
-    state.predecessor_v5.allocators.next_stack_object_id = mtgml_model::StackObjectId(2);
-    state.predecessor_v5.allocators.next_effect_id = mtgml_model::EffectInstanceId(2);
-    state.card_rules_state.faces.faces.insert(stack_object, 0);
-    state.predecessor_v5.zones.stack_order.push(stack_id);
-    state.predecessor_v5.zones.stack_records.insert(
+    state.allocators.next_object_id = mtgml_model::GameObjectId(51);
+    state.allocators.next_stack_object_id = mtgml_model::StackObjectId(2);
+    state.allocators.next_effect_id = mtgml_model::EffectInstanceId(2);
+    state.card_rules.faces.faces.insert(stack_object, 0);
+    state.zones.stack_order.push(stack_id);
+    state.zones.stack_records.insert(
         stack_id,
         mtgml_state::StackRecord {
             id: stack_id,
             controller: PlayerId(1),
-            source_object: None,
-            source_ability: None,
             payload: Some(mtgml_state::StackItemPayload::Spell {
                 stack_card_object: stack_object,
                 card_definition_id: stack_card,
@@ -372,7 +363,6 @@ fn g0g_projection_adds_shared_views_and_hides_revision_and_allocator_history() {
     );
     for player in [PlayerId(1), PlayerId(2)] {
         let perspective = state
-            .predecessor_v5
             .perspective_identities
             .players
             .get_mut(&player)
@@ -382,7 +372,6 @@ fn g0g_projection_adds_shared_views_and_hides_revision_and_allocator_history() {
         perspective.object_to_opaque.insert(stack_object, opaque);
         perspective.opaque_to_object.insert(opaque, stack_object);
         state
-            .predecessor_v5
             .knowledge
             .players
             .get_mut(&player)
@@ -395,7 +384,7 @@ fn g0g_projection_adds_shared_views_and_hides_revision_and_allocator_history() {
                     physical_card: Some(mtgml_model::PhysicalCardId(50)),
                     card_definition: Some(stack_card),
                     known_location: Some(mtgml_state::KnownLocationFactV2 {
-                        location: state.predecessor_v5.zones.locations[&stack_object].clone(),
+                        location: state.zones.locations[&stack_object].clone(),
                         provenance: mtgml_state::KnowledgeAcquisitionReason::InitialConfiguration,
                     }),
                     historical_locations: vec![],
@@ -404,7 +393,7 @@ fn g0g_projection_adds_shared_views_and_hides_revision_and_allocator_history() {
             );
     }
     let hidden_card = mtgml_model::GameObjectId(51);
-    state.predecessor_v5.zones.objects.insert(
+    state.zones.objects.insert(
         hidden_card,
         mtgml_state::GameObject {
             id: hidden_card,
@@ -424,22 +413,19 @@ fn g0g_projection_adds_shared_views_and_hides_revision_and_allocator_history() {
         partition: None,
     };
     state
-        .predecessor_v5
         .zones
         .locations
         .insert(hidden_card, hidden_location.clone());
     let hidden_zone_key = hidden_location.key();
     state
-        .predecessor_v5
         .zones
         .ordered_zones
         .get_mut(&hidden_zone_key)
         .unwrap()
         .push(hidden_card);
-    state.predecessor_v5.allocators.next_object_id = mtgml_model::GameObjectId(52);
-    state.card_rules_state.faces.faces.insert(hidden_card, 0);
+    state.allocators.next_object_id = mtgml_model::GameObjectId(52);
+    state.card_rules.faces.faces.insert(hidden_card, 0);
     let owner_identity = state
-        .predecessor_v5
         .perspective_identities
         .players
         .get_mut(&PlayerId(2))
@@ -453,7 +439,6 @@ fn g0g_projection_adds_shared_views_and_hides_revision_and_allocator_history() {
         .opaque_to_object
         .insert(hidden_opaque, hidden_card);
     state
-        .predecessor_v5
         .knowledge
         .players
         .get_mut(&PlayerId(2))
@@ -474,7 +459,7 @@ fn g0g_projection_adds_shared_views_and_hides_revision_and_allocator_history() {
             },
         );
     let before_effect = state.clone();
-    state.execution_v4.effects.insert(
+    state.execution.effects.insert(
         mtgml_model::EffectInstanceId(1),
         mtgml_state::TemporaryEffectRecord {
             id: mtgml_model::EffectInstanceId(1),
@@ -484,7 +469,7 @@ fn g0g_projection_adds_shared_views_and_hides_revision_and_allocator_history() {
                 toughness: -1,
             },
             expiry: mtgml_state::EffectExpiry::UntilEndOfTurn {
-                turn_number: state.predecessor_v5.core.turn_number,
+                turn_number: state.core.turn_number,
             },
             timestamp: None,
         },
@@ -537,20 +522,19 @@ fn g0g_projection_adds_shared_views_and_hides_revision_and_allocator_history() {
         assert!(!String::from_utf8_lossy(&encoded).contains(forbidden));
     }
 
-    let after_revision = mtgml_model::StateRevision(before_effect.predecessor_v5.revision.0 + 1);
-    state.predecessor_v5.revision = after_revision;
-    state.predecessor_v5.allocators.next_rule_event_id = mtgml_model::RuleEventId(4);
-    let effect = state.execution_v4.effects[&mtgml_model::EffectInstanceId(1)].clone();
+    let after_revision = mtgml_model::StateRevision(before_effect.revision.0 + 1);
+    state.revision = after_revision;
+    state.allocators.next_rule_event_id = mtgml_model::RuleEventId(4);
+    let effect = state.execution.effects[&mtgml_model::EffectInstanceId(1)].clone();
     let mut events = vec![mtgml_rules::AuthoritativeRuleEventV3 {
         event_id: mtgml_model::RuleEventId(1),
         state_revision: after_revision,
         event: mtgml_rules::AuthoritativeRuleEventKindV3::TemporaryEffectCreated { effect },
     }];
-    let mut after_engine: mtgml_state::EngineState = state.predecessor_v5.clone().into();
+    let mut after_engine: mtgml_state::EngineState = state.clone();
     for event_id in [2, 3] {
         let perspective = PlayerId(event_id - 1);
-        let sequence =
-            before_effect.predecessor_v5.knowledge.players[&perspective].next_visible_sequence;
+        let sequence = before_effect.knowledge.players[&perspective].next_visible_sequence;
         let lifecycle = mtgml_state::PerspectiveLifecycleAuditV1 {
             perspective,
             sequence,
@@ -566,11 +550,11 @@ fn g0g_projection_adds_shared_views_and_hides_revision_and_allocator_history() {
             },
         });
     }
-    state.predecessor_v5 = after_engine.parts();
+    state = after_engine;
     let (execution_identity, semantic_manifest, rules_manifest) = execution_authority(&catalog);
     let running = mtgml_model::EpisodeStatus::Running;
-    let project_steps = |before: &mtgml_state::EngineStatePartsV3,
-                         after: &mtgml_state::EngineStatePartsV3,
+    let project_steps = |before: &mtgml_state::EngineState,
+                         after: &mtgml_state::EngineState,
                          events: &[mtgml_rules::AuthoritativeRuleEventV3]| {
         crate::successor_projection::project_successor_player_steps_v4(
             crate::successor_projection::SuccessorTransitionV4Projection {
@@ -636,29 +620,13 @@ fn g0g_projection_adds_shared_views_and_hides_revision_and_allocator_history() {
     }
 
     let mut hidden_revision_before = before_effect.clone();
-    hidden_revision_before.predecessor_v5.revision.0 += 17;
-    hidden_revision_before
-        .predecessor_v5
-        .allocators
-        .next_decision_id
-        .0 += 7;
-    hidden_revision_before
-        .predecessor_v5
-        .allocators
-        .next_continuation_id
-        .0 += 13;
+    hidden_revision_before.revision.0 += 17;
+    hidden_revision_before.allocators.next_decision_id.0 += 7;
+    hidden_revision_before.allocators.next_continuation_id.0 += 13;
     let mut hidden_revision_after = state.clone();
-    hidden_revision_after.predecessor_v5.revision.0 += 17;
-    hidden_revision_after
-        .predecessor_v5
-        .allocators
-        .next_decision_id
-        .0 += 7;
-    hidden_revision_after
-        .predecessor_v5
-        .allocators
-        .next_continuation_id
-        .0 += 13;
+    hidden_revision_after.revision.0 += 17;
+    hidden_revision_after.allocators.next_decision_id.0 += 7;
+    hidden_revision_after.allocators.next_continuation_id.0 += 13;
     let hidden_revision_events = events
         .iter()
         .map(|event| {
@@ -680,33 +648,24 @@ fn g0g_projection_adds_shared_views_and_hides_revision_and_allocator_history() {
         "global revision and allocator-history differences must not affect player V4 products"
     );
 
-    let reidentify = |state: &mut mtgml_state::EngineStatePartsV3| {
-        let mut record = state
-            .predecessor_v5
-            .zones
-            .stack_records
-            .remove(&stack_id)
-            .unwrap();
+    let reidentify = |state: &mut mtgml_state::EngineState| {
+        let mut record = state.zones.stack_records.remove(&stack_id).unwrap();
         record.id = mtgml_model::StackObjectId(77);
-        state
-            .predecessor_v5
-            .zones
-            .stack_records
-            .insert(record.id, record);
-        for item in &mut state.predecessor_v5.zones.stack_order {
+        state.zones.stack_records.insert(record.id, record);
+        for item in &mut state.zones.stack_order {
             if *item == stack_id {
                 *item = mtgml_model::StackObjectId(77);
             }
         }
-        state.predecessor_v5.allocators.next_stack_object_id = mtgml_model::StackObjectId(78);
-        state.predecessor_v5.allocators.next_effect_id = mtgml_model::EffectInstanceId(91);
+        state.allocators.next_stack_object_id = mtgml_model::StackObjectId(78);
+        state.allocators.next_effect_id = mtgml_model::EffectInstanceId(91);
         if let Some(mut effect) = state
-            .execution_v4
+            .execution
             .effects
             .remove(&mtgml_model::EffectInstanceId(1))
         {
             effect.id = mtgml_model::EffectInstanceId(90);
-            state.execution_v4.effects.insert(effect.id, effect);
+            state.execution.effects.insert(effect.id, effect);
         }
     };
     let mut reidentified_before = before_effect.clone();
@@ -733,28 +692,17 @@ fn g0g_projection_adds_shared_views_and_hides_revision_and_allocator_history() {
     );
 
     let reorder_hidden_library =
-        |state: &mut mtgml_state::EngineStatePartsV3, order: [mtgml_model::GameObjectId; 2]| {
-            let key = state.predecessor_v5.zones.locations[&order[0]].key();
-            state
-                .predecessor_v5
-                .zones
-                .ordered_zones
-                .insert(key, order.to_vec());
+        |state: &mut mtgml_state::EngineState, order: [mtgml_model::GameObjectId; 2]| {
+            let key = state.zones.locations[&order[0]].key();
+            state.zones.ordered_zones.insert(key, order.to_vec());
             for (offset, object) in order.into_iter().enumerate() {
                 let position = mtgml_state::ZonePosition::Top {
                     offset: u32::try_from(offset).unwrap(),
                 };
+                state.zones.locations.get_mut(&object).unwrap().position = position;
+                let opaque =
+                    state.perspective_identities.players[&PlayerId(2)].object_to_opaque[&object];
                 state
-                    .predecessor_v5
-                    .zones
-                    .locations
-                    .get_mut(&object)
-                    .unwrap()
-                    .position = position;
-                let opaque = state.predecessor_v5.perspective_identities.players[&PlayerId(2)]
-                    .object_to_opaque[&object];
-                state
-                    .predecessor_v5
                     .knowledge
                     .players
                     .get_mut(&PlayerId(2))
@@ -788,34 +736,27 @@ fn g0g_projection_adds_shared_views_and_hides_revision_and_allocator_history() {
 
     let before_remove = state.clone();
     let mut after_remove = state.clone();
-    let removal_revision = mtgml_model::StateRevision(before_remove.predecessor_v5.revision.0 + 1);
-    after_remove.predecessor_v5.revision = removal_revision;
-    after_remove.predecessor_v5.allocators.next_rule_event_id = mtgml_model::RuleEventId(7);
+    let removal_revision = mtgml_model::StateRevision(before_remove.revision.0 + 1);
+    after_remove.revision = removal_revision;
+    after_remove.allocators.next_rule_event_id = mtgml_model::RuleEventId(7);
+    after_remove.zones.stack_records.remove(&stack_id);
     after_remove
-        .predecessor_v5
-        .zones
-        .stack_records
-        .remove(&stack_id);
-    after_remove
-        .predecessor_v5
         .zones
         .stack_order
         .retain(|candidate| *candidate != stack_id);
     after_remove
-        .predecessor_v5
         .zones
         .locations
         .get_mut(&stack_object)
         .unwrap()
         .zone = mtgml_model::ZoneKind::Graveyard;
     after_remove
-        .predecessor_v5
         .zones
         .locations
         .get_mut(&stack_object)
         .unwrap()
         .player = Some(PlayerId(1));
-    let removed_payload = state.predecessor_v5.zones.stack_records[&stack_id]
+    let removed_payload = state.zones.stack_records[&stack_id]
         .payload
         .as_ref()
         .unwrap()
@@ -829,14 +770,13 @@ fn g0g_projection_adds_shared_views_and_hides_revision_and_allocator_history() {
             result: mtgml_state::StackItemEndKindV1::Resolved,
         },
     }];
-    let mut removal_engine: mtgml_state::EngineState = after_remove.predecessor_v5.clone().into();
+    let mut removal_engine: mtgml_state::EngineState = after_remove.clone();
     for event_id in [5, 6] {
         let perspective = PlayerId(event_id - 4);
-        let sequence =
-            before_remove.predecessor_v5.knowledge.players[&perspective].next_visible_sequence;
-        let opaque = before_remove.predecessor_v5.perspective_identities.players[&perspective]
-            .object_to_opaque[&stack_object];
-        let destination = after_remove.predecessor_v5.zones.locations[&stack_object].clone();
+        let sequence = before_remove.knowledge.players[&perspective].next_visible_sequence;
+        let opaque = before_remove.perspective_identities.players[&perspective].object_to_opaque
+            [&stack_object];
+        let destination = after_remove.zones.locations[&stack_object].clone();
         let lifecycle = mtgml_state::PerspectiveLifecycleAuditV1 {
             perspective,
             sequence,
@@ -865,7 +805,7 @@ fn g0g_projection_adds_shared_views_and_hides_revision_and_allocator_history() {
             },
         });
     }
-    after_remove.predecessor_v5 = removal_engine.parts();
+    after_remove = removal_engine;
     after_remove.validate().unwrap();
     let removed_steps = project_steps(&before_remove, &after_remove, &removal_events).unwrap();
     for player in [PlayerId(1), PlayerId(2)] {
@@ -886,8 +826,8 @@ fn g0g_projection_adds_shared_views_and_hides_revision_and_allocator_history() {
 #[test]
 fn verified_catalog_rejects_unknown_face_key_before_observation_projection() {
     let mut parts = basic_land_state(seed());
-    let object = *parts.card_rules_state.faces.faces.keys().next().unwrap();
-    parts.card_rules_state.faces.faces.insert(object, 99);
+    let object = *parts.card_rules.faces.faces.keys().next().unwrap();
+    parts.card_rules.faces.faces.insert(object, 99);
     let catalog = catalog_for(&[1, 2]);
     let (identity, semantic, rules) = execution_authority(&catalog);
     assert_eq!(
@@ -906,9 +846,9 @@ fn verified_catalog_rejects_unknown_face_key_before_observation_projection() {
 #[test]
 fn verified_catalog_rejects_ability_key_missing_from_the_selected_face() {
     let mut parts = basic_land_state(seed());
-    let source = *parts.predecessor_v5.zones.objects.keys().next().unwrap();
-    parts.predecessor_v5.allocators.next_ability_id = mtgml_model::AbilityInstanceId(2);
-    parts.card_rules_state.abilities.by_instance.insert(
+    let source = *parts.zones.objects.keys().next().unwrap();
+    parts.allocators.next_ability_id = mtgml_model::AbilityInstanceId(2);
+    parts.card_rules.abilities.by_instance.insert(
         mtgml_model::AbilityInstanceId(1),
         mtgml_state::AbilityAuthorityV1 {
             source,
@@ -937,7 +877,7 @@ fn hidden_rng_change_preserves_basic_land_observation_bytes_and_digest() {
     let b = basic_land_state(other_seed);
     let catalog = catalog_for(&[1, 2]);
     let (identity, semantic, rules) = execution_authority(&catalog);
-    let basic = |state: &EngineStatePartsV3| {
+    let basic = |state: &EngineState| {
         let value = crate::player_projection::project_magic_basic_land_observation(
             state,
             PlayerId(1),
@@ -950,7 +890,7 @@ fn hidden_rng_change_preserves_basic_land_observation_bytes_and_digest() {
         mtgml_wire::encode_canonical(&value).unwrap()
     };
     assert_eq!(basic(&a), basic(&b));
-    let information = |state: &EngineStatePartsV3| {
+    let information = |state: &EngineState| {
         crate::player_projection::project_successor_information_state_v3(
             state,
             PlayerId(1),
@@ -973,7 +913,7 @@ fn hidden_rng_change_preserves_basic_land_observation_bytes_and_digest() {
 fn trusted_game_object_renaming_preserves_public_observation_and_information_bytes() {
     let original = basic_land_state(seed());
     let mut renamed = original.clone();
-    let state = renamed.predecessor_v5.clone();
+    let state = renamed.clone();
     let (old_id, location) = state
         .zones
         .locations
@@ -986,12 +926,7 @@ fn trusted_game_object_renaming_preserves_public_observation_and_information_byt
 
     // Keep every perspective's public identity stable while changing the
     // authoritative GameObjectId and all references to that incarnation.
-    for identity in renamed
-        .predecessor_v5
-        .perspective_identities
-        .players
-        .values_mut()
-    {
+    for identity in renamed.perspective_identities.players.values_mut() {
         if let Some(opaque) = identity.object_to_opaque.remove(&old_id) {
             identity.object_to_opaque.insert(new_id, opaque);
             assert_eq!(
@@ -1001,27 +936,20 @@ fn trusted_game_object_renaming_preserves_public_observation_and_information_byt
         }
     }
     let object = renamed
-        .predecessor_v5
         .zones
         .objects
         .remove(&old_id)
         .expect("fixture object exists");
     let mut object = object;
     object.id = new_id;
-    renamed.predecessor_v5.zones.objects.insert(new_id, object);
+    renamed.zones.objects.insert(new_id, object);
     renamed
-        .predecessor_v5
         .zones
         .locations
         .remove(&old_id)
         .expect("fixture location exists");
-    renamed
-        .predecessor_v5
-        .zones
-        .locations
-        .insert(new_id, location);
+    renamed.zones.locations.insert(new_id, location);
     for object_id in renamed
-        .predecessor_v5
         .zones
         .ordered_zones
         .values_mut()
@@ -1031,16 +959,12 @@ fn trusted_game_object_renaming_preserves_public_observation_and_information_byt
             *object_id = new_id;
         }
     }
-    renamed.predecessor_v5.allocators.next_object_id = mtgml_model::GameObjectId(new_id.0 + 1);
-    if let Some(counts) = renamed.card_rules_state.counters.counters.remove(&old_id) {
-        renamed
-            .card_rules_state
-            .counters
-            .counters
-            .insert(new_id, counts);
+    renamed.allocators.next_object_id = mtgml_model::GameObjectId(new_id.0 + 1);
+    if let Some(counts) = renamed.card_rules.counters.counters.remove(&old_id) {
+        renamed.card_rules.counters.counters.insert(new_id, counts);
     }
-    if let Some(face) = renamed.card_rules_state.faces.faces.remove(&old_id) {
-        renamed.card_rules_state.faces.faces.insert(new_id, face);
+    if let Some(face) = renamed.card_rules.faces.faces.remove(&old_id) {
+        renamed.card_rules.faces.faces.insert(new_id, face);
     }
 
     original.validate().unwrap();
@@ -1048,7 +972,7 @@ fn trusted_game_object_renaming_preserves_public_observation_and_information_byt
 
     let catalog = catalog_for(&[1, 2]);
     let (identity, semantic, rules) = execution_authority(&catalog);
-    let project = |state: &EngineStatePartsV3| {
+    let project = |state: &EngineState| {
         crate::player_projection::project_magic_basic_land_observation(
             state,
             PlayerId(1),
@@ -1063,7 +987,7 @@ fn trusted_game_object_renaming_preserves_public_observation_and_information_byt
         mtgml_wire::encode_canonical(&project(&original)).unwrap(),
         mtgml_wire::encode_canonical(&project(&renamed)).unwrap()
     );
-    let information = |state: &EngineStatePartsV3| {
+    let information = |state: &EngineState| {
         crate::player_projection::project_successor_information_state_v3(
             state,
             PlayerId(1),

@@ -5,11 +5,11 @@ use mtgml_model::FullStateDigestV7;
 use mtgml_persistence::{cbor, envelope};
 
 use crate::{
-    digest::StateDigestError, persisted_v7::state_value, EngineStatePartsV3,
-    FULL_STATE_DIGEST_DOMAIN_V7, FULL_STATE_DIGEST_INPUT_SCHEMA_V7,
+    digest::StateDigestError, persisted_v7::state_value, EngineState, FULL_STATE_DIGEST_DOMAIN_V7,
+    FULL_STATE_DIGEST_INPUT_SCHEMA_V7,
 };
 
-pub fn canonical_state_bytes_v7(state: &EngineStatePartsV3) -> Result<Vec<u8>, StateDigestError> {
+pub fn canonical_state_bytes_v7(state: &EngineState) -> Result<Vec<u8>, StateDigestError> {
     state
         .validate()
         .map_err(|_| StateDigestError::StateInvariant)?;
@@ -20,7 +20,7 @@ pub fn canonical_state_bytes_v7(state: &EngineStatePartsV3) -> Result<Vec<u8>, S
 /// profile-domain check at the containing runtime boundary. This encoder does
 /// not itself prove or admit a Decision domain.
 pub(crate) fn canonical_state_bytes_v7_structural_only(
-    state: &EngineStatePartsV3,
+    state: &EngineState,
 ) -> Result<Vec<u8>, StateDigestError> {
     state
         .validate_structure()
@@ -28,19 +28,19 @@ pub(crate) fn canonical_state_bytes_v7_structural_only(
     encode(state)
 }
 
-fn encode(state: &EngineStatePartsV3) -> Result<Vec<u8>, StateDigestError> {
+fn encode(state: &EngineState) -> Result<Vec<u8>, StateDigestError> {
     cbor::encode_canonical(&state_value(state)?).map_err(StateDigestError::Persistence)
 }
 
 pub fn calculate_full_state_digest_v7(
-    state: &EngineStatePartsV3,
+    state: &EngineState,
 ) -> Result<FullStateDigestV7, StateDigestError> {
     full_state_digest_v7_from_payload(&canonical_state_bytes_v7(state)?)
 }
 
 #[doc(hidden)]
 pub fn calculate_full_state_digest_v7_structural_only(
-    state: &EngineStatePartsV3,
+    state: &EngineState,
 ) -> Result<FullStateDigestV7, StateDigestError> {
     full_state_digest_v7_from_payload(&canonical_state_bytes_v7_structural_only(state)?)
 }

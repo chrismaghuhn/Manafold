@@ -9,11 +9,11 @@ use mtgml_model::{
 };
 use mtgml_random::RandomStreamKeyV1;
 use mtgml_state::{
-    ActionCostFacts, CostCommitActionV1, CostFacts, DamageKind, DamageRecipient,
-    EngineStatePartsV3, ManaPoolChangeCauseV1, ManaPoolV1, ManaSourceActivation,
-    PendingTriggerRecord, PerspectiveLifecycleAuditV1, SemanticDeltaOperationV3, SourceContext,
-    StackItemEndKindV1, StackItemPayload, StateDeltaV3, TargetBinding, TemporaryEffectRecord,
-    TurnPosition, ZoneTransition,
+    ActionCostFacts, CostCommitActionV1, CostFacts, DamageKind, DamageRecipient, EngineState,
+    ManaPoolChangeCauseV1, ManaPoolV1, ManaSourceActivation, PendingTriggerRecord,
+    PerspectiveLifecycleAuditV1, SemanticDeltaOperationV3, SourceContext, StackItemEndKindV1,
+    StackItemPayload, StateDeltaV3, TargetBinding, TemporaryEffectRecord, TurnPosition,
+    ZoneTransition,
 };
 use serde::{Deserialize, Serialize};
 
@@ -653,8 +653,8 @@ fn validate_basic_land_entry_group(
 /// Applies the successor delta and checks event projections against the same
 /// before/after state. Legacy event kinds keep their existing validator.
 pub fn validate_event_delta_state_v3(
-    before: &EngineStatePartsV3,
-    after: &EngineStatePartsV3,
+    before: &EngineState,
+    after: &EngineState,
     events: &[AuthoritativeRuleEventV3],
     delta: &StateDeltaV3,
 ) -> Result<(), EventDeltaV3Error> {
@@ -667,8 +667,8 @@ pub fn validate_event_delta_state_v3(
 /// so the delta is checked against the same states without re-applying it
 /// (which would compute both digests again).
 pub(crate) fn validate_events_for_built_delta_v3(
-    before: &EngineStatePartsV3,
-    after: &EngineStatePartsV3,
+    before: &EngineState,
+    after: &EngineState,
     events: &[AuthoritativeRuleEventV3],
     delta: &StateDeltaV3,
 ) -> Result<(), EventDeltaV3Error> {
@@ -684,8 +684,8 @@ enum DeltaCheck {
 }
 
 fn validate_event_delta_state_v3_inner(
-    before: &EngineStatePartsV3,
-    after: &EngineStatePartsV3,
+    before: &EngineState,
+    after: &EngineState,
     events: &[AuthoritativeRuleEventV3],
     delta: &StateDeltaV3,
     check: DeltaCheck,
@@ -700,8 +700,8 @@ fn validate_event_delta_state_v3_inner(
             }
         }
         DeltaCheck::BuiltFrom => {
-            if delta.before_revision != before.predecessor_v5.revision
-                || delta.after_revision != after.predecessor_v5.revision
+            if delta.before_revision != before.revision
+                || delta.after_revision != after.revision
                 || delta.replacement != *after
             {
                 return Err(EventDeltaV3Error::Mismatch);
@@ -709,16 +709,16 @@ fn validate_event_delta_state_v3_inner(
         }
     }
     validate_rule_event_cursor_v3(
-        before.predecessor_v5.allocators.next_rule_event_id,
-        after.predecessor_v5.allocators.next_rule_event_id,
-        after.predecessor_v5.revision,
+        before.allocators.next_rule_event_id,
+        after.allocators.next_rule_event_id,
+        after.revision,
         events,
     )
     .map_err(|_| EventDeltaV3Error::Mismatch)?;
     validate_event_delta_parity_v3(events, delta)?;
     validate_observation_occurrence_lifecycle(before, after, events, delta)?;
-    let before_stack_order = &before.predecessor_v5.zones.stack_order;
-    let after_stack_order = &after.predecessor_v5.zones.stack_order;
+    let before_stack_order = &before.zones.stack_order;
+    let after_stack_order = &after.zones.stack_order;
     let stack_order_operations = delta
         .operations
         .iter()
@@ -756,14 +756,14 @@ fn validate_event_delta_state_v3_inner(
 }
 
 fn validate_observation_occurrence_lifecycle(
-    before: &EngineStatePartsV3,
-    after: &EngineStatePartsV3,
+    before: &EngineState,
+    after: &EngineState,
     events: &[AuthoritativeRuleEventV3],
     delta: &StateDeltaV3,
 ) -> Result<(), EventDeltaV3Error> {
-    let mut projected: mtgml_state::EngineState = after.predecessor_v5.clone().into();
-    projected.knowledge = before.predecessor_v5.knowledge.clone();
-    projected.perspective_identities = before.predecessor_v5.perspective_identities.clone();
+    let mut projected = after.clone();
+    projected.knowledge = before.knowledge.clone();
+    projected.perspective_identities = before.perspective_identities.clone();
     for (index, event) in events.iter().enumerate() {
         let (lifecycle, source_event_id) = match &event.event {
             AuthoritativeRuleEventKindV3::PerspectiveObservationOccurrence {
@@ -799,8 +799,8 @@ fn validate_observation_occurrence_lifecycle(
         }
     }
     apply_delta_identity_changes_v3(&mut projected, delta)?;
-    if projected.knowledge != after.predecessor_v5.knowledge
-        || projected.perspective_identities != after.predecessor_v5.perspective_identities
+    if projected.knowledge != after.knowledge
+        || projected.perspective_identities != after.perspective_identities
     {
         return Err(EventDeltaV3Error::Mismatch);
     }
@@ -893,8 +893,8 @@ fn is_projectable_public_source_event(event: &AuthoritativeRuleEventKindV3) -> b
 }
 
 fn validate_damage_state_projection_v3(
-    before: &EngineStatePartsV3,
-    after: &EngineStatePartsV3,
+    before: &EngineState,
+    after: &EngineState,
     events: &[AuthoritativeRuleEventV3],
 ) -> Result<(), EventDeltaV3Error> {
     let mut player_damage = std::collections::BTreeMap::<PlayerId, u64>::new();
@@ -918,10 +918,10 @@ fn validate_damage_state_projection_v3(
         *total = next;
     }
     for (player, amount) in player_damage {
-        let Some(before_player) = before.predecessor_v5.core.players.get(&player) else {
+        let Some(before_player) = before.core.players.get(&player) else {
             return Err(EventDeltaV3Error::Mismatch);
         };
-        let Some(after_player) = after.predecessor_v5.core.players.get(&player) else {
+        let Some(after_player) = after.core.players.get(&player) else {
             return Err(EventDeltaV3Error::Mismatch);
         };
         let actual_loss = i128::from(before_player.life) - i128::from(after_player.life);
@@ -929,36 +929,17 @@ fn validate_damage_state_projection_v3(
             return Err(EventDeltaV3Error::Mismatch);
         }
     }
-    for (object, amount) in object_damage {
-        let Some(before_source) = before.predecessor_v5.foundation_sources.get(&object) else {
-            return Err(EventDeltaV3Error::Mismatch);
-        };
-        if let Some(after_source) = after.predecessor_v5.foundation_sources.get(&object) {
-            let actual = after_source
-                .marked_damage
-                .checked_sub(before_source.marked_damage)
-                .ok_or(EventDeltaV3Error::Mismatch)?;
-            if actual != amount {
-                return Err(EventDeltaV3Error::Mismatch);
-            }
-        } else if !events.iter().any(|event| match &event.event {
-            AuthoritativeRuleEventKindV3::ObjectCeasedToExist { object: ceased } => {
-                *ceased == object
-            }
-            AuthoritativeRuleEventKindV3::ZoneTransition { transition } => {
-                transition.old_object == object
-            }
-            _ => false,
-        }) {
-            return Err(EventDeltaV3Error::Mismatch);
-        }
+    // No state component records marked damage yet: damage to an object
+    // cannot be projected and fails closed.
+    if !object_damage.is_empty() {
+        return Err(EventDeltaV3Error::Mismatch);
     }
     Ok(())
 }
 
 fn validate_delta_operation_projection_v3(
-    before: &EngineStatePartsV3,
-    after: &EngineStatePartsV3,
+    before: &EngineState,
+    after: &EngineState,
     operation: &SemanticDeltaOperationV3,
 ) -> Result<(), EventDeltaV3Error> {
     let valid = match operation {
@@ -995,20 +976,14 @@ fn validate_delta_operation_projection_v3(
         | SemanticDeltaOperationV3::AbilityAuthorityRemoved { .. }
         | SemanticDeltaOperationV3::DamageApplied { .. } => true,
         SemanticDeltaOperationV3::StackOrderChanged { from, to } => {
-            &before.predecessor_v5.zones.stack_order == from
-                && &after.predecessor_v5.zones.stack_order == to
+            &before.zones.stack_order == from && &after.zones.stack_order == to
         }
         SemanticDeltaOperationV3::StackItemCreated {
             stack_object,
             payload,
         } => {
-            !before
-                .predecessor_v5
-                .zones
-                .stack_records
-                .contains_key(stack_object)
+            !before.zones.stack_records.contains_key(stack_object)
                 && after
-                    .predecessor_v5
                     .zones
                     .stack_records
                     .get(stack_object)
@@ -1021,17 +996,12 @@ fn validate_delta_operation_projection_v3(
             ..
         } => {
             before
-                .predecessor_v5
                 .zones
                 .stack_records
                 .get(stack_object)
                 .and_then(|record| record.payload.as_ref())
                 == Some(payload.as_ref())
-                && !after
-                    .predecessor_v5
-                    .zones
-                    .stack_records
-                    .contains_key(stack_object)
+                && !after.zones.stack_records.contains_key(stack_object)
         }
         SemanticDeltaOperationV3::SpellCast {
             stack_object,
@@ -1041,13 +1011,8 @@ fn validate_delta_operation_projection_v3(
             semantic_profile_id,
             cost_facts,
             ..
-        } => !before
-            .predecessor_v5
-            .zones
-            .stack_records
-            .contains_key(stack_object)
+        } => !before.zones.stack_records.contains_key(stack_object)
             && after
-                .predecessor_v5
                 .zones
                 .stack_records
                 .get(stack_object)
@@ -1074,12 +1039,12 @@ fn validate_delta_operation_projection_v3(
         } => {
             let pair = (source.source.snapshot.object, source.ability_key.0);
             let history_before = before
-                .card_rules_state
+                .card_rules
                 .turn_history
                 .once_ability_used
                 .contains(&pair);
             let history_after = after
-                .card_rules_state
+                .card_rules
                 .turn_history
                 .once_ability_used
                 .contains(&pair);
@@ -1089,13 +1054,11 @@ fn validate_delta_operation_projection_v3(
                 history_before == history_after
             };
             !before
-                .predecessor_v5
                 .zones
                 .stack_records
                 .contains_key(stack_object)
                 && receipt_matches
                 && after
-                    .predecessor_v5
                     .zones
                     .stack_records
                     .get(stack_object)
@@ -1114,7 +1077,6 @@ fn validate_delta_operation_projection_v3(
             source_stack_item,
             targets,
         } => after
-            .predecessor_v5
             .zones
             .stack_records
             .get(source_stack_item)
@@ -1141,7 +1103,7 @@ fn validate_delta_operation_projection_v3(
             ..
         } => {
             let before_count = before
-                .card_rules_state
+                .card_rules
                 .counters
                 .counters
                 .get(object)
@@ -1149,7 +1111,7 @@ fn validate_delta_operation_projection_v3(
                 .copied()
                 .unwrap_or(0);
             let after_count = after
-                .card_rules_state
+                .card_rules
                 .counters
                 .counters
                 .get(object)
@@ -1159,21 +1121,17 @@ fn validate_delta_operation_projection_v3(
             before_count == *from && after_count == *to && from != to
         }
         SemanticDeltaOperationV3::TriggerCreated { trigger } => {
-            !before
-                .execution_v4
-                .waiting_triggers
-                .contains_key(&trigger.id)
-                && after.execution_v4.waiting_triggers.get(&trigger.id) == Some(trigger.as_ref())
+            !before.execution.waiting_triggers.contains_key(&trigger.id)
+                && after.execution.waiting_triggers.get(&trigger.id) == Some(trigger.as_ref())
         }
         SemanticDeltaOperationV3::TriggerPlaced {
             trigger,
             stack_object,
             payload,
         } => {
-            before.execution_v4.waiting_triggers.contains_key(trigger)
-                && !after.execution_v4.waiting_triggers.contains_key(trigger)
+            before.execution.waiting_triggers.contains_key(trigger)
+                && !after.execution.waiting_triggers.contains_key(trigger)
                 && after
-                    .predecessor_v5
                     .zones
                     .stack_records
                     .get(stack_object)
@@ -1183,8 +1141,8 @@ fn validate_delta_operation_projection_v3(
         SemanticDeltaOperationV3::ManaPoolChanged {
             player, from, to, ..
         } => {
-            before.card_rules_state.mana.pools.get(player) == Some(from)
-                && after.card_rules_state.mana.pools.get(player) == Some(to)
+            before.card_rules.mana.pools.get(player) == Some(from)
+                && after.card_rules.mana.pools.get(player) == Some(to)
         }
         SemanticDeltaOperationV3::AtomicCostCommitted {
             actor,
@@ -1213,25 +1171,25 @@ fn validate_delta_operation_projection_v3(
             to,
         } => {
             before
-                .execution_v4
+                .execution
                 .continuations
                 .get(continuation)
                 .map(|record| &record.payload)
                 == from.as_deref()
                 && after
-                    .execution_v4
+                    .execution
                     .continuations
                     .get(continuation)
                     .map(|record| &record.payload)
                     == to.as_deref()
         }
         SemanticDeltaOperationV3::PendingRequestChanged { from, to } => {
-            before.execution_v4.pending_decision.as_ref() == from.as_deref()
-                && after.execution_v4.pending_decision.as_ref() == to.as_deref()
+            before.execution.pending_decision.as_ref() == from.as_deref()
+                && after.execution.pending_decision.as_ref() == to.as_deref()
         }
         SemanticDeltaOperationV3::TemporaryEffectChanged { effect, from, to } => {
-            before.execution_v4.effects.get(effect) == from.as_deref()
-                && after.execution_v4.effects.get(effect) == to.as_deref()
+            before.execution.effects.get(effect) == from.as_deref()
+                && after.execution.effects.get(effect) == to.as_deref()
         }
     };
     if valid {
@@ -1242,68 +1200,44 @@ fn validate_delta_operation_projection_v3(
 }
 
 fn validate_event_projection_v3(
-    before: &EngineStatePartsV3,
-    after: &EngineStatePartsV3,
+    before: &EngineState,
+    after: &EngineState,
     event: &AuthoritativeRuleEventKindV3,
 ) -> Result<(), EventDeltaV3Error> {
     let valid = match event {
         AuthoritativeRuleEventKindV3::ZoneTransition { transition } => {
-            object_snapshot_matches(&before.predecessor_v5, &transition.last_known)
-                && !after
-                    .predecessor_v5
-                    .zones
-                    .objects
-                    .contains_key(&transition.old_object)
-                && object_snapshot_matches(&after.predecessor_v5, &transition.new_snapshot)
-                && after
-                    .predecessor_v5
-                    .zones
-                    .locations
-                    .get(&transition.new_object)
-                    == Some(&transition.to)
+            object_snapshot_matches(before, &transition.last_known)
+                && !after.zones.objects.contains_key(&transition.old_object)
+                && object_snapshot_matches(after, &transition.new_snapshot)
+                && after.zones.locations.get(&transition.new_object) == Some(&transition.to)
         }
         AuthoritativeRuleEventKindV3::ObjectCeasedToExist { object } => {
-            before.predecessor_v5.zones.objects.contains_key(object)
-                && !after.predecessor_v5.zones.objects.contains_key(object)
+            before.zones.objects.contains_key(object) && !after.zones.objects.contains_key(object)
         }
         AuthoritativeRuleEventKindV3::LifeChanged { player, from, to } => {
             from != to
                 && before
-                    .predecessor_v5
                     .core
                     .players
                     .get(player)
                     .is_some_and(|state| state.life == *from)
                 && after
-                    .predecessor_v5
                     .core
                     .players
                     .get(player)
                     .is_some_and(|state| state.life == *to)
         }
-        AuthoritativeRuleEventKindV3::MarkedDamageChanged { creature, from, to } => {
-            from != to
-                && before
-                    .predecessor_v5
-                    .foundation_sources
-                    .get(creature)
-                    .is_some_and(|source| source.marked_damage == *from)
-                && after
-                    .predecessor_v5
-                    .foundation_sources
-                    .get(creature)
-                    .is_some_and(|source| source.marked_damage == *to)
-        }
+        // No state component records marked damage yet: the event cannot be
+        // projected and fails closed.
+        AuthoritativeRuleEventKindV3::MarkedDamageChanged { .. } => false,
         AuthoritativeRuleEventKindV3::ObjectTapped { object, from, to } => {
             from != to
                 && before
-                    .predecessor_v5
                     .zones
                     .objects
                     .get(object)
                     .is_some_and(|state| state.tapped == *from)
                 && after
-                    .predecessor_v5
                     .zones
                     .objects
                     .get(object)
@@ -1311,37 +1245,33 @@ fn validate_event_projection_v3(
         }
         AuthoritativeRuleEventKindV3::DecisionCreated { decision } => {
             before
-                .execution_v4
+                .execution
                 .pending_decision
                 .as_ref()
                 .is_none_or(|request| request.decision_id != *decision)
                 && after
-                    .execution_v4
+                    .execution
                     .pending_decision
                     .as_ref()
                     .is_some_and(|request| request.decision_id == *decision)
         }
         AuthoritativeRuleEventKindV3::DecisionCleared { decision } => {
             before
-                .execution_v4
+                .execution
                 .pending_decision
                 .as_ref()
                 .is_some_and(|request| request.decision_id == *decision)
                 && after
-                    .execution_v4
+                    .execution
                     .pending_decision
                     .as_ref()
                     .is_none_or(|request| request.decision_id != *decision)
         }
         AuthoritativeRuleEventKindV3::PriorityChanged { from, to } => {
-            from != to
-                && before.predecessor_v5.core.priority == *from
-                && after.predecessor_v5.core.priority == *to
+            from != to && before.core.priority == *from && after.core.priority == *to
         }
         AuthoritativeRuleEventKindV3::TurnPositionChanged { from, to } => {
-            from != to
-                && before.predecessor_v5.core.position == *from
-                && after.predecessor_v5.core.position == *to
+            from != to && before.core.position == *from && after.core.position == *to
         }
         AuthoritativeRuleEventKindV3::RandomValueSampled {
             stream,
@@ -1355,13 +1285,11 @@ fn validate_event_projection_v3(
                 && *value < *bound
                 && cursor_before.checked_add(*raw_words_consumed) == Some(*cursor_after)
                 && before
-                    .predecessor_v5
                     .random
                     .streams
                     .get(stream)
                     .is_some_and(|cursor| cursor.next_raw_u64 == *cursor_before)
                 && after
-                    .predecessor_v5
                     .random
                     .streams
                     .get(stream)
@@ -1373,7 +1301,7 @@ fn validate_event_projection_v3(
             owner,
             top_to_bottom,
         } => after
-            .execution_v4
+            .execution
             .continuations
             .get(continuation)
             .is_some_and(|record| match &record.payload {
@@ -1388,37 +1316,34 @@ fn validate_event_projection_v3(
         AuthoritativeRuleEventKindV3::StateBasedActionsApplied { actions } => {
             actions.iter().all(|action| match action {
                 mtgml_state::SbaSelectedActionV1::PlayerLoses { player } => after
-                    .predecessor_v5
                     .core
                     .players
                     .get(player)
                     .is_some_and(|state| state.has_lost),
                 mtgml_state::SbaSelectedActionV1::ObjectToOwnerGraveyard { object, .. } => {
-                    !after.predecessor_v5.zones.objects.contains_key(object)
+                    !after.zones.objects.contains_key(object)
                 }
             })
         }
         AuthoritativeRuleEventKindV3::CombatDamageStepCompleted => after
-            .predecessor_v5
             .combat
             .as_ref()
             .is_some_and(|combat| combat.damage_step_completed),
         AuthoritativeRuleEventKindV3::AttackersDeclared {
             defending_player,
             attackers,
-        } => after.predecessor_v5.combat.as_ref().is_some_and(|combat| {
+        } => after.combat.as_ref().is_some_and(|combat| {
             combat.defending_player == *defending_player && combat.attackers == *attackers
         }),
         AuthoritativeRuleEventKindV3::CombatEnded => {
-            before.predecessor_v5.combat.is_some() && after.predecessor_v5.combat.is_none()
+            before.combat.is_some() && after.combat.is_none()
         }
         AuthoritativeRuleEventKindV3::EmptyCombatStepsSkipped => {
-            before.predecessor_v5.core.position != after.predecessor_v5.core.position
+            before.core.position != after.core.position
         }
         AuthoritativeRuleEventKindV3::UntapCompleted { affected_objects } => {
             affected_objects.iter().all(|object| {
                 after
-                    .predecessor_v5
                     .zones
                     .objects
                     .get(object)
@@ -1426,14 +1351,10 @@ fn validate_event_projection_v3(
             })
         }
         AuthoritativeRuleEventKindV3::ActivePlayerChanged { from, to } => {
-            from != to
-                && before.predecessor_v5.core.active_player == *from
-                && after.predecessor_v5.core.active_player == *to
+            from != to && before.core.active_player == *from && after.core.active_player == *to
         }
         AuthoritativeRuleEventKindV3::TurnNumberChanged { from, to } => {
-            from != to
-                && before.predecessor_v5.core.turn_number == *from
-                && after.predecessor_v5.core.turn_number == *to
+            from != to && before.core.turn_number == *from && after.core.turn_number == *to
         }
         // Combat assignment/blocked-state state projection remains closed
         // until its exact legal relation is characterized and accepted.
@@ -1445,22 +1366,13 @@ fn validate_event_projection_v3(
             stack_object,
             payload,
         } => {
-            !before
-                .predecessor_v5
-                .zones
-                .stack_records
-                .contains_key(stack_object)
+            !before.zones.stack_records.contains_key(stack_object)
                 && after
-                    .predecessor_v5
                     .zones
                     .stack_records
                     .get(stack_object)
                     .is_some_and(|record| record.payload.as_ref() == Some(payload))
-                && after
-                    .predecessor_v5
-                    .zones
-                    .stack_order
-                    .contains(stack_object)
+                && after.zones.stack_order.contains(stack_object)
         }
         AuthoritativeRuleEventKindV3::StackItemRemoved {
             stack_object,
@@ -1468,21 +1380,12 @@ fn validate_event_projection_v3(
             ..
         } => {
             before
-                .predecessor_v5
                 .zones
                 .stack_records
                 .get(stack_object)
                 .is_some_and(|record| record.payload.as_ref() == Some(payload))
-                && !after
-                    .predecessor_v5
-                    .zones
-                    .stack_records
-                    .contains_key(stack_object)
-                && !after
-                    .predecessor_v5
-                    .zones
-                    .stack_order
-                    .contains(stack_object)
+                && !after.zones.stack_records.contains_key(stack_object)
+                && !after.zones.stack_order.contains(stack_object)
         }
         AuthoritativeRuleEventKindV3::SpellCast {
             stack_object,
@@ -1493,13 +1396,8 @@ fn validate_event_projection_v3(
             cost_facts,
             ..
         } => {
-            !before
-                .predecessor_v5
-                .zones
-                .stack_records
-                .contains_key(stack_object)
+            !before.zones.stack_records.contains_key(stack_object)
                 && after
-                    .predecessor_v5
                     .zones
                     .stack_records
                     .get(stack_object)
@@ -1530,12 +1428,12 @@ fn validate_event_projection_v3(
         } => {
             let pair = (source.source.snapshot.object, source.ability_key.0);
             let history_before = before
-                .card_rules_state
+                .card_rules
                 .turn_history
                 .once_ability_used
                 .contains(&pair);
             let history_after = after
-                .card_rules_state
+                .card_rules
                 .turn_history
                 .once_ability_used
                 .contains(&pair);
@@ -1544,14 +1442,9 @@ fn validate_event_projection_v3(
             } else {
                 history_before == history_after
             };
-            !before
-                .predecessor_v5
-                .zones
-                .stack_records
-                .contains_key(stack_object)
+            !before.zones.stack_records.contains_key(stack_object)
                 && receipt_matches
                 && after
-                    .predecessor_v5
                     .zones
                     .stack_records
                     .get(stack_object)
@@ -1573,7 +1466,6 @@ fn validate_event_projection_v3(
             source_stack_item,
             targets,
         } => after
-            .predecessor_v5
             .zones
             .stack_records
             .get(source_stack_item)
@@ -1599,7 +1491,7 @@ fn validate_event_projection_v3(
             after: after_count,
         } => {
             let old = before
-                .card_rules_state
+                .card_rules
                 .counters
                 .counters
                 .get(object)
@@ -1607,7 +1499,7 @@ fn validate_event_projection_v3(
                 .copied()
                 .unwrap_or(0);
             let new = after
-                .card_rules_state
+                .card_rules
                 .counters
                 .counters
                 .get(object)
@@ -1618,17 +1510,12 @@ fn validate_event_projection_v3(
         }
         AuthoritativeRuleEventKindV3::TriggerDetected { trigger } => {
             let pending = after
-                .execution_v4
+                .execution
                 .waiting_triggers
                 .get(&trigger.id)
                 .is_some_and(|record| record == trigger);
-            let placed = after
-                .predecessor_v5
-                .zones
-                .stack_records
-                .values()
-                .any(|record| {
-                    matches!(record.payload.as_ref(), Some(StackItemPayload::TriggeredAbility {
+            let placed = after.zones.stack_records.values().any(|record| {
+                matches!(record.payload.as_ref(), Some(StackItemPayload::TriggeredAbility {
                         originating_trigger,
                         source_context,
                         captured_trigger_context,
@@ -1636,22 +1523,17 @@ fn validate_event_projection_v3(
                     }) if *originating_trigger == trigger.id
                         && source_context == &trigger.source_context
                         && captured_trigger_context.as_ref() == &trigger.trigger_context)
-                });
-            !before
-                .execution_v4
-                .waiting_triggers
-                .contains_key(&trigger.id)
-                && (pending || placed)
+            });
+            !before.execution.waiting_triggers.contains_key(&trigger.id) && (pending || placed)
         }
         AuthoritativeRuleEventKindV3::TriggerPlaced {
             trigger,
             stack_object,
             payload,
         } => {
-            before.execution_v4.waiting_triggers.contains_key(trigger)
-                && !after.execution_v4.waiting_triggers.contains_key(trigger)
+            before.execution.waiting_triggers.contains_key(trigger)
+                && !after.execution.waiting_triggers.contains_key(trigger)
                 && after
-                    .predecessor_v5
                     .zones
                     .stack_records
                     .get(stack_object)
@@ -1663,8 +1545,8 @@ fn validate_event_projection_v3(
             after: new_pool,
             ..
         } => {
-            before.card_rules_state.mana.pools.get(player) == Some(old_pool)
-                && after.card_rules_state.mana.pools.get(player) == Some(new_pool)
+            before.card_rules.mana.pools.get(player) == Some(old_pool)
+                && after.card_rules.mana.pools.get(player) == Some(new_pool)
         }
         AuthoritativeRuleEventKindV3::CostCommitted {
             actor,
@@ -1682,12 +1564,12 @@ fn validate_event_projection_v3(
             spent_buckets,
         ),
         AuthoritativeRuleEventKindV3::TemporaryEffectCreated { effect } => {
-            !before.execution_v4.effects.contains_key(&effect.id)
-                && after.execution_v4.effects.get(&effect.id) == Some(effect)
+            !before.execution.effects.contains_key(&effect.id)
+                && after.execution.effects.get(&effect.id) == Some(effect)
         }
         AuthoritativeRuleEventKindV3::TemporaryEffectExpired { effect } => {
-            before.execution_v4.effects.get(&effect.id) == Some(effect)
-                && !after.execution_v4.effects.contains_key(&effect.id)
+            before.execution.effects.get(&effect.id) == Some(effect)
+                && !after.execution.effects.contains_key(&effect.id)
         }
     };
     if valid {
@@ -1697,10 +1579,7 @@ fn validate_event_projection_v3(
     }
 }
 
-fn object_snapshot_matches(
-    state: &mtgml_state::EngineStateParts,
-    snapshot: &mtgml_state::ObjectSnapshot,
-) -> bool {
+fn object_snapshot_matches(state: &EngineState, snapshot: &mtgml_state::ObjectSnapshot) -> bool {
     state
         .zones
         .objects
@@ -1717,15 +1596,15 @@ fn object_snapshot_matches(
 }
 
 fn validate_cost_commit_projection(
-    before: &EngineStatePartsV3,
-    after: &EngineStatePartsV3,
+    before: &EngineState,
+    after: &EngineState,
     actor: PlayerId,
     action: CostCommitActionV1,
     facts: &ActionCostFacts,
     source_activations: &[ManaSourceActivation],
     spent_buckets: &[u32; 12],
 ) -> bool {
-    let old_pool = match before.card_rules_state.mana.pools.get(&actor) {
+    let old_pool = match before.card_rules.mana.pools.get(&actor) {
         Some(pool) => *pool,
         None => return false,
     };
@@ -1734,7 +1613,6 @@ fn validate_cost_commit_projection(
             stack_object,
             spell_object,
         } => after
-            .predecessor_v5
             .zones
             .stack_records
             .get(&stack_object)
@@ -1747,34 +1625,17 @@ fn validate_cost_commit_projection(
         CostCommitActionV1::NonManaActivation {
             source_object,
             source_ability,
-        } => after
-            .predecessor_v5
-            .zones
-            .stack_records
-            .values()
-            .any(|record| {
-                matches!(record.payload.as_ref(), Some(StackItemPayload::ActivatedAbility {
+        } => after.zones.stack_records.values().any(|record| {
+            matches!(record.payload.as_ref(), Some(StackItemPayload::ActivatedAbility {
                     source_context,
                     ..
                 }) if source_context.source.snapshot.object == source_object
                     && source_context.ability_instance_id == source_ability)
-            }),
+        }),
         CostCommitActionV1::StackResolution { stack_object } => {
-            before
-                .predecessor_v5
-                .zones
-                .stack_records
-                .contains_key(&stack_object)
-                && !after
-                    .predecessor_v5
-                    .zones
-                    .stack_records
-                    .contains_key(&stack_object)
-                && !after
-                    .predecessor_v5
-                    .zones
-                    .stack_order
-                    .contains(&stack_object)
+            before.zones.stack_records.contains_key(&stack_object)
+                && !after.zones.stack_records.contains_key(&stack_object)
+                && !after.zones.stack_order.contains(&stack_object)
         }
     };
     if !action_projects {
@@ -1784,7 +1645,7 @@ fn validate_cost_commit_projection(
 
     let staged = match action {
         CostCommitActionV1::Cast { spell_object, .. } => before
-            .execution_v4
+            .execution
             .continuations
             .values()
             .find_map(|record| match &record.payload {
@@ -1802,7 +1663,7 @@ fn validate_cost_commit_projection(
             source_object,
             source_ability,
         } => before
-            .execution_v4
+            .execution
             .continuations
             .values()
             .find_map(|record| match &record.payload {
@@ -1818,7 +1679,7 @@ fn validate_cost_commit_projection(
                 _ => None,
             }),
         CostCommitActionV1::StackResolution { stack_object } => before
-            .execution_v4
+            .execution
             .continuations
             .values()
             .find_map(|record| match &record.payload {
@@ -1850,30 +1711,16 @@ fn validate_cost_commit_projection(
         if !seen_sources.insert(source.source_object) {
             return false;
         }
-        let Some(source_object) = before
-            .predecessor_v5
-            .zones
-            .objects
-            .get(&source.source_object)
-        else {
+        let Some(source_object) = before.zones.objects.get(&source.source_object) else {
             return false;
         };
-        let Some(source_location) = before
-            .predecessor_v5
-            .zones
-            .locations
-            .get(&source.source_object)
-        else {
+        let Some(source_location) = before.zones.locations.get(&source.source_object) else {
             return false;
         };
         if source_object.tapped || source_location.zone != mtgml_model::ZoneKind::Battlefield {
             return false;
         }
-        let after_source = after
-            .predecessor_v5
-            .zones
-            .objects
-            .get(&source.source_object);
+        let after_source = after.zones.objects.get(&source.source_object);
         if !after_source.is_some_and(|object| object.tapped) {
             return false;
         }
@@ -1901,7 +1748,7 @@ fn validate_cost_commit_projection(
         };
         *total = remaining;
     }
-    if after.card_rules_state.mana.pools.get(&actor) != Some(&pool) {
+    if after.card_rules.mana.pools.get(&actor) != Some(&pool) {
         return false;
     }
 
@@ -1919,19 +1766,18 @@ fn validate_cost_commit_projection(
         return false;
     }
     if let Some(source) = action_source.filter(|_| taps_source || sacrifices_source) {
-        let Some(before_object) = before.predecessor_v5.zones.objects.get(&source) else {
+        let Some(before_object) = before.zones.objects.get(&source) else {
             return false;
         };
         if before_object.tapped {
             return false;
         }
         if sacrifices_source {
-            if after.predecessor_v5.zones.objects.contains_key(&source) {
+            if after.zones.objects.contains_key(&source) {
                 return false;
             }
         } else if taps_source
             && !after
-                .predecessor_v5
                 .zones
                 .objects
                 .get(&source)
@@ -2014,32 +1860,19 @@ mod tests {
     use super::*;
     use mtgml_random::RootSeed256;
     use mtgml_state::{
-        construct_synthetic_engine_state, AbilityAuthorityV1, ActionCostFacts,
-        CardRulesAuthoritativeStateV1, CounterKindV1, EngineStatePartsV3, ExecutionStateV4,
-        ManaCost, ManaPoolV1, ManaSourceActivation, ManaSourceActivationCost,
+        construct_synthetic_engine_state, AbilityAuthorityV1, ActionCostFacts, CounterKindV1,
+        EngineState, ManaCost, ManaPoolV1, ManaSourceActivation, ManaSourceActivationCost,
         SemanticDeltaOperationV3, StackRecord, StateDeltaV3, SyntheticResetInputs,
         SyntheticV4Setup, VisibilityPartition, ZoneLocation, ZonePosition,
     };
 
-    fn state() -> EngineStatePartsV3 {
-        let mut predecessor = construct_synthetic_engine_state(SyntheticResetInputs {
+    fn state() -> EngineState {
+        construct_synthetic_engine_state(SyntheticResetInputs {
             players: [PlayerId(1), PlayerId(2)],
             root_seed: RootSeed256::from_lower_hex(&"11".repeat(32)).unwrap(),
             setup: SyntheticV4Setup::synthetic_compatibility(),
         })
-        .unwrap();
-        predecessor.execution = Default::default();
-        let mut card_rules = CardRulesAuthoritativeStateV1::default();
-        for player in predecessor.core.players.keys().copied() {
-            card_rules.mana.pools.insert(player, Default::default());
-            card_rules
-                .turn_history
-                .players
-                .insert(player, Default::default());
-        }
-        card_rules.turn_history.turn_number = predecessor.core.turn_number;
-        EngineStatePartsV3::new(predecessor.parts(), ExecutionStateV4::default(), card_rules)
-            .unwrap()
+        .unwrap()
     }
 
     #[test]
@@ -2085,10 +1918,10 @@ mod tests {
     fn event_semantics_require_the_exact_ordered_delta_operation() {
         let before = state();
         let mut after = before.clone();
-        after.predecessor_v5.revision = StateRevision(before.predecessor_v5.revision.0 + 1);
+        after.revision = StateRevision(before.revision.0 + 1);
         let event = AuthoritativeRuleEventV3 {
             event_id: RuleEventId(1),
-            state_revision: after.predecessor_v5.revision,
+            state_revision: after.revision,
             event: AuthoritativeRuleEventKindV3::CombatEnded,
         };
         let operation = event
@@ -2101,8 +1934,8 @@ mod tests {
         validate_event_delta_parity_v3(std::slice::from_ref(&event), &delta).unwrap();
 
         let missing = mtgml_state::StateDeltaV3 {
-            before_revision: before.predecessor_v5.revision,
-            after_revision: after.predecessor_v5.revision,
+            before_revision: before.revision,
+            after_revision: after.revision,
             before_digest: mtgml_state::calculate_full_state_digest_v7(&before).unwrap(),
             after_digest: mtgml_state::calculate_full_state_digest_v7(&after).unwrap(),
             replacement: after.clone(),
@@ -2219,13 +2052,13 @@ mod tests {
     fn event_delta_and_after_state_projection_must_agree() {
         let before = state();
         let player = PlayerId(1);
-        let old_pool = before.card_rules_state.mana.pools[&player];
+        let old_pool = before.card_rules.mana.pools[&player];
         let mut new_pool = old_pool;
         new_pool.unrestricted[4] = 1;
         let mut after = before.clone();
-        after.card_rules_state.mana.pools.insert(player, new_pool);
-        after.predecessor_v5.revision = StateRevision(before.predecessor_v5.revision.0 + 1);
-        after.predecessor_v5.allocators.next_rule_event_id = RuleEventId(2);
+        after.card_rules.mana.pools.insert(player, new_pool);
+        after.revision = StateRevision(before.revision.0 + 1);
+        after.allocators.next_rule_event_id = RuleEventId(2);
         let operation = SemanticDeltaOperationV3::ManaPoolChanged {
             player,
             from: old_pool,
@@ -2235,7 +2068,7 @@ mod tests {
         let delta = StateDeltaV3::between(&before, &after, vec![operation]).unwrap();
         let event = AuthoritativeRuleEventV3 {
             event_id: RuleEventId(1),
-            state_revision: after.predecessor_v5.revision,
+            state_revision: after.revision,
             event: AuthoritativeRuleEventKindV3::ManaPoolChanged {
                 player,
                 before: old_pool,
@@ -2247,7 +2080,7 @@ mod tests {
 
         let mut mismatched = after.clone();
         mismatched
-            .card_rules_state
+            .card_rules
             .mana
             .pools
             .insert(player, ManaPoolV1::default());
@@ -2269,7 +2102,7 @@ mod tests {
     fn atomic_cost_commit_projects_the_staged_source_output_payment_and_stack_item() {
         let mut before = state();
         let ability_source_object = GameObjectId(3);
-        before.predecessor_v5.zones.objects.insert(
+        before.zones.objects.insert(
             ability_source_object,
             mtgml_state::GameObject {
                 id: ability_source_object,
@@ -2281,7 +2114,7 @@ mod tests {
                 face_down: false,
             },
         );
-        before.predecessor_v5.zones.locations.insert(
+        before.zones.locations.insert(
             ability_source_object,
             ZoneLocation {
                 zone: mtgml_model::ZoneKind::Battlefield,
@@ -2291,24 +2124,24 @@ mod tests {
                 partition: None,
             },
         );
-        before.predecessor_v5.allocators.next_object_id = GameObjectId(4);
-        before.predecessor_v5.allocators.next_ability_id = mtgml_model::AbilityInstanceId(3);
-        before.card_rules_state.abilities.by_instance.insert(
+        before.allocators.next_object_id = GameObjectId(4);
+        before.allocators.next_ability_id = mtgml_model::AbilityInstanceId(3);
+        before.card_rules.abilities.by_instance.insert(
             mtgml_model::AbilityInstanceId(1),
             AbilityAuthorityV1 {
                 source: ability_source_object,
                 ability_key: 4,
             },
         );
-        before.card_rules_state.abilities.by_instance.insert(
+        before.card_rules.abilities.by_instance.insert(
             mtgml_model::AbilityInstanceId(2),
             AbilityAuthorityV1 {
                 source: GameObjectId(1),
                 ability_key: 9,
             },
         );
-        for object in before.predecessor_v5.zones.objects.keys().copied() {
-            before.card_rules_state.faces.faces.insert(object, 0);
+        for object in before.zones.objects.keys().copied() {
+            before.card_rules.faces.faces.insert(object, 0);
         }
         before.validate().unwrap();
 
@@ -2322,7 +2155,7 @@ mod tests {
                     controller: PlayerId(1),
                     tapped: false,
                     face_down: false,
-                    location: before.predecessor_v5.zones.locations[&ability_source_object].clone(),
+                    location: before.zones.locations[&ability_source_object].clone(),
                 },
                 face_key: mtgml_card_ir::FaceKey(0),
                 semantic_profile_id: mtgml_card_ir::CardSemanticProfileId::parse(
@@ -2334,22 +2167,19 @@ mod tests {
             ability_key: mtgml_card_ir::AbilityKey(4),
         };
         let mut after = before.clone();
-        after.predecessor_v5.revision = StateRevision(before.predecessor_v5.revision.0 + 1);
-        after.predecessor_v5.allocators.next_stack_object_id = StackObjectId(2);
+        after.revision = StateRevision(before.revision.0 + 1);
+        after.allocators.next_stack_object_id = StackObjectId(2);
         after
-            .predecessor_v5
             .zones
             .objects
             .get_mut(&GameObjectId(1))
             .unwrap()
             .tapped = true;
-        after.predecessor_v5.zones.stack_records.insert(
+        after.zones.stack_records.insert(
             StackObjectId(1),
             StackRecord {
                 id: StackObjectId(1),
                 controller: PlayerId(1),
-                source_object: None,
-                source_ability: None,
                 payload: Some(StackItemPayload::ActivatedAbility {
                     source_context: source_context.clone(),
                     modes: vec![],
@@ -2358,11 +2188,7 @@ mod tests {
                 }),
             },
         );
-        after
-            .predecessor_v5
-            .zones
-            .stack_order
-            .push(StackObjectId(1));
+        after.zones.stack_order.push(StackObjectId(1));
         let facts = ActionCostFacts {
             mana_cost: Some(ManaCost {
                 colored_wubrg_counts: [0, 0, 0, 1, 0],
@@ -2407,18 +2233,18 @@ mod tests {
         };
         let stack_event = AuthoritativeRuleEventKindV3::StackItemAdded {
             stack_object: StackObjectId(1),
-            payload: after.predecessor_v5.zones.stack_records[&StackObjectId(1)]
+            payload: after.zones.stack_records[&StackObjectId(1)]
                 .payload
                 .clone()
                 .unwrap(),
         };
         let (events, next_event_id) = allocate_rule_events_v3(
-            before.predecessor_v5.allocators.next_rule_event_id,
-            after.predecessor_v5.revision,
+            before.allocators.next_rule_event_id,
+            after.revision,
             [cost_event, tap_event, ability_event, stack_event],
         )
         .unwrap();
-        after.predecessor_v5.allocators.next_rule_event_id = next_event_id;
+        after.allocators.next_rule_event_id = next_event_id;
         after.validate().unwrap();
         let mut operations = events
             .iter()
@@ -2434,7 +2260,7 @@ mod tests {
         let once_key = (ability_source_object, 4);
         let mut once_after = after.clone();
         once_after
-            .card_rules_state
+            .card_rules
             .turn_history
             .once_ability_used
             .insert(once_key);
@@ -2462,12 +2288,12 @@ mod tests {
 
         let mut mismatched_once_after = once_after.clone();
         mismatched_once_after
-            .card_rules_state
+            .card_rules
             .turn_history
             .once_ability_used
             .remove(&once_key);
         mismatched_once_after
-            .card_rules_state
+            .card_rules
             .turn_history
             .once_ability_used
             .insert((GameObjectId(1), 9));
@@ -2564,16 +2390,10 @@ mod tests {
     fn post_replacement_damage_event_matches_the_actual_player_life_delta() {
         let before = state();
         let player = PlayerId(1);
-        let life_before = before.predecessor_v5.core.players[&player].life;
+        let life_before = before.core.players[&player].life;
         let mut after = before.clone();
-        after
-            .predecessor_v5
-            .core
-            .players
-            .get_mut(&player)
-            .unwrap()
-            .life -= 3;
-        after.predecessor_v5.revision = StateRevision(before.predecessor_v5.revision.0 + 1);
+        after.core.players.get_mut(&player).unwrap().life -= 3;
+        after.revision = StateRevision(before.revision.0 + 1);
 
         let kinds = [
             AuthoritativeRuleEventKindV3::DamageApplied {
@@ -2588,13 +2408,10 @@ mod tests {
                 to: life_before - 3,
             },
         ];
-        let (events, next) = allocate_rule_events_v3(
-            before.predecessor_v5.allocators.next_rule_event_id,
-            after.predecessor_v5.revision,
-            kinds,
-        )
-        .unwrap();
-        after.predecessor_v5.allocators.next_rule_event_id = next;
+        let (events, next) =
+            allocate_rule_events_v3(before.allocators.next_rule_event_id, after.revision, kinds)
+                .unwrap();
+        after.allocators.next_rule_event_id = next;
         let delta = StateDeltaV3::between(
             &before,
             &after,
@@ -2634,10 +2451,10 @@ mod tests {
         let before = state();
         let object = GameObjectId(1);
         let mut after = before.clone();
-        after.predecessor_v5.revision = StateRevision(before.predecessor_v5.revision.0 + 1);
-        after.predecessor_v5.allocators.next_rule_event_id = RuleEventId(2);
+        after.revision = StateRevision(before.revision.0 + 1);
+        after.allocators.next_rule_event_id = RuleEventId(2);
         after
-            .card_rules_state
+            .card_rules
             .counters
             .counters
             .entry(object)
@@ -2645,7 +2462,7 @@ mod tests {
             .insert(CounterKindV1::PlusOnePlusOne, 1);
         let event = AuthoritativeRuleEventV3 {
             event_id: RuleEventId(1),
-            state_revision: after.predecessor_v5.revision,
+            state_revision: after.revision,
             event: AuthoritativeRuleEventKindV3::CounterChanged {
                 object,
                 kind: CounterKindV1::PlusOnePlusOne,
@@ -2667,9 +2484,9 @@ mod tests {
     fn public_observation_occurrence_binds_lifecycle_to_exact_prior_rule_event() {
         let before = state();
         let mut after = before.clone();
-        after.predecessor_v5.revision = StateRevision(before.predecessor_v5.revision.0 + 1);
-        after.predecessor_v5.allocators.next_effect_id = mtgml_model::EffectInstanceId(2);
-        after.predecessor_v5.allocators.next_rule_event_id = RuleEventId(3);
+        after.revision = StateRevision(before.revision.0 + 1);
+        after.allocators.next_effect_id = mtgml_model::EffectInstanceId(2);
+        after.allocators.next_rule_event_id = RuleEventId(3);
         let effect = TemporaryEffectRecord {
             id: mtgml_model::EffectInstanceId(1),
             affected_objects: vec![GameObjectId(1)],
@@ -2678,32 +2495,32 @@ mod tests {
                 toughness: 0,
             },
             expiry: mtgml_state::EffectExpiry::UntilEndOfTurn {
-                turn_number: after.predecessor_v5.core.turn_number,
+                turn_number: after.core.turn_number,
             },
             timestamp: None,
         };
-        after.execution_v4.effects.insert(effect.id, effect.clone());
-        let sequence = before.predecessor_v5.knowledge.players[&PlayerId(1)].next_visible_sequence;
+        after.execution.effects.insert(effect.id, effect.clone());
+        let sequence = before.knowledge.players[&PlayerId(1)].next_visible_sequence;
         let lifecycle = PerspectiveLifecycleAuditV1 {
             perspective: PlayerId(1),
             sequence,
             mutation: mtgml_state::PerspectiveLifecycleMutationV1::default(),
         };
-        let mut engine: mtgml_state::EngineState = after.predecessor_v5.clone().into();
+        let mut engine = after.clone();
         mtgml_state::apply_perspective_lifecycle(&mut engine, &lifecycle).unwrap();
-        after.predecessor_v5 = engine.parts();
+        after = engine;
 
         let events = vec![
             AuthoritativeRuleEventV3 {
                 event_id: RuleEventId(1),
-                state_revision: after.predecessor_v5.revision,
+                state_revision: after.revision,
                 event: AuthoritativeRuleEventKindV3::TemporaryEffectCreated {
                     effect: effect.clone(),
                 },
             },
             AuthoritativeRuleEventV3 {
                 event_id: RuleEventId(2),
-                state_revision: after.predecessor_v5.revision,
+                state_revision: after.revision,
                 event: AuthoritativeRuleEventKindV3::PerspectiveObservationOccurrence {
                     lifecycle: Box::new(lifecycle),
                     source_event_id: RuleEventId(1),
@@ -2771,11 +2588,11 @@ mod tests {
         let before = state();
         let object = GameObjectId(10);
         let mut after = before.clone();
-        after.predecessor_v5.revision = StateRevision(before.predecessor_v5.revision.0 + 1);
-        after.predecessor_v5.allocators.next_object_id = GameObjectId(11);
-        after.predecessor_v5.allocators.next_effect_id = mtgml_model::EffectInstanceId(2);
-        after.predecessor_v5.allocators.next_rule_event_id = RuleEventId(3);
-        after.predecessor_v5.zones.objects.insert(
+        after.revision = StateRevision(before.revision.0 + 1);
+        after.allocators.next_object_id = GameObjectId(11);
+        after.allocators.next_effect_id = mtgml_model::EffectInstanceId(2);
+        after.allocators.next_rule_event_id = RuleEventId(3);
+        after.zones.objects.insert(
             object,
             mtgml_state::GameObject {
                 id: object,
@@ -2787,7 +2604,7 @@ mod tests {
                 face_down: false,
             },
         );
-        after.predecessor_v5.zones.locations.insert(
+        after.zones.locations.insert(
             object,
             mtgml_state::ZoneLocation {
                 zone: mtgml_model::ZoneKind::Battlefield,
@@ -2797,7 +2614,7 @@ mod tests {
                 partition: None,
             },
         );
-        after.card_rules_state.faces.faces.insert(object, 0);
+        after.card_rules.faces.faces.insert(object, 0);
         let effect = TemporaryEffectRecord {
             id: mtgml_model::EffectInstanceId(1),
             affected_objects: vec![object],
@@ -2806,43 +2623,41 @@ mod tests {
                 toughness: 0,
             },
             expiry: mtgml_state::EffectExpiry::UntilEndOfTurn {
-                turn_number: after.predecessor_v5.core.turn_number,
+                turn_number: after.core.turn_number,
             },
             timestamp: None,
         };
-        after.execution_v4.effects.insert(effect.id, effect.clone());
-        let opaque =
-            after.predecessor_v5.perspective_identities.players[&PlayerId(1)].next_opaque_object_id;
+        after.execution.effects.insert(effect.id, effect.clone());
+        let opaque = after.perspective_identities.players[&PlayerId(1)].next_opaque_object_id;
         let lifecycle = PerspectiveLifecycleAuditV1 {
             perspective: PlayerId(1),
-            sequence: before.predecessor_v5.knowledge.players[&PlayerId(1)].next_visible_sequence,
+            sequence: before.knowledge.players[&PlayerId(1)].next_visible_sequence,
             mutation: mtgml_state::PerspectiveLifecycleMutationV1 {
                 identity: mtgml_state::IdentityMutationV1::Allocate { opaque, object },
                 knowledge: Some(mtgml_state::KnowledgeMutationV1::Acquire {
                     opaque,
-                    definition: Some(after.predecessor_v5.zones.objects[&object].card_definition),
-                    location: Some(after.predecessor_v5.zones.locations[&object].clone()),
+                    definition: Some(after.zones.objects[&object].card_definition),
+                    location: Some(after.zones.locations[&object].clone()),
                     acquisition: mtgml_state::KnowledgeAcquisitionReason::Observed {
                         channel: mtgml_state::KnowledgeHistoryChannel::Public,
-                        sequence: before.predecessor_v5.knowledge.players[&PlayerId(1)]
-                            .next_visible_sequence,
+                        sequence: before.knowledge.players[&PlayerId(1)].next_visible_sequence,
                         cause: mtgml_state::KnowledgeAcquisitionCause::PublicEvent,
                     },
                 }),
             },
         };
-        let mut projected: mtgml_state::EngineState = after.predecessor_v5.clone().into();
+        let mut projected = after.clone();
         mtgml_state::apply_perspective_lifecycle(&mut projected, &lifecycle).unwrap();
-        after.predecessor_v5 = projected.parts();
+        after = projected;
         let events = vec![
             AuthoritativeRuleEventV3 {
                 event_id: RuleEventId(1),
-                state_revision: after.predecessor_v5.revision,
+                state_revision: after.revision,
                 event: AuthoritativeRuleEventKindV3::TemporaryEffectCreated { effect },
             },
             AuthoritativeRuleEventV3 {
                 event_id: RuleEventId(2),
-                state_revision: after.predecessor_v5.revision,
+                state_revision: after.revision,
                 event: AuthoritativeRuleEventKindV3::PerspectiveObservationOccurrence {
                     lifecycle: Box::new(lifecycle),
                     source_event_id: RuleEventId(1),
@@ -2850,8 +2665,8 @@ mod tests {
             },
         ];
         let delta = StateDeltaV3 {
-            before_revision: before.predecessor_v5.revision,
-            after_revision: after.predecessor_v5.revision,
+            before_revision: before.revision,
+            after_revision: after.revision,
             before_digest: mtgml_model::FullStateDigestV7::from_digest_bytes([0; 32]),
             after_digest: mtgml_model::FullStateDigestV7::from_digest_bytes([1; 32]),
             replacement: after.clone(),

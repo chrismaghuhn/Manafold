@@ -14,7 +14,7 @@ use mtgml_random::RandomStreamKeyV1;
 
 use crate::{
     calculate_full_state_digest_v7, ContinuationPayloadV3, DamageKind, DamageRecipient,
-    EngineStatePartsV3, EngineStatePartsV3Error, ManaCost, ManaPoolV1, PendingTriggerRecord,
+    EngineState, EngineStatePartsV3Error, ManaCost, ManaPoolV1, PendingTriggerRecord,
     ReservedNonManaCost, SelectedCostOperand, SourceContext, StackItemPayload, TargetRef,
     TemporaryEffectRecord,
 };
@@ -268,26 +268,23 @@ pub struct StateDeltaV3 {
     pub after_revision: StateRevision,
     pub before_digest: FullStateDigestV7,
     pub after_digest: FullStateDigestV7,
-    pub replacement: EngineStatePartsV3,
+    pub replacement: EngineState,
     pub operations: Vec<SemanticDeltaOperationV3>,
 }
 
 impl StateDeltaV3 {
     pub fn between(
-        before: &EngineStatePartsV3,
-        after: &EngineStatePartsV3,
+        before: &EngineState,
+        after: &EngineState,
         operations: Vec<SemanticDeltaOperationV3>,
     ) -> Result<Self, DeltaApplicationV3Error> {
         before.validate()?;
         after.validate()?;
-        validate_revision_step(
-            before.predecessor_v5.revision,
-            after.predecessor_v5.revision,
-        )?;
+        validate_revision_step(before.revision, after.revision)?;
         validate_delta_operation_coverage(before, after, &operations)?;
         Ok(Self {
-            before_revision: before.predecessor_v5.revision,
-            after_revision: after.predecessor_v5.revision,
+            before_revision: before.revision,
+            after_revision: after.revision,
             before_digest: digest(before)?,
             after_digest: digest(after)?,
             replacement: after.clone(),
@@ -301,20 +298,17 @@ impl StateDeltaV3 {
     /// either state. Generic callers must use `between`.
     #[doc(hidden)]
     pub fn between_structural_only(
-        before: &EngineStatePartsV3,
-        after: &EngineStatePartsV3,
+        before: &EngineState,
+        after: &EngineState,
         operations: Vec<SemanticDeltaOperationV3>,
     ) -> Result<Self, DeltaApplicationV3Error> {
         before.validate_structure()?;
         after.validate_structure()?;
-        validate_revision_step(
-            before.predecessor_v5.revision,
-            after.predecessor_v5.revision,
-        )?;
+        validate_revision_step(before.revision, after.revision)?;
         validate_delta_operation_coverage(before, after, &operations)?;
         Ok(Self {
-            before_revision: before.predecessor_v5.revision,
-            after_revision: after.predecessor_v5.revision,
+            before_revision: before.revision,
+            after_revision: after.revision,
             before_digest: digest_structural_only(before)?,
             after_digest: digest_structural_only(after)?,
             replacement: after.clone(),
@@ -322,20 +316,15 @@ impl StateDeltaV3 {
         })
     }
 
-    pub fn apply(
-        &self,
-        before: &EngineStatePartsV3,
-    ) -> Result<EngineStatePartsV3, DeltaApplicationV3Error> {
+    pub fn apply(&self, before: &EngineState) -> Result<EngineState, DeltaApplicationV3Error> {
         before.validate()?;
-        if before.predecessor_v5.revision != self.before_revision
-            || digest(before)? != self.before_digest
-        {
+        if before.revision != self.before_revision || digest(before)? != self.before_digest {
             return Err(DeltaApplicationV3Error::BeforeMismatch);
         }
         self.replacement.validate()?;
         validate_revision_step(self.before_revision, self.after_revision)?;
         validate_delta_operation_coverage(before, &self.replacement, &self.operations)?;
-        if self.replacement.predecessor_v5.revision != self.after_revision
+        if self.replacement.revision != self.after_revision
             || digest(&self.replacement)? != self.after_digest
         {
             return Err(DeltaApplicationV3Error::AfterMismatch);
@@ -349,10 +338,10 @@ impl StateDeltaV3 {
     #[doc(hidden)]
     pub fn apply_structural_only(
         &self,
-        before: &EngineStatePartsV3,
-    ) -> Result<EngineStatePartsV3, DeltaApplicationV3Error> {
+        before: &EngineState,
+    ) -> Result<EngineState, DeltaApplicationV3Error> {
         before.validate_structure()?;
-        if before.predecessor_v5.revision != self.before_revision
+        if before.revision != self.before_revision
             || digest_structural_only(before)? != self.before_digest
         {
             return Err(DeltaApplicationV3Error::BeforeMismatch);
@@ -360,7 +349,7 @@ impl StateDeltaV3 {
         self.replacement.validate_structure()?;
         validate_revision_step(self.before_revision, self.after_revision)?;
         validate_delta_operation_coverage(before, &self.replacement, &self.operations)?;
-        if self.replacement.predecessor_v5.revision != self.after_revision
+        if self.replacement.revision != self.after_revision
             || digest_structural_only(&self.replacement)? != self.after_digest
         {
             return Err(DeltaApplicationV3Error::AfterMismatch);
@@ -369,12 +358,12 @@ impl StateDeltaV3 {
     }
 }
 
-fn digest(state: &EngineStatePartsV3) -> Result<FullStateDigestV7, DeltaApplicationV3Error> {
+fn digest(state: &EngineState) -> Result<FullStateDigestV7, DeltaApplicationV3Error> {
     calculate_full_state_digest_v7(state).map_err(|_| DeltaApplicationV3Error::DigestCalculation)
 }
 
 fn digest_structural_only(
-    state: &EngineStatePartsV3,
+    state: &EngineState,
 ) -> Result<FullStateDigestV7, DeltaApplicationV3Error> {
     crate::calculate_full_state_digest_v7_structural_only(state)
         .map_err(|_| DeltaApplicationV3Error::DigestCalculation)
@@ -395,16 +384,16 @@ fn validate_revision_step(
 }
 
 fn validate_delta_operation_coverage(
-    before: &EngineStatePartsV3,
-    after: &EngineStatePartsV3,
+    before: &EngineState,
+    after: &EngineState,
     operations: &[SemanticDeltaOperationV3],
 ) -> Result<(), DeltaApplicationV3Error> {
     use SemanticDeltaOperationV3 as V3;
     let has = |predicate: &dyn Fn(&V3) -> bool| operations.iter().any(predicate);
     let uncovered = || Err(DeltaApplicationV3Error::UncoveredMutation);
 
-    let old_before = &before.predecessor_v5;
-    let old_after = &after.predecessor_v5;
+    let old_before = before;
+    let old_after = after;
     // An untap step claims exactly the permanents it untapped: each listed
     // object was tapped before and is untapped after.
     if has(&|operation| {
@@ -674,34 +663,31 @@ fn validate_delta_operation_coverage(
 
     // Execution V4 authority requires an exact owning operation for every
     // staged continuation, pending request, trigger, and effect change.
-    if old_before.execution != old_after.execution {
-        return uncovered();
-    }
-    if before.execution_v4.pending_decision != after.execution_v4.pending_decision
+    if before.execution.pending_decision != after.execution.pending_decision
         && !has(&|operation| {
             matches!(operation,
             V3::PendingRequestChanged { from, to }
-                if from.as_deref() == before.execution_v4.pending_decision.as_ref()
-                    && to.as_deref() == after.execution_v4.pending_decision.as_ref())
+                if from.as_deref() == before.execution.pending_decision.as_ref()
+                    && to.as_deref() == after.execution.pending_decision.as_ref())
         })
     {
         return uncovered();
     }
     let continuation_ids = before
-        .execution_v4
+        .execution
         .continuations
         .keys()
-        .chain(after.execution_v4.continuations.keys())
+        .chain(after.execution.continuations.keys())
         .copied()
         .collect::<std::collections::BTreeSet<_>>();
     for id in continuation_ids {
         let from = before
-            .execution_v4
+            .execution
             .continuations
             .get(&id)
             .map(|record| &record.payload);
         let to = after
-            .execution_v4
+            .execution
             .continuations
             .get(&id)
             .map(|record| &record.payload);
@@ -716,15 +702,15 @@ fn validate_delta_operation_coverage(
         }
     }
     let trigger_ids = before
-        .execution_v4
+        .execution
         .waiting_triggers
         .keys()
-        .chain(after.execution_v4.waiting_triggers.keys())
+        .chain(after.execution.waiting_triggers.keys())
         .copied()
         .collect::<std::collections::BTreeSet<_>>();
     for id in trigger_ids {
-        let from = before.execution_v4.waiting_triggers.get(&id);
-        let to = after.execution_v4.waiting_triggers.get(&id);
+        let from = before.execution.waiting_triggers.get(&id);
+        let to = after.execution.waiting_triggers.get(&id);
         if from != to
             && !has(&|operation| {
                 matches!(operation,
@@ -738,15 +724,15 @@ fn validate_delta_operation_coverage(
         }
     }
     let effect_ids = before
-        .execution_v4
+        .execution
         .effects
         .keys()
-        .chain(after.execution_v4.effects.keys())
+        .chain(after.execution.effects.keys())
         .copied()
         .collect::<std::collections::BTreeSet<_>>();
     for id in effect_ids {
-        let from = before.execution_v4.effects.get(&id);
-        let to = after.execution_v4.effects.get(&id);
+        let from = before.execution.effects.get(&id);
+        let to = after.execution.effects.get(&id);
         if from != to
             && !has(&|operation| {
                 matches!(operation,
@@ -760,8 +746,8 @@ fn validate_delta_operation_coverage(
 
     // Core card-rules families that are not in the explicit G0 owner list
     // cannot change under this detached contract cut.
-    let old_rules = &before.card_rules_state;
-    let new_rules = &after.card_rules_state;
+    let old_rules = &before.card_rules;
+    let new_rules = &after.card_rules;
     if old_rules.mana != new_rules.mana {
         for player in old_rules
             .mana
@@ -881,7 +867,7 @@ fn validate_delta_operation_coverage(
         return uncovered();
     }
 
-    if before.predecessor_v5.format != after.predecessor_v5.format {
+    if before.format != after.format {
         return uncovered();
     }
     for operation in operations {
@@ -920,16 +906,10 @@ fn validate_delta_operation_coverage(
                 cost_facts,
                 ..
             } => {
-                if before
-                    .predecessor_v5
-                    .zones
-                    .stack_records
-                    .contains_key(stack_object)
-                {
+                if before.zones.stack_records.contains_key(stack_object) {
                     return uncovered();
                 }
-                let Some(record) = after.predecessor_v5.zones.stack_records.get(stack_object)
-                else {
+                let Some(record) = after.zones.stack_records.get(stack_object) else {
                     return uncovered();
                 };
                 let payload = record.payload.as_ref();
@@ -959,16 +939,10 @@ fn validate_delta_operation_coverage(
                 cost_facts,
                 ..
             } => {
-                if before
-                    .predecessor_v5
-                    .zones
-                    .stack_records
-                    .contains_key(stack_object)
-                {
+                if before.zones.stack_records.contains_key(stack_object) {
                     return uncovered();
                 }
-                let Some(record) = after.predecessor_v5.zones.stack_records.get(stack_object)
-                else {
+                let Some(record) = after.zones.stack_records.get(stack_object) else {
                     return uncovered();
                 };
                 let payload = record.payload.as_ref();
@@ -992,9 +966,8 @@ fn validate_delta_operation_coverage(
             _ => {}
         }
     }
-    if old_before.foundation_sources != old_after.foundation_sources
-        || old_before.random != old_after.random
-            && !has(&|operation| matches!(operation, V3::RandomValueSampled { .. }))
+    if old_before.random != old_after.random
+        && !has(&|operation| matches!(operation, V3::RandomValueSampled { .. }))
         || old_before.knowledge != old_after.knowledge
             && !has(&|operation| matches!(operation, V3::PerspectiveLifecycle { .. }))
     {
@@ -1105,13 +1078,13 @@ fn validate_delta_operation_coverage(
 }
 
 fn validate_turn_history_delta(
-    before: &EngineStatePartsV3,
-    after: &EngineStatePartsV3,
+    before: &EngineState,
+    after: &EngineState,
     operations: &[SemanticDeltaOperationV3],
 ) -> bool {
     use SemanticDeltaOperationV3 as V3;
-    let old = &before.card_rules_state.turn_history;
-    let new = &after.card_rules_state.turn_history;
+    let old = &before.card_rules.turn_history;
+    let new = &after.card_rules.turn_history;
     let has_land_count = |player, from, to| {
         operations.iter().any(|operation| {
             matches!(operation,
@@ -1123,10 +1096,10 @@ fn validate_turn_history_delta(
         })
     };
     let has_life_loss = |player| {
-        let Some(old_player) = before.predecessor_v5.core.players.get(&player) else {
+        let Some(old_player) = before.core.players.get(&player) else {
             return false;
         };
-        let Some(new_player) = after.predecessor_v5.core.players.get(&player) else {
+        let Some(new_player) = after.core.players.get(&player) else {
             return false;
         };
         operations.iter().any(|operation| match operation {
@@ -1155,9 +1128,7 @@ fn validate_turn_history_delta(
         })
     };
 
-    if old.turn_number != before.predecessor_v5.core.turn_number
-        || new.turn_number != after.predecessor_v5.core.turn_number
-    {
+    if old.turn_number != before.core.turn_number || new.turn_number != after.core.turn_number {
         return false;
     }
     if old.turn_number != new.turn_number {
@@ -1189,7 +1160,6 @@ fn validate_turn_history_delta(
             .iter()
             .filter(|operation| match operation {
                 V3::SpellCast { stack_object, .. } => after
-                    .predecessor_v5
                     .zones
                     .stack_records
                     .get(stack_object)
@@ -1205,7 +1175,6 @@ fn validate_turn_history_delta(
                     is_creature_spell: false,
                     ..
                 } => after
-                    .predecessor_v5
                     .zones
                     .stack_records
                     .get(stack_object)
@@ -1259,7 +1228,6 @@ fn validate_turn_history_delta(
                 targets,
             } => {
                 let Some(actor) = after
-                    .predecessor_v5
                     .zones
                     .stack_records
                     .get(source_stack_item)

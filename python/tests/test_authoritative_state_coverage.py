@@ -10,16 +10,9 @@ ROOT = Path(__file__).resolve().parents[2]
 STATE_SRC = ROOT / "crates/mtgml-state/src"
 ENCODER_RS = STATE_SRC / "persisted_v7.rs"
 
-# Each state struct and the exhaustive destructure of it in the single-pass
+# The state struct and its exhaustive destructure in the single-pass
 # FullStateDigestV7 encoder.
-STATE_STRUCTS = (
-    (STATE_SRC / "engine.rs", "pub struct EngineStateParts {", "let EngineStateParts {"),
-    (
-        STATE_SRC / "engine_state_parts_v3.rs",
-        "pub struct EngineStatePartsV3 {",
-        "let EngineStatePartsV3 {",
-    ),
-)
+STATE_STRUCTS = ((STATE_SRC / "engine.rs", "pub struct EngineState {", "let EngineState {"),)
 
 
 def _block(source: str, start: str, end: str) -> str:

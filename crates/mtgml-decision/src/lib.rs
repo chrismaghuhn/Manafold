@@ -1,29 +1,16 @@
 //! Perspective-safe public decisions and exact authoritative bindings.
 
-mod authoritative;
 mod common;
 mod error;
 mod ordering;
-mod v1;
 mod v2;
 mod v3;
 mod v4;
 
-pub use authoritative::{
-    validate_candidate_binding, AuthoritativeCandidateV2, AuthoritativeDecisionRequestV2,
-    EngineCandidateBinding, PerspectiveIdentityResolver,
-};
-pub use common::{CandidateIntent, DecisionVisibility};
-pub use error::{CandidateBindingError, DecisionValidationError};
-pub use ordering::CandidateOrderingV1;
-pub use ordering::CandidateOrderingV2;
-pub use v1::ActionCandidate;
-pub use v2::{DecisionAnswerV2, DecisionDomainV2, VisibleCandidateV2};
-pub use v3::{
-    validate_candidate_binding_v3, AuthoritativeCandidateV3, AuthoritativeDecisionRequestV3,
-    CandidateIntentV3, DecisionResponseV3, EngineCandidateBindingV3, VisibleCandidateV3,
-    DECISION_RESPONSE_V3_SCHEMA,
-};
+pub use common::DecisionVisibility;
+pub use error::DecisionValidationError;
+pub use v2::{DecisionAnswerV2, DecisionDomainV2};
+pub use v3::{DecisionResponseV3, DECISION_RESPONSE_V3_SCHEMA};
 pub use v4::{
     AuthoritativeCandidateV4, AuthoritativeDecisionRequestV4, CandidateIntentV4,
     CandidateOrderingV3, CostFactsV1, CostOperandOperationV1, CostRouteClassV1,

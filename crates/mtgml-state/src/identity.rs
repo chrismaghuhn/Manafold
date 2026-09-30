@@ -1,8 +1,6 @@
-use mtgml_model::{AbilityInstanceId, GameObjectId, PlayerId};
+use mtgml_model::{AbilityInstanceId, GameObjectId};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-
-use crate::engine_state_shape::PerspectiveIdentityStateV2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum IdentityAllocationError {
@@ -66,32 +64,6 @@ impl Default for IdentityAllocatorState {
             next_continuation_id: mtgml_model::ContinuationId(1),
             next_rule_event_id: mtgml_model::RuleEventId(1),
         }
-    }
-}
-
-impl mtgml_decision::PerspectiveIdentityResolver for PerspectiveIdentityStateV2 {
-    fn resolve_object(
-        &self,
-        perspective: PlayerId,
-        opaque: mtgml_model::OpaqueObjectId,
-    ) -> Option<GameObjectId> {
-        self.players
-            .get(&perspective)?
-            .opaque_to_object
-            .get(&opaque)
-            .copied()
-    }
-
-    fn resolve_ability(
-        &self,
-        perspective: PlayerId,
-        opaque: mtgml_model::OpaqueAbilityId,
-    ) -> Option<AbilityInstanceId> {
-        self.players
-            .get(&perspective)?
-            .opaque_to_ability
-            .get(&opaque)
-            .copied()
     }
 }
 

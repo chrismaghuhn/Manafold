@@ -1,9 +1,5 @@
 use std::collections::BTreeMap;
 
-use mtgml_decision::{
-    AuthoritativeCandidateV2, AuthoritativeDecisionRequestV2, CandidateIntent, DecisionDomainV2,
-    DecisionVisibility, EngineCandidateBinding,
-};
 use mtgml_model::{
     AbilityInstanceId, CardDefinitionId, ContinuationId, DecisionId, EffectInstanceId,
     GameObjectId, OpaqueAbilityId, OpaqueObjectId, PhysicalCardId, PlayerDecisionIdV1, PlayerId,
@@ -16,15 +12,13 @@ use mtgml_random::{
 use thiserror::Error;
 
 use crate::core::{
-    BeginningStep, CombatState, CoreRulesState, FoundationCreatureSource, PlayerState,
-    PriorityState, TurnPosition,
+    BeginningStep, CombatState, CoreRulesState, PlayerState, PriorityState, TurnPosition,
 };
 use crate::engine::EngineState;
 use crate::engine_state_shape::{
-    KnowledgeRecordV2, KnownLocationFactV2, PendingDecisionRecordV2, PerspectiveIdentityRecordV2,
+    KnowledgeRecordV2, KnownLocationFactV2, PerspectiveIdentityRecordV2,
     PerspectiveIdentityStateV2, PlayerKnowledgeStateV2,
 };
-use crate::execution::ExecutionState;
 use crate::format::FormatState;
 use crate::identity::IdentityAllocatorState;
 use crate::knowledge::KnowledgeAcquisitionReason;
@@ -43,7 +37,6 @@ pub struct SyntheticV4Setup {
     pub position: TurnPosition,
     pub priority: PriorityState,
     pub combat: Option<CombatState>,
-    pub foundation_sources: BTreeMap<GameObjectId, FoundationCreatureSource>,
 }
 
 impl SyntheticV4Setup {
@@ -54,7 +47,6 @@ impl SyntheticV4Setup {
             },
             priority: PriorityState::None,
             combat: None,
-            foundation_sources: BTreeMap::new(),
         }
     }
 }
@@ -213,28 +205,16 @@ pub fn construct_synthetic_engine_state(
         ]),
     };
 
-    let request = AuthoritativeDecisionRequestV2 {
-        decision_id: DecisionId(1),
-        player_decision_id: PlayerDecisionIdV1(1),
-        state_revision: StateRevision(0),
-        actor: player_one,
-        visibility: DecisionVisibility::Public,
-        decision: DecisionDomainV2::ChooseOne,
-        candidates: vec![AuthoritativeCandidateV2 {
-            candidate_id: mtgml_model::CandidateIdV1(0),
-            visible_intent: CandidateIntent::SelectObject {
-                object: public_opaque_id,
-            },
-            trusted_binding: EngineCandidateBinding::SelectObject {
-                object: public_object_id,
-            },
-        }],
-        continuation_id: None,
-    };
-    let execution = ExecutionState {
-        pending_decision: Some(PendingDecisionRecordV2 { request }),
-        ..ExecutionState::default()
-    };
+    // One empty mana pool and turn history per player; no pending request.
+    let mut card_rules = crate::CardRulesAuthoritativeStateV1::default();
+    for player in [player_one, player_two] {
+        card_rules.mana.pools.insert(player, Default::default());
+        card_rules
+            .turn_history
+            .players
+            .insert(player, Default::default());
+    }
+    card_rules.turn_history.turn_number = 1;
 
     let allocators = IdentityAllocatorState {
         next_object_id: GameObjectId(3),
@@ -279,14 +259,14 @@ pub fn construct_synthetic_engine_state(
             priority: setup.priority,
         },
         combat: setup.combat,
-        foundation_sources: setup.foundation_sources,
         zones,
         allocators,
-        execution,
+        execution: Default::default(),
         random,
         knowledge,
         perspective_identities,
         format: FormatState::None,
+        card_rules,
     };
     validate_engine_state(&state)?;
     Ok(state)

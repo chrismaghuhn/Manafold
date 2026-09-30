@@ -1,40 +1,22 @@
 use mtgml_model::{CardDefinitionId, GameObjectId, PhysicalCardId, PlayerId, ZoneKind};
 use mtgml_random::RootSeed256;
 use mtgml_state::{
-    construct_synthetic_engine_state, CardRulesAuthoritativeStateV1, DeltaApplicationV3Error,
-    EngineStatePartsV3, ExecutionStateV4, SemanticDeltaOperationV3, StateDeltaV3,
-    SyntheticResetInputs, SyntheticV4Setup, VisibilityPartition, ZoneLocation, ZonePosition,
+    construct_synthetic_engine_state, DeltaApplicationV3Error, EngineState,
+    SemanticDeltaOperationV3, StateDeltaV3, SyntheticResetInputs, SyntheticV4Setup,
+    VisibilityPartition, ZoneLocation, ZonePosition,
 };
 
-fn state_with_tapped_permanents(objects: &[u64]) -> EngineStatePartsV3 {
-    let mut predecessor = construct_synthetic_engine_state(SyntheticResetInputs {
+fn state_with_tapped_permanents(objects: &[u64]) -> EngineState {
+    let predecessor = construct_synthetic_engine_state(SyntheticResetInputs {
         players: [PlayerId(1), PlayerId(2)],
         root_seed: RootSeed256::from_lower_hex(&"11".repeat(32)).unwrap(),
         setup: SyntheticV4Setup::synthetic_compatibility(),
     })
     .unwrap();
-    predecessor.execution = Default::default();
-    let mut card_rules_state = CardRulesAuthoritativeStateV1::default();
-    for player in predecessor.core.players.keys().copied() {
-        card_rules_state
-            .mana
-            .pools
-            .insert(player, Default::default());
-        card_rules_state
-            .turn_history
-            .players
-            .insert(player, Default::default());
-    }
-    card_rules_state.turn_history.turn_number = predecessor.core.turn_number;
-    let mut state = EngineStatePartsV3::new(
-        predecessor.parts(),
-        ExecutionStateV4::default(),
-        card_rules_state,
-    )
-    .unwrap();
+    let mut state = predecessor;
     for raw in objects {
         let id = GameObjectId(*raw);
-        state.predecessor_v5.zones.objects.insert(
+        state.zones.objects.insert(
             id,
             mtgml_state::GameObject {
                 id,
@@ -46,7 +28,7 @@ fn state_with_tapped_permanents(objects: &[u64]) -> EngineStatePartsV3 {
                 face_down: false,
             },
         );
-        state.predecessor_v5.zones.locations.insert(
+        state.zones.locations.insert(
             id,
             ZoneLocation {
                 zone: ZoneKind::Battlefield,
@@ -57,20 +39,19 @@ fn state_with_tapped_permanents(objects: &[u64]) -> EngineStatePartsV3 {
             },
         );
     }
-    for object in state.predecessor_v5.zones.objects.keys().copied() {
-        state.card_rules_state.faces.faces.insert(object, 0);
+    for object in state.zones.objects.keys().copied() {
+        state.card_rules.faces.faces.insert(object, 0);
     }
     let next = objects.iter().max().map_or(1, |max| max + 1);
-    state.predecessor_v5.allocators.next_object_id = GameObjectId(next);
+    state.allocators.next_object_id = GameObjectId(next);
     state
 }
 
-fn untapped(before: &EngineStatePartsV3, objects: &[u64]) -> EngineStatePartsV3 {
+fn untapped(before: &EngineState, objects: &[u64]) -> EngineState {
     let mut after = before.clone();
-    after.predecessor_v5.revision.0 += 1;
+    after.revision.0 += 1;
     for raw in objects {
         after
-            .predecessor_v5
             .zones
             .objects
             .get_mut(&GameObjectId(*raw))
@@ -114,16 +95,14 @@ fn untap_completed_does_not_cover_unlisted_objects() {
 fn untap_completed_does_not_cover_tapping() {
     let mut before = state_with_tapped_permanents(&[10]);
     before
-        .predecessor_v5
         .zones
         .objects
         .get_mut(&GameObjectId(10))
         .unwrap()
         .tapped = false;
     let mut after = before.clone();
-    after.predecessor_v5.revision.0 += 1;
+    after.revision.0 += 1;
     after
-        .predecessor_v5
         .zones
         .objects
         .get_mut(&GameObjectId(10))

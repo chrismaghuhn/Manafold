@@ -51,10 +51,9 @@ fn empty_shell() -> EngineState {
             priority: PriorityState::None,
         },
         combat: None,
-        foundation_sources: BTreeMap::new(),
         zones: ZoneState::default(),
         allocators: IdentityAllocatorState::default(),
-        execution: ExecutionState::default(),
+        execution: ExecutionStateV4::default(),
         random: RandomStateV1::from_entries(
             RootSeed256::from_lower_hex(&"22".repeat(32)).unwrap(),
             vec![CanonicalRandomStreamEntryV1 {
@@ -66,8 +65,20 @@ fn empty_shell() -> EngineState {
         knowledge: KnowledgeStateV2::default(),
         perspective_identities: PerspectiveIdentityStateV2::default(),
         format: FormatState::None,
+        card_rules: CardRulesAuthoritativeStateV1::default(),
     };
+    state.card_rules.turn_history.turn_number = 1;
     for player in players {
+        state
+            .card_rules
+            .mana
+            .pools
+            .insert(player, Default::default());
+        state
+            .card_rules
+            .turn_history
+            .players
+            .insert(player, Default::default());
         state.knowledge.players.insert(player, Default::default());
         state.perspective_identities.players.insert(
             player,
@@ -169,25 +180,8 @@ fn synthetic_reset_is_exactly_deterministic_for_identical_inputs() {
     );
 }
 
-/// The current-format state around a test `EngineState`: an empty execution
-/// and one empty mana pool and turn history per player.
-fn current_state(state: &EngineState) -> EngineStatePartsV3 {
-    let mut parts = state.parts();
-    parts.execution = Default::default();
-    let mut card_rules = CardRulesAuthoritativeStateV1::default();
-    for player in parts.core.players.keys().copied() {
-        card_rules.mana.pools.insert(player, Default::default());
-        card_rules
-            .turn_history
-            .players
-            .insert(player, Default::default());
-    }
-    card_rules.turn_history.turn_number = parts.core.turn_number;
-    EngineStatePartsV3::new(parts, ExecutionStateV4::default(), card_rules).unwrap()
-}
-
 fn v7_digest(state: &EngineState) -> mtgml_model::FullStateDigestV7 {
-    calculate_full_state_digest_v7(&current_state(state)).unwrap()
+    calculate_full_state_digest_v7(state).unwrap()
 }
 
 fn digest_payload_texts(state: &EngineState) -> Vec<String> {
@@ -202,122 +196,11 @@ fn digest_payload_texts(state: &EngineState) -> Vec<String> {
             _ => {}
         }
     }
-    let payload = canonical_state_bytes_v7(&current_state(state)).unwrap();
+    let payload = canonical_state_bytes_v7(state).unwrap();
     let decoded = mtgml_persistence::cbor::decode_canonical(&payload).unwrap();
     let mut texts = Vec::new();
     walk(&decoded, &mut texts);
     texts
-}
-
-fn assembly_continuation(
-    stage: AssemblyStageV2,
-    selected_count: Option<u32>,
-    selected_piece_keys: Vec<u32>,
-    ordered_piece_keys: Vec<u32>,
-) -> ContinuationRecordV2 {
-    ContinuationRecordV2 {
-        id: ContinuationId(1),
-        actor: PlayerId(1),
-        created_at_revision: StateRevision(0),
-        stage_index: stage.stage_index(),
-        payload: ContinuationPayloadV2::SyntheticM2Assembly {
-            stage,
-            selected_count,
-            selected_piece_keys,
-            ordered_piece_keys,
-        },
-    }
-}
-
-/// Builds the pending request that expresses exactly the given stage's
-/// program, so continuation + request stay one authoritative unit.
-fn matching_pending(record: &ContinuationRecordV2) -> PendingDecisionRecordV2 {
-    use mtgml_decision::{AuthoritativeCandidateV2, DecisionDomainV2};
-    let ContinuationPayloadV2::SyntheticM2Assembly {
-        stage,
-        selected_count,
-        selected_piece_keys,
-        ..
-    } = &record.payload
-    else {
-        panic!("matching_pending is only used by synthetic assembly tests")
-    };
-    let actor = record.actor;
-    let pieces: Vec<u32> = match stage {
-        AssemblyStageV2::ChooseCount => Vec::new(),
-        AssemblyStageV2::ChooseMembers => (0..selected_count.unwrap_or(0)).collect(),
-        AssemblyStageV2::OrderMembers => selected_piece_keys.clone(),
-    };
-    let candidates: Vec<AuthoritativeCandidateV2> = pieces
-        .iter()
-        .enumerate()
-        .map(|(index, piece)| AuthoritativeCandidateV2 {
-            candidate_id: mtgml_model::CandidateIdV1(index as u32),
-            visible_intent: mtgml_decision::CandidateIntent::SelectMode { mode_index: *piece },
-            trusted_binding: mtgml_decision::EngineCandidateBinding::SelectMode {
-                mode_index: *piece,
-            },
-        })
-        .collect();
-    let decision = match stage {
-        AssemblyStageV2::ChooseCount => DecisionDomainV2::ChooseNumber {
-            minimum: 0,
-            maximum: 3,
-        },
-        AssemblyStageV2::ChooseMembers => DecisionDomainV2::ChooseMany {
-            minimum: selected_count.unwrap_or(0),
-            maximum: selected_count.unwrap_or(0),
-        },
-        AssemblyStageV2::OrderMembers => {
-            let count = u32::try_from(selected_piece_keys.len()).unwrap_or(0);
-            DecisionDomainV2::Order {
-                minimum: count,
-                maximum: count,
-            }
-        }
-    };
-    PendingDecisionRecordV2 {
-        request: mtgml_decision::AuthoritativeDecisionRequestV2 {
-            decision_id: DecisionId(9),
-            player_decision_id: mtgml_model::PlayerDecisionIdV1(9),
-            state_revision: StateRevision(0),
-            actor,
-            visibility: mtgml_decision::DecisionVisibility::Public,
-            decision,
-            candidates,
-            continuation_id: Some(record.id),
-        },
-    }
-}
-
-fn state_with_continuation(record: ContinuationRecordV2) -> EngineState {
-    let mut state = empty_shell();
-    // The perspective-local player-decision allocator must cover the issued
-    // visible identity of the attached pending request.
-    let identity = state
-        .perspective_identities
-        .players
-        .get_mut(&record.actor)
-        .unwrap();
-    identity.next_player_decision_id =
-        mtgml_model::PlayerDecisionIdV1(identity.next_player_decision_id.0.max(10));
-    state.allocators.next_decision_id = DecisionId(state.allocators.next_decision_id.0.max(10));
-    state.execution.continuations.insert(record.id, record);
-    let pending_request = {
-        let record = state
-            .execution
-            .continuations
-            .get(&ContinuationId(1))
-            .unwrap();
-        matching_pending(record)
-    };
-    if let Some(pending) = state.execution.pending_decision.as_mut() {
-        *pending = pending_request;
-    } else {
-        state.execution.pending_decision = Some(pending_request);
-    }
-    state.allocators.next_continuation_id = ContinuationId(2);
-    state
 }
 
 fn lifecycle_fixture() -> EngineState {
@@ -371,4 +254,3 @@ include!("tests/lifecycle.rs");
 include!("tests/batch_d.rs");
 include!("tests/batch_e.rs");
 include!("tests/zones_allocators.rs");
-include!("tests/batch_f.rs");

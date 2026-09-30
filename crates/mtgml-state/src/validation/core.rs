@@ -1,5 +1,4 @@
-//! Ownership: V4 temporal, priority, combat, and foundation-source
-//! structural validation. This module checks representation and references;
+//! Ownership: V4 temporal, priority and combat structural validation. This module checks representation and references;
 //! it does not decide Magic legality.
 
 use std::collections::BTreeSet;
@@ -7,7 +6,7 @@ use std::collections::BTreeSet;
 use mtgml_model::{GameObjectId, PlayerId};
 
 use super::EngineStateViolation;
-use crate::core::{ControlHistory, PriorityState, TurnPosition};
+use crate::core::{PriorityState, TurnPosition};
 use crate::engine::EngineState;
 
 pub(super) fn validate_core_structure(state: &EngineState) -> Result<(), EngineStateViolation> {
@@ -26,17 +25,6 @@ pub(super) fn validate_core_structure(state: &EngineState) -> Result<(), EngineS
     }
     if let Some(combat) = &state.combat {
         validate_combat(state, combat, &players)?;
-    }
-    for (object, source) in &state.foundation_sources {
-        if !state.zones.objects.contains_key(object)
-            || !control_history_is_coherent(
-                &source.control_history,
-                state.core.turn_number,
-                state.core.position,
-            )
-        {
-            return Err(EngineStateViolation::FoundationSource);
-        }
     }
     Ok(())
 }
@@ -94,22 +82,4 @@ fn validate_combat(
         }
     }
     Ok(())
-}
-
-fn control_history_is_coherent(
-    history: &ControlHistory,
-    current_turn: u64,
-    current_position: TurnPosition,
-) -> bool {
-    match history {
-        ControlHistory::BeforeTurnStart { turn_number } => *turn_number <= current_turn,
-        ControlHistory::DuringTurn {
-            turn_number,
-            boundary,
-        } => {
-            *turn_number <= current_turn
-                && (*turn_number < current_turn
-                    || boundary.canonical_rank() <= current_position.canonical_rank())
-        }
-    }
 }

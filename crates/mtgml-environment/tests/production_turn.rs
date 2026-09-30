@@ -36,12 +36,7 @@ impl Game {
     }
 
     fn core(&self) -> mtgml_state::CoreRulesState {
-        self.controller
-            .checkpoint()
-            .unwrap()
-            .state
-            .predecessor_v5
-            .core
+        self.controller.checkpoint().unwrap().state.core
     }
 
     fn at(&self, position: TurnPosition, turn: u64) -> bool {
@@ -86,7 +81,7 @@ impl Game {
     /// Cards in `player`'s `zone`; battlefield locations carry no player, so
     /// permanents count by controller.
     fn zone_count(&self, player: PlayerId, zone: ZoneKind) -> usize {
-        let state = self.controller.checkpoint().unwrap().state.predecessor_v5;
+        let state = self.controller.checkpoint().unwrap().state;
         state
             .zones
             .objects
@@ -290,14 +285,8 @@ fn restored_runtime_continues_from_the_restored_checkpoint() {
     assert_eq!(game.controller.checkpoint().unwrap(), saved);
     game.respond(true).unwrap();
     assert_eq!(
-        game.controller
-            .checkpoint()
-            .unwrap()
-            .state
-            .predecessor_v5
-            .revision
-            .0,
-        saved.state.predecessor_v5.revision.0 + 1
+        game.controller.checkpoint().unwrap().state.revision.0,
+        saved.state.revision.0 + 1
     );
 }
 

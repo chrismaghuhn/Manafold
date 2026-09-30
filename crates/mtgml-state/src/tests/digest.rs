@@ -19,8 +19,8 @@ fn card_rules_state_rejects_empty_counter_maps() {
     );
     assert!(state.validate().is_err());
     assert!(state.canonical_value().is_err());
-    let mut current = current_state(&synthetic_state());
-    current.card_rules_state = state;
+    let mut current = synthetic_state();
+    current.card_rules = state;
     assert!(calculate_full_state_digest_v7(&current).is_err());
 }
 
@@ -39,11 +39,8 @@ fn card_rules_state_rejects_empty_counter_maps() {
 fn v7_digest_changes_for_each_state_component_mutation() {
     type Mutation = (&'static str, fn(&mut EngineState));
     let mutations: Vec<Mutation> = vec![
-        ("revision_and_pending_revision", |state| {
+        ("revision", |state| {
             state.revision = StateRevision(1);
-            if let Some(pending) = state.execution.pending_decision.as_mut() {
-                pending.request.state_revision = StateRevision(1);
-            }
         }),
         ("core_life", |state| {
             state.core.players.get_mut(&PlayerId(1)).unwrap().life = 39;
@@ -62,6 +59,7 @@ fn v7_digest_changes_for_each_state_component_mutation() {
         }),
         ("core_turn_number", |state| {
             state.core.turn_number += 1;
+            state.card_rules.turn_history.turn_number += 1;
         }),
         ("core_position", |state| {
             state.core.position = TurnPosition::Beginning {
@@ -383,18 +381,18 @@ fn v7_digest_binds_combat_inner_values() {
 
 #[test]
 fn v7_digest_binds_each_card_rules_family() {
-    type Mutation = (&'static str, fn(&mut EngineStatePartsV3));
+    type Mutation = (&'static str, fn(&mut EngineState));
     let mutations: Vec<Mutation> = vec![
         ("mana_unrestricted", |state| {
-            state.card_rules_state.mana.pools.get_mut(&PlayerId(1)).unwrap().unrestricted[0] = 1;
+            state.card_rules.mana.pools.get_mut(&PlayerId(1)).unwrap().unrestricted[0] = 1;
         }),
         ("mana_creature_spell_only", |state| {
-            state.card_rules_state.mana.pools.get_mut(&PlayerId(1)).unwrap().creature_spell_only
+            state.card_rules.mana.pools.get_mut(&PlayerId(1)).unwrap().creature_spell_only
                 [5] = 1;
         }),
         ("history_land_plays_used", |state| {
             state
-                .card_rules_state
+                .card_rules
                 .turn_history
                 .players
                 .get_mut(&PlayerId(1))
@@ -403,7 +401,7 @@ fn v7_digest_binds_each_card_rules_family() {
         }),
         ("history_lost_life", |state| {
             state
-                .card_rules_state
+                .card_rules
                 .turn_history
                 .players
                 .get_mut(&PlayerId(2))
@@ -412,47 +410,46 @@ fn v7_digest_binds_each_card_rules_family() {
         }),
         ("counter", |state| {
             state
-                .card_rules_state
+                .card_rules
                 .counters
                 .counters
                 .insert(GameObjectId(1), BTreeMap::from([(CounterKindV1::Lore, 1)]));
         }),
         ("face", |state| {
             // Face authority must cover every live object.
-            state.card_rules_state.faces.faces = BTreeMap::from([
+            state.card_rules.faces.faces = BTreeMap::from([
                 (GameObjectId(1), 0),
                 (GameObjectId(2), 0),
             ]);
         }),
         ("ability", |state| {
-            state.card_rules_state.abilities.by_instance.insert(
+            state.card_rules.abilities.by_instance.insert(
                 AbilityInstanceId(1),
                 AbilityAuthorityV1 {
                     source: GameObjectId(1),
                     ability_key: 0,
                 },
             );
-            state.predecessor_v5.allocators.next_ability_id = AbilityInstanceId(2);
-            state.card_rules_state.faces.faces = BTreeMap::from([
+            state.allocators.next_ability_id = AbilityInstanceId(2);
+            state.card_rules.faces.faces = BTreeMap::from([
                 (GameObjectId(1), 0),
                 (GameObjectId(2), 0),
             ]);
         }),
         ("ability_identity_mapping", |state| {
-            state.card_rules_state.abilities.by_instance.insert(
+            state.card_rules.abilities.by_instance.insert(
                 AbilityInstanceId(1),
                 AbilityAuthorityV1 {
                     source: GameObjectId(1),
                     ability_key: 0,
                 },
             );
-            state.predecessor_v5.allocators.next_ability_id = AbilityInstanceId(2);
-            state.card_rules_state.faces.faces = BTreeMap::from([
+            state.allocators.next_ability_id = AbilityInstanceId(2);
+            state.card_rules.faces.faces = BTreeMap::from([
                 (GameObjectId(1), 0),
                 (GameObjectId(2), 0),
             ]);
             let identity = state
-                .predecessor_v5
                 .perspective_identities
                 .players
                 .get_mut(&PlayerId(1))
@@ -466,7 +463,7 @@ fn v7_digest_binds_each_card_rules_family() {
             identity.next_opaque_ability_id = OpaqueAbilityId(2);
         }),
     ];
-    let baseline = current_state(&synthetic_state());
+    let baseline = synthetic_state();
     let baseline_digest = calculate_full_state_digest_v7(&baseline).unwrap();
     let mut seen = BTreeMap::new();
     for (name, mutate) in mutations {
