@@ -18,9 +18,6 @@ fn every_shared_negative_fixture_is_rejected_with_the_expected_code() {
     verify_negative_fixture_directory(&repository_root().join("wire/negative")).unwrap();
 }
 
-
-
-
 #[test]
 fn information_state_digest_v2_known_answer() {
     let input = InformationStateDigestInputV2 {

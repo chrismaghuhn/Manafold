@@ -3,9 +3,7 @@
 //! These are the permanent Task-1 contract tests. The RED phase expects a
 //! compile failure caused ONLY by the missing Task-1 production types/API.
 
-use mtgml_model::{
-    CheckpointDigestV5, ExecutionIdentityV1, ExecutionProgramV1, SemanticContractIdV1,
-};
+use mtgml_model::{ExecutionIdentityV1, ExecutionProgramV1, SemanticContractIdV1};
 
 #[test]
 fn execution_program_wire_values_are_exact() {
@@ -131,12 +129,4 @@ fn semantic_contract_id_json_is_64_lowercase_hex() {
     assert!(
         serde_json::from_value::<SemanticContractIdV1>(serde_json::json!("CD".repeat(32))).is_err()
     );
-}
-
-#[test]
-fn checkpoint_digest_v5_is_a_distinct_v5_domain_newtype() {
-    assert_eq!(CheckpointDigestV5::DOMAIN, "mtgml.checkpoint-digest.v5");
-    let digest = CheckpointDigestV5::from_digest_bytes([7; 32]);
-    assert_eq!(digest.as_str().len(), 64);
-    assert!(CheckpointDigestV5::parse(digest.as_str()).is_ok());
 }

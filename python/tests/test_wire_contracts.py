@@ -11,7 +11,6 @@ sys.path.insert(0, str(ROOT / "python" / "src"))
 from mtgml.errors import WireError
 from mtgml.wire import decode_canonical, encode_canonical
 
-
 DELETED_CONTRACTS: tuple[str, ...] = tuple(
     f"{name}.v{version}"
     for name in ("replay-manifest", "authoritative-replay")

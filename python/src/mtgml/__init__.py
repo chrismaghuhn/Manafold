@@ -89,9 +89,6 @@ from .observation import (
     PlayerStepV4,
 )
 from .persistence import (
-    calculate_checkpoint_digest_v5,
-    calculate_checkpoint_digest_v6,
-    calculate_checkpoint_digest_v7,
     calculate_checkpoint_digest_v8,
 )
 from .player_client import PlayerClient
@@ -199,9 +196,6 @@ __all__ = [
     "VisibleCandidateV2",
     "VisibleCandidateV3",
     "VisibleCandidateV4",
-    "calculate_checkpoint_digest_v5",
-    "calculate_checkpoint_digest_v6",
-    "calculate_checkpoint_digest_v7",
     "calculate_checkpoint_digest_v8",
     "compute_information_state_digest_v2",
     "compute_information_state_digest_v3",

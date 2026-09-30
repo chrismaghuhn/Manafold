@@ -24,32 +24,12 @@ DIGEST_ENVELOPE_ID = "mtgml.digest-envelope.v1"
 SHA256_ID = "sha-256"
 CANONICAL_CBOR_ID = "mtgml.canonical-cbor.v1"
 MAX_IDENTIFIER_BYTES = 255
-CHECKPOINT_DOMAIN = "mtgml.checkpoint-digest.v3"
-CHECKPOINT_INPUT_SCHEMA = "environment-checkpoint-digest-input.v3"
-CHECKPOINT_DOMAIN_V4 = "mtgml.checkpoint-digest.v4"
-CHECKPOINT_INPUT_SCHEMA_V4 = "environment-checkpoint-digest-input.v4"
-FULL_STATE_DOMAIN_V4 = "mtgml.full-state-digest.v4"
-FULL_STATE_INPUT_SCHEMA_V4 = "full-state-digest-input.v4"
 FULL_STATE_DOMAIN_V5 = "mtgml.full-state-digest.v5"
 FULL_STATE_INPUT_SCHEMA_V5 = "full-state-digest-input.v5"
-FULL_STATE_DOMAIN_V3 = "mtgml.full-state-digest.v3"
-FULL_STATE_INPUT_SCHEMA_V3 = "full-state-digest-input.v3"
 RULES_CONTRACT_DOMAIN = "mtgml.rules-contract.v1"
 RULES_CONTRACT_INPUT_SCHEMA = "rules-contract-manifest.v1"
 SEMANTIC_CONTRACT_DOMAIN = "mtgml.semantic-contract.v1"
 SEMANTIC_CONTRACT_INPUT_SCHEMA = "semantic-contract-manifest.v1"
-CHECKPOINT_DOMAIN_V5 = "mtgml.checkpoint-digest.v5"
-CHECKPOINT_INPUT_SCHEMA_V5 = "environment-checkpoint-digest-input.v5"
-CHECKPOINT_CODEC_ID_V5 = "in-memory-reference"
-CHECKPOINT_CODEC_VERSION_V5 = "5"
-CHECKPOINT_DOMAIN_V6 = "mtgml.checkpoint-digest.v6"
-CHECKPOINT_INPUT_SCHEMA_V6 = "environment-checkpoint-digest-input.v6"
-CHECKPOINT_CODEC_ID_V6 = "in-memory-reference"
-CHECKPOINT_CODEC_VERSION_V6 = "6"
-CHECKPOINT_DOMAIN_V7 = "mtgml.checkpoint-digest.v7"
-CHECKPOINT_INPUT_SCHEMA_V7 = "environment-checkpoint-digest-input.v7"
-CHECKPOINT_CODEC_ID_V7 = "in-memory-reference"
-CHECKPOINT_CODEC_VERSION_V7 = "7"
 CHECKPOINT_DOMAIN_V8 = "mtgml.checkpoint-digest.v8"
 CHECKPOINT_INPUT_SCHEMA_V8 = "environment-checkpoint-digest-input.v8"
 CHECKPOINT_CODEC_ID_V8 = "in-memory-reference"
@@ -380,114 +360,6 @@ def _episode_status_value(status: EpisodeStatus) -> list[PersistenceValue]:
     return [status.kind, [status.reason.value, players]]
 
 
-def calculate_checkpoint_digest_v3(
-    full_state_digest: str,
-    status: EpisodeStatus,
-    counters: dict[str, int],
-    codec_id: str,
-    semantic_version: str,
-) -> str:
-    full_state_digest = require_digest(full_state_digest)
-    reference: dict[str, object] = {
-        "envelope_version": DIGEST_ENVELOPE_ID,
-        "algorithm_id": SHA256_ID,
-        "semantic_domain": "mtgml.full-state-digest.v3",
-        "payload_codec_id": CANONICAL_CBOR_ID,
-        "input_schema_id": "full-state-digest-input.v3",
-        "digest_bytes": bytes.fromhex(full_state_digest),
-    }
-    counter_names = (
-        "decisions_submitted",
-        "accepted_transitions",
-        "rule_events_emitted",
-        "resource_units_consumed",
-        "wall_clock_elapsed_millis",
-    )
-    validated_counter_values: list[int] = []
-    for name in counter_names:
-        value = counters.get(name)
-        if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 2**64 - 1:
-            raise _error("value_out_of_range", f"counter {name} is outside u64")
-        validated_counter_values.append(value)
-    if not isinstance(codec_id, str) or not codec_id:
-        raise _error("semantic_validation", "codec_id must be non-empty")
-    if not isinstance(semantic_version, str) or not semantic_version:
-        raise _error("semantic_validation", "semantic_version must be non-empty")
-    if validated_counter_values[1] > validated_counter_values[0]:
-        raise _error(
-            "semantic_validation",
-            "accepted transitions exceed submitted decisions",
-        )
-    counter_values: list[PersistenceValue] = list(validated_counter_values)
-    payload = encode_canonical(
-        [
-            CHECKPOINT_INPUT_SCHEMA,
-            CHECKPOINT_DOMAIN,
-            digest_reference_value(reference),
-            _episode_status_value(status),
-            counter_values,
-            [codec_id, semantic_version],
-        ]
-    )
-    return hashlib.sha256(
-        encode_envelope(CHECKPOINT_DOMAIN, CHECKPOINT_INPUT_SCHEMA, payload)
-    ).hexdigest()
-
-
-def calculate_checkpoint_digest_v4(
-    full_state_digest: str,
-    status: EpisodeStatus,
-    counters: dict[str, int],
-    codec_id: str,
-    semantic_version: str,
-) -> str:
-    full_state_digest = require_digest(full_state_digest)
-    reference: dict[str, object] = {
-        "envelope_version": DIGEST_ENVELOPE_ID,
-        "algorithm_id": SHA256_ID,
-        "semantic_domain": FULL_STATE_DOMAIN_V4,
-        "payload_codec_id": CANONICAL_CBOR_ID,
-        "input_schema_id": FULL_STATE_INPUT_SCHEMA_V4,
-        "digest_bytes": bytes.fromhex(full_state_digest),
-    }
-    counter_names = (
-        "decisions_submitted",
-        "accepted_transitions",
-        "rule_events_emitted",
-        "resource_units_consumed",
-        "wall_clock_elapsed_millis",
-    )
-    validated_counter_values: list[int] = []
-    for name in counter_names:
-        value = counters.get(name)
-        if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 2**64 - 1:
-            raise _error("value_out_of_range", f"counter {name} is outside u64")
-        validated_counter_values.append(value)
-    if not isinstance(codec_id, str) or not codec_id:
-        raise _error("semantic_validation", "codec_id must be non-empty")
-    if not isinstance(semantic_version, str) or not semantic_version:
-        raise _error("semantic_validation", "semantic_version must be non-empty")
-    if validated_counter_values[1] > validated_counter_values[0]:
-        raise _error(
-            "semantic_validation",
-            "accepted transitions exceed submitted decisions",
-        )
-    counter_values: list[PersistenceValue] = list(validated_counter_values)
-    payload = encode_canonical(
-        [
-            CHECKPOINT_INPUT_SCHEMA_V4,
-            CHECKPOINT_DOMAIN_V4,
-            digest_reference_value(reference),
-            _episode_status_value(status),
-            counter_values,
-            [codec_id, semantic_version],
-        ]
-    )
-    return hashlib.sha256(
-        encode_envelope(CHECKPOINT_DOMAIN_V4, CHECKPOINT_INPUT_SCHEMA_V4, payload)
-    ).hexdigest()
-
-
 _CAPABILITY_KEY_FIXED_HEADS = ("rules", "mechanic", "decision", "visibility", "tooling")
 
 
@@ -666,132 +538,6 @@ def calculate_semantic_contract_id_v1(manifest: dict[str, object]) -> str:
     ).hexdigest()
 
 
-def calculate_checkpoint_digest_v5(
-    full_state_digest: str,
-    status: EpisodeStatus,
-    counters: dict[str, int],
-    codec_id: str,
-    semantic_version: str,
-    program_kind: str,
-    semantic_contract_id: str,
-) -> str:
-    """Mechanical mirror of the Rust V5 checkpoint digest (spec §9, ADR 0055 §2.7).
-
-    Byte-exact: envelope mtgml.digest-envelope.v1 / sha-256 /
-    mtgml.canonical-cbor.v1 over the canonical V5 fixed 7-array payload, where
-    elements 1-6 are the V4-verified facts with V5 schema/domain strings and
-    element 7 is the ExecutionIdentityV1 encoded as
-    ``[program_kind_variant, semantic_contract_id_32bytes]``.
-
-    The full-state reference validates UNCHANGED against the V4 domain and
-    input schema (``mtgml.full-state-digest.v4`` + ``full-state-digest-input.v4``).
-    The codec pair is FROZEN to ``["in-memory-reference", "5"]``.
-    """
-    full_state_digest = require_digest(full_state_digest)
-    reference: dict[str, object] = {
-        "envelope_version": DIGEST_ENVELOPE_ID,
-        "algorithm_id": SHA256_ID,
-        "semantic_domain": FULL_STATE_DOMAIN_V4,
-        "payload_codec_id": CANONICAL_CBOR_ID,
-        "input_schema_id": FULL_STATE_INPUT_SCHEMA_V4,
-        "digest_bytes": bytes.fromhex(full_state_digest),
-    }
-    counter_names = (
-        "decisions_submitted",
-        "accepted_transitions",
-        "rule_events_emitted",
-        "resource_units_consumed",
-        "wall_clock_elapsed_millis",
-    )
-    validated_counter_values: list[int] = []
-    for name in counter_names:
-        value = counters.get(name)
-        if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 2**64 - 1:
-            raise _error("value_out_of_range", f"counter {name} is outside u64")
-        validated_counter_values.append(value)
-    if codec_id != CHECKPOINT_CODEC_ID_V5 or semantic_version != CHECKPOINT_CODEC_VERSION_V5:
-        raise _error("semantic_validation", "checkpoint codec identity is not V5")
-    if program_kind not in _VALID_PROGRAM_KINDS:
-        raise _error("semantic_validation", "execution program kind is unknown")
-    if not isinstance(semantic_contract_id, str):
-        raise _error("semantic_validation", "semantic_contract_id must be hex text")
-    contract_bytes = require_digest(semantic_contract_id)
-    counter_values: list[PersistenceValue] = list(validated_counter_values)
-    payload = encode_canonical(
-        [
-            CHECKPOINT_INPUT_SCHEMA_V5,
-            CHECKPOINT_DOMAIN_V5,
-            digest_reference_value(reference),
-            _episode_status_value(status),
-            counter_values,
-            [codec_id, semantic_version],
-            [[program_kind, None], bytes.fromhex(contract_bytes)],
-        ]
-    )
-    return hashlib.sha256(
-        encode_envelope(CHECKPOINT_DOMAIN_V5, CHECKPOINT_INPUT_SCHEMA_V5, payload)
-    ).hexdigest()
-
-
-def calculate_checkpoint_digest_v6(
-    full_state_digest: str,
-    status: EpisodeStatus,
-    counters: dict[str, int],
-    codec_id: str,
-    semantic_version: str,
-    program_kind: str,
-    semantic_contract_id: str,
-) -> str:
-    """Mechanical mirror of the V6 checkpoint digest.
-
-    V6 binds the V5 full-state digest reference and the same typed execution
-    identity into a new checkpoint domain/schema and codec version 6.
-    """
-    full_state_digest = require_digest(full_state_digest)
-    reference: dict[str, object] = {
-        "envelope_version": DIGEST_ENVELOPE_ID,
-        "algorithm_id": SHA256_ID,
-        "semantic_domain": FULL_STATE_DOMAIN_V5,
-        "payload_codec_id": CANONICAL_CBOR_ID,
-        "input_schema_id": FULL_STATE_INPUT_SCHEMA_V5,
-        "digest_bytes": bytes.fromhex(full_state_digest),
-    }
-    counter_names = (
-        "decisions_submitted",
-        "accepted_transitions",
-        "rule_events_emitted",
-        "resource_units_consumed",
-        "wall_clock_elapsed_millis",
-    )
-    counter_values: list[PersistenceValue] = []
-    for name in counter_names:
-        value = counters.get(name)
-        if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 2**64 - 1:
-            raise _error("value_out_of_range", f"counter {name} is outside u64")
-        counter_values.append(value)
-    if codec_id != CHECKPOINT_CODEC_ID_V6 or semantic_version != CHECKPOINT_CODEC_VERSION_V6:
-        raise _error("semantic_validation", "checkpoint codec identity is not V6")
-    if program_kind not in _VALID_PROGRAM_KINDS:
-        raise _error("semantic_validation", "execution program kind is unknown")
-    if not isinstance(semantic_contract_id, str):
-        raise _error("semantic_validation", "semantic_contract_id must be hex text")
-    contract_bytes = require_digest(semantic_contract_id)
-    payload = encode_canonical(
-        [
-            CHECKPOINT_INPUT_SCHEMA_V6,
-            CHECKPOINT_DOMAIN_V6,
-            digest_reference_value(reference),
-            _episode_status_value(status),
-            counter_values,
-            [codec_id, semantic_version],
-            [[program_kind, None], bytes.fromhex(contract_bytes)],
-        ]
-    )
-    return hashlib.sha256(
-        encode_envelope(CHECKPOINT_DOMAIN_V6, CHECKPOINT_INPUT_SCHEMA_V6, payload)
-    ).hexdigest()
-
-
 def calculate_content_contract_id_v1(canonical_manifest: bytes) -> str:
     """Mechanical V1 content identity over canonical manifest payload bytes."""
     decode_canonical(canonical_manifest)
@@ -801,59 +547,6 @@ def calculate_content_contract_id_v1(canonical_manifest: bytes) -> str:
             CONTENT_CONTRACT_INPUT_SCHEMA_V1,
             canonical_manifest,
         )
-    ).hexdigest()
-
-
-def calculate_checkpoint_digest_v7(
-    full_state_digest: str,
-    status: EpisodeStatus,
-    counters: dict[str, int],
-    codec_id: str,
-    semantic_version: str,
-    program_kind: str,
-    semantic_contract_id: str,
-) -> str:
-    """Mechanical mirror of the detached V7 checkpoint digest contract."""
-    full_state_digest = require_digest(full_state_digest)
-    reference: dict[str, object] = {
-        "envelope_version": DIGEST_ENVELOPE_ID,
-        "algorithm_id": SHA256_ID,
-        "semantic_domain": FULL_STATE_DOMAIN_V6,
-        "payload_codec_id": CANONICAL_CBOR_ID,
-        "input_schema_id": FULL_STATE_INPUT_SCHEMA_V6,
-        "digest_bytes": bytes.fromhex(full_state_digest),
-    }
-    names = (
-        "decisions_submitted",
-        "accepted_transitions",
-        "rule_events_emitted",
-        "resource_units_consumed",
-        "wall_clock_elapsed_millis",
-    )
-    values: list[PersistenceValue] = []
-    for name in names:
-        value = counters.get(name)
-        if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 2**64 - 1:
-            raise _error("value_out_of_range", f"counter {name} is outside u64")
-        values.append(value)
-    if codec_id != CHECKPOINT_CODEC_ID_V7 or semantic_version != CHECKPOINT_CODEC_VERSION_V7:
-        raise _error("semantic_validation", "checkpoint codec identity is not V7")
-    if program_kind not in _VALID_PROGRAM_KINDS:
-        raise _error("semantic_validation", "execution program kind is unknown")
-    contract_id = require_digest(semantic_contract_id)
-    payload = encode_canonical(
-        [
-            CHECKPOINT_INPUT_SCHEMA_V7,
-            CHECKPOINT_DOMAIN_V7,
-            digest_reference_value(reference),
-            _episode_status_value(status),
-            values,
-            [codec_id, semantic_version],
-            [[program_kind, None], bytes.fromhex(contract_id)],
-        ]
-    )
-    return hashlib.sha256(
-        encode_envelope(CHECKPOINT_DOMAIN_V7, CHECKPOINT_INPUT_SCHEMA_V7, payload)
     ).hexdigest()
 
 
@@ -889,6 +582,8 @@ def calculate_checkpoint_digest_v8(
         if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 2**64 - 1:
             raise _error("value_out_of_range", f"counter {name} is outside u64")
         values.append(value)
+    if counters["accepted_transitions"] > counters["decisions_submitted"]:
+        raise _error("semantic_validation", "accepted transitions exceed submitted decisions")
     if codec_id != CHECKPOINT_CODEC_ID_V8 or semantic_version != CHECKPOINT_CODEC_VERSION_V8:
         raise _error("semantic_validation", "checkpoint codec identity is not V8")
     if program_kind not in _VALID_PROGRAM_KINDS:

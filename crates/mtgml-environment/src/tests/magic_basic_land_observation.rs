@@ -959,50 +959,6 @@ fn verified_catalog_rejects_ability_key_missing_from_the_selected_face() {
 }
 
 #[test]
-fn verified_catalog_rejects_attachment_without_admitted_profile_semantics() {
-    let mut parts = basic_land_parts(seed());
-    let battlefield: Vec<_> = parts
-        .predecessor_v5
-        .zones
-        .locations
-        .iter()
-        .filter(|(_, location)| location.zone == mtgml_model::ZoneKind::Battlefield)
-        .map(|(object, _)| *object)
-        .collect();
-    let Some(source) = battlefield.first() else {
-        panic!("fixture must have a battlefield object");
-    };
-    parts.card_rules_state.attachments.by_source.insert(
-        *source,
-        mtgml_state::AttachmentV1 {
-            target: *source,
-            timestamp: mtgml_state::AttachmentTimestampV1 {
-                revision: parts.predecessor_v5.revision,
-                operation_ordinal: 0,
-            },
-        },
-    );
-    parts.validate().unwrap();
-
-    let catalog = catalog_for(&[1, 2]);
-    let (identity, semantic, rules) = execution_authority(&catalog);
-    let checkpoint = EnvironmentCheckpointV7::new(
-        parts,
-        EpisodeStatus::Running,
-        EnvironmentLimitCounters::default(),
-        identity,
-    )
-    .unwrap();
-    // The state/checkpoint digests were freshly computed and validate; the
-    // rejection belongs to content/profile admission, not stale identity bytes.
-    checkpoint.validate().unwrap();
-    assert_eq!(
-        checkpoint.restore_with_verified_contracts(&semantic, &rules, Some(&catalog)),
-        Err(crate::CheckpointV7Error::ContractBinding)
-    );
-}
-
-#[test]
 fn hidden_rng_change_preserves_basic_land_observation_bytes_and_digest() {
     let a = basic_land_parts(seed());
     let other_seed = mtgml_random::RootSeed256::from_lower_hex(&"99".repeat(32)).unwrap();

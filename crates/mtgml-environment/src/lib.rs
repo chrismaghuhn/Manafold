@@ -6,8 +6,6 @@
 
 pub mod basic_land_runtime_v8;
 mod boundary;
-pub mod checkpoint;
-pub mod checkpoint_v7;
 pub mod checkpoint_v8;
 mod controller;
 pub mod controller_successor;
@@ -26,16 +24,6 @@ pub use basic_land_runtime_v8::{
     BasicLandReplayV8ExecutionReport, BasicLandRuntimeOutputV8,
 };
 pub use boundary::{submit_response_bytes, PlayerBoundaryError};
-pub use checkpoint::{
-    CheckpointValidationError, EnvironmentCheckpointV5, EnvironmentCheckpointV6,
-    CHECKPOINT_CODEC_ID_V5, CHECKPOINT_CODEC_ID_V6, CHECKPOINT_CODEC_SEMANTIC_VERSION_V5,
-    CHECKPOINT_CODEC_SEMANTIC_VERSION_V6, ENVIRONMENT_CHECKPOINT_SCHEMA_V5,
-    ENVIRONMENT_CHECKPOINT_SCHEMA_V6,
-};
-pub use checkpoint_v7::{
-    CheckpointV7Error, EnvironmentCheckpointV7, CHECKPOINT_CODEC_ID_V7,
-    CHECKPOINT_CODEC_SEMANTIC_VERSION_V7, ENVIRONMENT_CHECKPOINT_SCHEMA_V7,
-};
 pub use checkpoint_v8::{
     CheckpointV8Error, EnvironmentCheckpointV8, CHECKPOINT_CODEC_ID_V8,
     CHECKPOINT_CODEC_SEMANTIC_VERSION_V8, ENVIRONMENT_CHECKPOINT_SCHEMA_V8,

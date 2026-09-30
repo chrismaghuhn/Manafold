@@ -630,4 +630,54 @@ mod tests {
             Err(CheckpointV8Error::Identity)
         );
     }
+
+    #[test]
+    fn restore_rejects_attachment_without_admitted_profile_semantics() {
+        let admission = crate::basic_land_runtime_v8::fixtures::game_admission();
+        let restore = |state: EngineStatePartsV3| {
+            EnvironmentCheckpointV8::new_for_basic_land_profile(
+                &admission,
+                state,
+                EpisodeStatus::Running,
+                EnvironmentLimitCounters::default(),
+                admission.execution_identity().clone(),
+            )?
+            .restore_with_verified_contracts_for_basic_land_profile(
+                &admission,
+                admission.semantic_contract_manifest(),
+                admission.rules_contract_manifest(),
+                Some(admission.verified_catalog()),
+            )
+        };
+        let mut state = crate::basic_land_runtime_v8::fixtures::state_with_two_lands();
+        mtgml_rules::install_basic_land_request_v4(
+            &admission,
+            &mut state,
+            mtgml_model::PlayerId(1),
+            &EpisodeStatus::Running,
+        )
+        .unwrap();
+        restore(state.clone()).unwrap();
+
+        let mut attached = state;
+        let source = *attached
+            .predecessor_v5
+            .zones
+            .locations
+            .iter()
+            .find(|(_, location)| location.zone == mtgml_model::ZoneKind::Battlefield)
+            .map(|(object, _)| object)
+            .expect("fixture has a battlefield object");
+        attached.card_rules_state.attachments.by_source.insert(
+            source,
+            mtgml_state::AttachmentV1 {
+                target: source,
+                timestamp: mtgml_state::AttachmentTimestampV1 {
+                    revision: attached.predecessor_v5.revision,
+                    operation_ordinal: 0,
+                },
+            },
+        );
+        assert_eq!(restore(attached), Err(CheckpointV8Error::ContractBinding));
+    }
 }

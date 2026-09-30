@@ -6,8 +6,7 @@ use mtgml_card_ir::{
     decode_content_manifest_v1, encode_content_manifest_v1, ContentContractManifestV1,
 };
 use mtgml_model::{
-    ContentContractIdV1, RulesContractManifestV1, SemanticContractIdV1,
-    SemanticContractManifestV1,
+    ContentContractIdV1, RulesContractManifestV1, SemanticContractIdV1, SemanticContractManifestV1,
 };
 use serde::de::Error as DeError;
 use serde::ser::SerializeStruct;

@@ -221,18 +221,14 @@ macro_rules! domain_digest {
     };
 }
 
-domain_digest!(FullStateDigest, "mtgml.full-state-digest.v1");
 domain_digest!(PublicStateDigest, "mtgml.public-state-digest.v1");
 domain_digest!(InformationStateDigest, "mtgml.information-state-digest.v1");
 domain_digest!(ObservationDigest, "mtgml.observation-digest.v1");
 domain_digest!(CandidateSetDigest, "mtgml.candidate-set-digest.v1");
 domain_digest!(ContentDigest, "mtgml.content-digest.v1");
 domain_digest!(ReplayDigest, "mtgml.replay-digest.v1");
-domain_digest!(CheckpointDigest, "mtgml.checkpoint-digest.v1");
 
 // === V2 digest domains ===
-domain_digest!(FullStateDigestV2, "mtgml.full-state-digest.v2");
-domain_digest!(CheckpointDigestV2, "mtgml.checkpoint-digest.v2");
 domain_digest!(
     InformationStateDigestV2,
     "mtgml.information-state-digest.v2"
@@ -337,10 +333,6 @@ macro_rules! raw_digest {
     };
 }
 
-raw_digest!(FullStateDigestV3, "mtgml.full-state-digest.v3");
-raw_digest!(CheckpointDigestV3, "mtgml.checkpoint-digest.v3");
-raw_digest!(FullStateDigestV4, "mtgml.full-state-digest.v4");
-raw_digest!(CheckpointDigestV4, "mtgml.checkpoint-digest.v4");
 raw_digest!(FullStateDigestV5, "mtgml.full-state-digest.v5");
 raw_digest!(FullStateDigestV6, "mtgml.full-state-digest.v6");
 raw_digest!(FullStateDigestV7, "mtgml.full-state-digest.v7");
@@ -348,9 +340,6 @@ raw_digest!(FullStateDigestV7, "mtgml.full-state-digest.v7");
 // === V5 contract identity and digest domains (spec §5) ===
 raw_digest!(RulesContractIdV1, "mtgml.rules-contract.v1");
 raw_digest!(SemanticContractIdV1, "mtgml.semantic-contract.v1");
-raw_digest!(CheckpointDigestV5, "mtgml.checkpoint-digest.v5");
-raw_digest!(CheckpointDigestV6, "mtgml.checkpoint-digest.v6");
-raw_digest!(CheckpointDigestV7, "mtgml.checkpoint-digest.v7");
 raw_digest!(CheckpointDigestV8, "mtgml.checkpoint-digest.v8");
 
 /// Reserved digest identity newtype: DOMAIN + canonical hex parse/serde only.
@@ -418,32 +407,6 @@ macro_rules! reserved_digest {
 reserved_digest!(FormatContractIdV1, "mtgml.format-contract.v1");
 reserved_digest!(ContentContractIdV1, "mtgml.content-contract.v1");
 
-impl FullStateDigestV3 {
-    pub fn as_digest_reference(&self) -> DigestReferenceV1 {
-        DigestReferenceV1 {
-            envelope_version: "mtgml.digest-envelope.v1".to_owned(),
-            algorithm_id: "sha-256".to_owned(),
-            semantic_domain: Self::DOMAIN.to_owned(),
-            payload_codec_id: "mtgml.canonical-cbor.v1".to_owned(),
-            input_schema_id: "full-state-digest-input.v3".to_owned(),
-            digest_bytes: self.raw_bytes(),
-        }
-    }
-}
-
-impl FullStateDigestV4 {
-    pub fn as_digest_reference(&self) -> DigestReferenceV1 {
-        DigestReferenceV1 {
-            envelope_version: "mtgml.digest-envelope.v1".to_owned(),
-            algorithm_id: "sha-256".to_owned(),
-            semantic_domain: Self::DOMAIN.to_owned(),
-            payload_codec_id: "mtgml.canonical-cbor.v1".to_owned(),
-            input_schema_id: "full-state-digest-input.v4".to_owned(),
-            digest_bytes: self.raw_bytes(),
-        }
-    }
-}
-
 impl FullStateDigestV5 {
     pub fn as_digest_reference(&self) -> DigestReferenceV1 {
         DigestReferenceV1 {
@@ -478,19 +441,6 @@ impl FullStateDigestV7 {
             semantic_domain: Self::DOMAIN.to_owned(),
             payload_codec_id: "mtgml.canonical-cbor.v1".to_owned(),
             input_schema_id: "full-state-digest-input.v7".to_owned(),
-            digest_bytes: self.raw_bytes(),
-        }
-    }
-}
-
-impl CheckpointDigestV7 {
-    pub fn as_digest_reference(&self) -> DigestReferenceV1 {
-        DigestReferenceV1 {
-            envelope_version: "mtgml.digest-envelope.v1".to_owned(),
-            algorithm_id: "sha-256".to_owned(),
-            semantic_domain: Self::DOMAIN.to_owned(),
-            payload_codec_id: "mtgml.canonical-cbor.v1".to_owned(),
-            input_schema_id: "environment-checkpoint-digest-input.v7".to_owned(),
             digest_bytes: self.raw_bytes(),
         }
     }
@@ -631,10 +581,6 @@ mod tests {
 
         let bytes = b"same canonical bytes";
         assert_eq!(
-            FullStateDigest::from_canonical_bytes(bytes).as_str(),
-            "753d6b2756e60227af224f919169ce034dd94c60b142f6eded0931548d866c1a"
-        );
-        assert_eq!(
             PublicStateDigest::from_canonical_bytes(bytes).as_str(),
             "9ba50ec6cfe0ac09da1ce7844c3362bf8ea7643936a8384835d8718a3d25e442"
         );
@@ -659,60 +605,20 @@ mod tests {
             "93e08ec06c09ef5c53e0cc350c045176cc654c31cbef6afc08ad227fa9d413c8"
         );
         assert_eq!(
-            CheckpointDigest::from_canonical_bytes(bytes).as_str(),
-            "e68abf91d68057ab81bcbacdbc9f1dfe35b4e3fded6b9f8309fb7c948d8750f4"
-        );
-        assert_eq!(
-            FullStateDigestV2::from_canonical_bytes(bytes).as_str(),
-            "ea09c274b70ebb52c34f28ccb637801c923d03744cec4de8900b016e9323ab37"
-        );
-        assert_eq!(
-            CheckpointDigestV2::from_canonical_bytes(bytes).as_str(),
-            "373265db972e21d967a41932938aeedbdb5f5782b41951904f6b2ecae28a1f08"
-        );
-        assert_eq!(
             InformationStateDigestV3::from_canonical_bytes(bytes).as_str(),
             "334e1a727bd9db7f920f6cf9c4e1a31e0c389fddc1b15e113d10bccd7bc626db"
         );
     }
 
     #[test]
-    fn full_state_digest_v1_historical_golden() {
-        // Historical V1 canonical bytes (frozen from original V1 implementation at commit 840c269)
-        // This is test-only detached evidence; no EngineStateV1 runtime exists.
-        // V1 RandomState had: algorithm_id, derivation_version, root_seed_hex, streams: BTreeMap<String, RandomStreamState { counter }>
-        // Fields sorted lexicographically by canonicalize_json
-        let v1_bytes = br#"{"allocators":{"next_ability_id":"1","next_continuation_id":"1","next_decision_id":"1","next_effect_id":"1","next_object_id":"1","next_opaque_ability_id":{},"next_opaque_object_id":{},"next_rule_event_id":"1","next_stack_object_id":"1","next_trigger_id":"1"},"core":{"active_player":"1","players":{"1":{"has_lost":false,"life":40},"2":{"has_lost":false,"life":40}},"priority_player":"1","turn_number":1},"domain":"mtgml.full-state-digest.v1","execution":{"continuations":{},"delayed_effects":{},"effects":{},"waiting_triggers":{}},"format":{"kind":"none"},"knowledge":{"players":{"1":{"invalidations":[],"known_objects":{},"private_history_length":0,"public_history_length":0},"2":{"invalidations":[],"known_objects":{},"private_history_length":0,"public_history_length":0}}},"perspective_identities":{"players":{"1":{"ability_to_opaque":{},"object_to_opaque":{},"opaque_to_ability":{},"opaque_to_object":{}},"2":{"ability_to_opaque":{},"object_to_opaque":{},"opaque_to_ability":{},"opaque_to_object":{}}}},"random":{"algorithm_id":"mtgml.rng.v1","derivation_version":"1","root_seed_hex":"0000000000000000000000000000000000000000000000000000000000000000","streams":{}},"revision":0,"schema_version":"full-state-digest-input.v1","zones":{"locations":{},"objects":{},"ordered_zones":[],"stack_order":[],"stack_records":{}}}"#;
-        let v1_digest = FullStateDigest::from_canonical_bytes(v1_bytes);
-        assert_eq!(
-            v1_digest.as_str(),
-            "f567ad841d1935e4baaf194cc4fd899fa09adbad64134b429f51ccf765089681",
-            "Historical V1 FullStateDigest golden must not change"
-        );
-    }
-
-    #[test]
-    fn checkpoint_digest_v1_historical_golden() {
-        // Historical V1 checkpoint canonical bytes (frozen from original V1 implementation at commit 840c269)
-        // This is test-only detached evidence; no EngineStateV1 runtime exists.
-        // V1 field order after canonicalize_json: codec, domain, limit_counters, schema_version, state_digest, status
-        // V1 status: {"kind":"running"} (internally tagged enum), not "running"
-        // V1 state_digest uses the V1 FullStateDigest above
-        let v1_bytes = br#"{"codec":{"codec_id":"in-memory-reference","semantic_version":"1"},"domain":"mtgml.checkpoint-digest.v1","limit_counters":{"accepted_transitions":0,"decisions_submitted":0,"resource_units_consumed":0,"rule_events_emitted":0,"wall_clock_elapsed_millis":0},"schema_version":"environment-checkpoint.v1","state_digest":"f567ad841d1935e4baaf194cc4fd899fa09adbad64134b429f51ccf765089681","status":{"kind":"running"}}"#;
-        let v1_digest = CheckpointDigest::from_canonical_bytes(v1_bytes);
-        assert_eq!(
-            v1_digest.as_str(),
-            "793afd4d0866ae99aec2abccab932a2a8d86893c5099231e46c6f7736a8b0755",
-            "Historical V1 CheckpointDigest golden must not change"
-        );
-    }
-
-    #[test]
     fn digest_domains_cannot_compare_accidentally_and_hash_differently() {
-        let full = FullStateDigest::from_canonical_bytes(b"same canonical bytes");
+        let observation = ObservationDigest::from_canonical_bytes(b"same canonical bytes");
         let public = PublicStateDigest::from_canonical_bytes(b"same canonical bytes");
-        assert_ne!(full.as_str(), public.as_str());
-        assert_eq!(FullStateDigest::parse(full.as_str()).unwrap(), full);
+        assert_ne!(observation.as_str(), public.as_str());
+        assert_eq!(
+            ObservationDigest::parse(observation.as_str()).unwrap(),
+            observation
+        );
     }
 
     #[test]
@@ -755,7 +661,7 @@ mod tests {
         );
         assert_eq!(serde_json::to_string(&VisibleSequence(7)).unwrap(), "\"7\"");
         assert_eq!(
-            FullStateDigestV3::from_digest_bytes([0xabu8; 32]).raw_bytes(),
+            FullStateDigestV7::from_digest_bytes([0xabu8; 32]).raw_bytes(),
             [0xabu8; 32]
         );
         assert!(serde_json::from_str::<CandidateIdV1>("4294967296").is_err());
