@@ -248,10 +248,7 @@ class ReplayManifestV8:
         authority = self.semantic_contract.rules_manifest.get("rules_authority")
         if not isinstance(authority, dict):
             raise WireError("semantic.replay_manifest", "rules authority is malformed")
-        program_authority = {
-            "magic_rules": "comprehensive_rules",
-            "synthetic_rules_compat": "synthetic_legacy",
-        }
+        program_authority = {"magic_rules": "comprehensive_rules"}
         if program_authority.get(self.execution_identity.program_kind) != authority.get("variant"):
             raise WireError(
                 "semantic.replay_manifest", "execution program and rules authority do not match"

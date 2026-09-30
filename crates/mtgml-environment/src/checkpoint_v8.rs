@@ -159,7 +159,6 @@ impl EnvironmentCheckpointV8 {
                 .validate()
                 .map_err(|_| CheckpointV8Error::State)?;
         }
-        validate_program_state(&self.execution_identity, &self.state)?;
         self.status
             .validate()
             .map_err(|_| CheckpointV8Error::Status)?;
@@ -196,69 +195,11 @@ impl EnvironmentCheckpointV8 {
         Ok(())
     }
 
-    /// Structural restore for detached G0 conformance. This does not claim
-    /// verified content admission or instantiate an environment.
-    pub fn restore_detached(&self) -> Result<EngineStatePartsV3, CheckpointV8Error> {
-        self.validate()?;
-        Ok(self.state.clone())
-    }
-
     pub fn restore_detached_for_basic_land_profile(
         &self,
         admission: &ExecutableProfileAdmissionV1,
     ) -> Result<EngineStatePartsV3, CheckpointV8Error> {
         self.validate_for_basic_land_profile(admission)?;
-        Ok(self.state.clone())
-    }
-
-    /// Revalidates the complete execution/content identity before returning
-    /// detached state. No runtime is created and no caller-owned state mutates.
-    pub fn restore_with_verified_contracts(
-        &self,
-        semantic_manifest: &SemanticContractManifestV1,
-        rules_manifest: &RulesContractManifestV1,
-        content_catalog: Option<&VerifiedContentCatalogV1>,
-    ) -> Result<EngineStatePartsV3, CheckpointV8Error> {
-        self.validate()?;
-        rules_manifest
-            .validate()
-            .map_err(|_| CheckpointV8Error::ContractBinding)?;
-        let rules_id = mtgml_persistence::semantic_contract_digest::calculate_rules_contract_id_v1(
-            rules_manifest,
-        )
-        .map_err(|_| CheckpointV8Error::ContractBinding)?;
-        if rules_id != semantic_manifest.rules_contract_id {
-            return Err(CheckpointV8Error::ContractBinding);
-        }
-        let semantic_id =
-            mtgml_persistence::semantic_contract_digest::calculate_semantic_contract_id_v1(
-                semantic_manifest,
-            )
-            .map_err(|_| CheckpointV8Error::ContractBinding)?;
-        if semantic_id != self.execution_identity.semantic_contract_id {
-            return Err(CheckpointV8Error::ContractBinding);
-        }
-        let content_matches = match (
-            semantic_manifest.content_contract_id.as_ref(),
-            content_catalog,
-        ) {
-            (None, None) => true,
-            (Some(expected), Some(catalog)) => expected == catalog.content_contract_id(),
-            _ => false,
-        };
-        if !content_matches
-            || !mtgml_model::execution_program_matches_rules_authority(
-                self.execution_identity.program_kind,
-                &rules_manifest.rules_authority,
-            )
-            || (self.execution_identity.program_kind == ExecutionProgramV1::MagicRules
-                && (semantic_manifest.content_contract_id.is_none() || content_catalog.is_none()))
-        {
-            return Err(CheckpointV8Error::ContractBinding);
-        }
-        if let Some(catalog) = content_catalog {
-            validate_catalog_state(&self.state, catalog)?;
-        }
         Ok(self.state.clone())
     }
 
@@ -283,7 +224,6 @@ impl EnvironmentCheckpointV8 {
             semantic_manifest,
             rules_manifest,
             content_catalog,
-            true,
         )
     }
 
@@ -292,13 +232,8 @@ impl EnvironmentCheckpointV8 {
         semantic_manifest: &SemanticContractManifestV1,
         rules_manifest: &RulesContractManifestV1,
         content_catalog: Option<&VerifiedContentCatalogV1>,
-        structurally_validated_by_rules: bool,
     ) -> Result<EngineStatePartsV3, CheckpointV8Error> {
-        if structurally_validated_by_rules {
-            self.validate_structural_only()?;
-        } else {
-            self.validate()?;
-        }
+        self.validate_structural_only()?;
         rules_manifest
             .validate()
             .map_err(|_| CheckpointV8Error::ContractBinding)?;
@@ -339,11 +274,6 @@ impl EnvironmentCheckpointV8 {
             validate_catalog_state(&self.state, catalog)?;
         }
         Ok(self.state.clone())
-    }
-
-    pub fn fork_detached(&self) -> Result<Self, CheckpointV8Error> {
-        self.validate()?;
-        Ok(self.clone())
     }
 
     pub fn fork_detached_for_basic_land_profile(
@@ -396,39 +326,6 @@ fn validate_status_players(
         != expected
     {
         return Err(CheckpointV8Error::StatusPlayers);
-    }
-    Ok(())
-}
-
-fn validate_program_state(
-    identity: &ExecutionIdentityV1,
-    state: &EngineStatePartsV3,
-) -> Result<(), CheckpointV8Error> {
-    if identity.program_kind == ExecutionProgramV1::SyntheticRulesCompat {
-        let card = &state.card_rules_state;
-        let no_mana = card.mana.pools.values().all(|pool| {
-            pool.unrestricted.iter().all(|count| *count == 0)
-                && pool.creature_spell_only.iter().all(|count| *count == 0)
-        });
-        let no_turn_history = card
-            .turn_history
-            .players
-            .values()
-            .all(|history| *history == mtgml_state::PlayerTurnHistoryV1::default());
-        if !no_mana
-            || !no_turn_history
-            || !card.turn_history.target_occurrences.is_empty()
-            || !card.turn_history.once_ability_used.is_empty()
-            || !card.counters.counters.is_empty()
-            || !card.attachments.by_source.is_empty()
-            || !card.faces.faces.is_empty()
-            || !card.abilities.by_instance.is_empty()
-            || !state.predecessor_v5.zones.stack_records.is_empty()
-            || !state.execution_v4.waiting_triggers.is_empty()
-            || !state.execution_v4.effects.is_empty()
-        {
-            return Err(CheckpointV8Error::ProgramState);
-        }
     }
     Ok(())
 }
@@ -540,93 +437,86 @@ pub enum CheckpointV8Error {
     CompletedWithDecision,
     #[error("checkpoint execution identity does not match verified contracts/content")]
     ContractBinding,
-    #[error("state contains Magic-only successor state under synthetic compatibility identity")]
-    ProgramState,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mtgml_model::ExecutionProgramV1;
-    use mtgml_random::RootSeed256;
-    use mtgml_state::{
-        construct_synthetic_engine_state, CardRulesAuthoritativeStateV1, EngineStatePartsV2,
-        EngineStatePartsV3, ManaPoolV1, ManaStateV1, PlayerTurnHistoryV1, SyntheticResetInputs,
-        SyntheticV4Setup, TurnHistoryStateV1,
-    };
 
-    fn checkpoint() -> EnvironmentCheckpointV8 {
-        let engine = construct_synthetic_engine_state(SyntheticResetInputs {
-            players: [PlayerId(1), PlayerId(2)],
-            root_seed: RootSeed256::from_lower_hex(&"31".repeat(32)).unwrap(),
-            setup: SyntheticV4Setup::synthetic_compatibility(),
-        })
+    use mtgml_state::EngineStatePartsV3;
+
+    fn admission() -> ExecutableProfileAdmissionV1 {
+        crate::basic_land_runtime_v8::fixtures::game_admission()
+    }
+
+    fn checkpoint(admission: &ExecutableProfileAdmissionV1) -> EnvironmentCheckpointV8 {
+        let mut state = crate::basic_land_runtime_v8::fixtures::state_with_two_lands();
+        mtgml_rules::install_basic_land_request_v4(
+            admission,
+            &mut state,
+            PlayerId(1),
+            &EpisodeStatus::Running,
+        )
         .unwrap();
-        let mut card_rules = CardRulesAuthoritativeStateV1 {
-            mana: ManaStateV1::default(),
-            turn_history: TurnHistoryStateV1 {
-                turn_number: engine.core.turn_number,
-                ..TurnHistoryStateV1::default()
-            },
-            ..CardRulesAuthoritativeStateV1::default()
-        };
-        for player in engine.core.players.keys().copied() {
-            card_rules.mana.pools.insert(player, ManaPoolV1::default());
-            card_rules
-                .turn_history
-                .players
-                .insert(player, PlayerTurnHistoryV1::default());
-        }
-        let v2 = EngineStatePartsV2::from_state(&engine, card_rules);
-        let state =
-            EngineStatePartsV3::new(v2.predecessor_v5, Default::default(), v2.card_rules_state)
-                .unwrap();
-        EnvironmentCheckpointV8::new(
+        EnvironmentCheckpointV8::new_for_basic_land_profile(
+            admission,
             state,
             EpisodeStatus::Running,
             EnvironmentLimitCounters::default(),
-            ExecutionIdentityV1 {
-                program_kind: ExecutionProgramV1::SyntheticRulesCompat,
-                semantic_contract_id: crate::synthetic_legacy_default_semantic_contract_id(),
-            },
+            admission.execution_identity().clone(),
         )
         .unwrap()
     }
 
     #[test]
     fn v8_restore_and_fork_preserve_detached_state_and_identity() {
-        let checkpoint = checkpoint();
-        checkpoint.validate().unwrap();
-        assert_eq!(checkpoint.restore_detached().unwrap(), checkpoint.state);
-        assert_eq!(checkpoint.fork_detached().unwrap(), checkpoint);
+        let admission = admission();
+        let checkpoint = checkpoint(&admission);
+        checkpoint
+            .validate_for_basic_land_profile(&admission)
+            .unwrap();
+        assert_eq!(
+            checkpoint
+                .restore_detached_for_basic_land_profile(&admission)
+                .unwrap(),
+            checkpoint.state
+        );
+        assert_eq!(
+            checkpoint
+                .fork_detached_for_basic_land_profile(&admission)
+                .unwrap(),
+            checkpoint
+        );
         let restored = checkpoint
-            .restore_with_verified_contracts(
-                &crate::synthetic_legacy_default_semantic_manifest(),
-                &crate::synthetic_legacy_default_rules_manifest(),
-                None,
+            .restore_with_verified_contracts_for_basic_land_profile(
+                &admission,
+                admission.semantic_contract_manifest(),
+                admission.rules_contract_manifest(),
+                Some(admission.verified_catalog()),
             )
             .unwrap();
         assert_eq!(restored, checkpoint.state);
         assert_eq!(
-            mtgml_state::calculate_full_state_digest_v7(&checkpoint.state).unwrap(),
+            mtgml_state::calculate_full_state_digest_v7_structural_only(&checkpoint.state).unwrap(),
             checkpoint.state_digest
         );
     }
 
     #[test]
     fn v8_restore_rejects_state_digest_and_checkpoint_identity_tampering() {
-        let baseline = checkpoint();
+        let admission = admission();
+        let baseline = checkpoint(&admission);
         let mut state = baseline.clone();
-        state.state.predecessor_v5.revision.0 += 1;
+        state.state_digest = mtgml_model::FullStateDigestV7::from_digest_bytes([0; 32]);
         assert_eq!(
-            state.restore_detached(),
+            state.restore_detached_for_basic_land_profile(&admission),
             Err(CheckpointV8Error::StateDigest)
         );
 
         let mut identity = baseline;
         identity.codec.semantic_version = "7".to_owned();
         assert_eq!(
-            identity.restore_detached(),
+            identity.restore_detached_for_basic_land_profile(&admission),
             Err(CheckpointV8Error::Identity)
         );
     }

@@ -81,7 +81,6 @@ pub fn calculate_checkpoint_digest_v8(
 /// `DigestReferenceV1`.
 fn execution_identity_value(identity: &ExecutionIdentityV1) -> cbor::Value {
     let (variant_id, payload) = match identity.program_kind {
-        ExecutionProgramV1::SyntheticRulesCompat => ("synthetic_rules_compat", cbor::Value::Null),
         ExecutionProgramV1::MagicRules => ("magic_rules", cbor::Value::Null),
     };
     cbor::Value::Array(vec![

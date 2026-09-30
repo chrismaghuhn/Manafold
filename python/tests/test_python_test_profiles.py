@@ -84,11 +84,6 @@ class PythonTestProfileTests(unittest.TestCase):
         )
         self.assertIn(full, run_checks.INTEGRATION_EXTRA)
 
-    def test_justfile_contracts_includes_the_catalog_check(self) -> None:
-        justfile = ROOT / "justfile"
-        text = justfile.read_text(encoding="utf-8")
-        self.assertIn("generate_semantic_contract_catalog.py --check", text)
-
     def test_integration_runs_the_release_random_smoke_games(self) -> None:
         self.assertIn(
             [

@@ -41,7 +41,7 @@ FULL_STATE_INPUT_SCHEMA_V7 = "full-state-digest-input.v7"
 CONTENT_CONTRACT_DOMAIN_V1 = "mtgml.content-contract.v1"
 CONTENT_CONTRACT_INPUT_SCHEMA_V1 = "content-contract-manifest.v1"
 
-_VALID_PROGRAM_KINDS = frozenset({"synthetic_rules_compat", "magic_rules"})
+_VALID_PROGRAM_KINDS = frozenset({"magic_rules"})
 
 PersistenceValue: TypeAlias = bool | int | bytes | str | list["PersistenceValue"] | None
 
@@ -426,16 +426,6 @@ def _validate_rules_contract_manifest(manifest: object) -> None:
     if not isinstance(authority, dict) or set(authority) > {"variant", "snapshot_id"}:
         raise _error("semantic_validation", "rules authority shape is invalid")
     variant = authority.get("variant")
-    if variant == "synthetic_legacy":
-        if set(authority) != {"variant"}:
-            raise _error(
-                "semantic_validation", "synthetic_legacy authority must not carry snapshot_id"
-            )
-        if closure is not None:
-            raise _error(
-                "semantic_validation", "synthetic_legacy authority must not claim a closure"
-            )
-        return
     if variant != "comprehensive_rules":
         raise _error("semantic_validation", "rules authority variant is unknown")
     if set(authority) != {"variant", "snapshot_id"}:
@@ -495,10 +485,7 @@ def calculate_rules_contract_id_v1(manifest: dict[str, object]) -> str:
     closure = manifest["capability_closure"]
     if not isinstance(closure, list) and closure is not None:
         raise _error("semantic_validation", "capability_closure must be a list or null")
-    if authority["variant"] == "synthetic_legacy":
-        authority_value: list[PersistenceValue] = ["synthetic_legacy", None]
-    else:
-        authority_value = ["comprehensive_rules", authority["snapshot_id"]]
+    authority_value: list[PersistenceValue] = ["comprehensive_rules", authority["snapshot_id"]]
     closure_value: PersistenceValue = (
         None if closure is None else [[entry["key"], entry["version"]] for entry in closure]
     )

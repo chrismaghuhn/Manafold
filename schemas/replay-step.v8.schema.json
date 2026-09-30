@@ -180,7 +180,6 @@
       "properties": {
         "program_kind": {
           "enum": [
-            "synthetic_rules_compat",
             "magic_rules"
           ]
         },
@@ -475,18 +474,6 @@
     },
     "rules_authority": {
       "anyOf": [
-        {
-          "additionalProperties": false,
-          "properties": {
-            "variant": {
-              "const": "synthetic_legacy"
-            }
-          },
-          "required": [
-            "variant"
-          ],
-          "type": "object"
-        },
         {
           "additionalProperties": false,
           "properties": {

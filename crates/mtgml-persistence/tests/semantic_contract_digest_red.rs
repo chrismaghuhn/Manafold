@@ -21,13 +21,6 @@ use mtgml_persistence::semantic_contract_digest::{
     RULES_CONTRACT_INPUT_SCHEMA,
 };
 
-fn synthetic_rules_manifest() -> RulesContractManifestV1 {
-    RulesContractManifestV1 {
-        rules_authority: RulesAuthorityV1::SyntheticLegacy,
-        capability_closure: None,
-    }
-}
-
 fn minimal_comprehensive_manifest() -> RulesContractManifestV1 {
     RulesContractManifestV1 {
         rules_authority: RulesAuthorityV1::ComprehensiveRules {
@@ -53,12 +46,8 @@ fn kat_vectors() -> Vec<serde_json::Value> {
 
 fn rules_manifest_from(vector: &serde_json::Value) -> RulesContractManifestV1 {
     let authority = &vector["rules_authority"];
-    let rules_authority = if authority["variant"] == "synthetic_legacy" {
-        RulesAuthorityV1::SyntheticLegacy
-    } else {
-        RulesAuthorityV1::ComprehensiveRules {
-            snapshot_id: authority["snapshot_id"].as_str().unwrap().to_owned(),
-        }
+    let rules_authority = RulesAuthorityV1::ComprehensiveRules {
+        snapshot_id: authority["snapshot_id"].as_str().unwrap().to_owned(),
     };
     let capability_closure = vector["capability_closure"].as_array().map(|entries| {
         entries
@@ -78,7 +67,7 @@ fn rules_manifest_from(vector: &serde_json::Value) -> RulesContractManifestV1 {
 #[test]
 fn shared_kat_fixture_vectors_reproduce_frozen_ids() {
     let vectors = kat_vectors();
-    assert!(vectors.len() >= 5, "shared KAT fixture regressed");
+    assert!(vectors.len() >= 3, "shared KAT fixture regressed");
 
     let mut rules_ids: BTreeMap<String, RulesContractIdV1> = BTreeMap::new();
     for vector in &vectors {
@@ -131,9 +120,7 @@ fn shared_kat_fixture_vectors_reproduce_frozen_ids() {
 
 #[test]
 fn distinct_manifests_produce_distinct_rule_ids() {
-    let synthetic = calculate_rules_contract_id_v1(&synthetic_rules_manifest()).unwrap();
     let comprehensive = calculate_rules_contract_id_v1(&minimal_comprehensive_manifest()).unwrap();
-    assert_ne!(synthetic.as_str(), comprehensive.as_str());
 
     let other_snapshot = RulesContractManifestV1 {
         rules_authority: RulesAuthorityV1::ComprehensiveRules {
@@ -187,20 +174,11 @@ fn invalid_manifests_fail_closed_before_hashing() {
         ]),
     };
     assert!(calculate_rules_contract_id_v1(&duplicate).is_err());
-
-    let synthetic_with_closure = RulesContractManifestV1 {
-        rules_authority: RulesAuthorityV1::SyntheticLegacy,
-        capability_closure: Some(vec![CapabilityRequirementV1 {
-            key: "rules/synthetic-transition".to_owned(),
-            version: "1.0.0".to_owned(),
-        }]),
-    };
-    assert!(calculate_rules_contract_id_v1(&synthetic_with_closure).is_err());
 }
 
 #[test]
 fn rule_ids_and_semantic_ids_are_distinct_typed_domains() {
-    let rules = calculate_rules_contract_id_v1(&synthetic_rules_manifest()).unwrap();
+    let rules = calculate_rules_contract_id_v1(&minimal_comprehensive_manifest()).unwrap();
     let semantic = calculate_semantic_contract_id_v1(&SemanticContractManifestV1 {
         rules_contract_id: rules.clone(),
         format_contract_id: None,
@@ -295,7 +273,7 @@ fn schema_domain_disagreement_is_detectable_and_bound_to_identity() {
     assert_ne!(wrong_reference.input_schema_id, RULES_CONTRACT_INPUT_SCHEMA);
     assert_ne!(
         RulesContractIdV1::from_digest_bytes(envelope::hash_envelope(&disagreeing_envelope)),
-        calculate_rules_contract_id_v1(&synthetic_rules_manifest()).unwrap()
+        calculate_rules_contract_id_v1(&minimal_comprehensive_manifest()).unwrap()
     );
 
     // Envelope-level identity defect (control): a corrupted (empty) domain

@@ -14,7 +14,7 @@ from .persistence import (
     calculate_semantic_contract_id_v1,
 )
 
-_VALID_PROGRAM_KINDS = frozenset({"synthetic_rules_compat", "magic_rules"})
+_VALID_PROGRAM_KINDS = frozenset({"magic_rules"})
 
 
 @dataclass(frozen=True, slots=True)

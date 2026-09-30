@@ -2,8 +2,8 @@
 //!
 //! `ExecutionProgramV1` is a closed, milestone-free dispatch family and
 //! `ExecutionIdentityV1` is the full identity bound into V5 checkpoints and
-//! replay surfaces. Wire values are frozen: `synthetic_rules_compat` and
-//! `magic_rules`. Unknown values and unknown fields fail closed.
+//! replay surfaces. The wire value is `magic_rules`. Unknown values and
+//! unknown fields fail closed.
 
 use serde::{Deserialize, Serialize};
 
@@ -11,12 +11,11 @@ use crate::{RulesAuthorityV1, SemanticContractIdV1};
 
 /// Closed execution/dispatch family (spec §6; ADR 0055 §2.4).
 ///
-/// JSON: bare strings `synthetic_rules_compat` / `magic_rules`; unknown
-/// values fail decode. No fallback variant exists; no `Default` is derived.
+/// JSON: the bare string `magic_rules`; unknown values fail decode. No
+/// fallback variant exists; no `Default` is derived.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecutionProgramV1 {
-    SyntheticRulesCompat,
     MagicRules,
 }
 
@@ -29,9 +28,6 @@ pub fn execution_program_matches_rules_authority(
     matches!(
         (program, authority),
         (
-            ExecutionProgramV1::SyntheticRulesCompat,
-            RulesAuthorityV1::SyntheticLegacy
-        ) | (
             ExecutionProgramV1::MagicRules,
             RulesAuthorityV1::ComprehensiveRules { .. }
         )
@@ -56,21 +52,7 @@ mod tests {
     #[test]
     fn adr_0055_program_authority_pairs_are_closed_and_symmetric() {
         assert!(execution_program_matches_rules_authority(
-            ExecutionProgramV1::SyntheticRulesCompat,
-            &RulesAuthorityV1::SyntheticLegacy,
-        ));
-        assert!(execution_program_matches_rules_authority(
             ExecutionProgramV1::MagicRules,
-            &RulesAuthorityV1::ComprehensiveRules {
-                snapshot_id: "cr-snapshot".to_owned(),
-            },
-        ));
-        assert!(!execution_program_matches_rules_authority(
-            ExecutionProgramV1::MagicRules,
-            &RulesAuthorityV1::SyntheticLegacy,
-        ));
-        assert!(!execution_program_matches_rules_authority(
-            ExecutionProgramV1::SyntheticRulesCompat,
             &RulesAuthorityV1::ComprehensiveRules {
                 snapshot_id: "cr-snapshot".to_owned(),
             },

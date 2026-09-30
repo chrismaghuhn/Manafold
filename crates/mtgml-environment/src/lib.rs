@@ -13,8 +13,6 @@ mod endpoint;
 pub mod endpoint_successor;
 mod errors;
 mod player_projection;
-#[cfg(test)]
-mod semantic_catalog_kat;
 pub mod successor_projection;
 #[cfg(test)]
 mod tests;
@@ -37,25 +35,3 @@ pub use mtgml_model::{CheckpointCodecIdentity, EnvironmentLimitCounters};
 pub use player_projection::{
     project_magic_basic_land_observation_v1, project_successor_information_state_v3,
 };
-mod semantic_catalog_generated;
-pub use semantic_catalog_generated::magic_combat_attackers_0_1_0_rules_manifest;
-pub use semantic_catalog_generated::magic_combat_attackers_0_1_0_semantic_contract_id;
-pub use semantic_catalog_generated::magic_combat_attackers_0_1_0_semantic_manifest;
-pub use semantic_catalog_generated::magic_combat_blockers_0_1_0_rules_manifest;
-pub use semantic_catalog_generated::magic_combat_blockers_0_1_0_semantic_contract_id;
-pub use semantic_catalog_generated::magic_combat_blockers_0_1_0_semantic_manifest;
-pub use semantic_catalog_generated::magic_s3_a_ordered_sba_0_1_0_rules_manifest;
-pub use semantic_catalog_generated::magic_s3_a_ordered_sba_0_1_0_semantic_contract_id;
-pub use semantic_catalog_generated::magic_s3_a_ordered_sba_0_1_0_semantic_manifest;
-pub use semantic_catalog_generated::magic_s3_b_basic_priority_0_1_0_rules_manifest;
-pub use semantic_catalog_generated::magic_s3_b_basic_priority_0_1_0_semantic_contract_id;
-pub use semantic_catalog_generated::magic_s3_b_basic_priority_0_1_0_semantic_manifest;
-pub use semantic_catalog_generated::magic_s3_c_draw_interaction_0_1_0_rules_manifest;
-pub use semantic_catalog_generated::magic_s3_c_draw_interaction_0_1_0_semantic_contract_id;
-pub use semantic_catalog_generated::magic_s3_c_draw_interaction_0_1_0_semantic_manifest;
-pub use semantic_catalog_generated::magic_turn_structure_0_1_0_rules_manifest;
-pub use semantic_catalog_generated::magic_turn_structure_0_1_0_semantic_contract_id;
-pub use semantic_catalog_generated::magic_turn_structure_0_1_0_semantic_manifest;
-pub use semantic_catalog_generated::synthetic_legacy_default_rules_manifest;
-pub use semantic_catalog_generated::synthetic_legacy_default_semantic_contract_id;
-pub use semantic_catalog_generated::synthetic_legacy_default_semantic_manifest;

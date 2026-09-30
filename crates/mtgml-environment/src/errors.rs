@@ -42,8 +42,6 @@ pub enum ControllerError {
     ReplayValidation(#[from] ReplayValidationError),
     #[error("replay execution failed: {0}")]
     ReplayExecution(#[from] ReplayExecutionError),
-    #[error("semantic contract is not supported by this runtime")]
-    SemanticContractUnsupported,
     #[error("backend failure: {0}")]
     Backend(String),
 }
