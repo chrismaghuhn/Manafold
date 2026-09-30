@@ -1,5 +1,7 @@
 # Production Full Turn Implementation Plan
 
+**Status:** PROPOSED — awaiting owner review; implementation not started
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** The production V8 runtime (`BasicLandEnvironmentRuntimeV8`) plays complete turns — untap, upkeep, draw, main, an empty combat, end, cleanup, next turn — for two players with basic lands, instead of stopping at beginning of combat.
