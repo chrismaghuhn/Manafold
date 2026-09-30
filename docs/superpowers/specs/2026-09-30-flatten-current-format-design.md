@@ -94,7 +94,7 @@ This is stage 3 of three (`docs/superpowers/specs/2026-09-30-one-runtime-cleanup
   - Deleted:
     - the V5 and V6 producers, envelopes and decoders;
     - `FullStateDigestV5` and `FullStateDigestV6`;
-    - the V2-execution encoders;
+    - the V2-execution encoders that nothing else reaches. The V3-execution encoder and validator (`PersistedExecutionV3`, `validate_execution_v3`, and the encoders they call) are still run by `EngineStatePartsV2::validate`, so they go with the flat state (D4);
     - `EngineState::digest` and `canonical_digest_bytes`, with their test calls;
     - the V7 payload decoder (`FullStateDigestInputV7::from_canonical_payload`, `calculate_full_state_digest_v7_payload`) and its rejection tests;
     - `persistence/golden/full-state-digest-v6-kat.v1.json`, `crates/mtgml-state/tests/fixtures/magic-sba-graveyard-order-v5-input.hex`, and their tests.
@@ -110,6 +110,7 @@ This is stage 3 of three (`docs/superpowers/specs/2026-09-30-one-runtime-cleanup
   - Both contract names join `DELETED_CONTRACTS` in `python/tests/test_wire_contracts.py`.
   - `magic-basic-land-observation.v1` stays; it is a field of the shared observation.
   - The information-safety tests in `crates/mtgml-environment/src/tests/magic_basic_land_observation.rs` are ported with their assertions intact.
+  - The deleted fixtures are the only ones that carry non-empty `retained_knowledge` and the only negatives for knowledge provenance, cause/channel pairing, initial invalidation, invalid Base64 and a digest mismatch. That coverage moves into in-code Rust and Python tests on `ObservationEnvelopeV2` and `PlayerInformationStateV3`. D1 allows no new fixture bytes.
 - **D7 — Basic land, events and delta on current types.**
   - The basic-land rules produce three things directly:
     - V4 candidates, ordered by the current candidate ordering, with the same dense ids;
@@ -118,11 +119,15 @@ This is stage 3 of three (`docs/superpowers/specs/2026-09-30-one-runtime-cleanup
   - Deleted:
     - the bridge in `basic_land_v4.rs`;
     - `AuthoritativeRuleEventV2` and `AuthoritativeRuleEventKindV2`;
+    - the V1 `AuthoritativeRuleEvent` struct; `zone_incarnation` returns the zone transition and the perspective lifecycles instead.
+  - Deleted with the flat state (D4), because the V2/V3 execution states still hold or validate them until then:
     - the V3 candidate types;
     - `CandidateOrderingV1` and `CandidateOrderingV2`;
-    - `VisibleCandidateV2`, `ActionCandidate` and `mtgml-decision/src/authoritative.rs`.
-  - One rule-event kind enum and one semantic-operation enum remain. Each holds the variants production constructs, without `Existing` wrappers.
-  - Variants that no production code constructs are deleted, together with tests that exercise only them. This includes old combat variants from the removed synthetic foundation; R1/W1 builds combat events on the flat state.
+    - `VisibleCandidateV2`, `ActionCandidate`, `CandidateIntent` and `mtgml-decision/src/authoritative.rs`.
+  - One rule-event kind enum and one semantic-operation enum remain, without `Existing` wrappers. **Only the wrappers are dissolved; no current vocabulary is removed.** Each enum holds every variant that exists today at any level, except:
+    - **duplicates across levels:** the V1 `PerspectiveOccurrence` event, which the V3 `PerspectiveObservationOccurrence` replaces; and the V2 operations `ObjectTapped` (V1), `ManaAdded` and `ManaPoolEmptied` (V3 `ManaPoolChanged`) and `CounterChanged` (V3);
+    - **what only the deleted bridge used:** the V2 event kinds, including `LandPlayed` and `ObjectMoved`.
+  - The result is 36 event kinds (22 from V1, 14 from V3) and 45 operations (23 from V1, 7 from V2, 15 from V3). The unproduced stack, spell, cost, trigger, damage, counter, effect and combat variants stay for R1/W1 and the spell work, together with their validators, projections and tests.
 - **D8 — Names.**
   - The rule: a state, digest, delta, event, candidate or information-state type loses its version suffix when stage 3 deletes every other version of its family.
   - Functions named after a renamed type follow it.
@@ -162,20 +167,25 @@ This is stage 3 of three (`docs/superpowers/specs/2026-09-30-one-runtime-cleanup
     - `_player_step_v2.py` → `_player_step_v4.py`;
     - `_events_v3.py` → `_events_v4.py`;
     - `_observation_v1.py` and `_information_v2.py` are deleted (D6).
-  - `schemas/negative/replay-v7-content-child-*.json` are current V8 negatives. They are renamed to `replay-v8-content-child-*.json` with unchanged bytes.
+  - The eight `schemas/negative/replay-v7-content-*.json` files are V7-shaped manifests. Only their content-contract child and presence parts are tested, against the V8 schema definitions and `ContentContractMaterialV1` / `SemanticContractMaterialV7`. They are renamed after that content, with unchanged bytes:
+    - `replay-v7-content-child-<case>.json` → `content-contract-child-<case>.json`;
+    - `replay-v7-content-presence-mismatch.json` → `content-contract-presence-mismatch.json`;
+    - `replay-v7-content-id-without-child.json` → `content-contract-id-without-child.json`.
   - `python/tests/test_authoritative_state_coverage.py` reads Rust source by path; it follows the moves.
 - **D10 — Always-true checks are deleted.**
   - `execution_program_matches_rules_authority` and its callers.
-  - The `program_kind == MagicRules` checks.
-  - The irrefutable `RulesAuthorityV1` binding in `mtgml-replay/src/v8.rs`.
+  - The `program_kind == MagicRules` checks, and the always-true `ComprehensiveRules` match next to one of them in `player_projection.rs`.
+  - Not deleted: the irrefutable `RulesAuthorityV1` binding in `mtgml-replay/src/v8.rs`. It is how `snapshot_id` is read, not a check.
   - The program/authority `if`/`then` blocks in `schemas/replay-manifest.v8.schema.json` and `schemas/authoritative-replay.v8.schema.json`.
   - The duplicate program-kind maps in Python.
   - `RulesAuthorityV1` and `ExecutionProgramV1` stay; their single values are wire vocabulary.
 - **D11 — Documents.**
   - Normative documents describe the flat format only:
     - `docs/STATE_HASHING.md` describes the V7 preimage directly. The V5/V6 input-layer sections become the component descriptions of that preimage.
-    - `docs/ENGINE_STATE_CLOSURE.md`, `docs/DOMAIN_MODEL.md`, `docs/INFORMATION_MODEL.md`, `docs/contracts/WIRE_CONTRACT.md`, `docs/ML_ENVIRONMENT.md`, `docs/ARCHITECTURE.md` and `README.md` also describe the flat format.
-  - Process documents stay unchanged.
+    - `docs/contracts/ENGINE_STATE_CLOSURE.md`, `docs/DOMAIN_MODEL.md`, `docs/INFORMATION_MODEL.md`, `docs/contracts/WIRE_CONTRACT.md`, `docs/ML_ENVIRONMENT.md`, `docs/ARCHITECTURE.md`, `docs/EXECUTION_MODEL.md`, `docs/DECISION_PROTOCOL.md`, `docs/REPLAY_AND_DETERMINISM.md` and `README.md` also describe the flat format.
+    - So do the other normative documents that name a deleted or renamed type: `docs/contracts/ACCEPTANCE_GATES.md`, `docs/contracts/CARD_DEFINITION_CONTRACT.md`, `docs/contracts/ML_CONTRACT.md`, `docs/RNG_CONTRACT.md`, `docs/PROJECT_STRUCTURE.md`, `docs/maintenance/API_LIFECYCLE.md` and `docs/maintenance/SCHEMA_EVOLUTION.md`.
+  - No document has a prose byte specification of the nested `zones_v2` / `execution_v4` encodings or of `InformationStateDigestV3`. `STATE_HASHING.md` describes their top-level shape and names the encoder as the normative source. A full prose specification is a known gap, reported and not written here.
+  - Process documents stay unchanged. So do milestone specification records, whose file names carry a milestone label (`docs/M1_1_*`, `docs/CONTRACT_CLOSURE_M0_1_1.md`, `docs/rules/M3_*`).
 - **D12 — Tests** follow the stage-1/2 rule:
   - a test that exercises only deleted code is deleted;
   - a test of remaining behavior that uses a deleted type is ported, with its assertions kept;
@@ -186,8 +196,8 @@ This is stage 3 of three (`docs/superpowers/specs/2026-09-30-one-runtime-cleanup
 0. **Fingerprint (D2).** Both pins are added to `random_smoke.rs`, and the mutation check is run and recorded.
 1. **Single-pass digest (D5).** The encoder reads `EngineStatePartsV3`. The V5/V6 layers, the V7 decoder, the V6 KAT and the V5 `.hex` fixture are deleted.
 2. **Direct information state (D6).** The V1 envelope, the V2 information state and their two wire contracts are deleted.
-3. **Basic land, events, delta (D7).** The basic-land rules work on `EngineStatePartsV3` and current types. The bridge, the V2 events, the old candidate types and orderings, and the operation and event wrappers are deleted.
-4. **Flat state (D4).** `predecessor_v5` is dissolved. The old state, the V2 parts, the V2/V3 execution and their validation are deleted.
+3. **Basic land, events, delta (D7).** The basic-land rules work on `EngineStatePartsV3` and current types. The bridge, the V2 events, the V1 event struct, and the operation and event wrappers are deleted.
+4. **Flat state (D4).** `predecessor_v5` is dissolved. The old state, the V2 parts, the V2/V3 execution and their validation are deleted, together with the old candidate types and orderings they hold (D7).
 5. **Names, files, always-true checks (D8, D9, D10).**
 6. **Documents (D11) and final verification (§6).**
 
@@ -212,6 +222,8 @@ This is stage 3 of three (`docs/superpowers/specs/2026-09-30-one-runtime-cleanup
   - `predecessor_v5`, `EngineStatePartsV2`, `digest_v5` or `digest_v6`;
   - the deleted type names;
   - the two deleted contract names.
+
+  Byte-frozen fixtures that carry a deleted name as inert data are exempt. One example is the V7 `schemas` map in the renamed `content-contract-*` negatives.
 - **Coverage:** the plan's table (D12) is checked against `cargo test --workspace --locked -- --list` and the Python test list.
 
 ## 7. Risks
