@@ -695,6 +695,12 @@ pub(crate) fn move_card(
                 .insert(transition.new_object, face);
         }
     }
+    // A card that leaves the battlefield is no longer a permanent: only the
+    // objects on the battlefield keep their entry.
+    let battlefield = battlefield_objects(next).into_iter().collect();
+    next.card_rules
+        .permanents
+        .prune_departed_objects(&battlefield);
     facts.zone_events.extend(events);
     Ok(())
 }

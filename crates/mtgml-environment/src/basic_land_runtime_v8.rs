@@ -485,8 +485,8 @@ mod tests {
     };
     use mtgml_state::{
         AbilityAuthorityStateV1, AbilityAuthorityV1, CardRulesAuthoritativeStateV1, FaceStateV1,
-        ManaStateV1, PlayerTurnHistoryV1, TurnHistoryStateV1, TurnPosition, VisibilityPartition,
-        ZoneKey, ZoneLocation, ZonePosition,
+        ManaStateV1, PermanentsState, PlayerTurnHistoryV1, TurnHistoryStateV1, TurnPosition,
+        VisibilityPartition, ZoneKey, ZoneLocation, ZonePosition,
     };
 
     const CONTENT: &[u8] =
@@ -645,11 +645,18 @@ mod tests {
                 },
             )]),
         };
+        let mut permanents = PermanentsState::default();
+        for (object, location) in &engine.zones.locations {
+            if location.zone == mtgml_model::ZoneKind::Battlefield {
+                permanents.enter(*object, engine.core.turn_number).unwrap();
+            }
+        }
         let card_rules = CardRulesAuthoritativeStateV1 {
             mana,
             turn_history,
             faces,
             abilities,
+            permanents,
             ..Default::default()
         };
         let mut v2 = engine;

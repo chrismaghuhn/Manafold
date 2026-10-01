@@ -1,6 +1,6 @@
 //! Typed card-rules authoritative state (mana, turn history, counters,
-//! attachments, faces, ability authority) and its FullStateDigest record
-//! encoding.
+//! attachments, faces, ability authority, permanents) and its FullStateDigest
+//! record encoding.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -99,6 +99,19 @@ pub struct AbilityAuthorityStateV1 {
     pub by_instance: BTreeMap<AbilityInstanceId, AbilityAuthorityV1>,
 }
 
+/// What the rules record about one permanent beyond its object: the turn
+/// since which its controller has controlled it (CR 302.6).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PermanentState {
+    pub controlled_since_turn: u64,
+}
+
+/// One entry per permanent on the battlefield, keyed by its object.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct PermanentsState {
+    pub permanents: BTreeMap<GameObjectId, PermanentState>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct CardRulesAuthoritativeStateV1 {
     pub mana: ManaStateV1,
@@ -107,6 +120,7 @@ pub struct CardRulesAuthoritativeStateV1 {
     pub attachments: AttachmentStateV1,
     pub faces: FaceStateV1,
     pub abilities: AbilityAuthorityStateV1,
+    pub permanents: PermanentsState,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -229,6 +243,17 @@ impl FaceStateV1 {
     }
 }
 
+impl PermanentsState {
+    fn to_value(&self) -> Value {
+        array(self.permanents.iter().map(|(object, permanent)| {
+            array([
+                unsigned(object.0),
+                unsigned(permanent.controlled_since_turn),
+            ])
+        }))
+    }
+}
+
 impl AbilityAuthorityStateV1 {
     fn validate(&self) -> Result<(), CardRulesStateError> {
         let mut semantic_keys = BTreeSet::new();
@@ -270,14 +295,25 @@ impl CardRulesAuthoritativeStateV1 {
 
     pub fn canonical_value(&self) -> Result<Value, CardRulesStateError> {
         self.validate()?;
+        // Exhaustive: a new family cannot be left out of the digest.
+        let Self {
+            mana,
+            turn_history,
+            counters,
+            attachments,
+            faces,
+            abilities,
+            permanents,
+        } = self;
         Ok(array([
             Value::Text("card-rules-authoritative-state.v1".to_owned()),
-            self.mana.to_value(),
-            self.turn_history.to_value(),
-            self.counters.to_value(),
-            self.attachments.to_value(),
-            self.faces.to_value(),
-            self.abilities.to_value(),
+            mana.to_value(),
+            turn_history.to_value(),
+            counters.to_value(),
+            attachments.to_value(),
+            faces.to_value(),
+            abilities.to_value(),
+            permanents.to_value(),
         ]))
     }
 }

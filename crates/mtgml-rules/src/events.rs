@@ -2402,6 +2402,13 @@ mod tests {
         );
         for object in before.zones.objects.keys().copied() {
             before.card_rules.faces.faces.insert(object, 0);
+            if before.zones.locations[&object].zone == mtgml_model::ZoneKind::Battlefield {
+                before
+                    .card_rules
+                    .permanents
+                    .enter(object, before.core.turn_number)
+                    .unwrap();
+            }
         }
         before.validate().unwrap();
 

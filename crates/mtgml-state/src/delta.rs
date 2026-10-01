@@ -867,6 +867,37 @@ fn validate_delta_operation_coverage(
     {
         return uncovered();
     }
+    // A permanent's entry is made when its object enters the battlefield,
+    // under the turn in which it enters. It is not changed or removed while
+    // the object stays on the battlefield.
+    if old_rules.permanents != new_rules.permanents {
+        let on_battlefield_after = |object: &GameObjectId| {
+            after
+                .zones
+                .locations
+                .get(object)
+                .is_some_and(|location| location.zone == mtgml_model::ZoneKind::Battlefield)
+        };
+        for (object, old) in &old_rules.permanents.permanents {
+            if new_rules.permanents.permanents.get(object) != Some(old)
+                && on_battlefield_after(object)
+            {
+                return uncovered();
+            }
+        }
+        for (object, new) in &new_rules.permanents.permanents {
+            if !old_rules.permanents.permanents.contains_key(object)
+                && (new.controlled_since_turn != after.core.turn_number
+                    || !has(&|operation| {
+                        matches!(operation,
+                        V3::ObjectEntered { new_object, to_zone: mtgml_model::ZoneKind::Battlefield, .. }
+                            if new_object == object)
+                    }))
+            {
+                return uncovered();
+            }
+        }
+    }
     if old_rules.abilities != new_rules.abilities
         && !has(&|operation| {
             matches!(

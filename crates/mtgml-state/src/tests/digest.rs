@@ -415,12 +415,32 @@ fn v7_digest_binds_each_card_rules_family() {
                 .counters
                 .insert(GameObjectId(1), BTreeMap::from([(CounterKindV1::Lore, 1)]));
         }),
+        ("permanents", |state| {
+            state
+                .card_rules
+                .permanents
+                .enter(GameObjectId(1), 1)
+                .unwrap();
+        }),
+        ("permanents_turn", |state| {
+            state
+                .card_rules
+                .permanents
+                .enter(GameObjectId(1), 0)
+                .unwrap();
+        }),
         ("face", |state| {
-            // Face authority must cover every live object.
+            // Face authority must cover every live object; the battlefield
+            // object then needs its permanents entry.
             state.card_rules.faces.faces = BTreeMap::from([
                 (GameObjectId(1), 0),
                 (GameObjectId(2), 0),
             ]);
+            state
+                .card_rules
+                .permanents
+                .enter(GameObjectId(1), 1)
+                .unwrap();
         }),
         ("ability", |state| {
             state.card_rules.abilities.by_instance.insert(
@@ -435,6 +455,11 @@ fn v7_digest_binds_each_card_rules_family() {
                 (GameObjectId(1), 0),
                 (GameObjectId(2), 0),
             ]);
+            state
+                .card_rules
+                .permanents
+                .enter(GameObjectId(1), 1)
+                .unwrap();
         }),
         ("ability_identity_mapping", |state| {
             state.card_rules.abilities.by_instance.insert(
@@ -449,6 +474,11 @@ fn v7_digest_binds_each_card_rules_family() {
                 (GameObjectId(1), 0),
                 (GameObjectId(2), 0),
             ]);
+            state
+                .card_rules
+                .permanents
+                .enter(GameObjectId(1), 1)
+                .unwrap();
             let identity = state
                 .perspective_identities
                 .players

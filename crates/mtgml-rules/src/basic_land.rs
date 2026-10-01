@@ -285,6 +285,16 @@ fn draft_basic_land_action(
             next.card_rules.attachments.prune_departed_objects(&live);
             next.card_rules.faces.prune_departed_objects(&live);
             next.card_rules.abilities.prune_departed_objects(&live);
+            let battlefield: std::collections::BTreeSet<_> = next
+                .zones
+                .locations
+                .iter()
+                .filter(|(_, location)| location.zone == ZoneKind::Battlefield)
+                .map(|(object, _)| *object)
+                .collect();
+            next.card_rules
+                .permanents
+                .prune_departed_objects(&battlefield);
             // Opaque ability identities for the departed incarnation are
             // permanently retired before the new incarnation gets its own
             // allocator-assigned authority and perspective IDs.
@@ -407,6 +417,11 @@ fn draft_basic_land_action(
             next.card_rules
                 .faces
                 .set(new_object, 0, &live)
+                .map_err(|_| BasicLandTransitionError::InvalidResult)?;
+            // CR 302.6: the land is controlled since the turn it enters.
+            next.card_rules
+                .permanents
+                .enter(new_object, next.core.turn_number)
                 .map_err(|_| BasicLandTransitionError::InvalidResult)?;
             let mut next_ability_id = next.allocators.next_ability_id;
             let abilities = next
@@ -1279,6 +1294,11 @@ mod tests {
     ) -> mtgml_model::GameObjectId {
         let object = add_object(state, CardDefinitionId(3), owner, ZoneKind::Battlefield, 40);
         state.card_rules.faces.faces.insert(object, 0);
+        state
+            .card_rules
+            .permanents
+            .enter(object, state.core.turn_number)
+            .unwrap();
         object
     }
 
@@ -1384,6 +1404,12 @@ mod tests {
             identity.next_opaque_ability_id.0 = identity.next_opaque_ability_id.0.max(player.0 + 1);
         }
         engine.allocators.next_ability_id = mtgml_model::AbilityInstanceId(2);
+        let mut permanents = mtgml_state::PermanentsState::default();
+        for (object, location) in &engine.zones.locations {
+            if location.zone == ZoneKind::Battlefield {
+                permanents.enter(*object, engine.core.turn_number).unwrap();
+            }
+        }
         let cards = CardRulesAuthoritativeStateV1 {
             mana: ManaStateV1 {
                 pools: engine
@@ -1420,6 +1446,7 @@ mod tests {
                     },
                 )]),
             },
+            permanents,
             ..CardRulesAuthoritativeStateV1::default()
         };
         let mut state = engine;
@@ -1806,6 +1833,11 @@ mod tests {
                 20 + definition,
             );
             state.card_rules.faces.faces.insert(object, 0);
+            state
+                .card_rules
+                .permanents
+                .enter(object, state.core.turn_number)
+                .unwrap();
             let before = state.clone();
             let authority = crate::S1QueryAuthority::for_object(&admission, &state, object)
                 .expect("an admitted vanilla creature is queryable");

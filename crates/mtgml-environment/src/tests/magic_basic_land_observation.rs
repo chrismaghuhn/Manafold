@@ -13,8 +13,8 @@ use mtgml_model::{
 use mtgml_observation::MagicSharedExecutionObservationV1;
 use mtgml_state::{
     AbilityAuthorityStateV1, AttachmentStateV1, CardRulesAuthoritativeStateV1, CounterKindV1,
-    CounterStateV1, EngineState, FaceStateV1, ManaPoolV1, ManaStateV1, PlayerTurnHistoryV1,
-    TurnHistoryStateV1,
+    CounterStateV1, EngineState, FaceStateV1, ManaPoolV1, ManaStateV1, PermanentsState,
+    PlayerTurnHistoryV1, TurnHistoryStateV1,
 };
 use std::collections::BTreeMap;
 
@@ -182,6 +182,12 @@ pub(crate) fn basic_land_state(root_seed: mtgml_random::RootSeed256) -> EngineSt
     for object in state.zones.objects.keys() {
         faces.faces.insert(*object, 0);
     }
+    let mut permanents = PermanentsState::default();
+    for (object, location) in &state.zones.locations {
+        if location.zone == mtgml_model::ZoneKind::Battlefield {
+            permanents.enter(*object, state.core.turn_number).unwrap();
+        }
+    }
     let mut counters = CounterStateV1::default();
     if let Some((object, _)) = state
         .zones
@@ -205,6 +211,7 @@ pub(crate) fn basic_land_state(root_seed: mtgml_random::RootSeed256) -> EngineSt
         attachments: AttachmentStateV1::default(),
         faces,
         abilities: AbilityAuthorityStateV1::default(),
+        permanents,
     };
     state
 }
@@ -965,6 +972,13 @@ fn trusted_game_object_renaming_preserves_public_observation_and_information_byt
     }
     if let Some(face) = renamed.card_rules.faces.faces.remove(&old_id) {
         renamed.card_rules.faces.faces.insert(new_id, face);
+    }
+    if let Some(permanent) = renamed.card_rules.permanents.permanents.remove(&old_id) {
+        renamed
+            .card_rules
+            .permanents
+            .permanents
+            .insert(new_id, permanent);
     }
 
     original.validate().unwrap();

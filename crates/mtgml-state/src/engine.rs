@@ -83,7 +83,8 @@ impl EngineState {
         let abilities = &rules.abilities.by_instance;
         // An empty FaceState plus no live ability authority is the explicit
         // synthetic-compatibility shape. Once Magic face/ability authority is
-        // present, the closed FaceState map must cover every live incarnation.
+        // present, the closed FaceState map must cover every live incarnation
+        // and the permanents map every battlefield object.
         let has_content_authority = !rules.faces.faces.is_empty() || !abilities.is_empty();
         if rules
             .abilities
@@ -114,6 +115,11 @@ impl EngineState {
             .collect();
         if rules.counters.validate_battlefield(&battlefield).is_err()
             || (has_content_authority && rules.faces.validate_live_objects(&live).is_err())
+            || (has_content_authority
+                && rules
+                    .permanents
+                    .validate_battlefield(&battlefield, self.core.turn_number)
+                    .is_err())
             || rules
                 .abilities
                 .validate_live_sources(self.allocators.next_ability_id, &live)

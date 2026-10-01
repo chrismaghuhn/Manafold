@@ -16,8 +16,8 @@ use mtgml_observation::{ObservationEnvelope, PlayerInformationState, PlayerStepV
 use mtgml_replay::AuthoritativeReplayV8;
 use mtgml_state::{
     AbilityAuthorityStateV1, AbilityAuthorityV1, CardRulesAuthoritativeStateV1, EngineState,
-    FaceStateV1, ManaStateV1, PlayerTurnHistoryV1, TurnHistoryStateV1, TurnPosition,
-    VisibilityPartition, ZoneKey, ZoneLocation, ZonePosition,
+    FaceStateV1, ManaStateV1, PermanentsState, PlayerTurnHistoryV1, TurnHistoryStateV1,
+    TurnPosition, VisibilityPartition, ZoneKey, ZoneLocation, ZonePosition,
 };
 
 struct ProductionAliasProbe {
@@ -355,11 +355,18 @@ fn basic_land_state() -> EngineState {
             },
         )]),
     };
+    let mut permanents = PermanentsState::default();
+    for (object, location) in &engine.zones.locations {
+        if location.zone == mtgml_model::ZoneKind::Battlefield {
+            permanents.enter(*object, engine.core.turn_number).unwrap();
+        }
+    }
     let card_rules = CardRulesAuthoritativeStateV1 {
         mana,
         turn_history,
         faces,
         abilities,
+        permanents,
         ..Default::default()
     };
     let mut state = engine;

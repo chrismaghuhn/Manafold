@@ -30,7 +30,7 @@ pub use card_rules::{
     AbilityAuthorityStateV1, AbilityAuthorityV1, AttachmentStateV1, AttachmentTimestampV1,
     AttachmentV1, CardRulesAuthoritativeStateV1, CardRulesStateError, CounterKindV1,
     CounterStateV1, FaceStateV1, ManaColorV1, ManaPoolV1, ManaRestrictionV1, ManaStateV1,
-    PlayerTurnHistoryV1, TurnHistoryStateV1,
+    PermanentState, PermanentsState, PlayerTurnHistoryV1, TurnHistoryStateV1,
 };
 pub use construction::{
     construct_synthetic_engine_state, SyntheticResetInputs, SyntheticStateConstructionError,

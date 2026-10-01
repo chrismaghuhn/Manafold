@@ -254,3 +254,4 @@ include!("tests/lifecycle.rs");
 include!("tests/batch_d.rs");
 include!("tests/batch_e.rs");
 include!("tests/zones_allocators.rs");
+include!("tests/permanents.rs");

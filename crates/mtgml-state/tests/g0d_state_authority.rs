@@ -146,6 +146,9 @@ fn staged_blight_activation() -> (EngineState, ContinuationId) {
     );
     for object in state.zones.objects.keys().copied() {
         state.card_rules.faces.faces.insert(object, 0);
+        if state.zones.locations[&object].zone == ZoneKind::Battlefield {
+            state.card_rules.permanents.enter(object, 1).unwrap();
+        }
     }
     let continuation_id = ContinuationId(1);
     let action_cost_facts = mtgml_state::ActionCostFacts {
