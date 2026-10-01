@@ -78,6 +78,7 @@
         "a_restored_payment_checkpoint_continues_identically",
         "a_spell_record_needs_its_creation_operation",
         "a_spell_is_cast_in_the_transition_that_creates_its_record_or_ends_its_payment",
+        "ending_a_payment_must_cast_the_spell",
         "a_cast_continuation_paying_mana_has_no_source_activation",
         "a_cast_continuation_names_a_spell_on_the_stack",
         "a_cast_that_pays_for_a_spell_on_the_stack_needs_the_continuation_that_staged_it",

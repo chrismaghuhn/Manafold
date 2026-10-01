@@ -78,7 +78,9 @@ item added, and the continuation is created; the second holds `SpellCast`,
 The delta rule: a new stack record needs its creation operation, and `SpellCast`
 and the rise of the spells-cast count belong to the transition that creates the
 record with no payment pending, or to the one that ends the Cast continuation
-of that spell's card.
+of that spell's card. Both directions are checked: a cast may appear only in
+those transitions, and the transition that ends a payment while the spell stays
+on the stack must cast it, exactly once.
 
 ## Decisions and ordering
 

@@ -1082,7 +1082,8 @@ fn a_spell_is_cast_in_the_transition_that_creates_its_record_or_ends_its_payment
         Err(DeltaApplicationError::UncoveredMutation)
     );
 
-    // The step that ends the payment must cast the spell.
+    // Dropping the cast operation while the state still counts a cast is
+    // caught by the turn history, not by the timing rule.
     let mut without_cast = cast.complete.delta.operations.clone();
     without_cast.retain(|operation| !matches!(operation, SemanticDeltaOperation::SpellCast { .. }));
     assert_eq!(
@@ -1093,6 +1094,45 @@ fn a_spell_is_cast_in_the_transition_that_creates_its_record_or_ends_its_payment
         ),
         Err(DeltaApplicationError::UncoveredMutation)
     );
+}
+
+#[test]
+fn ending_a_payment_must_cast_the_spell() {
+    let cast = ogre_cast();
+    // The completing step with no cast: no `SpellCast` operation, and the
+    // spells-cast count not raised, so the turn history is consistent with
+    // it. The spell stays on the stack with its continuation gone; only the
+    // rule that the step ending a payment casts the spell rejects this.
+    let mut never_cast = cast.complete.next_state.clone();
+    never_cast
+        .card_rules
+        .turn_history
+        .players
+        .get_mut(&P1)
+        .unwrap()
+        .spells_cast_total -= 1;
+    assert_eq!(
+        never_cast.card_rules.turn_history,
+        cast.begin.next_state.card_rules.turn_history
+    );
+    assert_eq!(never_cast.zones, cast.begin.next_state.zones);
+    assert!(never_cast.execution.continuations.is_empty());
+    let mut without_cast = cast.complete.delta.operations.clone();
+    without_cast.retain(|operation| !matches!(operation, SemanticDeltaOperation::SpellCast { .. }));
+    let outcome =
+        StateDelta::between_structural_only(&cast.begin.next_state, &never_cast, without_cast);
+    assert!(
+        matches!(outcome, Err(DeltaApplicationError::UncoveredMutation)),
+        "a spell left on the stack that was never cast was accepted: {:?}",
+        outcome.map(|delta| delta.operations.len())
+    );
+    // With the cast operation and the count, the same step is accepted.
+    StateDelta::between_structural_only(
+        &cast.begin.next_state,
+        &cast.complete.next_state,
+        cast.complete.delta.operations.clone(),
+    )
+    .unwrap();
 }
 
 #[test]

@@ -684,6 +684,38 @@ fn validate_delta_operation_coverage(
         return uncovered();
     }
 
+    // CR 601.2i: the transition that ends the payment of a spell that stays on
+    // the stack is the one that casts it, exactly once. `spell_becomes_cast`
+    // limits where a cast may appear; this makes sure it appears.
+    for record in before.execution.continuations.values() {
+        let ContinuationPayload::Cast(cast) = &record.payload else {
+            continue;
+        };
+        if after.cast_continuation_of(cast.spell_object).is_some() {
+            continue;
+        }
+        let Some(stack_object) = after.zones.stack_records.iter().find_map(|(id, record)| {
+            match record.payload.as_ref() {
+                Some(StackItemPayload::Spell {
+                    stack_card_object, ..
+                }) if *stack_card_object == cast.spell_object => Some(*id),
+                _ => None,
+            }
+        }) else {
+            continue;
+        };
+        let casts = operations
+            .iter()
+            .filter(|operation| {
+                matches!(operation,
+                    V3::SpellCast { stack_object: cast_object, .. } if *cast_object == stack_object)
+            })
+            .count();
+        if casts != 1 {
+            return uncovered();
+        }
+    }
+
     // Execution V4 authority requires an exact owning operation for every
     // staged continuation, pending request, trigger, and effect change.
     if before.execution.pending_decision != after.execution.pending_decision
@@ -1150,7 +1182,8 @@ fn validate_delta_operation_coverage(
 /// that puts its record on the stack when no payment is left to make, or the
 /// one that ends its Cast continuation because the cost is paid (CR 601.2h).
 /// A transition that creates the record and leaves the payment pending, or
-/// that leaves a pending payment pending, does not cast it.
+/// that leaves a pending payment pending, does not cast it. The delta coverage
+/// also requires that the transition ending the payment does cast it.
 pub fn spell_becomes_cast(
     before: &EngineState,
     after: &EngineState,
