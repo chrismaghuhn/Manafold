@@ -34,10 +34,6 @@ class ObservedEventV4DecoderTests(unittest.TestCase):
             ObservedEventV4.from_wire(mana)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class GameStartObservedEventTests(unittest.TestCase):
     def test_game_start_events_round_trip(self) -> None:
         for value in (
@@ -57,3 +53,7 @@ class GameStartObservedEventTests(unittest.TestCase):
         ):
             with self.assertRaises(WireError):
                 ObservedEventV4.from_wire(value)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1269,10 +1269,25 @@ fn validate_event_projection_v3(
                 && game_start_of(after)
                     .is_some_and(|start| start.starting_player == Some(*starting_player))
         }
-        AuthoritativeRuleEventKind::MulliganDeclared { player, .. } => game_start_of(before)
-            .is_some_and(|start| {
+        // The declaration shows in the after state: a keep makes the player
+        // keep (or the game begins), a mulligan puts the player in this
+        // round's mulligans or has already been taken.
+        AuthoritativeRuleEventKind::MulliganDeclared { player, mulligan } => {
+            let Some(start) = game_start_of(before).filter(|start| {
                 start.stage == mtgml_state::GameStartStage::Declaring { player: *player }
-            }),
+            }) else {
+                return Err(EventDeltaError::Mismatch);
+            };
+            match (game_start_of(after), mulligan) {
+                (None, false) => true,
+                (None, true) => false,
+                (Some(next), false) => next.kept.contains(player),
+                (Some(next), true) => {
+                    next.round_mulligans.contains(player)
+                        || next.mulligans_taken.get(player) > start.mulligans_taken.get(player)
+                }
+            }
+        }
         AuthoritativeRuleEventKind::ObjectCeasedToExist { object } => {
             before.zones.objects.contains_key(object) && !after.zones.objects.contains_key(object)
         }
@@ -1765,9 +1780,10 @@ fn validate_zone_transition_chain(
         for key in [from.key(), transition.to.key()] {
             rewitness_ordered_zone(&mut zones, &key)?;
         }
-        if !created.remove(&transition.old_object) {
-            left.insert(transition.old_object);
-        }
+        // Every object a move leaves is gone afterwards, including an
+        // incarnation this transition created and then moved again.
+        created.remove(&transition.old_object);
+        left.insert(transition.old_object);
         created.insert(transition.new_object);
     }
     let objects_match = |id: &GameObjectId| {

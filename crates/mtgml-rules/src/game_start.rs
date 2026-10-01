@@ -406,6 +406,32 @@ pub(crate) fn validate_pregame_request(
     if !admitted(admission) || !matches!(status, EpisodeStatus::Running) {
         return Err(mismatch);
     }
+    // Two players at the starting life total (CR 103.4), and the chooser the
+    // seed picks (CR 103.1): the chooser draw is re-derived, not trusted.
+    let (_, start) = game_start(state).ok_or(mismatch)?;
+    let players: Vec<PlayerId> = state.core.players.keys().copied().collect();
+    let chooser_stream = RandomStreamKeyV1::global(RandomStreamKindV1::GameStartChooser);
+    let (index, _, chooser_cursor) = mtgml_random::sampling::uniform_below_u64(
+        &state.random.root_seed,
+        &chooser_stream,
+        &RandomStreamCursorV1::default(),
+        players.len() as u64,
+    )
+    .map_err(|_| mismatch)?;
+    if players.len() != 2
+        || state
+            .core
+            .players
+            .values()
+            .any(|player| player.life != STARTING_LIFE || player.has_lost)
+        || usize::try_from(index)
+            .ok()
+            .and_then(|index| players.get(index))
+            != Some(&start.chooser)
+        || state.random.lookup_stream(&chooser_stream) != Ok(chooser_cursor)
+    {
+        return Err(mismatch);
+    }
     let expected = expected_request_shape(state).map_err(|_| mismatch)?;
     let identity = state
         .perspective_identities
@@ -531,6 +557,18 @@ pub(crate) fn execute_pregame_response(
     };
     let starting_player = start.starting_player.ok_or(Error::InvalidResult)?;
     let order = turn_order(&next, starting_player);
+    // CR 103.5: once a player's opening hand would be zero cards they may
+    // take no further mulligan. With no choice left, a player who has put
+    // their cards on the bottom keeps.
+    for player in &order {
+        let capped = start
+            .mulligans_taken
+            .get(player)
+            .is_some_and(|taken| (*taken as usize) >= STARTING_HAND_SIZE);
+        if capped && !start.round_mulligans.contains(player) {
+            start.kept.insert(*player);
+        }
+    }
     let next_declarer = |start: &GameStartContinuation| {
         order
             .iter()
@@ -1145,13 +1183,86 @@ mod tests {
                     maximum: round
                 }
             );
+            if round == 7 {
+                // CR 103.5: once the opening hand would be zero cards, no
+                // further mulligan may be taken. The last bottoming is the
+                // last choice; the player keeps the empty hand.
+                let mut capped = state.clone();
+                let (bottom, _) = bottom_first(&capped);
+                capped = answer(&admission, &capped, bottom).unwrap();
+                assert_eq!(capped.core.turn_number, 1);
+                state = capped;
+                break;
+            }
             let (bottom, _) = bottom_first(&state);
             state = answer(&admission, &state, bottom).unwrap();
         }
-        state = answer(&admission, &state, keep(&state)).unwrap();
         assert_eq!(state.core.turn_number, 1);
         assert_eq!(zone_count(&state, P1, ZoneKind::Hand), 0);
         assert_eq!(zone_count(&state, P1, ZoneKind::Library), 12);
+    }
+
+    #[test]
+    fn the_other_player_draws_on_turn_two() {
+        let (admission, state) = new_game(7);
+        let mut state = answer(&admission, &state, select_player(&state, P1)).unwrap();
+        state = answer(&admission, &state, keep(&state)).unwrap();
+        state = answer(&admission, &state, keep(&state)).unwrap();
+        let pass = |state: &EngineState| {
+            choose(state, |intent| {
+                matches!(intent, CandidateIntent::PassPriority)
+            })
+        };
+        while state.core.turn_number < 2 || state.core.position == UPKEEP {
+            let request = pending(&state);
+            let answer_value = match request.purpose {
+                DecisionPurposeV4::AttackerDeclaration => DecisionAnswerV2::SelectMany {
+                    candidate_ids: Vec::new(),
+                },
+                _ => pass(&state),
+            };
+            state = answer(&admission, &state, answer_value).unwrap();
+        }
+        assert_eq!(state.core.active_player, P2);
+        assert_eq!(zone_count(&state, P2, ZoneKind::Hand), 8);
+        assert_eq!(zone_count(&state, P1, ZoneKind::Hand), 7);
+    }
+
+    #[test]
+    fn bottomed_cards_lie_in_the_chosen_order() {
+        let (admission, state) = new_game(7);
+        let mut state = answer(&admission, &state, select_player(&state, P1)).unwrap();
+        state = answer(&admission, &state, mulligan(&state)).unwrap();
+        state = answer(&admission, &state, keep(&state)).unwrap();
+        let (bottom, _) = bottom_first(&state);
+        state = answer(&admission, &state, bottom).unwrap();
+        state = answer(&admission, &state, mulligan(&state)).unwrap();
+        // The second mulligan bottoms two cards: the second chosen is the
+        // last card of the library, the first chosen lies just above it.
+        let request = pending(&state);
+        let picks = [request.candidates[3].clone(), request.candidates[1].clone()];
+        let cards: Vec<_> = picks
+            .iter()
+            .map(|candidate| match &candidate.trusted_binding {
+                EngineCandidateBinding::SelectObject { object } => {
+                    state.zones.objects[object].physical_card.unwrap()
+                }
+                other => panic!("unexpected binding {other:?}"),
+            })
+            .collect();
+        let state = answer(
+            &admission,
+            &state,
+            DecisionAnswerV2::Order {
+                candidate_ids: picks
+                    .iter()
+                    .map(|candidate| candidate.candidate_id)
+                    .collect(),
+            },
+        )
+        .unwrap();
+        let library = library(&state, P1);
+        assert_eq!(library[library.len() - 2..], cards[..]);
     }
 
     #[test]
@@ -1192,6 +1303,104 @@ mod tests {
         }
     }
 
+    /// The validated product of answering the pending request.
+    fn product(
+        admission: &ExecutableProfileAdmissionV1,
+        state: &EngineState,
+        answer: DecisionAnswerV2,
+    ) -> crate::BasicLandTransitionProduct {
+        let request = pending(state);
+        crate::execute_magic_response(
+            admission,
+            state,
+            request.actor,
+            &DecisionResponseV3 {
+                schema_version: DECISION_RESPONSE_V3_SCHEMA.to_owned(),
+                player_decision_id: request.player_decision_id,
+                view_sequence: request.view_sequence,
+                answer,
+            },
+            &EpisodeStatus::Running,
+        )
+        .unwrap()
+    }
+
+    fn events_validate(state: &EngineState, product: &crate::BasicLandTransitionProduct) -> bool {
+        crate::events::validate_events_for_built_delta_v3(
+            state,
+            &product.next_state,
+            &product.events,
+            &product.delta,
+        )
+        .is_ok()
+    }
+
+    #[test]
+    fn an_object_moved_twice_in_one_transition_must_be_gone() {
+        let (admission, state) = new_game(7);
+        let state = answer(&admission, &state, select_player(&state, P1)).unwrap();
+        let state = answer(&admission, &state, mulligan(&state)).unwrap();
+        // P2 keeps: P1's hand goes into the library and is drawn again.
+        let mut product = product(&admission, &state, keep(&state));
+        assert!(events_validate(&state, &product));
+        let moves: Vec<_> = product
+            .events
+            .iter()
+            .filter_map(|event| match &event.event {
+                crate::AuthoritativeRuleEventKind::ZoneTransition { transition } => Some((
+                    transition.old_object,
+                    transition.new_object,
+                    transition.new_snapshot.clone(),
+                )),
+                _ => None,
+            })
+            .collect();
+        let (intermediate, snapshot) = moves
+            .iter()
+            .find(|(_, new, _)| moves.iter().any(|(old, _, _)| old == new))
+            .map(|(_, new, snapshot)| (*new, snapshot.clone()))
+            .expect("a library incarnation is drawn again");
+        let mut after = product.next_state.clone();
+        after.zones.objects.insert(
+            intermediate,
+            mtgml_state::GameObject {
+                id: intermediate,
+                physical_card: snapshot.physical_card,
+                card_definition: snapshot.card_definition,
+                owner: snapshot.owner,
+                controller: snapshot.controller,
+                tapped: false,
+                face_down: false,
+            },
+        );
+        product.next_state = after.clone();
+        product.delta.replacement = after;
+        assert!(!events_validate(&state, &product));
+    }
+
+    #[test]
+    fn a_declaration_event_must_match_the_declaration() {
+        let (admission, state) = new_game(7);
+        let state = answer(&admission, &state, select_player(&state, P1)).unwrap();
+        let mut product = product(&admission, &state, keep(&state));
+        assert!(events_validate(&state, &product));
+        for event in &mut product.events {
+            if let crate::AuthoritativeRuleEventKind::MulliganDeclared { mulligan, .. } =
+                &mut event.event
+            {
+                *mulligan = true;
+            }
+        }
+        for operation in &mut product.delta.operations {
+            if let mtgml_state::SemanticDeltaOperation::MulliganDeclared { mulligan, .. } =
+                operation
+            {
+                *mulligan = true;
+            }
+        }
+        assert!(!events_validate(&state, &product));
+    }
+
     #[test]
     fn a_tampered_pregame_fails_validation() {
         let (admission, state) = new_game(7);
@@ -1207,16 +1416,79 @@ mod tests {
             }
         }
         assert!(wrong_declarer.validate_structure().is_err());
-        let mut short_hand = state.clone();
-        let card = *short_hand
+        // A mulligan count the hands do not show.
+        let mut miscounted = state.clone();
+        if let Some(record) = miscounted.execution.continuations.values_mut().next() {
+            if let ContinuationPayload::GameStart(start) = &mut record.payload {
+                start.mulligans_taken.insert(P2, 1);
+            }
+        }
+        assert_eq!(
+            miscounted.validate_structure(),
+            Err(mtgml_state::EngineStateError::GameStart)
+        );
+        // A card outside hands and libraries before the game began.
+        let mut exiled = state.clone();
+        let library = exiled
             .zones
-            .locations
+            .ordered_zones
             .iter()
-            .find(|(_, location)| location.zone == ZoneKind::Hand && location.player == Some(P2))
+            .find(|(key, _)| key.zone == ZoneKind::Library && key.player == Some(P2))
+            .map(|(key, _)| key.clone())
+            .unwrap();
+        let card = exiled
+            .zones
+            .ordered_zones
+            .get_mut(&library)
             .unwrap()
-            .0;
-        short_hand.zones.locations.get_mut(&card).unwrap().zone = ZoneKind::Exile;
-        assert!(short_hand.validate_structure().is_err());
+            .remove(0);
+        for (offset, member) in exiled.zones.ordered_zones[&library]
+            .clone()
+            .iter()
+            .enumerate()
+        {
+            exiled.zones.locations.get_mut(member).unwrap().position =
+                mtgml_state::ZonePosition::Top {
+                    offset: offset as u32,
+                };
+        }
+        exiled.zones.locations.insert(
+            card,
+            mtgml_state::ZoneLocation {
+                zone: ZoneKind::Exile,
+                player: None,
+                position: mtgml_state::ZonePosition::Unordered,
+                visibility: mtgml_state::VisibilityPartition::Public,
+                partition: None,
+            },
+        );
+        assert_eq!(
+            exiled.validate_structure(),
+            Err(mtgml_state::EngineStateError::GameStart)
+        );
+        // A life total other than the starting 20 (CR 103.4).
+        let mut wounded = state.clone();
+        wounded.core.players.get_mut(&P1).unwrap().life = 5;
+        assert!(crate::validate_magic_pending_request(
+            &admission,
+            &wounded,
+            &EpisodeStatus::Running
+        )
+        .is_err());
+        // A chooser the seed did not pick (CR 103.1, RNG audit).
+        let (_, fresh) = new_game(7);
+        let chooser = game_start(&fresh).chooser;
+        let other_seed = (0..32_u8)
+            .find(|byte| game_start(&new_game(*byte).1).chooser != chooser)
+            .unwrap();
+        let mut reseeded = fresh.clone();
+        reseeded.random.root_seed = seed(other_seed);
+        assert!(crate::validate_magic_pending_request(
+            &admission,
+            &reseeded,
+            &EpisodeStatus::Running
+        )
+        .is_err());
         let mut tampered = state.clone();
         tampered
             .execution

@@ -302,3 +302,44 @@ fn the_mulligan_owner_observes_its_cards_leave() {
         .collect();
     assert_eq!(left.len(), 7, "the old hand went into the library");
 }
+
+#[test]
+fn a_rejected_pregame_answer_changes_nothing() {
+    let game = Game::new([deck(6, 6), deck(6, 6)], 47);
+    let (chooser, request) = game.pending();
+    let before = game.controller.checkpoint().unwrap();
+    let replay = game.controller.export_replay().unwrap();
+    // An answer for an earlier view of the request is stale.
+    let step = game
+        .endpoint(chooser)
+        .submit(DecisionResponseV3 {
+            schema_version: DECISION_RESPONSE_V3_SCHEMA.to_owned(),
+            player_decision_id: request.player_decision_id,
+            view_sequence: mtgml_model::VisibleSequence(request.view_sequence.0 + 1),
+            answer: DecisionAnswerV2::SelectOne {
+                candidate_id: request.candidates[0].candidate_id,
+            },
+        })
+        .unwrap();
+    assert_ne!(step.submission, PlayerStepSubmissionV1::Accepted);
+    assert_eq!(game.controller.checkpoint().unwrap(), before);
+    assert_eq!(game.controller.export_replay().unwrap(), replay);
+}
+
+#[test]
+fn a_restored_bottoming_checkpoint_continues_identically() {
+    let game = Game::new([deck(6, 6), deck(6, 6)], 53);
+    game.answer(starting_player(P1));
+    game.answer(mulligan);
+    game.answer(keep);
+    let bottoming = game.controller.checkpoint().unwrap();
+    assert_eq!(game.pending().1.purpose, DecisionPurposeV4::MulliganBottom);
+    game.bottom(&[2]);
+    game.answer(keep);
+    let ahead = game.controller.checkpoint().unwrap();
+    game.controller.restore(bottoming.clone()).unwrap();
+    assert_eq!(game.controller.checkpoint().unwrap(), bottoming);
+    game.bottom(&[2]);
+    game.answer(keep);
+    assert_eq!(game.controller.checkpoint().unwrap(), ahead);
+}

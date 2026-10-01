@@ -265,12 +265,18 @@
         "seven_mulligans_leave_an_empty_hand",
         "the_owner_forgets_cards_returned_to_the_library",
         "a_tampered_pregame_fails_validation",
+        "an_object_moved_twice_in_one_transition_must_be_gone",
+        "a_declaration_event_must_match_the_declaration",
+        "the_other_player_draws_on_turn_two",
+        "bottomed_cards_lie_in_the_chosen_order",
         "the_chooser_picks_and_both_players_observe_the_choice",
         "both_players_keep_and_the_starting_player_takes_the_first_turn",
         "a_player_learns_nothing_about_the_opponents_deck_order",
         "a_restored_pregame_checkpoint_continues_identically",
         "a_mulligan_hides_the_hand_and_the_bottom_choice_from_the_opponent",
-        "the_mulligan_owner_observes_its_cards_leave"
+        "the_mulligan_owner_observes_its_cards_leave",
+        "a_rejected_pregame_answer_changes_nothing",
+        "a_restored_bottoming_checkpoint_continues_identically"
       ],
       "dependencies": [
         "rules/draw-card",

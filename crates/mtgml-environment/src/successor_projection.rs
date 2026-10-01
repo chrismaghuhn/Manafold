@@ -361,6 +361,19 @@ pub(crate) fn public_face_up_battlefield_object(
         && !object_state.face_down
 }
 
+/// Whether a perspective sees the new incarnation of a moved card: always in
+/// a public destination (so a missing opaque identity fails closed), and in
+/// a hidden destination only when the perspective tracks it, as an owner who
+/// sees a card disappear into its own library does not.
+fn reveals_new_incarnation(
+    new_object: mtgml_model::GameObjectId,
+    to: &mtgml_state::ZoneLocation,
+    after_identity: &mtgml_state::PerspectiveIdentityRecordV2,
+) -> bool {
+    to.visibility == mtgml_state::VisibilityPartition::Public
+        || after_identity.object_to_opaque.contains_key(&new_object)
+}
+
 fn project_v4_public_source_event(
     source_event: &mtgml_rules::AuthoritativeRuleEvent,
     context: V4PublicSourceEventContext<'_>,
@@ -382,16 +395,16 @@ fn project_v4_public_source_event(
                 to_zone: transition.to.zone,
                 old_object: transition.old_object,
                 new_object: transition.new_object,
-                // An incarnation is visible exactly when this perspective
-                // has an opaque identity for it: the old one before the
-                // move, the new one after it. A card that disappears into
-                // a hidden zone shows only its old identity.
+                // The old incarnation is visible exactly when this
+                // perspective had an opaque identity for it before the move.
                 reveals_old: before_identity
                     .object_to_opaque
                     .contains_key(&transition.old_object),
-                reveals_new: after_identity
-                    .object_to_opaque
-                    .contains_key(&transition.new_object),
+                reveals_new: reveals_new_incarnation(
+                    transition.new_object,
+                    &transition.to,
+                    after_identity,
+                ),
             };
             project_v4_legacy_observation_policy(
                 after,
@@ -862,4 +875,46 @@ pub fn project_successor_player_steps_v4(
         steps.insert(perspective, step);
     }
     Ok(steps)
+}
+
+#[cfg(test)]
+mod reveal_tests {
+    use super::reveals_new_incarnation;
+    use mtgml_model::{GameObjectId, OpaqueObjectId, PlayerId, ZoneKind};
+    use mtgml_state::{
+        PerspectiveIdentityRecordV2, VisibilityPartition, ZoneLocation, ZonePosition,
+    };
+
+    fn location(zone: ZoneKind, visibility: VisibilityPartition) -> ZoneLocation {
+        ZoneLocation {
+            zone,
+            player: Some(PlayerId(1)),
+            position: ZonePosition::Top { offset: 0 },
+            visibility,
+            partition: None,
+        }
+    }
+
+    #[test]
+    fn a_public_destination_always_reveals_and_a_hidden_one_only_when_tracked() {
+        let untracked = PerspectiveIdentityRecordV2::default();
+        let mut tracked = PerspectiveIdentityRecordV2::default();
+        tracked
+            .object_to_opaque
+            .insert(GameObjectId(2), OpaqueObjectId(1));
+        let graveyard = location(ZoneKind::Graveyard, VisibilityPartition::Public);
+        let library = location(ZoneKind::Library, VisibilityPartition::FaceDown);
+        // A missing identity in a public zone must surface, not vanish.
+        assert!(reveals_new_incarnation(
+            GameObjectId(2),
+            &graveyard,
+            &untracked
+        ));
+        assert!(!reveals_new_incarnation(
+            GameObjectId(2),
+            &library,
+            &untracked
+        ));
+        assert!(reveals_new_incarnation(GameObjectId(2), &library, &tracked));
+    }
 }

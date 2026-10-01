@@ -678,11 +678,13 @@ impl EngineState {
     ) -> Result<(), EngineStateError> {
         let invalid = || Err(EngineStateError::GameStart);
         let core = &self.core;
-        let battlefield = self
-            .zones
-            .locations
-            .values()
-            .any(|location| location.zone == mtgml_model::ZoneKind::Battlefield);
+        // Before the game begins every card is in a hand or a library.
+        let outside_hands_and_libraries = self.zones.locations.values().any(|location| {
+            !matches!(
+                location.zone,
+                mtgml_model::ZoneKind::Hand | mtgml_model::ZoneKind::Library
+            )
+        });
         if core.position
             != (crate::TurnPosition::Beginning {
                 step: crate::BeginningStep::Untap,
@@ -690,7 +692,9 @@ impl EngineState {
             || core.priority != crate::PriorityState::None
             || core.active_player != start.starting_player.unwrap_or(start.chooser)
             || self.combat.is_some()
-            || battlefield
+            || outside_hands_and_libraries
+            || !self.execution.effects.is_empty()
+            || !self.execution.waiting_triggers.is_empty()
             || !self.zones.stack_order.is_empty()
             || !self.zones.stack_records.is_empty()
             || self
@@ -2043,7 +2047,7 @@ pub const STARTING_HAND_SIZE: usize = 7;
 /// mulliganing sets, and a stage naming the player the sets imply: the first
 /// player in turn order still to declare, or still to put cards on the
 /// bottom.
-fn game_start_shape_is_valid(
+pub(crate) fn game_start_shape_is_valid(
     start: &crate::GameStartContinuation,
     players: &BTreeSet<mtgml_model::PlayerId>,
 ) -> bool {
@@ -2069,9 +2073,15 @@ fn game_start_shape_is_valid(
         std::iter::once(first).chain(players.iter().copied().filter(|player| *player != first));
     match start.stage {
         crate::GameStartStage::ChoosingStartingPlayer => false,
+        // CR 103.5: a player whose opening hand would be zero cards may take
+        // no further mulligan, so is never asked to declare.
         crate::GameStartStage::Declaring { player } => {
             turn_order.find(|p| !start.kept.contains(p) && !start.round_mulligans.contains(p))
                 == Some(player)
+                && start
+                    .mulligans_taken
+                    .get(&player)
+                    .is_some_and(|taken| (*taken as usize) < STARTING_HAND_SIZE)
         }
         crate::GameStartStage::Bottoming { player } => {
             turn_order.find(|p| start.round_mulligans.contains(p)) == Some(player)

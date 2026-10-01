@@ -121,3 +121,23 @@ fn magic_sba_stage_revision_relation_uses_checked_arithmetic() {
         Err(EngineStateShapeViolation::ContinuationRevision)
     );
 }
+
+#[test]
+fn a_player_with_seven_mulligans_is_never_asked_to_declare() {
+    use crate::engine::game_start_shape_is_valid as valid;
+    let players = BTreeSet::from([PlayerId(1), PlayerId(2)]);
+    let declaring = |taken: u32| crate::GameStartContinuation {
+        chooser: PlayerId(1),
+        starting_player: Some(PlayerId(1)),
+        stage: crate::GameStartStage::Declaring {
+            player: PlayerId(1),
+        },
+        mulligans_taken: BTreeMap::from([(PlayerId(1), taken), (PlayerId(2), 0)]),
+        kept: BTreeSet::from([PlayerId(2)]),
+        round_mulligans: BTreeSet::new(),
+    };
+    assert!(valid(&declaring(6), &players));
+    // CR 103.5: with an opening hand of zero cards no further mulligan may
+    // be taken, so there is nothing to declare.
+    assert!(!valid(&declaring(7), &players));
+}

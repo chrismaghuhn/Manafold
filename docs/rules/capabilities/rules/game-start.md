@@ -13,7 +13,8 @@ cards:
 1. One player is chosen at random to decide who takes the first turn (CR 103.1).
 2. That player chooses the starting player.
 3. Each library is shuffled (CR 103.3); each player has 20 life (CR 103.4).
-4. Each player draws seven cards and may take London mulligans (CR 103.5).
+4. Each player draws seven cards and may take London mulligans (CR 103.5),
+   at most seven: after the seventh the player keeps the empty hand.
 5. The starting player takes turn 1, whose draw step is skipped
    (CR 103.8a, 500.11).
 
@@ -76,6 +77,10 @@ Rules (`crates/mtgml-rules/src/game_start.rs`):
 - `game_start::tests::seven_mulligans_leave_an_empty_hand`
 - `game_start::tests::the_owner_forgets_cards_returned_to_the_library`
 - `game_start::tests::a_tampered_pregame_fails_validation`
+- `game_start::tests::an_object_moved_twice_in_one_transition_must_be_gone`
+- `game_start::tests::a_declaration_event_must_match_the_declaration`
+- `game_start::tests::the_other_player_draws_on_turn_two`
+- `game_start::tests::bottomed_cards_lie_in_the_chosen_order`
 
 Production endpoints, restore and noninterference (`crates/mtgml-environment/tests/game_start.rs`):
 - `the_chooser_picks_and_both_players_observe_the_choice`
@@ -84,3 +89,5 @@ Production endpoints, restore and noninterference (`crates/mtgml-environment/tes
 - `a_restored_pregame_checkpoint_continues_identically`
 - `a_mulligan_hides_the_hand_and_the_bottom_choice_from_the_opponent`
 - `the_mulligan_owner_observes_its_cards_leave`
+- `a_rejected_pregame_answer_changes_nothing`
+- `a_restored_bottoming_checkpoint_continues_identically`

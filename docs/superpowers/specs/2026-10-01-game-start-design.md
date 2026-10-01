@@ -166,10 +166,13 @@ action cannot slip past 103.6.
   priority to the starting player. When the upkeep ends, turn 1 passes from
   upkeep straight to the precombat main phase (103.8a, 500.11): no draw, no
   priority in a draw step.
-- **G8 — Unlimited mulligans.** CR 103.5 sets no limit. With seven or more
-  mulligans a player bottoms the whole seven-card hand. The engine does not
-  cap mulligans; the smoke harness bounds a runaway policy with its decision
-  budget.
+- **G8 — At most seven mulligans.** CR 103.5: a player can take mulligans
+  until their opening hand would be zero cards, after which they may not take
+  further mulligans. After the seventh mulligan the player bottoms the whole
+  seven-card hand and keeps the empty hand without being asked again; the
+  state rejects a declaration request for a player with seven mulligans.
+  (The first draft said CR 103.5 sets no limit; the final review found this
+  wrong.)
 - **G9 — Zone moves.** One new `SelectedZoneTransitionKind`,
   `HandToOwnerLibraryBottom`: a new incarnation appended at the bottom of the
   owner's library (CR 400.7). A mulligan appends the whole hand and then
