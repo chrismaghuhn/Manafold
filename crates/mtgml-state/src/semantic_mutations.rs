@@ -834,8 +834,7 @@ impl PermanentsState {
         }
     }
 
-    /// Exactly the battlefield objects have an entry, none from a turn that
-    /// has not begun yet.
+    /// Every entry names a battlefield object and a turn that has begun.
     pub fn validate_battlefield(
         &self,
         battlefield: &BTreeSet<GameObjectId>,
@@ -848,18 +847,26 @@ impl PermanentsState {
         {
             return Err(StateFamilyMutationError::WrongZone);
         }
-        if battlefield
-            .iter()
-            .any(|object| !self.permanents.contains_key(object))
-        {
-            return Err(StateFamilyMutationError::Missing);
-        }
         if self
             .permanents
             .values()
             .any(|permanent| permanent.controlled_since_turn > current_turn)
         {
             return Err(StateFamilyMutationError::InvalidValue);
+        }
+        Ok(())
+    }
+
+    /// Every battlefield object has an entry.
+    pub fn validate_covers(
+        &self,
+        battlefield: &BTreeSet<GameObjectId>,
+    ) -> Result<(), StateFamilyMutationError> {
+        if battlefield
+            .iter()
+            .any(|object| !self.permanents.contains_key(object))
+        {
+            return Err(StateFamilyMutationError::Missing);
         }
         Ok(())
     }

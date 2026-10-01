@@ -129,17 +129,38 @@ fn an_entry_from_a_later_turn_is_rejected() {
 }
 
 #[test]
-fn permanents_are_validated_only_where_card_rules_authority_exists() {
+fn the_synthetic_shape_needs_no_entries_but_rejects_dangling_ones() {
     // The synthetic-compatibility shape has no faces and no abilities: its
-    // battlefield object needs no entry, and the family is not checked.
-    let mut state = synthetic_state();
+    // battlefield object (1) needs no entry. An entry it does have must still
+    // name a battlefield object and a turn that has begun.
+    let state = synthetic_state();
+    assert_eq!(state.core.turn_number, 1);
     state.validate().unwrap();
-    state
-        .card_rules
-        .permanents
-        .enter(GameObjectId(2), 5)
-        .unwrap();
-    state.validate().unwrap();
+
+    for turn in [0, 1] {
+        let mut state = synthetic_state();
+        state
+            .card_rules
+            .permanents
+            .enter(GameObjectId(1), turn)
+            .unwrap();
+        state.validate().unwrap();
+    }
+
+    let dangling: [(&str, GameObjectId, u64); 3] = [
+        ("a library object", GameObjectId(2), 1),
+        ("an object that does not exist", GameObjectId(99), 1),
+        ("a later turn", GameObjectId(1), 2),
+    ];
+    for (what, object, turn) in dangling {
+        let mut state = synthetic_state();
+        state.card_rules.permanents.enter(object, turn).unwrap();
+        assert_eq!(
+            state.validate(),
+            Err(EngineStateError::StateInvariant),
+            "an entry for {what} must be rejected without card-rules authority"
+        );
+    }
 }
 
 #[test]
