@@ -100,7 +100,7 @@ pub fn land_definitions() -> (CardDefinitionId, CardDefinitionId) {
             .iter()
             .find(|definition| {
                 matches!(definition.semantic_binding,
-                    CardSemanticBindingV1::ProfiledV1 { body, .. } if body.subtype == subtype)
+                    CardSemanticBindingV1::ProfiledV1 { body: mtgml_card_ir::CardProfileBodyV1::BasicLand(profile), .. } if profile.subtype == subtype)
             })
             .unwrap()
             .card_definition_id

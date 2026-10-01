@@ -20,6 +20,8 @@ pub const CARD_DEFINITION_ENVELOPE_V1: &str = "card-definition-envelope.v1";
 pub const CONTENT_CONTRACT_MANIFEST_V1: &str = "content-contract-manifest.v1";
 pub const BASIC_LAND_PROFILE_ID_V1: &str = "basic-land@1.0.0";
 pub const BASIC_LAND_PROFILE_BODY_V1: &str = "basic-land-profile.v1";
+pub const VANILLA_CREATURE_PROFILE_ID_V1: &str = "vanilla-creature@1.0.0";
+pub const VANILLA_CREATURE_PROFILE_BODY_V1: &str = "vanilla-creature-profile.v1";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct FaceKey(pub u32);
@@ -139,16 +141,25 @@ pub enum CardSemanticBindingV1 {
     UnprofiledV1,
     ProfiledV1 {
         profile_id: CardSemanticProfileId,
-        body: BasicLandProfileV1,
+        body: CardProfileBodyV1,
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// The body of a semantic profile. Each profile id has exactly one body shape.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum CardProfileBodyV1 {
+    BasicLand(BasicLandProfileV1),
+    /// A creature with a printed cost and power/toughness and nothing else:
+    /// one face, no abilities, no supertypes.
+    VanillaCreature,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct BasicLandProfileV1 {
     pub subtype: BasicLandSubtypeV1,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum BasicLandSubtypeV1 {
     Mountain,
     Plains,
@@ -366,7 +377,7 @@ fn validate_definition(
     match &definition.semantic_binding {
         CardSemanticBindingV1::UnprofiledV1 => {}
         CardSemanticBindingV1::ProfiledV1 { profile_id, body } => {
-            validate_basic_land_profile(definition, profile_id, *body).map_err(|class| {
+            validate_profile(definition, profile_id, *body).map_err(|class| {
                 ContentValidationDiagnosticV1::at(
                     class,
                     ContentValidationPathV1::SemanticBinding {
@@ -397,14 +408,28 @@ fn validate_definition(
     Ok(())
 }
 
-fn validate_basic_land_profile(
+fn validate_profile(
     definition: &CardDefinitionEnvelopeV1,
     profile_id: &CardSemanticProfileId,
-    body: BasicLandProfileV1,
+    body: CardProfileBodyV1,
 ) -> Result<(), ContentValidationErrorV1> {
-    if profile_id.as_str() != BASIC_LAND_PROFILE_ID_V1 {
+    let expected_id = match body {
+        CardProfileBodyV1::BasicLand(_) => BASIC_LAND_PROFILE_ID_V1,
+        CardProfileBodyV1::VanillaCreature => VANILLA_CREATURE_PROFILE_ID_V1,
+    };
+    if profile_id.as_str() != expected_id {
         return Err(ContentValidationErrorV1::UnknownSemanticProfile);
     }
+    match body {
+        CardProfileBodyV1::BasicLand(profile) => validate_basic_land_profile(definition, profile),
+        CardProfileBodyV1::VanillaCreature => validate_vanilla_creature_profile(definition),
+    }
+}
+
+fn validate_basic_land_profile(
+    definition: &CardDefinitionEnvelopeV1,
+    body: BasicLandProfileV1,
+) -> Result<(), ContentValidationErrorV1> {
     if definition.faces.len() != 1 || definition.faces[0].face_key != FaceKey(0) {
         return Err(ContentValidationErrorV1::InvalidLocalIdentity);
     }
@@ -426,6 +451,40 @@ fn validate_basic_land_profile(
         }]
     {
         return Err(ContentValidationErrorV1::InvalidLocalReference);
+    }
+    Ok(())
+}
+
+/// A vanilla creature is one face that is only a creature type line, a printed
+/// cost, and power/toughness: nothing a rule could attach to.
+fn validate_vanilla_creature_profile(
+    definition: &CardDefinitionEnvelopeV1,
+) -> Result<(), ContentValidationErrorV1> {
+    if definition.faces.len() != 1 || definition.faces[0].face_key != FaceKey(0) {
+        return Err(ContentValidationErrorV1::InvalidLocalIdentity);
+    }
+    if !definition.ability_identities.is_empty() {
+        return Err(ContentValidationErrorV1::InvalidLocalReference);
+    }
+    let face = &definition.faces[0].base_characteristics;
+    let has_printed_cost = face.mana_cost.as_ref().is_some_and(|cost| {
+        !cost.is_empty()
+            && !cost
+                .iter()
+                .any(|symbol| matches!(symbol, PrintedManaSymbolV1::Hybrid(..)))
+    });
+    let has_creature_stats =
+        matches!(face.power_toughness, Some((power, toughness)) if power >= 0 && toughness >= 1);
+    if !face.type_line.supertypes.is_empty()
+        || face.type_line.card_types != ["Creature"]
+        || face.type_line.subtypes.is_empty()
+        || !has_printed_cost
+        || !has_creature_stats
+        || face.loyalty.is_some()
+        || face.defense.is_some()
+        || !face.color_indicator.is_empty()
+    {
+        return Err(ContentValidationErrorV1::InvalidCharacteristic);
     }
     Ok(())
 }
@@ -903,22 +962,31 @@ fn binding_from_value(value: Value) -> Result<CardSemanticBindingV1, ContentVali
         "profiled" => {
             let mut profile = array(fields.remove(0), 2)?;
             let profile_id = CardSemanticProfileId::parse(take_text(profile.remove(0))?)?;
-            if profile_id.as_str() != BASIC_LAND_PROFILE_ID_V1 {
-                return Err(ContentValidationErrorV1::UnknownSemanticProfile);
-            }
-            let mut body = array(profile.remove(0), 2)?;
-            if take_text(body.remove(0))? != BASIC_LAND_PROFILE_BODY_V1 {
-                return Err(ContentValidationErrorV1::UnknownProfileBodyVariant);
-            }
-            let subtype = match take_text(body.remove(0))?.as_str() {
-                "mountain" => BasicLandSubtypeV1::Mountain,
-                "plains" => BasicLandSubtypeV1::Plains,
-                _ => return Err(ContentValidationErrorV1::UnknownProfileBodyVariant),
+            let body = match profile_id.as_str() {
+                BASIC_LAND_PROFILE_ID_V1 => {
+                    let mut body = array(profile.remove(0), 2)?;
+                    if take_text(body.remove(0))? != BASIC_LAND_PROFILE_BODY_V1 {
+                        return Err(ContentValidationErrorV1::UnknownProfileBodyVariant);
+                    }
+                    let subtype = match take_text(body.remove(0))?.as_str() {
+                        "mountain" => BasicLandSubtypeV1::Mountain,
+                        "plains" => BasicLandSubtypeV1::Plains,
+                        _ => return Err(ContentValidationErrorV1::UnknownProfileBodyVariant),
+                    };
+                    CardProfileBodyV1::BasicLand(BasicLandProfileV1 { subtype })
+                }
+                VANILLA_CREATURE_PROFILE_ID_V1 => {
+                    let mut body = array(profile.remove(0), 2)?;
+                    if take_text(body.remove(0))? != VANILLA_CREATURE_PROFILE_BODY_V1
+                        || !matches!(body.remove(0), Value::Null)
+                    {
+                        return Err(ContentValidationErrorV1::UnknownProfileBodyVariant);
+                    }
+                    CardProfileBodyV1::VanillaCreature
+                }
+                _ => return Err(ContentValidationErrorV1::UnknownSemanticProfile),
             };
-            Ok(CardSemanticBindingV1::ProfiledV1 {
-                profile_id,
-                body: BasicLandProfileV1 { subtype },
-            })
+            Ok(CardSemanticBindingV1::ProfiledV1 { profile_id, body })
         }
         _ => Err(ContentValidationErrorV1::UnknownSemanticProfile),
     }
@@ -1050,16 +1118,21 @@ fn binding_value(binding: &CardSemanticBindingV1) -> Value {
     match binding {
         CardSemanticBindingV1::UnprofiledV1 => Value::Array(vec![text("unprofiled"), Value::Null]),
         CardSemanticBindingV1::ProfiledV1 { profile_id, body } => {
-            let subtype = match body.subtype {
-                BasicLandSubtypeV1::Mountain => "mountain",
-                BasicLandSubtypeV1::Plains => "plains",
+            let body = match body {
+                CardProfileBodyV1::BasicLand(profile) => {
+                    let subtype = match profile.subtype {
+                        BasicLandSubtypeV1::Mountain => "mountain",
+                        BasicLandSubtypeV1::Plains => "plains",
+                    };
+                    Value::Array(vec![text(BASIC_LAND_PROFILE_BODY_V1), text(subtype)])
+                }
+                CardProfileBodyV1::VanillaCreature => {
+                    Value::Array(vec![text(VANILLA_CREATURE_PROFILE_BODY_V1), Value::Null])
+                }
             };
             Value::Array(vec![
                 text("profiled"),
-                Value::Array(vec![
-                    text(profile_id.as_str()),
-                    Value::Array(vec![text(BASIC_LAND_PROFILE_BODY_V1), text(subtype)]),
-                ]),
+                Value::Array(vec![text(profile_id.as_str()), body]),
             ])
         }
     }

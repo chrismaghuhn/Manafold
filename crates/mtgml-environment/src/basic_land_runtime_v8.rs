@@ -565,8 +565,8 @@ mod tests {
             .iter()
             .find(|definition| {
                 matches!(definition.semantic_binding,
-                CardSemanticBindingV1::ProfiledV1 { body, .. }
-                    if body.subtype == mtgml_card_ir::BasicLandSubtypeV1::Mountain)
+                CardSemanticBindingV1::ProfiledV1 { body: mtgml_card_ir::CardProfileBodyV1::BasicLand(profile), .. }
+                    if profile.subtype == mtgml_card_ir::BasicLandSubtypeV1::Mountain)
             })
             .unwrap()
             .card_definition_id;
@@ -575,8 +575,8 @@ mod tests {
             .iter()
             .find(|definition| {
                 matches!(definition.semantic_binding,
-                CardSemanticBindingV1::ProfiledV1 { body, .. }
-                    if body.subtype == mtgml_card_ir::BasicLandSubtypeV1::Plains)
+                CardSemanticBindingV1::ProfiledV1 { body: mtgml_card_ir::CardProfileBodyV1::BasicLand(profile), .. }
+                    if profile.subtype == mtgml_card_ir::BasicLandSubtypeV1::Plains)
             })
             .unwrap()
             .card_definition_id;
@@ -1105,7 +1105,7 @@ mod tests {
                 .iter()
                 .find(|definition| {
                     matches!(&definition.semantic_binding,
-                        CardSemanticBindingV1::ProfiledV1 { body, .. } if body.subtype == subtype)
+                        CardSemanticBindingV1::ProfiledV1 { body: mtgml_card_ir::CardProfileBodyV1::BasicLand(profile), .. } if profile.subtype == subtype)
                 })
                 .unwrap()
                 .card_definition_id
@@ -1434,7 +1434,7 @@ mod tests {
                 .iter()
                 .find(|definition| {
                     matches!(&definition.semantic_binding,
-                        CardSemanticBindingV1::ProfiledV1 { body, .. } if body.subtype == subtype)
+                        CardSemanticBindingV1::ProfiledV1 { body: mtgml_card_ir::CardProfileBodyV1::BasicLand(profile), .. } if profile.subtype == subtype)
                 })
                 .unwrap()
                 .card_definition_id

@@ -158,8 +158,18 @@ def _validate_profile(binding: object, faces: list[object], abilities: list[obje
         _fail("unknown card semantic binding")
 
     profile_id, body = _array(profile, 2)
-    if _text(profile_id) != "basic-land@1.0.0":
+    profile_id = _text(profile_id)
+    if profile_id == "basic-land@1.0.0":
+        _validate_basic_land_profile(body, faces, abilities)
+    elif profile_id == "vanilla-creature@1.0.0":
+        _validate_vanilla_creature_profile(body, faces, abilities)
+    else:
         _fail("unknown card semantic profile")
+
+
+def _validate_basic_land_profile(
+    body: object, faces: list[object], abilities: list[object]
+) -> None:
     body_tag, raw_subtype = _array(body, 2)
     subtype = _text(raw_subtype)
     if _text(body_tag) != "basic-land-profile.v1" or subtype not in {"mountain", "plains"}:
@@ -172,6 +182,40 @@ def _validate_profile(binding: object, faces: list[object], abilities: list[obje
         _fail("basic-land profile and type line differ")
     if abilities != [[0, 0]]:
         _fail("basic-land profile requires exactly ability identity (0,0)")
+
+
+def _validate_vanilla_creature_profile(
+    body: object, faces: list[object], abilities: list[object]
+) -> None:
+    body_tag, payload = _array(body, 2)
+    if _text(body_tag) != "vanilla-creature-profile.v1" or payload is not None:
+        _fail("unknown vanilla-creature profile body")
+    if len(faces) != 1 or _u32(_array(faces[0], 2)[0]) != 0:
+        _fail("vanilla-creature profile requires exactly FaceKey(0)")
+    if abilities:
+        _fail("vanilla-creature profile has no ability identities")
+    characteristics = _array(faces[0], 2)[1]
+    supertypes, card_types, subtypes = _validate_characteristics(characteristics)
+    _, mana_cost, color_indicator, _, power_toughness, loyalty, defense = _array(characteristics, 7)
+    if mana_cost is None:
+        _fail("vanilla-creature profile requires a printed mana cost")
+    symbols = _array(mana_cost)
+    if not symbols or any(_text(_array(symbol, 2)[0]) == "hybrid" for symbol in symbols):
+        _fail("vanilla-creature profile requires a non-hybrid printed mana cost")
+    if power_toughness is None:
+        _fail("vanilla-creature profile requires power and toughness")
+    power, toughness = _array(power_toughness, 2)
+    if _i32(power) < 0 or _i32(toughness) < 1:
+        _fail("vanilla-creature profile requires power >= 0 and toughness >= 1")
+    if (
+        supertypes
+        or card_types != ["Creature"]
+        or not subtypes
+        or color_indicator
+        or loyalty is not None
+        or defense is not None
+    ):
+        _fail("vanilla-creature profile and characteristics differ")
 
 
 def _validate_references(value: object) -> None:

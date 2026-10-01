@@ -1,7 +1,7 @@
 //! Fail-closed content validation through the canonical Capability Registry.
 
 use crate::{
-    BasicLandSubtypeV1, CardSemanticBindingV1, ContentContractManifestV1,
+    BasicLandSubtypeV1, CardProfileBodyV1, CardSemanticBindingV1, ContentContractManifestV1,
     ContentValidationDiagnosticV1, DefinitionClosureErrorV1, ProvenanceCatalogV1,
     VerifiedContentCatalogV1, BASIC_LAND_PROFILE_ID_V1,
 };
@@ -399,11 +399,10 @@ fn validate_pinned_basic_land_profile(
             .find(|definition| definition.card_definition_id == record.card_definition_id)
             .ok_or(ContentPreflightErrorV1::PinnedSourceProvenanceMismatch)?;
         let profile_subtype = match &definition.semantic_binding {
-            CardSemanticBindingV1::ProfiledV1 { profile_id, body }
-                if profile_id.as_str() == BASIC_LAND_PROFILE_ID_V1 =>
-            {
-                body.subtype
-            }
+            CardSemanticBindingV1::ProfiledV1 {
+                profile_id,
+                body: CardProfileBodyV1::BasicLand(profile),
+            } if profile_id.as_str() == BASIC_LAND_PROFILE_ID_V1 => profile.subtype,
             _ => return Err(ContentPreflightErrorV1::ExecutableProfileNotAdmitted),
         };
         let already_found = match profile_subtype {

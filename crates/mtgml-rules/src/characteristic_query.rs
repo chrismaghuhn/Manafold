@@ -5,7 +5,7 @@
 //! supplied by the current RulesKernel path.
 
 use mtgml_card_ir::{
-    BaseCharacteristicsV1, BasicLandProfileV1, CardSemanticBindingV1, ExecutableProfileAdmissionV1,
+    BaseCharacteristicsV1, CardProfileBodyV1, CardSemanticBindingV1, ExecutableProfileAdmissionV1,
     FaceDefinitionV1, FaceKey, ManaColorV1, PrintedManaSymbolV1, VerifiedContentCatalogV1,
     BASIC_LAND_PROFILE_ID_V1,
 };
@@ -258,7 +258,7 @@ fn is_admitted_basic_land_profile(definition: &mtgml_card_ir::CardDefinitionEnve
         &definition.semantic_binding,
         CardSemanticBindingV1::ProfiledV1 {
             profile_id,
-            body: BasicLandProfileV1 { .. },
+            body: CardProfileBodyV1::BasicLand(_),
         } if profile_id.as_str() == BASIC_LAND_PROFILE_ID_V1
     )
 }

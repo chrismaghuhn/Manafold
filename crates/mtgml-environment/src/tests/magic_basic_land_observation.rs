@@ -1,7 +1,7 @@
 use super::*;
 use mtgml_card_ir::{
     AbilityIdentityV1, BaseCharacteristicsV1, BasicLandProfileV1, BasicLandSubtypeV1,
-    CardDefinitionEnvelopeV1, CardSemanticBindingV1, CardSemanticProfileId,
+    CardDefinitionEnvelopeV1, CardProfileBodyV1, CardSemanticBindingV1, CardSemanticProfileId,
     ContentContractManifestV1, DefinitionProvenanceRecordV1, FaceDefinitionV1, FaceKey,
     ProvenanceCatalogV1, SourceProvenanceV1, TypeLineV1, VerifiedContentCatalogV1,
     BASIC_LAND_PROFILE_ID_V1,
@@ -65,15 +65,15 @@ fn catalog_for(definition_ids: &[u64]) -> VerifiedContentCatalogV1 {
                 semantic_binding: match subtype {
                     Some("Mountain") => CardSemanticBindingV1::ProfiledV1 {
                         profile_id: CardSemanticProfileId::parse(BASIC_LAND_PROFILE_ID_V1).unwrap(),
-                        body: BasicLandProfileV1 {
+                        body: CardProfileBodyV1::BasicLand(BasicLandProfileV1 {
                             subtype: BasicLandSubtypeV1::Mountain,
-                        },
+                        }),
                     },
                     Some("Plains") => CardSemanticBindingV1::ProfiledV1 {
                         profile_id: CardSemanticProfileId::parse(BASIC_LAND_PROFILE_ID_V1).unwrap(),
-                        body: BasicLandProfileV1 {
+                        body: CardProfileBodyV1::BasicLand(BasicLandProfileV1 {
                             subtype: BasicLandSubtypeV1::Plains,
-                        },
+                        }),
                     },
                     _ => CardSemanticBindingV1::UnprofiledV1,
                 },

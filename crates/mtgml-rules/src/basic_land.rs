@@ -6,7 +6,8 @@
 //! ordering and request-local IDs are owned by CandidateOrdering.
 
 use mtgml_card_ir::{
-    CardSemanticBindingV1, ExecutableProfileAdmissionV1, BASIC_LAND_PROFILE_ID_V1,
+    CardProfileBodyV1, CardSemanticBindingV1, ExecutableProfileAdmissionV1,
+    BASIC_LAND_PROFILE_ID_V1,
 };
 use mtgml_decision::{
     AuthoritativeCandidate, AuthoritativeDecisionRequest, CandidateIntent, CandidateOrdering,
@@ -520,8 +521,10 @@ fn draft_basic_land_action(
                 .get(&authority.source)
                 .copied()
                 .ok_or(BasicLandTransitionError::InvalidAbility)?;
-            let CardSemanticBindingV1::ProfiledV1 { profile_id, body } =
-                &definition.semantic_binding
+            let CardSemanticBindingV1::ProfiledV1 {
+                profile_id,
+                body: CardProfileBodyV1::BasicLand(profile),
+            } = &definition.semantic_binding
             else {
                 return Err(BasicLandTransitionError::InvalidAbility);
             };
@@ -533,7 +536,7 @@ fn draft_basic_land_action(
             {
                 return Err(BasicLandTransitionError::InvalidAbility);
             }
-            let color = match body.subtype {
+            let color = match profile.subtype {
                 mtgml_card_ir::BasicLandSubtypeV1::Mountain => mtgml_state::ManaColorV1::Red,
                 mtgml_card_ir::BasicLandSubtypeV1::Plains => mtgml_state::ManaColorV1::White,
             };
@@ -762,7 +765,10 @@ pub fn derive_basic_land_candidates(
         {
             return Err(BasicLandCandidateError::InvalidDefinition);
         }
-        let CardSemanticBindingV1::ProfiledV1 { profile_id, body } = &definition.semantic_binding
+        let CardSemanticBindingV1::ProfiledV1 {
+            profile_id,
+            body: CardProfileBodyV1::BasicLand(profile),
+        } = &definition.semantic_binding
         else {
             continue;
         };
@@ -812,7 +818,7 @@ pub fn derive_basic_land_candidates(
                 // corresponding public opaque ability binding. The current
                 // request vocabulary exposes the ability identity itself;
                 // subtype determines the mana produced during resolution.
-                let _subtype = body.subtype;
+                let _subtype = profile.subtype;
                 raw.push((
                     CandidateIntent::ActivateAbility {
                         ability: opaque_ability,
@@ -1253,7 +1259,15 @@ mod tests {
             .definitions
             .iter()
             .find(|definition| {
-                matches!(definition.semantic_binding, CardSemanticBindingV1::ProfiledV1 { body, .. } if body.subtype == mtgml_card_ir::BasicLandSubtypeV1::Mountain)
+                matches!(
+                    definition.semantic_binding,
+                    CardSemanticBindingV1::ProfiledV1 {
+                        body: CardProfileBodyV1::BasicLand(mtgml_card_ir::BasicLandProfileV1 {
+                            subtype: mtgml_card_ir::BasicLandSubtypeV1::Mountain
+                        }),
+                        ..
+                    }
+                )
             })
             .unwrap()
             .card_definition_id;
@@ -1261,7 +1275,15 @@ mod tests {
             .definitions
             .iter()
             .find(|definition| {
-                matches!(definition.semantic_binding, CardSemanticBindingV1::ProfiledV1 { body, .. } if body.subtype == mtgml_card_ir::BasicLandSubtypeV1::Plains)
+                matches!(
+                    definition.semantic_binding,
+                    CardSemanticBindingV1::ProfiledV1 {
+                        body: CardProfileBodyV1::BasicLand(mtgml_card_ir::BasicLandProfileV1 {
+                            subtype: mtgml_card_ir::BasicLandSubtypeV1::Plains
+                        }),
+                        ..
+                    }
+                )
             })
             .unwrap()
             .card_definition_id;
@@ -1761,8 +1783,11 @@ mod tests {
                 .get(admission.content_contract_id(), object.card_definition)
                 .unwrap();
             let subtype = match &definition.semantic_binding {
-                CardSemanticBindingV1::ProfiledV1 { body, .. } => body.subtype,
-                CardSemanticBindingV1::UnprofiledV1 => panic!("expected admitted Basic Land"),
+                CardSemanticBindingV1::ProfiledV1 {
+                    body: CardProfileBodyV1::BasicLand(profile),
+                    ..
+                } => profile.subtype,
+                _ => panic!("expected admitted Basic Land"),
             };
             let authority =
                 crate::S1QueryAuthority::for_object(&admission, &state, *object_id).unwrap();
