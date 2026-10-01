@@ -33,10 +33,14 @@ const LAST_TURN: u64 = 30;
 const SHORT_LAST_TURN: u64 = 3;
 const SHORT_FINGERPRINT: &str = "2de310efe91b4b83c1e5980ef9c1099cf967523733aabe5b64857a64b73eea96";
 const LONG_FINGERPRINT: &str = "41afc73cee22da14c029f97b29c27927dd4bd120ce4d6d880591dfd85011719f";
+/// The first asymmetric seed whose game casts a creature before turn 6
+/// begins, so that the short pin covers the creature rules and not only land
+/// play (`FIRST_SEED` through `FIRST_SEED + 5` cast nothing that early).
+const ASYMMETRIC_SHORT_SEED: u64 = FIRST_SEED + 6;
 /// Until turn 6 begins.
 const ASYMMETRIC_SHORT_LAST_TURN: u64 = 5;
 const ASYMMETRIC_SHORT_FINGERPRINT: &str =
-    "c541686418ce12d430fb0dbf42ac536f7e7fbe8422abf0c7dc8331e0f2c4d8ef";
+    "a07d4d47012acc524c48862a21455e379c80e21db57fe354afc81a8135b0031d";
 const ASYMMETRIC_GAMES: u64 = 10;
 const ASYMMETRIC_LANDS: usize = 17;
 const ASYMMETRIC_CREATURES: usize = 10;
@@ -316,7 +320,14 @@ fn different_seeds_give_different_trajectories() {
 
 #[test]
 fn asymmetric_short_game_matches_its_pinned_fingerprint() {
-    let (trajectory, tally, _) = play_asymmetric(FIRST_SEED, ASYMMETRIC_SHORT_LAST_TURN);
+    let (trajectory, tally, _) = play_asymmetric(ASYMMETRIC_SHORT_SEED, ASYMMETRIC_SHORT_LAST_TURN);
+    // If a change moves the cast out of this game, fail here rather than
+    // keep a pin that covers land play only; then choose the first seed that
+    // casts before turn 6 and re-pin.
+    assert!(
+        tally.casts > 0,
+        "the pinned game no longer casts a creature: {tally:?}"
+    );
     assert_eq!(
         fingerprint(&trajectory),
         ASYMMETRIC_SHORT_FINGERPRINT,

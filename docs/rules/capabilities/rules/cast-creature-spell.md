@@ -133,8 +133,9 @@ for either request, changes nothing.
   of a creature deck against a land deck to turn 31 or the end of the game,
   and asserts that creature spells are cast, a payment is decided, and each
   game repeats and replays to the same checkpoint;
-  `asymmetric_short_game_matches_its_pinned_fingerprint` pins the first of
-  them up to turn 6.
+  `asymmetric_short_game_matches_its_pinned_fingerprint` pins the first game
+  that casts a creature, up to turn 6 (a debug-build check that also asserts
+  the cast).
 - State, event and delta cases for the Cast continuation and the cast timing in
   `crates/mtgml-state/tests/g0d_state_authority.rs`,
   `crates/mtgml-rules/src/events.rs` and `creature_game.rs`.
