@@ -1202,6 +1202,12 @@ mod tests {
         include_bytes!("../../../cards/definitions/basic-land-v1/content-contract.v1.cbor");
     const PROVENANCE: &[u8] =
         include_bytes!("../../../cards/definitions/basic-land-v1/provenance.v1.cbor");
+    const COMBINED_MANIFEST: &[u8] = include_bytes!(
+        "../../../cards/definitions/basic-land-and-vanilla-creature-v1/content-contract.v1.cbor"
+    );
+    const COMBINED_PROVENANCE: &[u8] = include_bytes!(
+        "../../../cards/definitions/basic-land-and-vanilla-creature-v1/provenance.v1.cbor"
+    );
     const RULES_SNAPSHOT: &str = "wotc-cr-2026-09-25-txt-20260925-sha256-8d860e451f20f38865b725b42d82feb714c725373dd8f3b32b8652b3eeb070ca";
 
     pub(super) fn admission() -> ExecutableProfileAdmissionV1 {
@@ -1223,7 +1229,15 @@ mod tests {
     }
 
     pub(super) fn admission_with_closure(keys: &[&str]) -> ExecutableProfileAdmissionV1 {
-        let id = calculate_content_contract_id_v1(MANIFEST).unwrap();
+        admission_of(MANIFEST, PROVENANCE, keys)
+    }
+
+    fn admission_of(
+        manifest: &[u8],
+        provenance: &[u8],
+        keys: &[&str],
+    ) -> ExecutableProfileAdmissionV1 {
+        let id = calculate_content_contract_id_v1(manifest).unwrap();
         let closure = keys
             .iter()
             .copied()
@@ -1248,7 +1262,7 @@ mod tests {
             program_kind: mtgml_model::ExecutionProgramV1::MagicRules,
             semantic_contract_id: semantic_id,
         };
-        admit_executable_profile_v1(MANIFEST, &id, PROVENANCE, &rules, &semantic, &execution)
+        admit_executable_profile_v1(manifest, &id, provenance, &rules, &semantic, &execution)
             .unwrap()
     }
 
@@ -1718,6 +1732,66 @@ mod tests {
         assert_eq!(queried.zone, location.zone);
         assert_eq!(queried.face_key.0, 0);
         assert_eq!(state, before);
+    }
+
+    #[test]
+    fn s1_a_resolves_a_vanilla_creature_on_the_battlefield() {
+        let admission = admission_of(
+            COMBINED_MANIFEST,
+            COMBINED_PROVENANCE,
+            &[
+                "rules/basic-land-mana",
+                "rules/basic-priority",
+                "rules/cast-creature-spell",
+                "rules/cleanup-reset",
+                "rules/combat-damage",
+                "rules/combat-phase",
+                "rules/damage-and-life",
+                "rules/declare-attackers",
+                "rules/declare-blockers",
+                "rules/draw-card",
+                "rules/game-start",
+                "rules/land-play",
+                "rules/mana-pool",
+                "rules/stack-resolution",
+                "rules/state-based-actions-combat",
+                "rules/state-based-actions-empty-library",
+                "rules/summoning-sickness",
+                "rules/turn-structure",
+                "rules/zone-incarnation",
+            ],
+        );
+        let mut state = successor_state_with_two_lands();
+        let expected = [
+            (3, "Cat", mtgml_card_ir::ManaColorV1::White, (2, 1)),
+            (4, "Ogre", mtgml_card_ir::ManaColorV1::Red, (2, 2)),
+            (5, "Giant", mtgml_card_ir::ManaColorV1::Red, (3, 3)),
+        ];
+        for (definition, subtype, color, power_toughness) in expected {
+            let object = add_object(
+                &mut state,
+                CardDefinitionId(definition),
+                PlayerId(1),
+                ZoneKind::Battlefield,
+                20 + definition,
+            );
+            state.card_rules.faces.faces.insert(object, 0);
+            let before = state.clone();
+            let authority = crate::S1QueryAuthority::for_object(&admission, &state, object)
+                .expect("an admitted vanilla creature is queryable");
+            let result = authority.derive_base_characteristics();
+            assert_eq!(result.card_types, ["Creature"]);
+            assert_eq!(result.subtypes, [subtype]);
+            assert_eq!(result.colors, std::collections::BTreeSet::from([color]));
+            assert_eq!(result.base_power_toughness, Some(power_toughness));
+            assert_eq!(state, before);
+        }
+        // A land-only admission knows no creature definition.
+        let creature = *state.zones.objects.keys().next_back().unwrap();
+        assert!(matches!(
+            crate::S1QueryAuthority::for_object(&self::admission(), &state, creature),
+            Err(crate::S1QueryError::MissingCardDefinition(_))
+        ));
     }
 
     #[test]

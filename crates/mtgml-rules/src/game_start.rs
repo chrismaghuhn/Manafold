@@ -2,6 +2,7 @@
 
 use mtgml_card_ir::{
     CardSemanticBindingV1, ExecutableProfileAdmissionV1, BASIC_LAND_PROFILE_ID_V1,
+    VANILLA_CREATURE_PROFILE_ID_V1,
 };
 use mtgml_decision::{
     AuthoritativeDecisionRequest, CandidateIntent, CandidateOrdering, DecisionAnswerV2,
@@ -81,10 +82,14 @@ pub fn start_game(
                 .get(admission.content_contract_id(), *definition)
                 .map_err(|_| GameStartError::UnknownDefinition)?;
             // CR 103.6: only profiles without opening-hand actions or other
-            // pregame semantics may start a game.
+            // pregame semantics may start a game. Basic lands and vanilla
+            // creatures have none.
             match &envelope.semantic_binding {
                 CardSemanticBindingV1::ProfiledV1 { profile_id, .. }
-                    if profile_id.as_str() == BASIC_LAND_PROFILE_ID_V1 => {}
+                    if matches!(
+                        profile_id.as_str(),
+                        BASIC_LAND_PROFILE_ID_V1 | VANILLA_CREATURE_PROFILE_ID_V1
+                    ) => {}
                 _ => return Err(GameStartError::UnsupportedDefinition),
             }
         }

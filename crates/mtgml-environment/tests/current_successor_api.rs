@@ -143,7 +143,7 @@ fn verified_basic_land_runs_through_real_v8_controller_and_player_endpoints() {
         state,
         status,
         Default::default(),
-        common::replay_manifest(&admission, &checkpoint),
+        common::replay_manifest(&admission, common::CONTENT, &checkpoint),
     )
     .unwrap();
     let controller = TrustedEnvironmentController::new(runtime);

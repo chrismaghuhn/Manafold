@@ -30,35 +30,80 @@ pub const CONTENT: &[u8] =
     include_bytes!("../../../../cards/definitions/basic-land-v1/content-contract.v1.cbor");
 pub const PROVENANCE: &[u8] =
     include_bytes!("../../../../cards/definitions/basic-land-v1/provenance.v1.cbor");
+/// Mountain and Plains plus three vanilla creatures.
+pub const CREATURE_CONTENT: &[u8] = include_bytes!(
+    "../../../../cards/definitions/basic-land-and-vanilla-creature-v1/content-contract.v1.cbor"
+);
+pub const CREATURE_PROVENANCE: &[u8] = include_bytes!(
+    "../../../../cards/definitions/basic-land-and-vanilla-creature-v1/provenance.v1.cbor"
+);
 pub const RULES_SNAPSHOT: &str = "wotc-cr-2026-09-25-txt-20260925-sha256-8d860e451f20f38865b725b42d82feb714c725373dd8f3b32b8652b3eeb070ca";
 
 /// The admission of a complete two-player game: Mountain and Plains plus the
 /// game-rule roots.
 pub fn game_admission() -> ExecutableProfileAdmissionV1 {
+    admission_of(CONTENT, PROVENANCE, &LAND_CLOSURE)
+}
+
+/// As `game_admission`, with three vanilla creatures and the roots and
+/// dependencies their profile pulls in.
+pub fn creature_game_admission() -> ExecutableProfileAdmissionV1 {
+    admission_of(CREATURE_CONTENT, CREATURE_PROVENANCE, &CREATURE_CLOSURE)
+}
+
+const LAND_CLOSURE: [&str; 13] = [
+    "rules/basic-land-mana",
+    "rules/basic-priority",
+    "rules/cleanup-reset",
+    "rules/combat-phase",
+    "rules/declare-attackers",
+    "rules/draw-card",
+    "rules/game-start",
+    "rules/land-play",
+    "rules/mana-pool",
+    "rules/state-based-actions-combat",
+    "rules/state-based-actions-empty-library",
+    "rules/turn-structure",
+    "rules/zone-incarnation",
+];
+
+const CREATURE_CLOSURE: [&str; 19] = [
+    "rules/basic-land-mana",
+    "rules/basic-priority",
+    "rules/cast-creature-spell",
+    "rules/cleanup-reset",
+    "rules/combat-damage",
+    "rules/combat-phase",
+    "rules/damage-and-life",
+    "rules/declare-attackers",
+    "rules/declare-blockers",
+    "rules/draw-card",
+    "rules/game-start",
+    "rules/land-play",
+    "rules/mana-pool",
+    "rules/stack-resolution",
+    "rules/state-based-actions-combat",
+    "rules/state-based-actions-empty-library",
+    "rules/summoning-sickness",
+    "rules/turn-structure",
+    "rules/zone-incarnation",
+];
+
+fn admission_of(
+    content: &[u8],
+    provenance: &[u8],
+    closure: &[&str],
+) -> ExecutableProfileAdmissionV1 {
     let content_id =
-        mtgml_persistence::content_contract_digest::calculate_content_contract_id_v1(CONTENT)
+        mtgml_persistence::content_contract_digest::calculate_content_contract_id_v1(content)
             .unwrap();
-    let closure = [
-        "rules/basic-land-mana",
-        "rules/basic-priority",
-        "rules/cleanup-reset",
-        "rules/combat-phase",
-        "rules/declare-attackers",
-        "rules/draw-card",
-        "rules/game-start",
-        "rules/land-play",
-        "rules/mana-pool",
-        "rules/state-based-actions-combat",
-        "rules/state-based-actions-empty-library",
-        "rules/turn-structure",
-        "rules/zone-incarnation",
-    ]
-    .into_iter()
-    .map(|key| CapabilityRequirementV1 {
-        key: key.to_owned(),
-        version: "0.1.0".to_owned(),
-    })
-    .collect();
+    let closure = closure
+        .iter()
+        .map(|key| CapabilityRequirementV1 {
+            key: (*key).to_owned(),
+            version: "0.1.0".to_owned(),
+        })
+        .collect();
     let rules = RulesContractManifestV1 {
         rules_authority: RulesAuthorityV1::ComprehensiveRules {
             snapshot_id: RULES_SNAPSHOT.to_owned(),
@@ -81,9 +126,9 @@ pub fn game_admission() -> ExecutableProfileAdmissionV1 {
             .unwrap(),
     };
     admit_executable_profile_v1(
-        CONTENT,
+        content,
         &content_id,
-        PROVENANCE,
+        provenance,
         &rules,
         &semantic,
         &execution,
@@ -109,6 +154,27 @@ pub fn land_definitions() -> (CardDefinitionId, CardDefinitionId) {
         find(mtgml_card_ir::BasicLandSubtypeV1::Mountain),
         find(mtgml_card_ir::BasicLandSubtypeV1::Plains),
     )
+}
+
+/// (Savannah Lions, Gray Ogre, Hill Giant) definition ids of the combined
+/// content.
+pub fn creature_definitions() -> [CardDefinitionId; 3] {
+    let manifest = decode_content_manifest_v1(CREATURE_CONTENT).unwrap();
+    let creatures: Vec<CardDefinitionId> = manifest
+        .definitions
+        .iter()
+        .filter(|definition| {
+            matches!(
+                definition.semantic_binding,
+                CardSemanticBindingV1::ProfiledV1 {
+                    body: mtgml_card_ir::CardProfileBodyV1::VanillaCreature,
+                    ..
+                }
+            )
+        })
+        .map(|definition| definition.card_definition_id)
+        .collect();
+    creatures.try_into().unwrap()
 }
 
 /// Deterministic test PRNG (SplitMix64); independent of the engine RNG.
@@ -176,28 +242,45 @@ pub fn try_land_game(
     let mut state = land_game_state(libraries, hands, seed);
     let status = mtgml_model::EpisodeStatus::Running;
     mtgml_rules::install_basic_land_request(&admission, &mut state, P1, &status).unwrap();
-    controller_for(&admission, state)
+    controller_for(&admission, CONTENT, state)
 }
 
 /// A game from two deck lists, started as CR 103 prescribes.
 pub fn deck_game(decks: [Vec<CardDefinitionId>; 2], seed: u64) -> TrustedEnvironmentController {
-    let admission = game_admission();
+    started_game(&game_admission(), CONTENT, decks, seed)
+}
+
+/// As `deck_game`, from the combined land and creature content.
+pub fn creature_deck_game(
+    decks: [Vec<CardDefinitionId>; 2],
+    seed: u64,
+) -> TrustedEnvironmentController {
+    started_game(&creature_game_admission(), CREATURE_CONTENT, decks, seed)
+}
+
+fn started_game(
+    admission: &ExecutableProfileAdmissionV1,
+    content: &[u8],
+    decks: [Vec<CardDefinitionId>; 2],
+    seed: u64,
+) -> TrustedEnvironmentController {
     let mut root_seed = [0_u8; 32];
     root_seed[..8].copy_from_slice(&seed.to_le_bytes());
     let [first, second] = decks;
     let state = mtgml_rules::start_game(
-        &admission,
+        admission,
         [(P1, first), (P2, second)],
         mtgml_random::RootSeed256(root_seed),
     )
     .unwrap();
-    controller_for(&admission, state).unwrap()
+    controller_for(admission, content, state).unwrap()
 }
 
 /// The production controller for `state`, with its initial checkpoint and
-/// replay manifest.
+/// a replay manifest embedding `content`, the catalog `admission` admitted.
 fn controller_for(
     admission: &ExecutableProfileAdmissionV1,
+    content: &[u8],
     state: EngineState,
 ) -> Result<TrustedEnvironmentController, mtgml_environment::ControllerError> {
     let status = mtgml_model::EpisodeStatus::Running;
@@ -213,7 +296,7 @@ fn controller_for(
         state,
         status,
         Default::default(),
-        replay_manifest(admission, &checkpoint),
+        replay_manifest(admission, content, &checkpoint),
     )?;
     Ok(TrustedEnvironmentController::new(runtime))
 }
@@ -378,6 +461,7 @@ pub fn checkpoint_identity(checkpoint: &EnvironmentCheckpointV8) -> InitialEnvir
 
 pub fn replay_manifest(
     admission: &ExecutableProfileAdmissionV1,
+    content: &[u8],
     checkpoint: &EnvironmentCheckpointV8,
 ) -> ReplayManifestV8 {
     let mut manifest: ReplayManifestV8 = serde_json::from_str(include_str!(
@@ -390,7 +474,7 @@ pub fn replay_manifest(
         manifest: admission.semantic_contract_manifest().clone(),
         rules_manifest: admission.rules_contract_manifest().clone(),
         content_contract: Some(
-            ContentContractMaterialV1::from_manifest(decode_content_manifest_v1(CONTENT).unwrap())
+            ContentContractMaterialV1::from_manifest(decode_content_manifest_v1(content).unwrap())
                 .unwrap(),
         ),
     };

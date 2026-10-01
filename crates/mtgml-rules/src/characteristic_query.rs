@@ -7,7 +7,7 @@
 use mtgml_card_ir::{
     BaseCharacteristicsV1, CardProfileBodyV1, CardSemanticBindingV1, ExecutableProfileAdmissionV1,
     FaceDefinitionV1, FaceKey, ManaColorV1, PrintedManaSymbolV1, VerifiedContentCatalogV1,
-    BASIC_LAND_PROFILE_ID_V1,
+    BASIC_LAND_PROFILE_ID_V1, VANILLA_CREATURE_PROFILE_ID_V1,
 };
 use mtgml_model::{CardDefinitionId, GameObjectId, PlayerId, ZoneKind};
 use mtgml_state::{EngineState, EngineStateError, GameObject, ZoneLocation};
@@ -140,7 +140,7 @@ impl<'a> S1QueryAuthority<'a> {
                 face_key: FaceKey(current_face),
             })?;
 
-        if !is_admitted_basic_land_profile(definition) {
+        if !is_admitted_profile(definition) {
             return Err(S1QueryError::ProfileNotAdmitted);
         }
 
@@ -253,13 +253,19 @@ fn validate_admission_binding(
     Ok(catalog)
 }
 
-fn is_admitted_basic_land_profile(definition: &mtgml_card_ir::CardDefinitionEnvelopeV1) -> bool {
+fn is_admitted_profile(definition: &mtgml_card_ir::CardDefinitionEnvelopeV1) -> bool {
     matches!(
         &definition.semantic_binding,
         CardSemanticBindingV1::ProfiledV1 {
             profile_id,
             body: CardProfileBodyV1::BasicLand(_),
         } if profile_id.as_str() == BASIC_LAND_PROFILE_ID_V1
+    ) || matches!(
+        &definition.semantic_binding,
+        CardSemanticBindingV1::ProfiledV1 {
+            profile_id,
+            body: CardProfileBodyV1::VanillaCreature,
+        } if profile_id.as_str() == VANILLA_CREATURE_PROFILE_ID_V1
     )
 }
 
