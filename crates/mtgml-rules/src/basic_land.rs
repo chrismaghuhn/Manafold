@@ -1,12 +1,16 @@
-//! The admitted, typed basic-land profile: its priority candidates, its
-//! pending request, and the land-play and mana-ability transitions.
+//! The admitted, typed basic-land and vanilla-creature profiles: the priority
+//! candidates (passing, playing a land, a mana ability, casting a creature
+//! spell), the pending request, and the land-play and mana-ability
+//! transitions. Casting, paying and attacking are executed by the turn
+//! progression (`casting`, `combat`).
 //!
 //! This module consumes the same immutable admission token used to construct
 //! the Magic kernel. It never dispatches on card names. Candidate intent
 //! ordering and request-local IDs are owned by CandidateOrdering.
 
 use mtgml_card_ir::{
-    CardSemanticBindingV1, ExecutableProfileAdmissionV1, BASIC_LAND_PROFILE_ID_V1,
+    CardProfileBodyV1, CardSemanticBindingV1, ExecutableProfileAdmissionV1,
+    BASIC_LAND_PROFILE_ID_V1, VANILLA_CREATURE_PROFILE_ID_V1,
 };
 use mtgml_decision::{
     AuthoritativeCandidate, AuthoritativeDecisionRequest, CandidateIntent, CandidateOrdering,
@@ -38,6 +42,8 @@ pub enum BasicLandCandidateError {
     NoCandidates,
     #[error("selected candidate is not a closed MagicRules action")]
     UnsupportedSelectedAction,
+    #[error("a castable card has a mana cost this profile cannot pay")]
+    UnsupportedManaCost,
     #[error("pending request does not equal the complete current candidate set")]
     PendingCandidateSetMismatch,
 }
@@ -54,6 +60,12 @@ pub enum MagicActionRequestV1 {
     ActivateManaAbility {
         actor: PlayerId,
         ability: mtgml_model::AbilityInstanceId,
+    },
+    /// Cast a creature card from the hand. The turn progression executes it,
+    /// asking how to pay if the pool pays the cost in more than one way.
+    CastSpell {
+        actor: PlayerId,
+        object: mtgml_model::GameObjectId,
     },
 }
 
@@ -166,8 +178,10 @@ fn draft_basic_land_action(
     ))];
 
     match decision {
-        // Passing priority is resolved by the turn progression, never here.
-        SelectedSuccessorDecisionV1::PassPriority => {
+        // Passing priority and casting a spell are executed by the turn
+        // progression, never here.
+        SelectedSuccessorDecisionV1::PassPriority
+        | SelectedSuccessorDecisionV1::MagicAction(MagicActionRequestV1::CastSpell { .. }) => {
             return Err(BasicLandTransitionError::InvalidSelection);
         }
         SelectedSuccessorDecisionV1::MagicAction(MagicActionRequestV1::PlayLand {
@@ -284,6 +298,16 @@ fn draft_basic_land_action(
             next.card_rules.attachments.prune_departed_objects(&live);
             next.card_rules.faces.prune_departed_objects(&live);
             next.card_rules.abilities.prune_departed_objects(&live);
+            let battlefield: std::collections::BTreeSet<_> = next
+                .zones
+                .locations
+                .iter()
+                .filter(|(_, location)| location.zone == ZoneKind::Battlefield)
+                .map(|(object, _)| *object)
+                .collect();
+            next.card_rules
+                .permanents
+                .prune_departed_objects(&battlefield);
             // Opaque ability identities for the departed incarnation are
             // permanently retired before the new incarnation gets its own
             // allocator-assigned authority and perspective IDs.
@@ -407,6 +431,11 @@ fn draft_basic_land_action(
                 .faces
                 .set(new_object, 0, &live)
                 .map_err(|_| BasicLandTransitionError::InvalidResult)?;
+            // CR 302.6: the land is controlled since the turn it enters.
+            next.card_rules
+                .permanents
+                .enter(new_object, next.core.turn_number)
+                .map_err(|_| BasicLandTransitionError::InvalidResult)?;
             let mut next_ability_id = next.allocators.next_ability_id;
             let abilities = next
                 .card_rules
@@ -520,8 +549,10 @@ fn draft_basic_land_action(
                 .get(&authority.source)
                 .copied()
                 .ok_or(BasicLandTransitionError::InvalidAbility)?;
-            let CardSemanticBindingV1::ProfiledV1 { profile_id, body } =
-                &definition.semantic_binding
+            let CardSemanticBindingV1::ProfiledV1 {
+                profile_id,
+                body: CardProfileBodyV1::BasicLand(profile),
+            } = &definition.semantic_binding
             else {
                 return Err(BasicLandTransitionError::InvalidAbility);
             };
@@ -533,7 +564,7 @@ fn draft_basic_land_action(
             {
                 return Err(BasicLandTransitionError::InvalidAbility);
             }
-            let color = match body.subtype {
+            let color = match profile.subtype {
                 mtgml_card_ir::BasicLandSubtypeV1::Mountain => mtgml_state::ManaColorV1::Red,
                 mtgml_card_ir::BasicLandSubtypeV1::Plains => mtgml_state::ManaColorV1::White,
             };
@@ -640,9 +671,13 @@ pub struct BasicLandTransitionProduct {
 }
 
 /// The state candidates are derived from: the current state without its
-/// pending request. The bounded profile owns no stack, continuation, effect or
-/// trigger state.
-fn candidate_state(state: &EngineState) -> Result<EngineState, BasicLandCandidateError> {
+/// pending request. Priority candidates exist only without a continuation,
+/// effect or trigger (while a payment is pending its request is the only
+/// decision), and the stack holds at most one creature spell.
+fn candidate_state(
+    admission: &ExecutableProfileAdmissionV1,
+    state: &EngineState,
+) -> Result<EngineState, BasicLandCandidateError> {
     let mut state = state.clone();
     state.execution.pending_decision = None;
     state
@@ -652,28 +687,26 @@ fn candidate_state(state: &EngineState) -> Result<EngineState, BasicLandCandidat
         || !state.execution.effects.is_empty()
         || !state.execution.waiting_triggers.is_empty()
         || !state.execution.delayed_effects.is_empty()
-        || state
-            .zones
-            .stack_records
-            .values()
-            .any(|record| record.payload.is_some())
+        || !crate::casting::stack_within_profile(admission, &state)
     {
         return Err(BasicLandCandidateError::InvalidState);
     }
     Ok(state)
 }
 
-/// Derive the complete bounded PlayLand and intrinsic basic-land mana
-/// ability candidate surface for `actor`. This performs no state mutation,
-/// response selection, or execution. Hidden or unmapped identities fail
-/// closed rather than receiving placeholder public IDs.
+/// Derive the complete bounded priority candidate surface for `actor`: pass
+/// priority, PlayLand, the intrinsic basic-land mana abilities, and CastSpell
+/// for each creature card in hand that the mana pool pays for at sorcery
+/// speed. This performs no state mutation, response selection, or execution.
+/// Hidden or unmapped identities fail closed rather than receiving
+/// placeholder public IDs.
 pub fn derive_basic_land_candidates(
     admission: &ExecutableProfileAdmissionV1,
     state: &EngineState,
     actor: PlayerId,
     status: &EpisodeStatus,
 ) -> Result<Vec<AuthoritativeCandidate>, BasicLandCandidateError> {
-    let state = &candidate_state(state)?;
+    let state = &candidate_state(admission, state)?;
     state
         .card_rules
         .counters
@@ -714,6 +747,10 @@ pub fn derive_basic_land_candidates(
         .resolved_capabilities()
         .iter()
         .any(|requirement| requirement.key == "rules/basic-priority");
+    let cast_allowed = admission
+        .resolved_capabilities()
+        .iter()
+        .any(|requirement| requirement.key == "rules/cast-creature-spell");
     let identity = state
         .perspective_identities
         .players
@@ -766,62 +803,114 @@ pub fn derive_basic_land_candidates(
         else {
             continue;
         };
-        if profile_id.as_str() != BASIC_LAND_PROFILE_ID_V1 {
-            continue;
-        }
         let public_object = identity.object_to_opaque.get(object_id).copied();
-        if location.zone == ZoneKind::Hand
-            && location.player == Some(actor)
-            && active
-            && has_priority
-            && main_phase
-            && stack_empty
-            && player_history.land_plays_used == 0
-            && land_allowed
-            && face_key == 0
-        {
-            let opaque = public_object.ok_or(BasicLandCandidateError::InvalidState)?;
-            raw.push((
-                CandidateIntent::PlayLand { object: opaque },
-                EngineCandidateBinding::PlayLand { object: *object_id },
-            ));
-        }
-        if location.zone == ZoneKind::Battlefield
-            && object.controller == actor
-            && !object.tapped
-            && has_priority
-            && mana_allowed
-            && face_key == 0
-        {
-            public_object.ok_or(BasicLandCandidateError::InvalidState)?;
-            for (ability_id, authority) in &state.card_rules.abilities.by_instance {
-                if authority.source != *object_id || authority.ability_key != 0 {
-                    continue;
+        match body {
+            CardProfileBodyV1::BasicLand(profile)
+                if profile_id.as_str() == BASIC_LAND_PROFILE_ID_V1 =>
+            {
+                if location.zone == ZoneKind::Hand
+                    && location.player == Some(actor)
+                    && active
+                    && has_priority
+                    && main_phase
+                    && stack_empty
+                    && player_history.land_plays_used == 0
+                    && land_allowed
+                    && face_key == 0
+                {
+                    let opaque = public_object.ok_or(BasicLandCandidateError::InvalidState)?;
+                    raw.push((
+                        CandidateIntent::PlayLand { object: opaque },
+                        EngineCandidateBinding::PlayLand { object: *object_id },
+                    ));
                 }
-                if !definition.ability_identities.iter().any(|ability| {
-                    ability.face_key.0 == face_key && ability.ability_key.0 == authority.ability_key
-                }) {
-                    continue;
+                if location.zone == ZoneKind::Battlefield
+                    && object.controller == actor
+                    && !object.tapped
+                    && has_priority
+                    && mana_allowed
+                    && face_key == 0
+                {
+                    public_object.ok_or(BasicLandCandidateError::InvalidState)?;
+                    for (ability_id, authority) in &state.card_rules.abilities.by_instance {
+                        if authority.source != *object_id || authority.ability_key != 0 {
+                            continue;
+                        }
+                        if !definition.ability_identities.iter().any(|ability| {
+                            ability.face_key.0 == face_key
+                                && ability.ability_key.0 == authority.ability_key
+                        }) {
+                            continue;
+                        }
+                        let opaque_ability = identity
+                            .ability_to_opaque
+                            .get(ability_id)
+                            .copied()
+                            .ok_or(BasicLandCandidateError::InvalidState)?;
+                        // The typed profile identity, not the card name,
+                        // selects the corresponding public opaque ability
+                        // binding. The current request vocabulary exposes the
+                        // ability identity itself; subtype determines the
+                        // mana produced during resolution.
+                        let _subtype = profile.subtype;
+                        raw.push((
+                            CandidateIntent::ActivateAbility {
+                                ability: opaque_ability,
+                            },
+                            EngineCandidateBinding::ActivateAbility {
+                                ability: *ability_id,
+                            },
+                        ));
+                    }
                 }
-                let opaque_ability = identity
-                    .ability_to_opaque
-                    .get(ability_id)
-                    .copied()
-                    .ok_or(BasicLandCandidateError::InvalidState)?;
-                // The typed profile identity, not the card name, selects the
-                // corresponding public opaque ability binding. The current
-                // request vocabulary exposes the ability identity itself;
-                // subtype determines the mana produced during resolution.
-                let _subtype = body.subtype;
-                raw.push((
-                    CandidateIntent::ActivateAbility {
-                        ability: opaque_ability,
-                    },
-                    EngineCandidateBinding::ActivateAbility {
-                        ability: *ability_id,
-                    },
-                ));
             }
+            // CR 302.1, 117.1a: a creature spell is cast by the active player
+            // with priority, in a main phase, with the stack empty. It is
+            // offered when the pool pays its cost; with several ways to pay,
+            // the cast asks the player to choose one (CR 601.2h), and nothing
+            // is chosen for them.
+            CardProfileBodyV1::VanillaCreature
+                if profile_id.as_str() == VANILLA_CREATURE_PROFILE_ID_V1 =>
+            {
+                if location.zone == ZoneKind::Hand
+                    && location.player == Some(actor)
+                    && active
+                    && has_priority
+                    && main_phase
+                    && stack_empty
+                    && cast_allowed
+                    && face_key == 0
+                {
+                    let face = definition
+                        .faces
+                        .iter()
+                        .find(|face| face.face_key.0 == face_key)
+                        .ok_or(BasicLandCandidateError::InvalidDefinition)?;
+                    match crate::casting::mana_cost_of(face) {
+                        Ok(cost) => {
+                            let pool = state
+                                .card_rules
+                                .mana
+                                .pools
+                                .get(&actor)
+                                .ok_or(BasicLandCandidateError::InvalidState)?;
+                            if !crate::casting::payment_options(pool, &cost).is_empty() {
+                                let opaque =
+                                    public_object.ok_or(BasicLandCandidateError::InvalidState)?;
+                                raw.push((
+                                    CandidateIntent::CastSpell { object: opaque },
+                                    EngineCandidateBinding::CastSpell { object: *object_id },
+                                ));
+                            }
+                        }
+                        // No mana cost is an unpayable cost (CR 118.6, 202.1b):
+                        // the card is not offered.
+                        Err(crate::casting::CastError::NoManaCost) => {}
+                        Err(_) => return Err(BasicLandCandidateError::UnsupportedManaCost),
+                    }
+                }
+            }
+            _ => {}
         }
     }
     let candidates = CandidateOrdering::assign_dense(raw)
@@ -831,7 +920,8 @@ pub fn derive_basic_land_candidates(
         .iter()
         .any(|candidate| match &candidate.trusted_binding {
             EngineCandidateBinding::PassPriority => false,
-            EngineCandidateBinding::PlayLand { object } => !live.contains(object),
+            EngineCandidateBinding::PlayLand { object }
+            | EngineCandidateBinding::CastSpell { object } => !live.contains(object),
             EngineCandidateBinding::ActivateAbility { ability } => {
                 !state.card_rules.abilities.by_instance.contains_key(ability)
             }
@@ -843,7 +933,8 @@ pub fn derive_basic_land_candidates(
     let mut objects = Vec::new();
     for candidate in &candidates {
         match &candidate.trusted_binding {
-            EngineCandidateBinding::PlayLand { object } => objects.push(*object),
+            EngineCandidateBinding::PlayLand { object }
+            | EngineCandidateBinding::CastSpell { object } => objects.push(*object),
             EngineCandidateBinding::ActivateAbility { ability } => objects.push(
                 state
                     .card_rules
@@ -899,7 +990,7 @@ pub fn validate_basic_land_pending_request(
         // the same Basic-Land profile state boundary. Do not let terminal or
         // truncated checkpoints bypass rejection of stack/effect/trigger
         // state by taking the no-request fast path.
-        candidate_state(state)?;
+        candidate_state(admission, state)?;
         return match status {
             EpisodeStatus::Terminal { .. } | EpisodeStatus::Truncated { .. } => Ok(()),
             EpisodeStatus::Running => Err(BasicLandCandidateError::PendingCandidateSetMismatch),
@@ -924,7 +1015,7 @@ pub fn validate_basic_land_pending_request(
         || request.player_decision_id.0.checked_add(1) != Some(identity.next_player_decision_id.0)
         || request.state_revision != state.revision
         || request.view_sequence != view_sequence
-        || request.visibility != DecisionVisibility::Public
+        || request.visibility != DecisionVisibility::ActingPlayerOnly
         || request.decision_domain_v2 != DecisionDomainV2::ChooseOne
         || request.purpose != DecisionPurposeV4::PriorityAction
         || request.parent_player_decision_id.is_some()
@@ -981,7 +1072,8 @@ pub fn install_basic_land_request(
         state_revision: state.revision,
         view_sequence,
         actor,
-        visibility: DecisionVisibility::Public,
+        // The request names cards in a hand: only its actor receives it.
+        visibility: DecisionVisibility::ActingPlayerOnly,
         decision_domain_v2: DecisionDomainV2::ChooseOne,
         purpose: DecisionPurposeV4::PriorityAction,
         parent_player_decision_id: None,
@@ -1061,6 +1153,12 @@ pub fn selected_basic_land_action(
                 ability: *ability,
             }),
         ),
+        EngineCandidateBinding::CastSpell { object } => Ok(
+            SelectedSuccessorDecisionV1::MagicAction(MagicActionRequestV1::CastSpell {
+                actor,
+                object: *object,
+            }),
+        ),
         _ => Err(BasicLandCandidateError::UnsupportedSelectedAction),
     }
 }
@@ -1083,7 +1181,8 @@ pub fn execute_basic_land_response(
         .validate_response(response)
         .map_err(|_| BasicLandTransitionError::InvalidSelection)?;
 
-    let before = candidate_state(state).map_err(|_| BasicLandTransitionError::InvalidResult)?;
+    let before =
+        candidate_state(admission, state).map_err(|_| BasicLandTransitionError::InvalidResult)?;
     let selected = selected_basic_land_action(admission, state, actor, response, status)
         .map_err(|_| BasicLandTransitionError::InvalidSelection)?;
     let BasicLandDraft {
@@ -1170,6 +1269,21 @@ pub(crate) fn basic_land_admission_fixture() -> mtgml_card_ir::ExecutableProfile
     tests::admission()
 }
 
+/// The admission of Mountain, Plains and three vanilla creatures.
+#[cfg(test)]
+pub(crate) fn vanilla_creature_admission_fixture() -> mtgml_card_ir::ExecutableProfileAdmissionV1 {
+    tests::creature_admission()
+}
+
+/// Puts a vanilla creature on `owner`'s battlefield.
+#[cfg(test)]
+pub(crate) fn put_vanilla_creature_on_battlefield(
+    state: &mut EngineState,
+    owner: PlayerId,
+) -> mtgml_model::GameObjectId {
+    tests::add_vanilla_creature(state, owner)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1196,6 +1310,12 @@ mod tests {
         include_bytes!("../../../cards/definitions/basic-land-v1/content-contract.v1.cbor");
     const PROVENANCE: &[u8] =
         include_bytes!("../../../cards/definitions/basic-land-v1/provenance.v1.cbor");
+    const COMBINED_MANIFEST: &[u8] = include_bytes!(
+        "../../../cards/definitions/basic-land-and-vanilla-creature-v1/content-contract.v1.cbor"
+    );
+    const COMBINED_PROVENANCE: &[u8] = include_bytes!(
+        "../../../cards/definitions/basic-land-and-vanilla-creature-v1/provenance.v1.cbor"
+    );
     const RULES_SNAPSHOT: &str = "wotc-cr-2026-09-25-txt-20260925-sha256-8d860e451f20f38865b725b42d82feb714c725373dd8f3b32b8652b3eeb070ca";
 
     pub(super) fn admission() -> ExecutableProfileAdmissionV1 {
@@ -1216,8 +1336,68 @@ mod tests {
         ])
     }
 
+    pub(super) fn creature_admission() -> ExecutableProfileAdmissionV1 {
+        admission_of(
+            COMBINED_MANIFEST,
+            COMBINED_PROVENANCE,
+            &[
+                "rules/basic-land-mana",
+                "rules/basic-priority",
+                "rules/cast-creature-spell",
+                "rules/cleanup-reset",
+                "rules/combat-damage",
+                "rules/combat-phase",
+                "rules/damage-and-life",
+                "rules/declare-attackers",
+                "rules/declare-blockers",
+                "rules/draw-card",
+                "rules/game-start",
+                "rules/land-play",
+                "rules/mana-pool",
+                "rules/stack-resolution",
+                "rules/state-based-actions-combat",
+                "rules/state-based-actions-empty-library",
+                "rules/summoning-sickness",
+                "rules/turn-structure",
+                "rules/zone-incarnation",
+            ],
+        )
+    }
+
+    /// A Savannah Lions (definition 3 of the combined catalog) on `owner`'s
+    /// battlefield, with its face entry.
+    pub(super) fn add_vanilla_creature(
+        state: &mut mtgml_state::EngineState,
+        owner: PlayerId,
+    ) -> mtgml_model::GameObjectId {
+        // Each creature has its own opaque identity.
+        let opaque_id = 40 + state.allocators.next_object_id.0;
+        let object = add_object(
+            state,
+            CardDefinitionId(3),
+            owner,
+            ZoneKind::Battlefield,
+            opaque_id,
+        );
+        state.card_rules.faces.faces.insert(object, 0);
+        state
+            .card_rules
+            .permanents
+            .enter(object, state.core.turn_number)
+            .unwrap();
+        object
+    }
+
     pub(super) fn admission_with_closure(keys: &[&str]) -> ExecutableProfileAdmissionV1 {
-        let id = calculate_content_contract_id_v1(MANIFEST).unwrap();
+        admission_of(MANIFEST, PROVENANCE, keys)
+    }
+
+    fn admission_of(
+        manifest: &[u8],
+        provenance: &[u8],
+        keys: &[&str],
+    ) -> ExecutableProfileAdmissionV1 {
+        let id = calculate_content_contract_id_v1(manifest).unwrap();
         let closure = keys
             .iter()
             .copied()
@@ -1242,7 +1422,7 @@ mod tests {
             program_kind: mtgml_model::ExecutionProgramV1::MagicRules,
             semantic_contract_id: semantic_id,
         };
-        admit_executable_profile_v1(MANIFEST, &id, PROVENANCE, &rules, &semantic, &execution)
+        admit_executable_profile_v1(manifest, &id, provenance, &rules, &semantic, &execution)
             .unwrap()
     }
 
@@ -1253,7 +1433,15 @@ mod tests {
             .definitions
             .iter()
             .find(|definition| {
-                matches!(definition.semantic_binding, CardSemanticBindingV1::ProfiledV1 { body, .. } if body.subtype == mtgml_card_ir::BasicLandSubtypeV1::Mountain)
+                matches!(
+                    definition.semantic_binding,
+                    CardSemanticBindingV1::ProfiledV1 {
+                        body: CardProfileBodyV1::BasicLand(mtgml_card_ir::BasicLandProfileV1 {
+                            subtype: mtgml_card_ir::BasicLandSubtypeV1::Mountain
+                        }),
+                        ..
+                    }
+                )
             })
             .unwrap()
             .card_definition_id;
@@ -1261,7 +1449,15 @@ mod tests {
             .definitions
             .iter()
             .find(|definition| {
-                matches!(definition.semantic_binding, CardSemanticBindingV1::ProfiledV1 { body, .. } if body.subtype == mtgml_card_ir::BasicLandSubtypeV1::Plains)
+                matches!(
+                    definition.semantic_binding,
+                    CardSemanticBindingV1::ProfiledV1 {
+                        body: CardProfileBodyV1::BasicLand(mtgml_card_ir::BasicLandProfileV1 {
+                            subtype: mtgml_card_ir::BasicLandSubtypeV1::Plains
+                        }),
+                        ..
+                    }
+                )
             })
             .unwrap()
             .card_definition_id;
@@ -1294,6 +1490,12 @@ mod tests {
             identity.next_opaque_ability_id.0 = identity.next_opaque_ability_id.0.max(player.0 + 1);
         }
         engine.allocators.next_ability_id = mtgml_model::AbilityInstanceId(2);
+        let mut permanents = mtgml_state::PermanentsState::default();
+        for (object, location) in &engine.zones.locations {
+            if location.zone == ZoneKind::Battlefield {
+                permanents.enter(*object, engine.core.turn_number).unwrap();
+            }
+        }
         let cards = CardRulesAuthoritativeStateV1 {
             mana: ManaStateV1 {
                 pools: engine
@@ -1330,6 +1532,7 @@ mod tests {
                     },
                 )]),
             },
+            permanents,
             ..CardRulesAuthoritativeStateV1::default()
         };
         let mut state = engine;
@@ -1699,6 +1902,47 @@ mod tests {
     }
 
     #[test]
+    fn s1_a_resolves_a_vanilla_creature_on_the_battlefield() {
+        let admission = creature_admission();
+        let mut state = successor_state_with_two_lands();
+        let expected = [
+            (3, "Cat", mtgml_card_ir::ManaColorV1::White, (2, 1)),
+            (4, "Ogre", mtgml_card_ir::ManaColorV1::Red, (2, 2)),
+            (5, "Giant", mtgml_card_ir::ManaColorV1::Red, (3, 3)),
+        ];
+        for (definition, subtype, color, power_toughness) in expected {
+            let object = add_object(
+                &mut state,
+                CardDefinitionId(definition),
+                PlayerId(1),
+                ZoneKind::Battlefield,
+                20 + definition,
+            );
+            state.card_rules.faces.faces.insert(object, 0);
+            state
+                .card_rules
+                .permanents
+                .enter(object, state.core.turn_number)
+                .unwrap();
+            let before = state.clone();
+            let authority = crate::S1QueryAuthority::for_object(&admission, &state, object)
+                .expect("an admitted vanilla creature is queryable");
+            let result = authority.derive_base_characteristics();
+            assert_eq!(result.card_types, ["Creature"]);
+            assert_eq!(result.subtypes, [subtype]);
+            assert_eq!(result.colors, std::collections::BTreeSet::from([color]));
+            assert_eq!(result.base_power_toughness, Some(power_toughness));
+            assert_eq!(state, before);
+        }
+        // A land-only admission knows no creature definition.
+        let creature = *state.zones.objects.keys().next_back().unwrap();
+        assert!(matches!(
+            crate::S1QueryAuthority::for_object(&self::admission(), &state, creature),
+            Err(crate::S1QueryError::MissingCardDefinition(_))
+        ));
+    }
+
+    #[test]
     fn s1_query_for_objects_matches_one_query_per_object() {
         let admission = admission();
         let state = successor_state_with_two_lands();
@@ -1761,8 +2005,11 @@ mod tests {
                 .get(admission.content_contract_id(), object.card_definition)
                 .unwrap();
             let subtype = match &definition.semantic_binding {
-                CardSemanticBindingV1::ProfiledV1 { body, .. } => body.subtype,
-                CardSemanticBindingV1::UnprofiledV1 => panic!("expected admitted Basic Land"),
+                CardSemanticBindingV1::ProfiledV1 {
+                    body: CardProfileBodyV1::BasicLand(profile),
+                    ..
+                } => profile.subtype,
+                _ => panic!("expected admitted Basic Land"),
             };
             let authority =
                 crate::S1QueryAuthority::for_object(&admission, &state, *object_id).unwrap();

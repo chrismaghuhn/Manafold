@@ -41,6 +41,9 @@ fn state_with_tapped_permanents(objects: &[u64]) -> EngineState {
     }
     for object in state.zones.objects.keys().copied() {
         state.card_rules.faces.faces.insert(object, 0);
+        if state.zones.locations[&object].zone == ZoneKind::Battlefield {
+            state.card_rules.permanents.enter(object, 1).unwrap();
+        }
     }
     let next = objects.iter().max().map_or(1, |max| max + 1);
     state.allocators.next_object_id = GameObjectId(next);

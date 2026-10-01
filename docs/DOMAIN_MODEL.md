@@ -53,7 +53,7 @@ EngineState
 ├── per-player retained knowledge + next visible sequence
 ├── per-player opaque mappings + visible allocators + retired IDs
 ├── format state
-└── card-rules state: mana, turn history, counters, attachments, faces, ability authority
+└── card-rules state: mana, turn history, counters, attachments, faces, ability authority, permanents
 ```
 
 No kernel/projector/controller/adapter object may retain hidden mutable semantic state.

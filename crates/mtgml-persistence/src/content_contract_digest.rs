@@ -50,16 +50,21 @@ pub fn calculate_content_contract_id_v1(
 fn validate_profiled_identity_shape(value: cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
     let profile = expect_array(value, 2)?;
     let profile_id = expect_text(&profile[0])?;
-    if profile_id != "basic-land@1.0.0" {
+    if !matches!(profile_id, "basic-land@1.0.0" | "vanilla-creature@1.0.0") {
         return Err(PersistenceDecodeErrorV1::UnknownVariant);
     }
     let body = expect_array(profile[1].clone(), 2)?;
-    if expect_text(&body[0])? != "basic-land-profile.v1"
-        || !matches!(
-            &body[1],
-            cbor::Value::Text(subtype) if subtype == "mountain" || subtype == "plains"
-        )
-    {
+    let body_label = expect_text(&body[0])?;
+    let body_is_valid = if profile_id == "basic-land@1.0.0" {
+        body_label == "basic-land-profile.v1"
+            && matches!(
+                &body[1],
+                cbor::Value::Text(subtype) if subtype == "mountain" || subtype == "plains"
+            )
+    } else {
+        body_label == "vanilla-creature-profile.v1" && matches!(&body[1], cbor::Value::Null)
+    };
+    if !body_is_valid {
         return Err(PersistenceDecodeErrorV1::SemanticValidation);
     }
     Ok(())
@@ -157,6 +162,20 @@ mod tests {
     #[test]
     fn basic_land_profile_content_id_matches_frozen_v1_known_answer() {
         let fixture = basic_land_fixture();
+        let payload = decode_hex(fixture["canonical_payload_hex"].as_str().unwrap());
+        let id = calculate_content_contract_id_v1(&payload).unwrap();
+        assert_eq!(
+            id.as_str(),
+            fixture["content_contract_id"].as_str().unwrap()
+        );
+    }
+
+    #[test]
+    fn combined_catalog_content_id_matches_frozen_known_answer() {
+        let fixture: serde_json::Value = serde_json::from_slice(include_bytes!(
+            "../../../persistence/golden/content-contract-basic-land-and-vanilla-creature-v1-kat.v1.json"
+        ))
+        .unwrap();
         let payload = decode_hex(fixture["canonical_payload_hex"].as_str().unwrap());
         let id = calculate_content_contract_id_v1(&payload).unwrap();
         assert_eq!(

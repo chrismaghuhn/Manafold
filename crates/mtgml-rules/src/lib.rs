@@ -1,8 +1,11 @@
-//! Magic rules: the native turn progression, basic-land actions, zone
-//! incarnation, characteristic queries, and authoritative V3 events.
+//! Magic rules: the native turn progression, basic-land actions, casting,
+//! combat, zone incarnation, characteristic queries, and authoritative V3
+//! events.
 
 mod basic_land;
+mod casting;
 mod characteristic_query;
+mod combat;
 mod errors;
 mod events;
 mod game_start;

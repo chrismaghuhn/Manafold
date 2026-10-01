@@ -23,6 +23,14 @@ pub(crate) enum SelectedZoneTransitionKind {
     HandToOwnerLibraryBottom {
         reason: mtgml_state::KnowledgeInvalidationReason,
     },
+    /// Casting a spell (CR 601.2a): a hand card to the stack, as a new public
+    /// incarnation. Every player sees it appear.
+    HandToStack,
+    /// A permanent spell resolving (CR 608.3a): the card on the stack enters
+    /// the battlefield as a new incarnation under `controller`'s control.
+    StackToBattlefield {
+        controller: mtgml_model::PlayerId,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -78,7 +86,9 @@ pub(crate) enum ZoneMoveEvent {
     Occurrence(PerspectiveLifecycleAuditV1),
     /// One library was shuffled (CR 701.24); the trusted audit of the draw.
     Shuffle(Box<LibraryShuffleAudit>),
-    /// A public rule event; every player's occurrence follows it.
+    /// A rule event of the transition. Events every player observes are
+    /// followed by each player's occurrence of it; one that no player
+    /// observes (see `record_unobserved`) has none.
     Public(Box<crate::AuthoritativeRuleEventKind>),
 }
 
@@ -149,7 +159,8 @@ pub(crate) fn apply_selected_zone_transition_in_workspace(
                 && actual_from.partition.is_none()
         }
         SelectedZoneTransitionKind::HandToOwnerGraveyard
-        | SelectedZoneTransitionKind::HandToOwnerLibraryBottom { .. } => {
+        | SelectedZoneTransitionKind::HandToOwnerLibraryBottom { .. }
+        | SelectedZoneTransitionKind::HandToStack => {
             actual_from.zone == mtgml_model::ZoneKind::Hand
                 && actual_from.player == Some(old_object.owner)
                 && matches!(
@@ -157,6 +168,13 @@ pub(crate) fn apply_selected_zone_transition_in_workspace(
                     ZonePosition::Unordered | ZonePosition::Top { .. }
                 )
                 && actual_from.visibility == mtgml_state::VisibilityPartition::OwnerOnly
+                && actual_from.partition.is_none()
+        }
+        SelectedZoneTransitionKind::StackToBattlefield { .. } => {
+            actual_from.zone == mtgml_model::ZoneKind::Stack
+                && actual_from.player.is_none()
+                && actual_from.position == ZonePosition::Unordered
+                && actual_from.visibility == mtgml_state::VisibilityPartition::Public
                 && actual_from.partition.is_none()
         }
     };
@@ -176,6 +194,20 @@ pub(crate) fn apply_selected_zone_transition_in_workspace(
     }
 
     let required_to = match request.kind {
+        SelectedZoneTransitionKind::HandToStack => ZoneLocation {
+            zone: mtgml_model::ZoneKind::Stack,
+            player: None,
+            position: ZonePosition::Unordered,
+            visibility: mtgml_state::VisibilityPartition::Public,
+            partition: None,
+        },
+        SelectedZoneTransitionKind::StackToBattlefield { .. } => ZoneLocation {
+            zone: mtgml_model::ZoneKind::Battlefield,
+            player: None,
+            position: ZonePosition::Unordered,
+            visibility: mtgml_state::VisibilityPartition::Public,
+            partition: None,
+        },
         SelectedZoneTransitionKind::HandToOwnerGraveyard => ZoneLocation {
             zone: mtgml_model::ZoneKind::Graveyard,
             player: Some(old_object.owner),
@@ -285,7 +317,8 @@ pub(crate) fn apply_selected_zone_transition_in_workspace(
 
     if let (
         SelectedZoneTransitionKind::HandToOwnerGraveyard
-        | SelectedZoneTransitionKind::HandToOwnerLibraryBottom { .. },
+        | SelectedZoneTransitionKind::HandToOwnerLibraryBottom { .. }
+        | SelectedZoneTransitionKind::HandToStack,
         ZonePosition::Top { offset },
     ) = (request.kind, actual_from.position)
     {
@@ -357,6 +390,9 @@ pub(crate) fn apply_selected_zone_transition_in_workspace(
                 .or_default()
                 .push(new_object_id);
         }
+        // The stack and the battlefield are unordered zones.
+        SelectedZoneTransitionKind::HandToStack
+        | SelectedZoneTransitionKind::StackToBattlefield { .. } => {}
         SelectedZoneTransitionKind::LibraryTopToOwnerHand => {
             let source_key = actual_from.key();
             let ordered = next.zones.ordered_zones.get_mut(&source_key).ok_or(
@@ -413,7 +449,10 @@ pub(crate) fn apply_selected_zone_transition_in_workspace(
             physical_card: old_object.physical_card,
             card_definition: old_object.card_definition,
             owner: old_object.owner,
-            controller: old_object.owner,
+            controller: match request.kind {
+                SelectedZoneTransitionKind::StackToBattlefield { controller } => controller,
+                _ => old_object.owner,
+            },
             tapped: false,
             face_down: false,
         },
@@ -441,18 +480,28 @@ pub(crate) fn apply_selected_zone_transition_in_workspace(
     let new_object = new_object_id;
     let to_location = transition.to.clone();
     match request.kind {
-        SelectedZoneTransitionKind::HandToOwnerGraveyard => {
-            // The graveyard is public: every perspective learns the card. A
-            // perspective that tracked the hand card follows it; any other
-            // perspective sees it appear. Known members shifted down by the
-            // new top card get their exact new locations in the same
-            // occurrence.
-            let shifted_members = state
-                .zones
-                .ordered_zones
-                .get(&graveyard_key)
-                .cloned()
-                .unwrap_or_default();
+        SelectedZoneTransitionKind::HandToOwnerGraveyard
+        | SelectedZoneTransitionKind::HandToStack
+        | SelectedZoneTransitionKind::StackToBattlefield { .. } => {
+            // The destination is public: every perspective learns the card. A
+            // perspective that tracked the source card follows it; any other
+            // perspective sees it appear. In the graveyard, known members
+            // shifted down by the new top card get their exact new locations
+            // in the same occurrence; the stack and the battlefield have no
+            // order to shift.
+            let shifted_members = if matches!(
+                request.kind,
+                SelectedZoneTransitionKind::HandToOwnerGraveyard
+            ) {
+                state
+                    .zones
+                    .ordered_zones
+                    .get(&graveyard_key)
+                    .cloned()
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            };
             for perspective in state.core.players.keys().copied() {
                 let identity = state
                     .perspective_identities

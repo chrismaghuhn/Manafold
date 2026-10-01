@@ -1,7 +1,8 @@
 use crate::{
     AbilityAuthorityStateV1, AbilityAuthorityV1, AttachmentStateV1, AttachmentTimestampV1,
     AttachmentV1, CounterKindV1, CounterStateV1, EngineState, FaceStateV1, ManaColorV1, ManaPoolV1,
-    ManaRestrictionV1, ManaStateV1, PlayerTurnHistoryV1, TurnHistoryStateV1,
+    ManaRestrictionV1, ManaStateV1, PermanentState, PermanentsState, PlayerTurnHistoryV1,
+    TurnHistoryStateV1,
 };
 use mtgml_model::{AbilityInstanceId, GameObjectId, PlayerId, StateRevision, ZoneKind};
 use std::collections::{BTreeMap, BTreeSet};
@@ -809,6 +810,70 @@ impl FaceStateV1 {
 
     pub fn prune_departed_objects(&mut self, live_objects: &BTreeSet<GameObjectId>) {
         self.faces.retain(|object, _| live_objects.contains(object));
+    }
+}
+
+impl PermanentsState {
+    /// Records that `object` entered the battlefield on `turn`, under its
+    /// controller's control from then on. An object enters once.
+    pub fn enter(
+        &mut self,
+        object: GameObjectId,
+        turn: u64,
+    ) -> Result<(), StateFamilyMutationError> {
+        match self.permanents.entry(object) {
+            std::collections::btree_map::Entry::Occupied(_) => {
+                Err(StateFamilyMutationError::Duplicate)
+            }
+            std::collections::btree_map::Entry::Vacant(entry) => {
+                entry.insert(PermanentState {
+                    controlled_since_turn: turn,
+                });
+                Ok(())
+            }
+        }
+    }
+
+    /// Every entry names a battlefield object and a turn that has begun.
+    pub fn validate_battlefield(
+        &self,
+        battlefield: &BTreeSet<GameObjectId>,
+        current_turn: u64,
+    ) -> Result<(), StateFamilyMutationError> {
+        if self
+            .permanents
+            .keys()
+            .any(|object| !battlefield.contains(object))
+        {
+            return Err(StateFamilyMutationError::WrongZone);
+        }
+        if self
+            .permanents
+            .values()
+            .any(|permanent| permanent.controlled_since_turn > current_turn)
+        {
+            return Err(StateFamilyMutationError::InvalidValue);
+        }
+        Ok(())
+    }
+
+    /// Every battlefield object has an entry.
+    pub fn validate_covers(
+        &self,
+        battlefield: &BTreeSet<GameObjectId>,
+    ) -> Result<(), StateFamilyMutationError> {
+        if battlefield
+            .iter()
+            .any(|object| !self.permanents.contains_key(object))
+        {
+            return Err(StateFamilyMutationError::Missing);
+        }
+        Ok(())
+    }
+
+    pub fn prune_departed_objects(&mut self, battlefield: &BTreeSet<GameObjectId>) {
+        self.permanents
+            .retain(|object, _| battlefield.contains(object));
     }
 }
 

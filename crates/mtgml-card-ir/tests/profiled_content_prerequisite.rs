@@ -1,8 +1,9 @@
 use mtgml_card_ir::{
     content_validation_only, decode_content_manifest_v1, encode_content_manifest_v1,
-    validate_content_manifest_v1, BasicLandProfileV1, BasicLandSubtypeV1, CardSemanticBindingV1,
-    CardSemanticProfileId, DefinitionProvenanceRecordV1, NoExecutableProfileAdmitted,
-    ProvenanceCatalogV1, RequiredCapabilityLifecycleV1, SourceProvenanceV1,
+    validate_content_manifest_v1, BasicLandProfileV1, BasicLandSubtypeV1, CardProfileBodyV1,
+    CardSemanticBindingV1, CardSemanticProfileId, DefinitionProvenanceRecordV1,
+    NoExecutableProfileAdmitted, ProvenanceCatalogV1, RequiredCapabilityLifecycleV1,
+    SourceProvenanceV1,
 };
 use mtgml_model::CardDefinitionId;
 use mtgml_persistence::content_contract_digest::calculate_content_contract_id_v1;
@@ -64,18 +65,18 @@ fn profiled_mountain_and_plains_match_frozen_content_kat_and_v1_identity() {
         manifest.definitions[0].semantic_binding,
         CardSemanticBindingV1::ProfiledV1 {
             profile_id: CardSemanticProfileId::parse("basic-land@1.0.0").unwrap(),
-            body: BasicLandProfileV1 {
+            body: CardProfileBodyV1::BasicLand(BasicLandProfileV1 {
                 subtype: BasicLandSubtypeV1::Mountain,
-            },
+            }),
         }
     );
     assert_eq!(
         manifest.definitions[1].semantic_binding,
         CardSemanticBindingV1::ProfiledV1 {
             profile_id: CardSemanticProfileId::parse("basic-land@1.0.0").unwrap(),
-            body: BasicLandProfileV1 {
+            body: CardProfileBodyV1::BasicLand(BasicLandProfileV1 {
                 subtype: BasicLandSubtypeV1::Plains,
-            },
+            }),
         }
     );
     assert_eq!(encode_content_manifest_v1(&manifest).unwrap(), bytes);

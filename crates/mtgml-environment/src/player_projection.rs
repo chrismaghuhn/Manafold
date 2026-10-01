@@ -11,10 +11,11 @@ use mtgml_model::{
 use mtgml_observation::{
     AttachmentObservationV1, CounterObservationV1, FaceObservationV1, InformationStateDigestInput,
     MagicBasicLandObservationV1, MagicSharedExecutionObservationV1, ManaPoolObservationV1,
-    ObservationEnvelope, ObservedFaceV1, PlayerInformationState, PlayerKnowledgeCauseV1,
-    PlayerKnowledgeChannelV1, PlayerKnowledgeInvalidationReasonV1, PlayerKnowledgeProvenanceV1,
-    PlayerKnownLocationFactV1, PlayerKnownLocationV1, PlayerKnownObjectV1, SyntheticBeginningStep,
-    SyntheticCombatStep, SyntheticEndingStep, SyntheticPriority, SyntheticTurnPosition,
+    ObservationEnvelope, ObservedFaceV1, PermanentObservationV1, PlayerInformationState,
+    PlayerKnowledgeCauseV1, PlayerKnowledgeChannelV1, PlayerKnowledgeInvalidationReasonV1,
+    PlayerKnowledgeProvenanceV1, PlayerKnownLocationFactV1, PlayerKnownLocationV1,
+    PlayerKnownObjectV1, SyntheticBeginningStep, SyntheticCombatStep, SyntheticEndingStep,
+    SyntheticPriority, SyntheticTurnPosition,
 };
 use mtgml_observation::{MagicCompletedOrder, MagicPendingSbaOrdering};
 use mtgml_state::{
@@ -62,6 +63,9 @@ pub(crate) fn project_magic_basic_land_observation(
     }
     let content_id = catalog.content_contract_id();
     let mut public_faces = std::collections::BTreeMap::new();
+    // Every permanent on the battlefield, with its printed power and
+    // toughness if it is a creature.
+    let mut battlefield = std::collections::BTreeMap::new();
     for object in engine.zones.objects.values() {
         let definition = catalog
             .get(content_id, object.card_definition)
@@ -85,6 +89,66 @@ pub(crate) fn project_magic_basic_land_observation(
         if !object.face_down {
             public_faces.insert(object.id, orientation);
         }
+        let on_battlefield = engine
+            .zones
+            .locations
+            .get(&object.id)
+            .is_some_and(|location| location.zone == mtgml_model::ZoneKind::Battlefield);
+        if !on_battlefield {
+            continue;
+        }
+        // A face-down permanent is a creature whatever its card is (CR 708.2),
+        // and its card is hidden: not supported.
+        if object.face_down {
+            return Err(PlayerEndpointError::ServiceUnavailable);
+        }
+        let base = &definition.faces[face_index].base_characteristics;
+        let printed = if base
+            .type_line
+            .card_types
+            .iter()
+            .any(|card_type| card_type == "Creature")
+        {
+            // Every creature has a power and a toughness (CR 208.1).
+            let (power, toughness) = base
+                .power_toughness
+                .ok_or(PlayerEndpointError::ServiceUnavailable)?;
+            Some((i64::from(power), i64::from(toughness)))
+        } else {
+            None
+        };
+        battlefield.insert(object.id, printed);
+    }
+    // A creature shows its printed power and toughness, which are its current
+    // ones only while nothing changes them. The projection applies neither
+    // effects nor counters: it fails closed rather than show a wrong number.
+    let creatures: Vec<_> = battlefield
+        .iter()
+        .filter(|(_, printed)| printed.is_some())
+        .map(|(object, _)| *object)
+        .collect();
+    if !creatures.is_empty() && !engine.execution.effects.is_empty() {
+        return Err(PlayerEndpointError::ServiceUnavailable);
+    }
+    for object in &creatures {
+        let changes_power_toughness =
+            parts
+                .card_rules
+                .counters
+                .counters
+                .get(object)
+                .is_some_and(|counters| {
+                    counters.iter().any(|(kind, count)| {
+                        *count > 0
+                            && matches!(
+                                kind,
+                                CounterKindV1::PlusOnePlusOne | CounterKindV1::MinusOneMinusOne
+                            )
+                    })
+                });
+        if changes_power_toughness {
+            return Err(PlayerEndpointError::ServiceUnavailable);
+        }
     }
     for authority in parts.card_rules.abilities.by_instance.values() {
         let source = engine
@@ -107,13 +171,19 @@ pub(crate) fn project_magic_basic_land_observation(
             return Err(PlayerEndpointError::ServiceUnavailable);
         }
     }
-    project_magic_basic_land_observation_from_verified_faces(parts, perspective, &public_faces)
+    project_magic_basic_land_observation_from_verified_faces(
+        parts,
+        perspective,
+        &public_faces,
+        &battlefield,
+    )
 }
 
 fn project_magic_basic_land_observation_from_verified_faces(
     parts: &EngineState,
     perspective: PlayerId,
     public_faces: &std::collections::BTreeMap<mtgml_model::GameObjectId, ObservedFaceV1>,
+    battlefield: &std::collections::BTreeMap<mtgml_model::GameObjectId, Option<(i64, i64)>>,
 ) -> Result<MagicBasicLandObservationV1, PlayerEndpointError> {
     let state = parts;
     let identity = state
@@ -188,6 +258,8 @@ fn project_magic_basic_land_observation_from_verified_faces(
         attachments: Vec::new(),
         faces: Vec::new(),
         tapped: Vec::new(),
+        permanents: Vec::new(),
+        attacking: Vec::new(),
     };
     for (object, counters) in &parts.card_rules.counters.counters {
         if !public_battlefield(*object) {
@@ -213,6 +285,41 @@ fn project_magic_basic_land_observation_from_verified_faces(
     for (object, card) in &state.zones.objects {
         if card.tapped && public_battlefield(*object) {
             value.tapped.push(opaque(*object)?);
+        }
+    }
+    // CR 302.6, 208.1: every permanent's controller and the turn since which
+    // they have controlled it are public, and so are a creature's power and
+    // toughness. The raw turn is shown; whether a creature can attack is for
+    // the viewer to derive.
+    for (object, printed) in battlefield {
+        if !public_battlefield(*object) {
+            continue;
+        }
+        let controller = state
+            .zones
+            .objects
+            .get(object)
+            .ok_or(PlayerEndpointError::ServiceUnavailable)?
+            .controller;
+        let permanent = state
+            .card_rules
+            .permanents
+            .permanents
+            .get(object)
+            .ok_or(PlayerEndpointError::ServiceUnavailable)?;
+        value.permanents.push(PermanentObservationV1 {
+            object: opaque(*object)?,
+            controller,
+            controlled_since_turn: permanent.controlled_since_turn,
+            power: printed.map(|(power, _)| power),
+            toughness: printed.map(|(_, toughness)| toughness),
+        });
+    }
+    // CR 508.1k: the attacking creatures are public. One that is not a
+    // creature among the permanents fails validation below.
+    if let Some(combat) = &state.combat {
+        for attacker in &combat.attackers {
+            value.attacking.push(opaque(*attacker)?);
         }
     }
     for (source, edge) in &parts.card_rules.attachments.by_source {
@@ -247,6 +354,8 @@ fn project_magic_basic_land_observation_from_verified_faces(
     value.attachments.sort_by_key(|entry| entry.source);
     value.faces.sort_by_key(|entry| entry.object);
     value.tapped.sort();
+    value.permanents.sort_by_key(|entry| entry.object);
+    value.attacking.sort();
     value
         .validate()
         .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
@@ -493,6 +602,8 @@ fn project_shared_execution_observation(
         attachments: basic.attachments,
         faces: basic.faces,
         tapped: basic.tapped,
+        permanents: basic.permanents,
+        attacking: basic.attacking,
         stack,
         temporary_effects,
     })

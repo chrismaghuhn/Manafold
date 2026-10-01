@@ -776,16 +776,24 @@ damage action has already run:
   counters,
   attachments,
   faces,
-  abilities
+  abilities,
+  permanents
 ]
 ```
 
-The record contains typed Mana, TurnHistory, Counter, Attachment, Face, and
-AbilityAuthority state. `CardRulesAuthoritativeStateV1::validate` rejects
+The record contains typed Mana, TurnHistory, Counter, Attachment, Face,
+AbilityAuthority, and Permanents state. `permanents` is a list of
+`[object, controlled_since_turn]` pairs sorted by `GameObjectId`: the turn since
+which the permanent's controller has controlled it (CR 302.6).
+`CardRulesAuthoritativeStateV1::validate` rejects
 noncanonical ordering, duplicates, malformed records, integer range/domain
 errors, and any `land_plays_used` value outside `{0,1}`; `EngineState`
 validation additionally requires the same player universe and turn number as
-the core state and live references for every object-keyed entry.
+the core state and live references for every object-keyed entry. In every
+state shape each `permanents` entry must name a battlefield object and a
+`controlled_since_turn` no later than the current turn. Once faces or ability
+authority exist, every battlefield object must also have an entry; the
+synthetic-compatibility shape, which has neither, need not have one.
 
 # Encoding rules
 

@@ -1,0 +1,97 @@
+{
+  "schema_version": "magic-basic-land-observation.v1",
+  "active_player": "0",
+  "turn_number": "3",
+  "turn_position": {
+    "kind": "combat",
+    "step": "declare_attackers"
+  },
+  "priority": {
+    "kind": "held_by",
+    "player": "0"
+  },
+  "players": [
+    {
+      "player": "0",
+      "life": 20,
+      "hand_count": 6,
+      "library_count": 33
+    },
+    {
+      "player": "1",
+      "life": -2,
+      "hand_count": 7,
+      "library_count": 33
+    }
+  ],
+  "pending_sba_ordering": null,
+  "mana_pools": [
+    {
+      "player": "0",
+      "unrestricted": [
+        0,
+        0,
+        0,
+        1,
+        0,
+        0
+      ],
+      "creature_spell_only": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "counters": [
+    {
+      "object": "8",
+      "counter_kind": "plus_one_plus_one",
+      "count": 1
+    }
+  ],
+  "attachments": [
+    {
+      "source": "8",
+      "target": "7"
+    }
+  ],
+  "faces": [
+    {
+      "object": "7",
+      "face": "back"
+    }
+  ],
+  "tapped": [
+    "7"
+  ],
+  "permanents": [
+    {
+      "object": "6",
+      "controller": "1",
+      "controlled_since_turn": 2,
+      "power": 3,
+      "toughness": 3
+    },
+    {
+      "object": "7",
+      "controller": "0",
+      "controlled_since_turn": "1",
+      "power": 2,
+      "toughness": 2
+    },
+    {
+      "object": "8",
+      "controller": "0",
+      "controlled_since_turn": "3",
+      "power": null,
+      "toughness": null
+    }
+  ],
+  "attacking": [
+    "7"
+  ]
+}

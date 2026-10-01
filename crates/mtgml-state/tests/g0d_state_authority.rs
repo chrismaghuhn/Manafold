@@ -146,6 +146,9 @@ fn staged_blight_activation() -> (EngineState, ContinuationId) {
     );
     for object in state.zones.objects.keys().copied() {
         state.card_rules.faces.faces.insert(object, 0);
+        if state.zones.locations[&object].zone == ZoneKind::Battlefield {
+            state.card_rules.permanents.enter(object, 1).unwrap();
+        }
     }
     let continuation_id = ContinuationId(1);
     let action_cost_facts = mtgml_state::ActionCostFacts {
@@ -1177,4 +1180,212 @@ fn flat_state_exposes_every_component_at_the_top_level() {
     assert!(state.execution.pending_decision.is_none());
     assert_eq!(state.allocators.next_decision_id, DecisionId(2));
     state.validate_structure().unwrap();
+}
+
+/// P1 pays for a spell on the stack (object 4, stack object 1) that costs
+/// {1}: its Cast continuation is paying mana, awaiting the final allocation
+/// with no source activations, and P1 is asked how to pay. P1 also has a land
+/// (object 3) with a mana ability, untapped.
+fn paying_for_a_spell() -> EngineState {
+    let mut state = root();
+    let land = GameObjectId(3);
+    state.zones.objects.insert(
+        land,
+        mtgml_state::GameObject {
+            id: land,
+            physical_card: Some(PhysicalCardId(3)),
+            card_definition: CardDefinitionId(3),
+            owner: PlayerId(1),
+            controller: PlayerId(1),
+            tapped: false,
+            face_down: false,
+        },
+    );
+    state.zones.locations.insert(
+        land,
+        ZoneLocation {
+            zone: ZoneKind::Battlefield,
+            player: None,
+            position: ZonePosition::Unordered,
+            visibility: VisibilityPartition::Public,
+            partition: None,
+        },
+    );
+    state.allocators.next_object_id = GameObjectId(4);
+    state.allocators.next_ability_id = AbilityInstanceId(2);
+    state.card_rules.abilities.by_instance.insert(
+        AbilityInstanceId(1),
+        mtgml_state::AbilityAuthorityV1 {
+            source: land,
+            ability_key: 0,
+        },
+    );
+    add_stack_spell(&mut state, 4, 1);
+    for object in state.zones.objects.keys().copied() {
+        state.card_rules.faces.faces.insert(object, 0);
+        if state.zones.locations[&object].zone == ZoneKind::Battlefield {
+            state.card_rules.permanents.enter(object, 1).unwrap();
+        }
+    }
+    let continuation_id = ContinuationId(1);
+    state.allocators.next_continuation_id = ContinuationId(2);
+    state.allocators.next_decision_id = DecisionId(3);
+    state.execution.continuations.insert(
+        continuation_id,
+        mtgml_state::ContinuationRecord {
+            id: continuation_id,
+            created_at_revision: state.revision,
+            payload: mtgml_state::ContinuationPayload::Cast(mtgml_state::CastContinuation {
+                actor: PlayerId(1),
+                spell_object: GameObjectId(4),
+                card_definition_id: CardDefinitionId(4),
+                face_key: FaceKey(0),
+                semantic_profile_id: CardSemanticProfileId::parse("test/spell@1.0.0").unwrap(),
+                stage: mtgml_state::CastContinuationStage::PayingMana,
+                selected_route: Some(mtgml_state::CostRoute::Normal),
+                modes: vec![],
+                targets: vec![],
+                paid_cost_choices: vec![],
+                action_cost_facts: mtgml_state::ActionCostFacts {
+                    mana_cost: Some(ManaCost {
+                        colored_wubrg_counts: [0; 5],
+                        colorless_count: 0,
+                        generic_count: 1,
+                    }),
+                    reserved_nonmana_costs: vec![],
+                    selected_cost_operands: vec![],
+                },
+                mana_payment_staging: Some(ManaPaymentStaging {
+                    stage: ManaPaymentStage::AwaitingFinalAllocation,
+                    mana_source_activations: vec![],
+                }),
+            }),
+        },
+    );
+    let view_sequence = state.knowledge.players[&PlayerId(1)].next_visible_sequence;
+    state.execution.pending_decision = Some(mtgml_decision::AuthoritativeDecisionRequest {
+        decision_id: DecisionId(2),
+        player_decision_id: PlayerDecisionIdV1(1),
+        state_revision: state.revision,
+        view_sequence,
+        actor: PlayerId(1),
+        visibility: mtgml_decision::DecisionVisibility::ActingPlayerOnly,
+        decision_domain_v2: mtgml_decision::DecisionDomainV2::ChooseOne,
+        purpose: mtgml_decision::DecisionPurposeV4::ManaPayment,
+        parent_player_decision_id: None,
+        continuation_id: Some(continuation_id),
+        candidates: [
+            [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        ]
+        .into_iter()
+        .enumerate()
+        .map(
+            |(index, spent_buckets)| mtgml_decision::AuthoritativeCandidate {
+                candidate_id: CandidateIdV1(index as u32),
+                visible_intent: mtgml_decision::CandidateIntent::SelectManaPayment {
+                    spent_buckets,
+                },
+                trusted_binding: mtgml_decision::EngineCandidateBinding::SelectManaPayment {
+                    spent_buckets,
+                },
+            },
+        )
+        .collect(),
+    });
+    state
+}
+
+fn cast_continuation(state: &mut EngineState) -> &mut mtgml_state::CastContinuation {
+    let record = state
+        .execution
+        .continuations
+        .get_mut(&ContinuationId(1))
+        .unwrap();
+    let mtgml_state::ContinuationPayload::Cast(cast) = &mut record.payload else {
+        unreachable!()
+    };
+    cast
+}
+
+#[test]
+fn a_cast_continuation_awaiting_the_final_allocation_is_a_valid_payment() {
+    paying_for_a_spell().validate_structure().unwrap();
+}
+
+#[test]
+fn a_cast_continuation_paying_mana_has_no_source_activation() {
+    // The source is a live untapped land that could be activated, so only the
+    // cast's own rule rejects the activation: this slice pays from the pool
+    // (a design choice of the vanilla-creatures spec §3, not a requirement of
+    // the rules, which let mana abilities be activated while casting, CR
+    // 601.2g and 605.3a), so the payment stages no mana source of its own.
+    let mut state = paying_for_a_spell();
+    cast_continuation(&mut state)
+        .mana_payment_staging
+        .as_mut()
+        .unwrap()
+        .mana_source_activations
+        .push(ManaSourceActivation {
+            source_object: GameObjectId(3),
+            source_ability_instance: AbilityInstanceId(1),
+            ability_key: mtgml_card_ir::AbilityKey(0),
+            semantic_profile_id: CardSemanticProfileId::parse("test/mana-source@1.0.0").unwrap(),
+            activation_cost_receipt: ManaSourceActivationCost::TapSource,
+            produced_buckets: [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+        });
+    assert_eq!(
+        state.validate_structure(),
+        Err(mtgml_state::EngineStateError::ManaPaymentStaging)
+    );
+}
+
+#[test]
+fn a_cast_continuation_paying_mana_awaits_the_final_allocation() {
+    let mut state = paying_for_a_spell();
+    cast_continuation(&mut state)
+        .mana_payment_staging
+        .as_mut()
+        .unwrap()
+        .stage = ManaPaymentStage::SelectingSources;
+    assert_eq!(
+        state.validate_structure(),
+        Err(mtgml_state::EngineStateError::ManaPaymentStaging)
+    );
+}
+
+#[test]
+fn a_cast_continuation_names_a_spell_on_the_stack() {
+    // The card the continuation names is on the battlefield, not on the
+    // stack.
+    let mut state = paying_for_a_spell();
+    let cast = cast_continuation(&mut state);
+    cast.spell_object = GameObjectId(3);
+    cast.card_definition_id = CardDefinitionId(3);
+    assert_eq!(
+        state.validate_structure(),
+        Err(mtgml_state::EngineStateError::ContinuationRecord)
+    );
+
+    // The card is on the stack, but its record is another player's spell.
+    let mut state = paying_for_a_spell();
+    state
+        .zones
+        .stack_records
+        .get_mut(&StackObjectId(1))
+        .unwrap()
+        .controller = PlayerId(2);
+    assert_eq!(
+        state.validate_structure(),
+        Err(mtgml_state::EngineStateError::ContinuationRecord)
+    );
+
+    // The continuation names another profile than the spell's record has.
+    let mut state = paying_for_a_spell();
+    cast_continuation(&mut state).semantic_profile_id =
+        CardSemanticProfileId::parse("test/other@1.0.0").unwrap();
+    assert_eq!(
+        state.validate_structure(),
+        Err(mtgml_state::EngineStateError::ContinuationRecord)
+    );
 }

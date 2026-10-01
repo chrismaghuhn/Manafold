@@ -33,6 +33,7 @@ from ._magic_basic_land_observation_v1 import (
     FaceObservationV1,
     MagicBasicLandObservationV1,
     ManaPoolObservationV1,
+    PermanentObservationV1,
     PlayerObservationV1,
 )
 from ._magic_observation import (
@@ -108,6 +109,7 @@ __all__ = [
     "ObservationEnvelope",
     "ObservedEventEnvelopeV4",
     "ObservedEventV4",
+    "PermanentObservationV1",
     "PlayerInformationState",
     "PlayerKnowledgeInvalidationV1",
     "PlayerKnowledgeProvenanceV1",

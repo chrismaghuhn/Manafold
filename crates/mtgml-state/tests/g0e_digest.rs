@@ -67,6 +67,9 @@ fn staged_activation_state() -> EngineState {
     );
     for object in state.zones.objects.keys().copied() {
         state.card_rules.faces.faces.insert(object, 0);
+        if state.zones.locations[&object].zone == ZoneKind::Battlefield {
+            state.card_rules.permanents.enter(object, 1).unwrap();
+        }
     }
     let continuation_id = mtgml_model::ContinuationId(1);
     let action_cost_facts = ActionCostFacts {
@@ -214,9 +217,18 @@ fn v7_digest_has_the_frozen_14_field_domain_envelope() {
             if execution.len() == 6
                 && execution[0] == mtgml_persistence::cbor::Value::Text("execution_v4".to_owned())
     ));
+    assert!(matches!(
+        &fields[13],
+        mtgml_persistence::cbor::Value::Array(card_rules)
+            if card_rules.len() == 8
+                && card_rules[0]
+                    == mtgml_persistence::cbor::Value::Text(
+                        "card-rules-authoritative-state.v1".to_owned()
+                    )
+    ));
     assert_eq!(
         calculate_full_state_digest(&state).unwrap().as_str(),
-        "9e80644042e5316842cac990ee05371faf21e900b96d28ae3ff59d43193a2489"
+        "e5112f640bc0010cb4adc99b77f705b2c81558ef073c88ad11f2867aa22a3553"
     );
 }
 

@@ -83,6 +83,50 @@ class ManaPoolObservationV1:
 
 
 @dataclass(frozen=True, slots=True)
+class PermanentObservationV1:
+    """A permanent on the battlefield: who controls it, the turn since which
+    that player has controlled it and, for a creature, its power and toughness
+    (null for any other permanent).
+
+    A creature's power and toughness are its printed ones, which are also its
+    current ones: no observation is made for a creature that an effect or a
+    +1/+1 or -1/-1 counter could change.
+    """
+
+    object: int
+    controller: int
+    controlled_since_turn: int
+    power: int | None
+    toughness: int | None
+
+    @property
+    def is_creature(self) -> bool:
+        return self.power is not None
+
+    @classmethod
+    def from_wire(cls, value: JsonValue) -> PermanentObservationV1:
+        obj = require_exact_keys(
+            value, {"object", "controller", "controlled_since_turn", "power", "toughness"}
+        )
+        return cls(
+            parse_uint(obj["object"]),
+            parse_uint(obj["controller"]),
+            parse_uint(obj["controlled_since_turn"]),
+            None if obj["power"] is None else _i64(obj["power"], "power"),
+            None if obj["toughness"] is None else _i64(obj["toughness"], "toughness"),
+        )
+
+    def to_wire(self) -> dict[str, JsonValue]:
+        return {
+            "object": uint_wire(self.object),
+            "controller": uint_wire(self.controller),
+            "controlled_since_turn": uint_wire(self.controlled_since_turn),
+            "power": None if self.power is None else _i64(self.power, "power"),
+            "toughness": None if self.toughness is None else _i64(self.toughness, "toughness"),
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class CounterObservationV1:
     object: int
     counter_kind: str
@@ -152,6 +196,8 @@ class MagicBasicLandObservationV1:
     attachments: tuple[AttachmentObservationV1, ...]
     faces: tuple[FaceObservationV1, ...]
     tapped: tuple[int, ...]
+    permanents: tuple[PermanentObservationV1, ...]
+    attacking: tuple[int, ...]
 
     @classmethod
     def from_wire(cls, value: object) -> MagicBasicLandObservationV1:
@@ -170,13 +216,24 @@ class MagicBasicLandObservationV1:
                 "attachments",
                 "faces",
                 "tapped",
+                "permanents",
+                "attacking",
             },
         )
         if obj["schema_version"] != MAGIC_BASIC_LAND_OBSERVATION_SCHEMA_V1:
             raise WireError("decode.invalid_json", "unsupported basic-land observation")
         if not isinstance(obj["turn_number"], str):
             raise WireError("decode.invalid_json", "turn number must be a string")
-        for key in ("players", "mana_pools", "counters", "attachments", "faces", "tapped"):
+        for key in (
+            "players",
+            "mana_pools",
+            "counters",
+            "attachments",
+            "faces",
+            "tapped",
+            "permanents",
+            "attacking",
+        ):
             if not isinstance(obj[key], list):
                 raise WireError("decode.invalid_json", f"{key} must be an array")
         pending = obj["pending_sba_ordering"]
@@ -193,6 +250,8 @@ class MagicBasicLandObservationV1:
             tuple(AttachmentObservationV1.from_wire(item) for item in obj["attachments"]),
             tuple(FaceObservationV1.from_wire(item) for item in obj["faces"]),
             tuple(parse_uint(item) for item in obj["tapped"]),
+            tuple(PermanentObservationV1.from_wire(item) for item in obj["permanents"]),
+            tuple(parse_uint(item) for item in obj["attacking"]),
         )
         result.to_wire()
         return result
@@ -218,6 +277,24 @@ class MagicBasicLandObservationV1:
             raise WireError(
                 "semantic.magic_basic_land_observation_v1", "tapped permanents are not ordered"
             )
+        if any(a.object >= b.object for a, b in pairwise(self.permanents)):
+            raise WireError(
+                "semantic.magic_basic_land_observation_v1", "permanent rows are not ordered"
+            )
+        if any((item.power is None) != (item.toughness is None) for item in self.permanents):
+            raise WireError(
+                "semantic.magic_basic_land_observation_v1",
+                "power and toughness are not both present or both null",
+            )
+        if any(a >= b for a, b in pairwise(self.attacking)):
+            raise WireError(
+                "semantic.magic_basic_land_observation_v1", "attacking creatures are not ordered"
+            )
+        creature_ids = {item.object for item in self.permanents if item.is_creature}
+        if any(item not in creature_ids for item in self.attacking):
+            raise WireError(
+                "semantic.magic_basic_land_observation_v1", "an attacker is not a creature"
+            )
         if any(a.player >= b.player for a, b in pairwise(self.mana_pools)):
             raise WireError("semantic.magic_basic_land_observation_v1", "mana rows are not ordered")
         counter_keys = tuple(
@@ -242,7 +319,9 @@ class MagicBasicLandObservationV1:
         return {
             "active_player": uint_wire(self.active_player),
             "attachments": [item.to_wire() for item in self.attachments],
+            "attacking": [uint_wire(item) for item in self.attacking],
             "counters": [item.to_wire() for item in self.counters],
+            "permanents": [item.to_wire() for item in self.permanents],
             "faces": [item.to_wire() for item in self.faces],
             "mana_pools": [item.to_wire() for item in self.mana_pools],
             "pending_sba_ordering": None

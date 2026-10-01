@@ -1,6 +1,6 @@
 # Card Definition and Content Contract V1
 
-**Status:** accepted M4.1 contract; no executable semantic profile is admitted
+**Status:** accepted M4.1 contract; the only executable semantic profiles are `basic-land@1.0.0` and `vanilla-creature@1.0.0`, admitted as described in "Executable profiles and pinned records"
 **Stability:** provisional until the M4.1 implementation and exact-head gates pass
 **Owner:** content architecture maintainers
 
@@ -16,7 +16,9 @@ M4.1 defines immutable content, identity, structural validation, definition
 reference closure, requirement derivation, and `ContentValidationOnly`
 preflight. M4.1 does not execute a definition. Every attempt to construct
 gameplay is rejected with `NoExecutableProfileAdmitted`. Executable semantic
-profiles and the first real selected content begin in M4.2.
+profiles and the first real selected content begin in M4.2; the two profiles
+admitted since are described under "Executable profiles and pinned records
+(current)".
 
 CardDefinition is not runtime `GameState`, an object, spell, ability instance,
 continuation, or RulesKernel program. The definition cannot represent
@@ -37,7 +39,7 @@ These identities are distinct and must not substitute for one another:
 | `FaceKey` | u32 ordinal local to one definition. |
 | `AbilityKey` | u32 identity shell local to one definition; not an ability instance. |
 | `CardDefinitionEnvelopeVersion` | Outer structural/wire version. |
-| `CardSemanticProfileId` | Identity of a separately reviewed closed semantic vocabulary and meaning. M4.1 registers none. |
+| `CardSemanticProfileId` | Identity of a separately reviewed closed semantic vocabulary and meaning. M4.1 registered none; `basic-land@1.0.0` and `vanilla-creature@1.0.0` are registered since (see "Executable profiles and pinned records (current)"). |
 | `CapabilityKey@version` | Typed requirement node resolved by the existing Capability Registry. |
 | `SupportProfileId` | A later support/admission policy identity; M4.1 defines no catalog or policy. |
 | Runtime and visible IDs | `PhysicalCardId`, `GameObjectId`, `DecisionId`, `CandidateId`, and perspective-visible opaque IDs retain their existing contracts. |
@@ -102,12 +104,11 @@ with the sole face's type line and derives, rather than stores, the basic
 land's intrinsic mana ability under CR 305.6. The body is requirement-derived
 and admits no optional fields, map, extension, opcode, or string dispatcher.
 
-This is an additive successor content-validation contract. The profiled
-content prerequisite admits this body for strict typed validation and
-`ContentContractIdV1` identity only. It does not change historical M4.1
-`UnprofiledV1` bytes or identity. The profile is not executable; executable
-admission remains at the unified state cut's sole activation boundary. No
-other profile is admitted by this addition.
+This is an additive successor content-validation contract. It admits this body
+for strict typed validation and `ContentContractIdV1` identity, and does not
+change historical M4.1 `UnprofiledV1` bytes or identity. Executable admission
+is a separate step, described under "Executable profiles and pinned records
+(current)", which also adds the second profile.
 
 Definitions in a manifest are unique and sorted by numeric ID. Repeating an
 ID is invalid even if the values are byte-identical. The invariant is:
@@ -124,11 +125,75 @@ must never fall back to another catalog, a process-global registry, or the
 first matching definition. Conflicting definitions never use load order to
 select a winner.
 
-The prerequisite codec/identity slice for this accepted M4.2 body is
-implemented on the non-current integration branch. It extends the typed
-content-validation and `ContentContractIdV1` path only; it does not admit an
-executable semantic profile or change the historical M4.1 `UnprofiledV1`
-bytes or identity.
+The codec and identity slice for this accepted M4.2 body is on `master`. It
+extends the typed content-validation and `ContentContractIdV1` path; it does
+not change the historical M4.1 `UnprofiledV1` bytes or identity. Executable
+admission of the profile is described under "Executable profiles and pinned
+records (current)".
+
+## Executable profiles and pinned records (current)
+
+Two closed profiles exist. Both use the unchanged profile-ID grammar and the
+unchanged outer `CardDefinitionEnvelopeV1` / `ContentContractManifestV1`
+shapes. The typed body is the closed enum
+`CardProfileBodyV1 = BasicLand(BasicLandProfileV1) | VanillaCreature`, and the
+profile ID must agree with the body: any other pairing is
+`UnknownSemanticProfile`.
+
+| Profile | Body encoding | What the definition is |
+| --- | --- | --- |
+| `basic-land@1.0.0` | `["basic-land-profile.v1", "mountain" \| "plains"]` | The basic land of that subtype, as above. |
+| `vanilla-creature@1.0.0` | `["vanilla-creature-profile.v1", null]` | One face; a type line of `Creature` with at least one subtype and no supertype; a non-empty, non-hybrid printed mana cost; power at least 0 and toughness at least 1; no loyalty, defense or color indicator; no ability identity. |
+
+The vanilla body stores nothing. Name, mana cost, color, type line and printed
+power/toughness are read from the face's base characteristics, and no rule
+dispatches on a card name. A toughness of 0 or less is rejected, so CR 704.5f
+stays out of scope. Rules text, keywords and a second face have no place in
+this profile: they make a card another profile, or none.
+
+**Admission.** `admit_executable_profile_v1` admits a catalog only when every
+definition is bound to exactly one pinned Oracle record and says exactly what
+that record pins. The pinned table lives in
+`crates/mtgml-card-ir/src/preflight.rs`. Each row holds the source snapshot id,
+the Oracle UUID, the SHA-256 of the exact JSONL record, and the expected
+characteristics: the subtype for a basic land; the name, printed mana cost,
+creature subtypes and power/toughness for a vanilla creature. The engine never
+sees the record bytes, so a manifest that pairs a pinned record with other
+characteristics, for example Savannah Lions with a 9/9 body, is refused. The
+five rows are Mountain, Plains, Savannah Lions, Gray Ogre and Hill Giant, all
+from snapshot `oracle-cards-20260925210158`. A pinned record backs at most one
+definition, and a catalog may hold any non-empty selection of them.
+
+Refusals are typed. A definition whose profile is not the profile its record
+pins gives `ExecutableProfileNotAdmitted`. Every other mismatch (an unknown
+record, another snapshot, codec or digest, other characteristics, or a record
+used twice) gives `PinnedSourceProvenanceMismatch`.
+
+**Derived roots.** The roots of a profile are derived from its definitions and
+cannot be omitted:
+
+```text
+basic-land@1.0.0       rules/basic-land-mana, rules/land-play, rules/mana-pool
+vanilla-creature@1.0.0 rules/cast-creature-spell, rules/stack-resolution,
+                       rules/summoning-sickness, rules/combat-damage,
+                       rules/damage-and-life, rules/state-based-actions-combat
+```
+
+These are roots of the profile, not of every game. The roots every game needs
+are `MAGIC_GAME_RULE_ROOTS`. Admitting only the lands therefore keeps its
+closure and its rules contract identity, and land-only games keep their bytes.
+
+**Committed catalogs.** `cards/definitions/basic-land-v1/` holds Mountain and
+Plains. `cards/definitions/basic-land-and-vanilla-creature-v1/` holds those two
+and the three creatures. Both are checked against known-answer files in
+`persistence/golden/`.
+
+Admission is not a support claim. The Capability Registry stays the only
+authority for lifecycle: it lists the creature capabilities
+(`rules/cast-creature-spell`, `rules/stack-resolution`,
+`rules/summoning-sickness`, `rules/combat-damage`, `rules/damage-and-life` and
+`rules/state-based-actions-combat`) as `covered` for the bounded scope their
+documents state, and none is certified.
 
 ## Provenance
 

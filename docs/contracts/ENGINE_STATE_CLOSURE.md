@@ -24,7 +24,7 @@ EngineState                           # one flat value; every component is a dir
 ├── PerspectiveIdentityState
 │   └── mappings + perspective-local opaque/player-decision allocators + retired IDs
 ├── FormatState
-└── CardRulesAuthoritativeStateV1     # mana, turn history, counters, attachments, faces, ability authority
+└── CardRulesAuthoritativeStateV1     # mana, turn history, counters, attachments, faces, ability authority, permanents
 ```
 
 No kernel, projector, environment backend, adapter, or controller may retain hidden mutable semantic state outside this closure. Caches must be derivable, disposable, and semantically inert.

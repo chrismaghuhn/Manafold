@@ -1,8 +1,8 @@
-//! Native turn progression for the land-only slice.
+//! Native turn progression for the slice of lands and vanilla creatures.
 //!
 //! Passing priority and every turn-based action run directly on V3 state:
-//! step changes, untap, draw, the combat skeleton, cleanup and the turn
-//! change. One response is one transition (`StateRevision` +1, one
+//! step changes, untap, draw, attackers and unblocked combat damage, cleanup
+//! and the turn change. One response is one transition (`StateRevision` +1, one
 //! `StateDelta`). V3 validates turn-position, priority, active-player and
 //! turn-number events against the transition's endpoints, so each changed
 //! aspect gets exactly one net event.
@@ -29,7 +29,7 @@ use mtgml_model::{
     PlayerResult, RuleEventId, StateRevision, TerminalReason, ZoneKind,
 };
 use mtgml_state::{
-    BeginningStep, CombatState, CombatStep, EndingStep, EngineState, ManaPoolChangeCauseV1,
+    BeginningStep, CombatStep, EndingStep, EngineState, ManaPoolChangeCauseV1,
     PerspectiveLifecycleAuditV1, PriorityState, SbaSelectedActionV1, SemanticDeltaOperation,
     StateDelta, TurnHistoryStateV1, TurnPosition, VisibilityPartition, ZoneKey, ZoneLocation,
     ZonePosition,
@@ -37,12 +37,13 @@ use mtgml_state::{
 
 use crate::{
     AuthoritativeRuleEvent, AuthoritativeRuleEventKind, BasicLandCandidateError,
-    BasicLandTransitionError as Error, BasicLandTransitionProduct, SelectedSuccessorDecisionV1,
+    BasicLandTransitionError as Error, BasicLandTransitionProduct, MagicActionRequestV1,
+    SelectedSuccessorDecisionV1,
 };
 
 /// Executes one V4 response. Land plays and mana abilities use the
-/// basic-land path; passing priority and declaring attackers run the turn
-/// progression.
+/// basic-land path; passing priority, casting a spell, paying for it and
+/// declaring attackers run the turn progression.
 pub fn execute_magic_response(
     admission: &ExecutableProfileAdmissionV1,
     state: &EngineState,
@@ -69,6 +70,15 @@ pub fn execute_magic_response(
             match crate::selected_basic_land_action(admission, state, actor, response, status)
                 .map_err(|_| Error::InvalidSelection)?
             {
+                SelectedSuccessorDecisionV1::MagicAction(MagicActionRequestV1::CastSpell {
+                    actor,
+                    object,
+                }) => {
+                    if !matches!(status, EpisodeStatus::Running) {
+                        return Err(Error::InvalidSelection);
+                    }
+                    return cast(admission, state, request, actor, object);
+                }
                 SelectedSuccessorDecisionV1::MagicAction(_) => {
                     return crate::execute_basic_land_response(
                         admission, state, actor, response, status,
@@ -77,16 +87,49 @@ pub fn execute_magic_response(
                 SelectedSuccessorDecisionV1::PassPriority => Answer::Pass,
             }
         }
+        // CR 601.2h: the caster chose how to pay for the spell on the stack.
+        DecisionPurposeV4::ManaPayment => {
+            validate_magic_pending_request(admission, state, status)
+                .map_err(|_| Error::InvalidSelection)?;
+            let DecisionAnswerV2::SelectOne { candidate_id } = &response.answer else {
+                return Err(Error::InvalidSelection);
+            };
+            let Some(EngineCandidateBinding::SelectManaPayment { spent_buckets }) = request
+                .candidates
+                .iter()
+                .find(|candidate| candidate.candidate_id == *candidate_id)
+                .map(|candidate| &candidate.trusted_binding)
+            else {
+                return Err(Error::InvalidSelection);
+            };
+            if !matches!(status, EpisodeStatus::Running) {
+                return Err(Error::InvalidSelection);
+            }
+            return pay(admission, state, request, *spent_buckets);
+        }
         DecisionPurposeV4::AttackerDeclaration => {
             validate_magic_pending_request(admission, state, status)
                 .map_err(|_| Error::InvalidSelection)?;
-            match &response.answer {
-                DecisionAnswerV2::SelectMany { candidate_ids } if candidate_ids.is_empty() => {
-                    Answer::NoAttackers
-                }
-                // Attacking creatures are outside the land-only slice.
-                _ => return Err(Error::TurnProgressUnsupported),
-            }
+            let DecisionAnswerV2::SelectMany { candidate_ids } = &response.answer else {
+                return Err(Error::InvalidSelection);
+            };
+            let mut attackers = candidate_ids
+                .iter()
+                .map(|chosen| {
+                    match request
+                        .candidates
+                        .iter()
+                        .find(|candidate| candidate.candidate_id == *chosen)
+                        .map(|candidate| &candidate.trusted_binding)
+                    {
+                        Some(EngineCandidateBinding::SelectObject { object }) => Ok(*object),
+                        _ => Err(Error::InvalidSelection),
+                    }
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            // Candidates are in opaque order; the combat state is in object order.
+            attackers.sort();
+            Answer::Attackers(attackers)
         }
         DecisionPurposeV4::HandSizeDiscard => {
             validate_magic_pending_request(admission, state, status)
@@ -116,8 +159,8 @@ pub fn execute_magic_response(
 }
 
 /// Validates the pending V4 request of a restored or committed state: priority
-/// windows through the basic-land candidate owner, the attacker declaration
-/// against the request this progression creates.
+/// windows through the basic-land candidate owner, the other requests against
+/// the request this progression creates.
 pub fn validate_magic_pending_request(
     admission: &ExecutableProfileAdmissionV1,
     state: &EngineState,
@@ -131,13 +174,22 @@ pub fn validate_magic_pending_request(
     {
         return crate::game_start::validate_pregame_request(admission, state, request, status);
     }
-    if !hands_within_slice(state) {
+    // Priority windows are validated by the basic-land owner, which does not
+    // know combat: a restored combat is checked here, for every request and
+    // every status.
+    if !hands_within_slice(state)
+        || !permanents_controlled_by_their_owners(state)
+        || (matches!(status, EpisodeStatus::Running) && state_based_action_pending(state))
+        || crate::combat::validate_reachable_combat(admission, state).is_err()
+    {
         return Err(BasicLandCandidateError::InvalidState);
     }
     let Some(request) = state.execution.pending_decision.as_ref().filter(|request| {
         matches!(
             request.purpose,
-            DecisionPurposeV4::AttackerDeclaration | DecisionPurposeV4::HandSizeDiscard
+            DecisionPurposeV4::AttackerDeclaration
+                | DecisionPurposeV4::HandSizeDiscard
+                | DecisionPurposeV4::ManaPayment
         )
     }) else {
         return crate::validate_basic_land_pending_request(admission, state, status);
@@ -145,42 +197,23 @@ pub fn validate_magic_pending_request(
     if request.purpose == DecisionPurposeV4::HandSizeDiscard {
         return validate_discard_request(admission, state, request, status);
     }
-    state
-        .validate_structure()
-        .map_err(|_| BasicLandCandidateError::InvalidState)?;
-    validate_slice(admission, state).map_err(|_| BasicLandCandidateError::InvalidState)?;
-    // Only an admission with the rule that creates this request accepts it.
-    admits(admission, "rules/declare-attackers")
-        .map_err(|_| BasicLandCandidateError::PendingCandidateSetMismatch)?;
-    let parts = state;
-    if !matches!(status, EpisodeStatus::Running)
-        || parts.core.position
-            != (TurnPosition::Combat {
-                step: CombatStep::DeclareAttackers,
-            })
-        || parts.combat.is_some()
-        || parts.core.priority != PriorityState::None
-        || request.decision_domain_v2
-            != (DecisionDomainV2::ChooseMany {
-                minimum: 0,
-                maximum: 0,
-            })
-        || !request.candidates.is_empty()
-        || !actor_only_request_matches(state, request)
-    {
-        return Err(BasicLandCandidateError::PendingCandidateSetMismatch);
+    if request.purpose == DecisionPurposeV4::ManaPayment {
+        return validate_payment_request(admission, state, request, status);
     }
-    Ok(())
+    validate_attacker_request(admission, state, request, status)
 }
 
 enum Answer {
     Pass,
-    NoAttackers,
+    /// The creatures the active player declares as attackers, in object order.
+    Attackers(Vec<GameObjectId>),
     Discard(GameObjectId),
 }
 
 pub(crate) enum NextDecision {
     Priority(PlayerId),
+    /// The caster of the spell on the stack chooses how to pay for it.
+    Payment,
     Attackers,
     Discard,
     /// The next request of the start of the game (CR 103).
@@ -195,11 +228,11 @@ pub(crate) enum NextDecision {
 #[derive(Default)]
 pub(crate) struct Facts {
     pub(crate) untapped: Option<Vec<GameObjectId>>,
-    attackers_declared: bool,
     combat_skipped: bool,
     combat_ended: bool,
     /// Zone moves, shuffles and public events in the order they happened,
-    /// each followed by the occurrences it caused.
+    /// each followed by the occurrences it caused (none, for an event no
+    /// player observes).
     pub(crate) zone_events: Vec<crate::zone_incarnation::ZoneMoveEvent>,
 }
 
@@ -239,9 +272,26 @@ pub(crate) fn observe_public(
     Ok(())
 }
 
-/// The land-only slice (D13): exactly two players, only admitted basic lands
-/// on the battlefield, and none of the state no rule of this slice can
-/// evaluate. Under it no state-based action can apply.
+/// Records a rule event where it happens that no player observes: no
+/// observation occurrence follows it.
+pub(crate) fn record_unobserved(facts: &mut Facts, event: AuthoritativeRuleEventKind) {
+    facts
+        .zone_events
+        .push(crate::zone_incarnation::ZoneMoveEvent::Public(Box::new(
+            event,
+        )));
+}
+
+/// The slice this progression can evaluate (D13): exactly two players, only
+/// admitted lands and vanilla creatures on the battlefield, each controlled by
+/// its owner, a stack that is empty or holds one creature spell that the active
+/// player cast in a main phase (see `crate::casting::stack_within_profile`), no
+/// continuation but the payment of that spell, a combat that this slice could
+/// have produced (see `crate::combat::validate_reachable_combat`), and none of
+/// the state no rule of this slice can evaluate. State-based actions are checked before
+/// a player would receive priority (CR 704.3), so a decision is never pending
+/// while one applies: a player at 0 or less life who has not lost is not a
+/// state of this slice (CR 704.5a).
 fn validate_slice(
     admission: &ExecutableProfileAdmissionV1,
     state: &EngineState,
@@ -252,33 +302,61 @@ fn validate_slice(
     if parts.core.players.len() != 2
         || cards.counters != Default::default()
         || cards.attachments != Default::default()
-        || !execution.continuations.is_empty()
+        || (!execution.continuations.is_empty()
+            && crate::casting::pending_payment(admission, state).is_err())
         || !execution.effects.is_empty()
         || !execution.waiting_triggers.is_empty()
         || !execution.delayed_effects.is_empty()
-        || !parts.zones.stack_order.is_empty()
-        || !parts.zones.stack_records.is_empty()
+        || !crate::casting::stack_within_profile(admission, state)
         || parts.combat.as_ref().is_some_and(|combat| {
-            !combat.attackers.is_empty()
-                || !combat.blockers.is_empty()
-                || !combat.blocked_attackers.is_empty()
+            !combat.blocked_attackers.is_empty() || combat.blockers.values().any(Option::is_some)
         })
+        || state_based_action_pending(state)
     {
         return Err(Error::TurnProgressUnsupported);
     }
-    if !hands_within_slice(state) {
+    if !hands_within_slice(state) || !permanents_controlled_by_their_owners(state) {
         return Err(Error::TurnProgressUnsupported);
     }
-    let battlefield: Vec<GameObjectId> = parts
+    crate::S1QueryAuthority::for_objects(admission, state, &battlefield_objects(state))
+        .map_err(|_| Error::TurnProgressUnsupported)?;
+    crate::combat::validate_reachable_combat(admission, state)
+}
+
+/// CR 704.5a: a player who has not lost and is at 0 or less life loses the
+/// game the next time state-based actions are checked, before any player would
+/// receive priority (CR 704.3).
+fn state_based_action_pending(state: &EngineState) -> bool {
+    state
+        .core
+        .players
+        .values()
+        .any(|player| !player.has_lost && player.life <= 0)
+}
+
+/// A permanent's controller is by default the player under whose control it
+/// entered the battlefield (CR 110.2), and a permanent spell enters under its
+/// controller's control (CR 608.3a), who is its owner (CR 112.2, 302.1). No
+/// card of this slice changes control, so every permanent is controlled by its
+/// owner; a state in which one is not is not one this slice can have made.
+fn permanents_controlled_by_their_owners(state: &EngineState) -> bool {
+    battlefield_objects(state).iter().all(|object| {
+        state
+            .zones
+            .objects
+            .get(object)
+            .is_some_and(|object| object.controller == object.owner)
+    })
+}
+
+pub(crate) fn battlefield_objects(state: &EngineState) -> Vec<GameObjectId> {
+    state
         .zones
         .locations
         .iter()
         .filter(|(_, location)| location.zone == ZoneKind::Battlefield)
         .map(|(object, _)| *object)
-        .collect();
-    crate::S1QueryAuthority::for_objects(admission, state, &battlefield)
-        .map_err(|_| Error::TurnProgressUnsupported)?;
-    Ok(())
+        .collect()
 }
 
 /// One draw per turn (CR 504.1) and the discard to maximum hand size at each
@@ -310,7 +388,7 @@ fn hands_within_slice(state: &EngineState) -> bool {
     })
 }
 
-fn admits(admission: &ExecutableProfileAdmissionV1, key: &str) -> Result<(), Error> {
+pub(crate) fn admits(admission: &ExecutableProfileAdmissionV1, key: &str) -> Result<(), Error> {
     if admission
         .resolved_capabilities()
         .iter()
@@ -369,22 +447,23 @@ fn progress(
                 player,
                 consecutive_passes: 1,
             } if player == request.actor => {
-                next.core.priority = PriorityState::None;
-                advance(admission, &mut next, &mut facts)?
+                if next.zones.stack_order.is_empty() {
+                    next.core.priority = PriorityState::None;
+                    advance(admission, &mut next, &mut facts)?
+                } else {
+                    // CR 608.1, 117.4: with an object on the stack, the top
+                    // object resolves instead of the step ending. The active
+                    // player then receives priority (CR 117.3b).
+                    crate::casting::resolve_top(admission, &mut next, &mut facts)?;
+                    open_priority(&mut next)
+                }
             }
             _ => return Err(Error::TurnProgressUnsupported),
         },
-        // CR 508.1, 508.2: no attackers are declared; the active player then
-        // receives priority in the declare attackers step.
-        Answer::NoAttackers => {
-            next.combat = Some(CombatState {
-                defending_player: other,
-                attackers: Vec::new(),
-                damage_step_completed: false,
-                blocked_attackers: Default::default(),
-                blockers: Default::default(),
-            });
-            facts.attackers_declared = true;
+        // CR 508.1, 508.2: the active player declares attackers (possibly
+        // none) and then receives priority in the declare attackers step.
+        Answer::Attackers(attackers) => {
+            crate::combat::declare_attackers(&mut next, &mut facts, other, attackers)?;
             next.core.priority = PriorityState::HeldBy {
                 player: active,
                 consecutive_passes: 0,
@@ -410,6 +489,74 @@ fn progress(
         }
     };
     finish(admission, before, request, next, facts, next_decision)
+}
+
+/// CR 601.2: `caster` casts `card`. With one way to pay, the cast is complete
+/// and the caster receives priority (CR 117.3c). With several, the card is on
+/// the stack and the caster is asked how to pay (CR 601.2h).
+fn cast(
+    admission: &ExecutableProfileAdmissionV1,
+    before: &EngineState,
+    request: &AuthoritativeDecisionRequest,
+    caster: PlayerId,
+    card: GameObjectId,
+) -> Result<BasicLandTransitionProduct, Error> {
+    let options = crate::casting::payment_options_of(admission, before, caster, card)?;
+    let mut next = before.clone();
+    next.execution.pending_decision = None;
+    next.revision = StateRevision(
+        before
+            .revision
+            .0
+            .checked_add(1)
+            .ok_or(Error::IdentityExhausted)?,
+    );
+    let mut facts = Facts::default();
+    let next_decision = match options.as_slice() {
+        [] => return Err(Error::InvalidSelection),
+        [spent] => {
+            crate::casting::cast_spell(admission, &mut next, caster, card, *spent, &mut facts)?;
+            hold_priority(&mut next, caster)
+        }
+        _ => {
+            crate::casting::begin_cast(admission, &mut next, caster, card, &mut facts)?;
+            NextDecision::Payment
+        }
+    };
+    finish(admission, before, request, next, facts, next_decision)
+}
+
+/// CR 601.2h, 601.2i: the caster of the spell on the stack pays for it with
+/// `spent`, and then receives priority (CR 117.3c).
+fn pay(
+    admission: &ExecutableProfileAdmissionV1,
+    before: &EngineState,
+    request: &AuthoritativeDecisionRequest,
+    spent: [u32; 12],
+) -> Result<BasicLandTransitionProduct, Error> {
+    let mut next = before.clone();
+    next.execution.pending_decision = None;
+    next.revision = StateRevision(
+        before
+            .revision
+            .0
+            .checked_add(1)
+            .ok_or(Error::IdentityExhausted)?,
+    );
+    let mut facts = Facts::default();
+    crate::casting::complete_cast(&mut next, spent, &mut facts)?;
+    let next_decision = hold_priority(&mut next, request.actor);
+    finish(admission, before, request, next, facts, next_decision)
+}
+
+/// An action ends any succession of passes (CR 117.4): `player`, who acted,
+/// holds priority again.
+fn hold_priority(next: &mut EngineState, player: PlayerId) -> NextDecision {
+    next.core.priority = PriorityState::HeldBy {
+        player,
+        consecutive_passes: 0,
+    };
+    NextDecision::Priority(player)
 }
 
 /// Ends the current step and performs turn-based actions until a step in
@@ -504,10 +651,35 @@ fn advance(
                 admits(admission, "rules/declare-attackers")?;
                 return Ok(NextDecision::Attackers);
             }
-            // Only reachable with declared attackers, which this slice has not.
+            // Only reachable with declared attackers (CR 508.8).
             TurnPosition::Combat {
-                step: CombatStep::DeclareBlockers | CombatStep::CombatDamage,
-            } => return Err(Error::TurnProgressUnsupported),
+                step: CombatStep::DeclareBlockers,
+            } => {
+                admits(admission, "rules/declare-blockers")?;
+                // CR 509.1a: a defender with an untapped creature could block.
+                // Blocks arrive with a later rule.
+                if crate::combat::defender_could_block(admission, next)? {
+                    return Err(Error::TurnProgressUnsupported);
+                }
+                // CR 509.2: with nothing to declare, the active player gets
+                // priority.
+                return Ok(open_priority(next));
+            }
+            TurnPosition::Combat {
+                step: CombatStep::CombatDamage,
+            } => {
+                admits(admission, "rules/combat-damage")?;
+                admits(admission, "rules/damage-and-life")?;
+                crate::combat::deal_unblocked_combat_damage(admission, next, facts)?;
+                // CR 704.3: state-based actions are checked before the active
+                // player gets priority (CR 510.3).
+                return Ok(
+                    match crate::combat::player_at_zero_life_loses(admission, next)? {
+                        Some(loser) => NextDecision::GameOver { loser },
+                        None => open_priority(next),
+                    },
+                );
+            }
             // CR 514.1-514.3: the active player discards to maximum hand
             // size, then the turn ends without priority.
             TurnPosition::Ending {
@@ -613,7 +785,8 @@ pub(crate) fn draw(
             partition: None,
         },
         facts,
-    )
+    )?;
+    Ok(())
 }
 
 /// Moves one card through the shared zone-incarnation authority (new
@@ -624,7 +797,7 @@ pub(crate) fn move_card(
     kind: crate::zone_incarnation::SelectedZoneTransitionKind,
     claimed_to: ZoneLocation,
     facts: &mut Facts,
-) -> Result<(), Error> {
+) -> Result<GameObjectId, Error> {
     let claimed_from = next
         .zones
         .locations
@@ -632,7 +805,7 @@ pub(crate) fn move_card(
         .cloned()
         .ok_or(Error::InvalidResult)?;
     let mut events = Vec::new();
-    crate::zone_incarnation::apply_selected_zone_transition_in_workspace(
+    let transition = crate::zone_incarnation::apply_selected_zone_transition_in_workspace(
         next,
         &crate::zone_incarnation::SelectedZoneTransitionRequest {
             object,
@@ -644,22 +817,24 @@ pub(crate) fn move_card(
     )
     .map_err(|_| Error::TurnProgressUnsupported)?;
     // The new incarnation shows the same face as the card it came from.
-    for event in &events {
-        if let crate::zone_incarnation::ZoneMoveEvent::Transition(transition) = event {
-            let face = next
-                .card_rules
-                .faces
-                .faces
-                .remove(&transition.old_object)
-                .ok_or(Error::InvalidResult)?;
-            next.card_rules
-                .faces
-                .faces
-                .insert(transition.new_object, face);
-        }
-    }
+    let face = next
+        .card_rules
+        .faces
+        .faces
+        .remove(&transition.old_object)
+        .ok_or(Error::InvalidResult)?;
+    next.card_rules
+        .faces
+        .faces
+        .insert(transition.new_object, face);
+    // A card that leaves the battlefield is no longer a permanent: only the
+    // objects on the battlefield keep their entry.
+    let battlefield = battlefield_objects(next).into_iter().collect();
+    next.card_rules
+        .permanents
+        .prune_departed_objects(&battlefield);
     facts.zone_events.extend(events);
-    Ok(())
+    Ok(transition.new_object)
 }
 
 /// Emits one net event per changed aspect, installs the next decision and
@@ -712,13 +887,6 @@ pub(crate) fn finish(
     if let Some(affected_objects) = facts.untapped {
         pending.push(kind(AuthoritativeRuleEventKind::UntapCompleted {
             affected_objects,
-        }));
-    }
-    if facts.attackers_declared {
-        let combat = next.combat.as_ref().ok_or(Error::InvalidResult)?;
-        pending.push(kind(AuthoritativeRuleEventKind::AttackersDeclared {
-            defending_player: combat.defending_player,
-            attackers: combat.attackers.clone(),
         }));
     }
     if facts.combat_skipped {
@@ -814,7 +982,16 @@ pub(crate) fn finish(
                     .map_err(|_| Error::InvalidResult)?,
             ),
         ),
-        NextDecision::Attackers => (running, Some(install_attacker_request(&mut next)?)),
+        NextDecision::Payment => (
+            running,
+            Some(crate::casting::install_payment_request(
+                admission, &mut next,
+            )?),
+        ),
+        NextDecision::Attackers => (
+            running,
+            Some(install_attacker_request(admission, &mut next)?),
+        ),
         NextDecision::Pregame => (
             running,
             Some(crate::game_start::install_pregame_request(&mut next)?),
@@ -904,6 +1081,14 @@ pub(crate) fn finish(
                 to: to.map(|record| Box::new(record.payload.clone())),
             });
         }
+    }
+    // Resolving or casting changes the stack order. The order is not derived
+    // from an event: it is one operation of its own.
+    if before.zones.stack_order != next.zones.stack_order {
+        operations.push(SemanticDeltaOperation::StackOrderChanged {
+            from: before.zones.stack_order.clone(),
+            to: next.zones.stack_order.clone(),
+        });
     }
     operations.push(SemanticDeltaOperation::PendingRequestChanged {
         from: Some(Box::new(answered.clone())),
@@ -1017,38 +1202,122 @@ fn validate_discard_request(
     Ok(())
 }
 
-/// Identity, sequence and visibility fields every actor-only request shares.
-fn actor_only_request_matches(state: &EngineState, request: &AuthoritativeDecisionRequest) -> bool {
-    let parts = state;
-    let Some(knowledge) = parts.knowledge.players.get(&request.actor) else {
+/// The request is the latest one: the identities, revision and view sequence
+/// the installer allocates, and a projection a player can receive.
+fn request_is_current(state: &EngineState, request: &AuthoritativeDecisionRequest) -> bool {
+    let Some(knowledge) = state.knowledge.players.get(&request.actor) else {
         return false;
     };
-    let Some(identity) = parts.perspective_identities.players.get(&request.actor) else {
+    let Some(identity) = state.perspective_identities.players.get(&request.actor) else {
         return false;
     };
-    request.actor == parts.core.active_player
-        && request.decision_id.0.checked_add(1) == Some(parts.allocators.next_decision_id.0)
+    request.decision_id.0.checked_add(1) == Some(state.allocators.next_decision_id.0)
         && request.player_decision_id.0.checked_add(1) == Some(identity.next_player_decision_id.0)
-        && request.state_revision == parts.revision
+        && request.state_revision == state.revision
         && request.view_sequence == knowledge.next_visible_sequence
-        && request.visibility == DecisionVisibility::ActingPlayerOnly
         && request.parent_player_decision_id.is_none()
-        && request.continuation_id.is_none()
         && request.project_player_request().is_ok()
 }
 
-/// CR 508.1: the active player declares attackers. The land-only slice has
-/// no creatures, so the request offers no candidates.
-fn install_attacker_request(next: &mut EngineState) -> Result<AuthoritativeDecisionRequest, Error> {
+/// Identity, sequence and visibility fields every actor-only request shares.
+fn actor_only_request_matches(state: &EngineState, request: &AuthoritativeDecisionRequest) -> bool {
+    request.actor == state.core.active_player
+        && request_is_current(state, request)
+        && request.visibility == DecisionVisibility::ActingPlayerOnly
+        && request.continuation_id.is_none()
+}
+
+/// CR 601.2h: a restored or committed payment request is exactly the one the
+/// pending cast calls for, with the identities the installer allocates.
+fn validate_payment_request(
+    admission: &ExecutableProfileAdmissionV1,
+    state: &EngineState,
+    request: &AuthoritativeDecisionRequest,
+    status: &EpisodeStatus,
+) -> Result<(), BasicLandCandidateError> {
+    state
+        .validate_structure()
+        .map_err(|_| BasicLandCandidateError::InvalidState)?;
+    validate_slice(admission, state).map_err(|_| BasicLandCandidateError::InvalidState)?;
+    // Only an admission with the rule that creates this request accepts it.
+    admits(admission, "rules/cast-creature-spell")
+        .map_err(|_| BasicLandCandidateError::PendingCandidateSetMismatch)?;
+    let mismatch = BasicLandCandidateError::PendingCandidateSetMismatch;
+    let expected = crate::casting::payment_request_shape(admission, state).map_err(|_| mismatch)?;
+    let shape = RequestShape {
+        actor: request.actor,
+        visibility: request.visibility,
+        continuation_id: request.continuation_id,
+        purpose: request.purpose.clone(),
+        decision_domain_v2: request.decision_domain_v2.clone(),
+        candidates: request.candidates.clone(),
+    };
+    if !matches!(status, EpisodeStatus::Running)
+        || shape != expected
+        || !request_is_current(state, request)
+    {
+        return Err(mismatch);
+    }
+    Ok(())
+}
+
+/// CR 508.1a: the active player declares any subset of the creatures that can
+/// attack (none, when none can).
+fn install_attacker_request(
+    admission: &ExecutableProfileAdmissionV1,
+    next: &mut EngineState,
+) -> Result<AuthoritativeDecisionRequest, Error> {
+    let candidates = crate::combat::attacker_candidates(admission, next)?;
+    let maximum = u32::try_from(candidates.len()).map_err(|_| Error::InvalidResult)?;
     install_actor_only_request(
         next,
         DecisionPurposeV4::AttackerDeclaration,
         DecisionDomainV2::ChooseMany {
             minimum: 0,
-            maximum: 0,
+            maximum,
         },
-        Vec::new(),
+        candidates,
     )
+}
+
+/// CR 508.1a: a restored or committed attacker declaration is exactly the one
+/// the state calls for: every creature that can attack, and any subset of them.
+fn validate_attacker_request(
+    admission: &ExecutableProfileAdmissionV1,
+    state: &EngineState,
+    request: &AuthoritativeDecisionRequest,
+    status: &EpisodeStatus,
+) -> Result<(), BasicLandCandidateError> {
+    state
+        .validate_structure()
+        .map_err(|_| BasicLandCandidateError::InvalidState)?;
+    validate_slice(admission, state).map_err(|_| BasicLandCandidateError::InvalidState)?;
+    // Only an admission with the rule that creates this request accepts it.
+    admits(admission, "rules/declare-attackers")
+        .map_err(|_| BasicLandCandidateError::PendingCandidateSetMismatch)?;
+    let expected = crate::combat::attacker_candidates(admission, state)
+        .map_err(|_| BasicLandCandidateError::InvalidState)?;
+    let maximum =
+        u32::try_from(expected.len()).map_err(|_| BasicLandCandidateError::InvalidState)?;
+    let parts = state;
+    if !matches!(status, EpisodeStatus::Running)
+        || parts.core.position
+            != (TurnPosition::Combat {
+                step: CombatStep::DeclareAttackers,
+            })
+        || parts.combat.is_some()
+        || parts.core.priority != PriorityState::None
+        || request.decision_domain_v2
+            != (DecisionDomainV2::ChooseMany {
+                minimum: 0,
+                maximum,
+            })
+        || request.candidates != expected
+        || !actor_only_request_matches(state, request)
+    {
+        return Err(BasicLandCandidateError::PendingCandidateSetMismatch);
+    }
+    Ok(())
 }
 
 /// Allocates the next decision identity (D5) for an active-player request.
@@ -1308,6 +1577,41 @@ mod tests {
 
     fn game(library: u64) -> (ExecutableProfileAdmissionV1, EngineState) {
         game_with(crate::basic_land::basic_land_admission_fixture(), library)
+    }
+
+    /// As `game`, under the admission with vanilla creatures, with a
+    /// creature on `controller`'s battlefield.
+    fn game_with_creature(
+        library: u64,
+        controller: PlayerId,
+    ) -> (ExecutableProfileAdmissionV1, EngineState) {
+        game_with_creatures(library, &[controller])
+    }
+
+    /// As `game_with_creature`, with one creature for each of `controllers`.
+    fn game_with_creatures(
+        library: u64,
+        controllers: &[PlayerId],
+    ) -> (ExecutableProfileAdmissionV1, EngineState) {
+        let admission = crate::basic_land::vanilla_creature_admission_fixture();
+        let mut state = crate::basic_land::s1_b_state_with_two_lands_fixture();
+        make_synthetic_library_card_ordinary(&mut state);
+        add_library_cards(&mut state, P1, library);
+        add_library_cards(&mut state, P2, library);
+        for controller in controllers {
+            crate::basic_land::put_vanilla_creature_on_battlefield(&mut state, *controller);
+        }
+        crate::install_basic_land_request(&admission, &mut state, P1, &EpisodeStatus::Running)
+            .unwrap();
+        (admission, state)
+    }
+
+    fn at_attacker_declaration(state: &EngineState) -> bool {
+        state
+            .execution
+            .pending_decision
+            .as_ref()
+            .is_some_and(|request| request.purpose == DecisionPurposeV4::AttackerDeclaration)
     }
 
     pub(super) fn pending(state: &EngineState) -> &AuthoritativeDecisionRequest {
@@ -1706,6 +2010,679 @@ mod tests {
             }
         );
         assert!(request.candidates.is_empty());
+    }
+
+    #[test]
+    fn a_creature_on_the_battlefield_does_not_stop_the_turn_before_combat() {
+        // Creatures may be on the battlefield; only attacking with them is
+        // missing. Every step up to the beginning of combat still runs.
+        let (admission, state) = game_with_creature(3, P1);
+        let state = pass_until(&admission, state, at(BEGIN_COMBAT, 1));
+        assert_eq!(zone_count(&state, P1, ZoneKind::Battlefield), 2);
+    }
+
+    /// The battlefield creatures of the fixtures (Savannah Lions), in object order.
+    fn battlefield_creatures(state: &EngineState) -> Vec<GameObjectId> {
+        state
+            .zones
+            .objects
+            .values()
+            .filter(|object| {
+                object.card_definition == mtgml_model::CardDefinitionId(3)
+                    && state.zones.locations[&object.id].zone == ZoneKind::Battlefield
+            })
+            .map(|object| object.id)
+            .collect()
+    }
+
+    /// The attacker declaration of `turn`, before it is answered.
+    fn at_attackers(turn: u64) -> impl Fn(&EngineState) -> bool {
+        move |state| at_attacker_declaration(state) && state.core.turn_number == turn
+    }
+
+    /// The objects the attacker declaration offers, in the order offered.
+    fn offered_attackers(state: &EngineState) -> Vec<GameObjectId> {
+        pending(state)
+            .candidates
+            .iter()
+            .map(|candidate| match candidate.trusted_binding {
+                EngineCandidateBinding::SelectObject { object } => object,
+                ref other => panic!("{other:?}"),
+            })
+            .collect()
+    }
+
+    /// Declares the first `count` offered attackers.
+    fn declare(
+        admission: &ExecutableProfileAdmissionV1,
+        state: &EngineState,
+        count: usize,
+    ) -> Result<crate::BasicLandTransitionProduct, crate::BasicLandTransitionError> {
+        let candidate_ids = pending(state)
+            .candidates
+            .iter()
+            .take(count)
+            .map(|candidate| candidate.candidate_id)
+            .collect();
+        submit(
+            admission,
+            state,
+            DecisionAnswerV2::SelectMany { candidate_ids },
+        )
+    }
+
+    #[test]
+    fn a_creature_cannot_attack_the_turn_it_arrives() {
+        // CR 302.6: the creature came under P1's control on turn 1.
+        let (admission, state) = game_with_creature(3, P1);
+        let state = pass_until(&admission, state, at_attackers(1));
+        let request = pending(&state);
+        assert_eq!(
+            request.decision_domain_v2,
+            DecisionDomainV2::ChooseMany {
+                minimum: 0,
+                maximum: 0
+            }
+        );
+        assert!(request.candidates.is_empty());
+        validate_magic_pending_request(&admission, &state, &EpisodeStatus::Running).unwrap();
+        // The only answer is no attackers.
+        assert_eq!(
+            submit(
+                &admission,
+                &state,
+                DecisionAnswerV2::SelectMany {
+                    candidate_ids: vec![mtgml_model::CandidateIdV1(0)]
+                }
+            ),
+            Err(crate::BasicLandTransitionError::InvalidSelection)
+        );
+        let after = declare(&admission, &state, 0).unwrap().next_state;
+        assert!(after.combat.as_ref().unwrap().attackers.is_empty());
+    }
+
+    #[test]
+    fn a_creature_can_attack_from_its_controllers_next_turn() {
+        let (admission, state) = game_with_creature(3, P1);
+        let creature = battlefield_creatures(&state)[0];
+        let state = pass_until(&admission, state, at_attackers(3));
+        let request = pending(&state);
+        assert_eq!(request.actor, P1);
+        assert_eq!(
+            request.decision_domain_v2,
+            DecisionDomainV2::ChooseMany {
+                minimum: 0,
+                maximum: 1
+            }
+        );
+        assert_eq!(offered_attackers(&state), vec![creature]);
+        let opaque = state.perspective_identities.players[&P1].object_to_opaque[&creature];
+        assert_eq!(
+            request.candidates[0].visible_intent,
+            mtgml_decision::CandidateIntent::SelectObject { object: opaque }
+        );
+        validate_magic_pending_request(&admission, &state, &EpisodeStatus::Running).unwrap();
+    }
+
+    #[test]
+    fn a_tapped_creature_is_not_offered_as_an_attacker() {
+        // CR 508.1a: the chosen creatures must be untapped.
+        let (admission, state) = game_with_creature(3, P1);
+        let creature = battlefield_creatures(&state)[0];
+        let mut state = pass_until(&admission, state, at(BEGIN_COMBAT, 3));
+        state.zones.objects.get_mut(&creature).unwrap().tapped = true;
+        let state = pass(&admission, &state).0;
+        let state = pass(&admission, &state).0;
+        assert!(at_attacker_declaration(&state));
+        assert!(pending(&state).candidates.is_empty());
+    }
+
+    #[test]
+    fn a_creature_is_offered_only_to_its_controller_on_their_own_turn() {
+        // P2's creature came under its control on turn 1: it cannot attack on
+        // P1's turn 1, and is not P1's to attack with.
+        let (admission, state) = game_with_creature(3, P2);
+        let creature = battlefield_creatures(&state)[0];
+        let state = pass_until(&admission, state, at_attackers(1));
+        assert!(pending(&state).candidates.is_empty());
+        validate_magic_pending_request(&admission, &state, &EpisodeStatus::Running).unwrap();
+        let after = declare(&admission, &state, 0).unwrap().next_state;
+        assert!(after.combat.as_ref().unwrap().attackers.is_empty());
+
+        // On P2's turn 2 it has been under P2's control since the turn began.
+        let state = pass_until(&admission, after, at_attackers(2));
+        assert_eq!(pending(&state).actor, P2);
+        assert_eq!(offered_attackers(&state), vec![creature]);
+    }
+
+    #[test]
+    fn a_wrong_candidate_set_for_the_declaration_is_refused() {
+        let (admission, state) = game_with_creature(3, P1);
+        let state = pass_until(&admission, state, at_attackers(3));
+        let status = EpisodeStatus::Running;
+        validate_magic_pending_request(&admission, &state, &status).unwrap();
+        // Without its candidate, or with a wrong domain, the request is not
+        // the one the state calls for.
+        let mut without = state.clone();
+        let request = without.execution.pending_decision.as_mut().unwrap();
+        request.candidates.clear();
+        request.decision_domain_v2 = DecisionDomainV2::ChooseMany {
+            minimum: 0,
+            maximum: 0,
+        };
+        assert!(validate_magic_pending_request(&admission, &without, &status).is_err());
+        let mut wide = state.clone();
+        wide.execution
+            .pending_decision
+            .as_mut()
+            .unwrap()
+            .decision_domain_v2 = DecisionDomainV2::ChooseMany {
+            minimum: 0,
+            maximum: 2,
+        };
+        assert!(validate_magic_pending_request(&admission, &wide, &status).is_err());
+        // The creature tapped since the request was made: it is no attacker.
+        let mut tapped = state.clone();
+        let creature = offered_attackers(&state)[0];
+        tapped.zones.objects.get_mut(&creature).unwrap().tapped = true;
+        assert!(validate_magic_pending_request(&admission, &tapped, &status).is_err());
+    }
+
+    #[test]
+    fn declaring_an_attacker_taps_it_and_makes_the_attack_public() {
+        let (admission, state) = game_with_creature(3, P1);
+        let creature = battlefield_creatures(&state)[0];
+        let state = pass_until(&admission, state, at_attackers(3));
+        let product = declare(&admission, &state, 1).unwrap();
+        let after = apply(&state, &product);
+
+        // CR 508.1f: the attacker taps.
+        assert!(after.zones.objects[&creature].tapped);
+        // CR 508.1k: it is an attacking creature, unblocked so far.
+        let combat = after.combat.as_ref().unwrap();
+        assert_eq!(combat.defending_player, P2);
+        assert_eq!(combat.attackers, vec![creature]);
+        assert_eq!(
+            combat.blockers,
+            std::collections::BTreeMap::from([(creature, None)])
+        );
+        assert!(combat.blocked_attackers.is_empty() && !combat.damage_step_completed);
+        // CR 508.2: the active player receives priority.
+        assert_eq!(pending(&after).actor, P1);
+        assert_eq!(pending(&after).purpose, DecisionPurposeV4::PriorityAction);
+        // The tap, then the declaration, are public: each is followed by one
+        // observation occurrence per player.
+        let kinds: Vec<_> = product
+            .events
+            .iter()
+            .filter_map(|event| match &event.event {
+                AuthoritativeRuleEventKind::ObjectTapped { object, from, to } => {
+                    Some(format!("tap {} {from} {to}", object.0))
+                }
+                AuthoritativeRuleEventKind::AttackersDeclared {
+                    defending_player,
+                    attackers,
+                } => Some(format!("declared {} {attackers:?}", defending_player.0)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            kinds,
+            vec![
+                format!("tap {} false true", creature.0),
+                format!("declared 2 {:?}", vec![creature]),
+            ]
+        );
+        let occurrences = product
+            .events
+            .iter()
+            .filter(|event| {
+                matches!(
+                    event.event,
+                    AuthoritativeRuleEventKind::PerspectiveObservationOccurrence { .. }
+                )
+            })
+            .count();
+        assert!(occurrences >= 4, "{occurrences}");
+        validate_magic_pending_request(&admission, &after, &EpisodeStatus::Running).unwrap();
+    }
+
+    #[test]
+    fn an_empty_declaration_is_public_too() {
+        let (admission, state) = game(3);
+        let state = pass_until(&admission, state, at_attacker_declaration);
+        let product = declare(&admission, &state, 0).unwrap();
+        apply(&state, &product);
+        assert!(product.events.iter().any(|event| matches!(
+            &event.event,
+            AuthoritativeRuleEventKind::AttackersDeclared { attackers, .. } if attackers.is_empty()
+        )));
+        let sources: Vec<_> = product
+            .events
+            .iter()
+            .filter_map(|event| match &event.event {
+                AuthoritativeRuleEventKind::PerspectiveObservationOccurrence {
+                    source_event_id,
+                    ..
+                } => Some(*source_event_id),
+                _ => None,
+            })
+            .collect();
+        let declared = product
+            .events
+            .iter()
+            .find(|event| {
+                matches!(
+                    event.event,
+                    AuthoritativeRuleEventKind::AttackersDeclared { .. }
+                )
+            })
+            .unwrap()
+            .event_id;
+        assert_eq!(
+            sources.iter().filter(|source| **source == declared).count(),
+            2
+        );
+    }
+
+    /// P1's Savannah Lions (2/1) attacks P2 on turn 3 and the declaration is
+    /// made: the state is P1's priority in the declare attackers step.
+    fn after_declaring_an_attacker(
+        admission: &ExecutableProfileAdmissionV1,
+        state: EngineState,
+    ) -> EngineState {
+        let state = pass_until(admission, state, at_attackers(3));
+        let product = declare(admission, &state, 1).unwrap();
+        apply(&state, &product)
+    }
+
+    #[test]
+    fn unblocked_attackers_deal_combat_damage_to_the_defending_player() {
+        let (admission, state) = game_with_creature(3, P1);
+        let creature = battlefield_creatures(&state)[0];
+        let state = after_declaring_an_attacker(&admission, state);
+        // Both players pass: the declare blockers step, in which P2 has no
+        // creature to block with, so there is no declaration.
+        let state = pass(&admission, &state).0;
+        let state = pass(&admission, &state).0;
+        assert_eq!(
+            state.core.position,
+            TurnPosition::Combat {
+                step: CombatStep::DeclareBlockers
+            }
+        );
+        assert_eq!(pending(&state).purpose, DecisionPurposeV4::PriorityAction);
+        assert_eq!(pending(&state).actor, P1);
+        let state = pass(&admission, &state).0;
+        // P2's pass opens the combat damage step (CR 510.1a, 510.2).
+        let (p1_life, p2_life) = (state.core.players[&P1].life, state.core.players[&P2].life);
+        let (after, product) = pass(&admission, &state);
+        assert_eq!(
+            after.core.position,
+            TurnPosition::Combat {
+                step: CombatStep::CombatDamage
+            }
+        );
+        assert_eq!(after.core.players[&P2].life, p2_life - 2);
+        assert_eq!(after.core.players[&P1].life, p1_life);
+        assert!(after.combat.as_ref().unwrap().damage_step_completed);
+        assert!(after.card_rules.turn_history.players[&P2].lost_life_this_turn);
+        // CR 510.3: the active player receives priority.
+        assert_eq!(pending(&after).actor, P1);
+        assert_eq!(pending(&after).purpose, DecisionPurposeV4::PriorityAction);
+        let kinds: Vec<_> = product
+            .events
+            .iter()
+            .filter_map(|event| match &event.event {
+                AuthoritativeRuleEventKind::CombatDamageDealt { assignments } => {
+                    assert_eq!(
+                        assignments,
+                        &vec![mtgml_state::DamageAssignmentV1 {
+                            source: creature,
+                            recipient: mtgml_state::DamageRecipientV1::Player { player: P2 },
+                            amount: 2,
+                        }]
+                    );
+                    Some("damage")
+                }
+                AuthoritativeRuleEventKind::LifeChanged { player, from, to } => {
+                    assert_eq!((*player, *from, *to), (P2, p2_life, p2_life - 2));
+                    Some("life")
+                }
+                AuthoritativeRuleEventKind::CombatDamageStepCompleted => Some("completed"),
+                AuthoritativeRuleEventKind::DamageApplied { .. } => {
+                    panic!("combat damage is CombatDamageDealt and LifeChanged")
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(kinds, ["damage", "life", "completed"]);
+
+        // The step ends, combat ends, and the damage stays dealt.
+        let end = pass_until(&admission, after, at(TurnPosition::PostcombatMain, 3));
+        assert!(end.combat.is_none());
+        assert_eq!(end.core.players[&P2].life, p2_life - 2);
+    }
+
+    #[test]
+    fn nine_attackers_deal_their_damage_together() {
+        // CR 508.1a: there is no limit on the number of attackers.
+        let (admission, state) = game_with_creatures(3, &[P1; 9]);
+        let creatures = battlefield_creatures(&state);
+        assert_eq!(creatures.len(), 9);
+        let state = pass_until(&admission, state, at_attackers(3));
+        assert_eq!(offered_attackers(&state).len(), 9);
+        assert_eq!(
+            pending(&state).decision_domain_v2,
+            DecisionDomainV2::ChooseMany {
+                minimum: 0,
+                maximum: 9
+            }
+        );
+        validate_magic_pending_request(&admission, &state, &EpisodeStatus::Running).unwrap();
+        let product = declare(&admission, &state, 9).unwrap();
+        let state = apply(&state, &product);
+        assert_eq!(state.combat.as_ref().unwrap().attackers, creatures);
+        assert!(creatures
+            .iter()
+            .all(|creature| state.zones.objects[creature].tapped));
+
+        let state = pass(&admission, &state).0;
+        let state = pass(&admission, &state).0;
+        let state = pass(&admission, &state).0;
+        let life = state.core.players[&P2].life;
+        let (after, product) = pass(&admission, &state);
+        // Nine Savannah Lions deal 2 damage each, as one life change.
+        assert_eq!(after.core.players[&P2].life, life - 18);
+        let assignments: Vec<_> = product
+            .events
+            .iter()
+            .filter_map(|event| match &event.event {
+                AuthoritativeRuleEventKind::CombatDamageDealt { assignments } => {
+                    Some(assignments.clone())
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(assignments.len(), 1);
+        assert_eq!(
+            assignments[0]
+                .iter()
+                .map(|assignment| (assignment.source, assignment.amount))
+                .collect::<Vec<_>>(),
+            creatures
+                .iter()
+                .map(|creature| (*creature, 2))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            product
+                .events
+                .iter()
+                .filter(|event| matches!(
+                    event.event,
+                    AuthoritativeRuleEventKind::LifeChanged { .. }
+                ))
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn a_defender_with_an_untapped_creature_fails_closed() {
+        // CR 509.1: P2 could block with its creature. Blocks arrive with a
+        // later rule; until then the step is unsupported.
+        let (admission, state) = game_with_creatures(3, &[P1, P2]);
+        let state = after_declaring_an_attacker(&admission, state);
+        let state = pass(&admission, &state).0;
+        assert_eq!(pending(&state).actor, P2);
+        assert_eq!(
+            submit(&admission, &state, pass_answer(pending(&state))),
+            Err(crate::BasicLandTransitionError::TurnProgressUnsupported)
+        );
+        // A tapped creature cannot block (CR 509.1a).
+        let mut tapped = state.clone();
+        let creatures = battlefield_creatures(&tapped);
+        let defender = *creatures
+            .iter()
+            .find(|creature| tapped.zones.objects[creature].controller == P2)
+            .unwrap();
+        tapped.zones.objects.get_mut(&defender).unwrap().tapped = true;
+        assert!(submit(&admission, &tapped, pass_answer(pending(&tapped))).is_ok());
+    }
+
+    /// `state` with its combat moved to `step`, as a restored checkpoint could
+    /// claim: an attack that has been declared, in a later step.
+    fn in_combat_step(state: &EngineState, step: CombatStep) -> EngineState {
+        let mut moved = state.clone();
+        moved.core.position = TurnPosition::Combat { step };
+        if step == CombatStep::EndOfCombat {
+            // An attack that reached the end of combat has dealt its damage.
+            moved.combat.as_mut().unwrap().damage_step_completed = true;
+        }
+        moved
+    }
+
+    /// A restored state is one the game could have reached: it validates as a
+    /// pending request, and answering it is not refused as unsupported.
+    fn is_refused(admission: &ExecutableProfileAdmissionV1, state: &EngineState) -> bool {
+        validate_magic_pending_request(admission, state, &EpisodeStatus::Running).is_err()
+            && submit(admission, state, pass_answer(pending(state)))
+                == Err(crate::BasicLandTransitionError::TurnProgressUnsupported)
+    }
+
+    #[test]
+    fn a_restored_combat_with_a_possible_blocker_is_refused() {
+        // CR 509.1a: P2 controls an untapped creature, so it could block, and
+        // blocks arrive with a later rule. The state is a reachable one while
+        // the attack is declared (the pass out of the step fails closed), but
+        // no state from the declare blockers step on is.
+        let (admission, state) = game_with_creatures(3, &[P1, P2]);
+        let declared = after_declaring_an_attacker(&admission, state);
+        validate_magic_pending_request(&admission, &declared, &EpisodeStatus::Running).unwrap();
+        for step in [
+            CombatStep::DeclareBlockers,
+            CombatStep::CombatDamage,
+            CombatStep::EndOfCombat,
+        ] {
+            let restored = in_combat_step(&declared, step);
+            assert!(is_refused(&admission, &restored), "{step:?}");
+        }
+
+        // The same combat against a defender whose creature is tapped could
+        // not be blocked, and validates in each of those steps.
+        let defender = *battlefield_creatures(&declared)
+            .iter()
+            .find(|creature| declared.zones.objects[creature].controller == P2)
+            .unwrap();
+        let mut tapped = declared.clone();
+        tapped.zones.objects.get_mut(&defender).unwrap().tapped = true;
+        for step in [
+            CombatStep::DeclareBlockers,
+            CombatStep::CombatDamage,
+            CombatStep::EndOfCombat,
+        ] {
+            let restored = in_combat_step(&tapped, step);
+            validate_magic_pending_request(&admission, &restored, &EpisodeStatus::Running)
+                .unwrap_or_else(|error| panic!("{step:?}: {error:?}"));
+        }
+    }
+
+    #[test]
+    fn a_restored_combat_without_attackers_may_have_a_defender_with_a_creature() {
+        // With no attackers the blockers step is skipped (CR 508.8): P2's
+        // untapped creature is no possible blocker of anything.
+        let (admission, state) = game_with_creatures(3, &[P2]);
+        let state = pass_until(&admission, state, at_attackers(1));
+        let declared = apply(&state, &declare(&admission, &state, 0).unwrap());
+        for step in [CombatStep::DeclareBlockers, CombatStep::EndOfCombat] {
+            let restored = in_combat_step(&declared, step);
+            validate_magic_pending_request(&admission, &restored, &EpisodeStatus::Running)
+                .unwrap_or_else(|error| panic!("{step:?}: {error:?}"));
+        }
+    }
+
+    #[test]
+    fn a_restored_combat_cannot_have_the_active_player_as_its_defender() {
+        // The attacker would damage its own controller.
+        let (admission, state) = game_with_creature(3, P1);
+        let declared = after_declaring_an_attacker(&admission, state);
+        let mut forged = declared.clone();
+        forged.combat.as_mut().unwrap().defending_player = P1;
+        for step in [
+            CombatStep::DeclareAttackers,
+            CombatStep::DeclareBlockers,
+            CombatStep::CombatDamage,
+        ] {
+            let restored = in_combat_step(&forged, step);
+            assert!(is_refused(&admission, &restored), "{step:?}");
+        }
+        assert!(!is_refused(&admission, &declared));
+    }
+
+    #[test]
+    fn a_restored_combat_needs_attackers_the_active_player_controls() {
+        let (admission, state) = game_with_creature(3, P1);
+        let declared = after_declaring_an_attacker(&admission, state);
+        let attacker = declared.combat.as_ref().unwrap().attackers[0];
+        let land = declared
+            .zones
+            .objects
+            .values()
+            .find(|object| {
+                object.controller == P1
+                    && object.id != attacker
+                    && declared.zones.locations[&object.id].zone == ZoneKind::Battlefield
+            })
+            .unwrap()
+            .id;
+
+        // An attacker the other player controls.
+        let mut other_players = declared.clone();
+        other_players
+            .zones
+            .objects
+            .get_mut(&attacker)
+            .unwrap()
+            .controller = P2;
+        // An attacker that is a land, not a creature.
+        let mut not_a_creature = declared.clone();
+        let combat = not_a_creature.combat.as_mut().unwrap();
+        combat.attackers = vec![land];
+        combat.blockers = std::collections::BTreeMap::from([(land, None)]);
+        // An attacker that is not on the battlefield.
+        let in_the_library = *declared
+            .zones
+            .locations
+            .iter()
+            .find(|(_, location)| location.zone == ZoneKind::Library)
+            .unwrap()
+            .0;
+        let mut not_on_the_battlefield = declared.clone();
+        let combat = not_on_the_battlefield.combat.as_mut().unwrap();
+        combat.attackers = vec![in_the_library];
+        combat.blockers = std::collections::BTreeMap::from([(in_the_library, None)]);
+
+        for (name, forged) in [
+            ("controlled by the other player", other_players),
+            ("a land", not_a_creature),
+            ("not on the battlefield", not_on_the_battlefield),
+        ] {
+            for step in [CombatStep::DeclareAttackers, CombatStep::CombatDamage] {
+                let restored = in_combat_step(&forged, step);
+                assert!(is_refused(&admission, &restored), "{name}, {step:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_restored_combat_is_in_a_combat_step_it_could_be_in() {
+        // Combat state exists from the declaration to the end of combat.
+        let (admission, state) = game_with_creature(3, P1);
+        let declared = after_declaring_an_attacker(&admission, state);
+        let restored = in_combat_step(&declared, CombatStep::BeginningOfCombat);
+        assert!(is_refused(&admission, &restored));
+    }
+
+    #[test]
+    fn every_boundary_of_an_attack_validates() {
+        // The game itself reaches states the check must accept: the
+        // declaration, the blockers step, the damage step, the end of combat.
+        let (admission, state) = game_with_creature(3, P1);
+        let mut state = after_declaring_an_attacker(&admission, state);
+        let status = EpisodeStatus::Running;
+        let mut steps = Vec::new();
+        while state.combat.is_some() {
+            validate_magic_pending_request(&admission, &state, &status).unwrap();
+            steps.push(state.core.position);
+            state = pass(&admission, &state).0;
+        }
+        for step in [
+            CombatStep::DeclareAttackers,
+            CombatStep::DeclareBlockers,
+            CombatStep::CombatDamage,
+            CombatStep::EndOfCombat,
+        ] {
+            assert!(steps.contains(&TurnPosition::Combat { step }), "{step:?}");
+        }
+    }
+
+    #[test]
+    fn lethal_combat_damage_ends_the_game_before_anyone_receives_priority() {
+        // CR 704.5a, 704.3, 104.2a.
+        let (admission, state) = game_with_creature(3, P1);
+        let mut state = after_declaring_an_attacker(&admission, state);
+        state.core.players.get_mut(&P2).unwrap().life = 2;
+        let state = pass(&admission, &state).0;
+        let state = pass(&admission, &state).0;
+        let state = pass(&admission, &state).0;
+        let product = submit(&admission, &state, pass_answer(pending(&state))).unwrap();
+        let after = apply(&state, &product);
+
+        assert_eq!(after.core.players[&P2].life, 0);
+        assert!(after.core.players[&P2].has_lost && !after.core.players[&P1].has_lost);
+        assert_eq!(after.core.priority, PriorityState::None);
+        assert_eq!(product.next_decision, None);
+        assert_eq!(
+            product.status,
+            EpisodeStatus::Terminal {
+                reason: mtgml_model::TerminalReason::RulesLoss,
+                players: vec![
+                    mtgml_model::PlayerOutcome {
+                        player: P1,
+                        result: mtgml_model::PlayerResult::Win,
+                    },
+                    mtgml_model::PlayerOutcome {
+                        player: P2,
+                        result: mtgml_model::PlayerResult::Loss,
+                    },
+                ],
+            }
+        );
+        assert!(product.events.iter().any(|event| event.event
+            == AuthoritativeRuleEventKind::StateBasedActionsApplied {
+                actions: vec![mtgml_state::SbaSelectedActionV1::PlayerLoses { player: P2 }],
+            }));
+        validate_magic_pending_request(&admission, &after, &product.status).unwrap();
+    }
+
+    #[test]
+    fn a_decision_state_with_a_player_at_zero_life_who_has_not_lost_is_rejected() {
+        // CR 704.3: state-based actions are checked before a player would
+        // receive priority, so no decision is pending while one applies.
+        let (admission, mut state) = game(3);
+        let status = EpisodeStatus::Running;
+        validate_magic_pending_request(&admission, &state, &status).unwrap();
+        state.core.players.get_mut(&P2).unwrap().life = 0;
+        assert!(validate_magic_pending_request(&admission, &state, &status).is_err());
+        assert_eq!(
+            submit(&admission, &state, pass_answer(pending(&state))),
+            Err(crate::BasicLandTransitionError::TurnProgressUnsupported)
+        );
+        // Below zero too, and for the active player.
+        state.core.players.get_mut(&P2).unwrap().life = 5;
+        state.core.players.get_mut(&P1).unwrap().life = -3;
+        assert!(validate_magic_pending_request(&admission, &state, &status).is_err());
     }
 
     #[test]

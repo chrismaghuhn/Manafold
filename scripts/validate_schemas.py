@@ -122,8 +122,28 @@ SCHEMA_NEGATIVE_CASES = [
         "schemas/negative/magic-basic-land-observation-v1-players-missing.json",
     ),
     (
+        "magic-basic-land-observation.v1.schema.json",
+        "schemas/negative/magic-basic-land-observation-v1-power-as-string.json",
+    ),
+    (
+        "magic-basic-land-observation.v1.schema.json",
+        "schemas/negative/magic-basic-land-observation-v1-arrival-turn-as-number.json",
+    ),
+    (
+        "magic-basic-land-observation.v1.schema.json",
+        "schemas/negative/magic-basic-land-observation-v1-power-without-toughness.json",
+    ),
+    (
+        "magic-basic-land-observation.v1.schema.json",
+        "schemas/negative/magic-basic-land-observation-v1-permanents-missing.json",
+    ),
+    (
         "magic-shared-execution-observation.v1.schema.json",
         "schemas/negative/magic-shared-execution-observation-v1-tapped-repeated.json",
+    ),
+    (
+        "magic-shared-execution-observation.v1.schema.json",
+        "schemas/negative/magic-shared-execution-observation-v1-attacking-repeated.json",
     ),
     (
         "magic-shared-execution-observation.v1.schema.json",

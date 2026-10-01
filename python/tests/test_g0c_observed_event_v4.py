@@ -55,5 +55,62 @@ class GameStartObservedEventTests(unittest.TestCase):
                 ObservedEventV4.from_wire(value)
 
 
+def _attackers_declared(**changes: object) -> dict[str, object]:
+    value: dict[str, object] = {
+        "kind": "attackers_declared",
+        "attacking_player": "1",
+        "defending_player": "2",
+        "attackers": ["4", "9"],
+    }
+    value.update(changes)
+    return value
+
+
+class AttackersDeclaredObservedEventTests(unittest.TestCase):
+    def test_attackers_declared_round_trips(self) -> None:
+        for value in (
+            _attackers_declared(),
+            _attackers_declared(attackers=[]),
+            _attackers_declared(attacking_player="2", defending_player="1", attackers=["7"]),
+        ):
+            event = ObservedEventV4.from_wire(value)
+            self.assertEqual(event.kind, "attackers_declared")
+            self.assertEqual(event.to_wire(), value)
+
+    def test_malformed_attackers_declared_events_are_rejected(self) -> None:
+        missing = _attackers_declared()
+        del missing["defending_player"]
+        for value, code in (
+            (missing, "decode.invalid_json"),
+            (_attackers_declared(extra=0), "decode.invalid_json"),
+            (_attackers_declared(attackers="4"), "decode.invalid_json"),
+            (_attackers_declared(attackers=[4]), "decode.invalid_json"),
+            (_attackers_declared(attacking_player=1), "decode.invalid_json"),
+            # Ascending and distinct, and the attacker is not the defender.
+            (_attackers_declared(attackers=["9", "4"]), "semantic.observed_event"),
+            (_attackers_declared(attackers=["4", "4"]), "semantic.observed_event"),
+            (_attackers_declared(defending_player="1"), "semantic.observed_event"),
+        ):
+            with self.subTest(value=value), self.assertRaises(WireError) as raised:
+                ObservedEventV4.from_wire(value)
+            self.assertEqual(raised.exception.code, code)
+
+    def test_the_wire_fixtures_decode(self) -> None:
+        golden = json.loads(
+            (ROOT / "wire/golden/observed-event-v4-attackers-declared.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(ObservedEventV4.from_wire(golden["event"]).to_wire(), golden["event"])
+        negative = json.loads(
+            (ROOT / "wire/negative/observed-event-v4-attackers-unordered.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        with self.assertRaises(WireError) as raised:
+            ObservedEventV4.from_wire(negative["event"])
+        self.assertEqual(raised.exception.code, "semantic.observed_event")
+
+
 if __name__ == "__main__":
     unittest.main()

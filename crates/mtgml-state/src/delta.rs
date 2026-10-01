@@ -546,6 +546,14 @@ fn validate_delta_operation_coverage(
             if exact_creation_count != 1 {
                 return uncovered();
             }
+            // A spell whose cost is still being paid is not cast yet: its
+            // cast comes with the transition that ends the payment.
+            let expected_action_count = match new_record.payload.as_ref() {
+                Some(StackItemPayload::Spell {
+                    stack_card_object, ..
+                }) if old_after.cast_continuation_of(*stack_card_object).is_some() => 0,
+                _ => 1,
+            };
             let matching_action_count = operations
                 .iter()
                 .filter(
@@ -577,7 +585,7 @@ fn validate_delta_operation_coverage(
                     },
                 )
                 .count();
-            if matching_action_count != 1 {
+            if matching_action_count != expected_action_count {
                 return uncovered();
             }
         }
@@ -674,6 +682,42 @@ fn validate_delta_operation_coverage(
     }
     if old_before.zones.ordered_zones != old_after.zones.ordered_zones && !moves_or_shuffles() {
         return uncovered();
+    }
+
+    // CR 601.2i: the transition that ends the payment of a spell that stays on
+    // the stack is the one that casts it, exactly once. `spell_becomes_cast`
+    // limits where a cast may appear; this makes sure it appears. A payment
+    // that ends with its spell gone from the stack was not completed: an
+    // illegal cast would rewind the game (CR 601.2), which is not modelled, so
+    // no transition may end a payment and take its spell off the stack, or the
+    // spell could resolve without ever being cast.
+    for record in before.execution.continuations.values() {
+        let ContinuationPayload::Cast(cast) = &record.payload else {
+            continue;
+        };
+        if after.cast_continuation_of(cast.spell_object).is_some() {
+            continue;
+        }
+        let Some(stack_object) = after.zones.stack_records.iter().find_map(|(id, record)| {
+            match record.payload.as_ref() {
+                Some(StackItemPayload::Spell {
+                    stack_card_object, ..
+                }) if *stack_card_object == cast.spell_object => Some(*id),
+                _ => None,
+            }
+        }) else {
+            return uncovered();
+        };
+        let casts = operations
+            .iter()
+            .filter(|operation| {
+                matches!(operation,
+                    V3::SpellCast { stack_object: cast_object, .. } if *cast_object == stack_object)
+            })
+            .count();
+        if casts != 1 {
+            return uncovered();
+        }
     }
 
     // Execution V4 authority requires an exact owning operation for every
@@ -867,6 +911,43 @@ fn validate_delta_operation_coverage(
     {
         return uncovered();
     }
+    // A permanent's entry is made when its object enters the battlefield,
+    // under the turn in which it enters. It is not changed or removed while
+    // the object stays on the battlefield.
+    if old_rules.permanents != new_rules.permanents {
+        let on_battlefield_after = |object: &GameObjectId| {
+            after
+                .zones
+                .locations
+                .get(object)
+                .is_some_and(|location| location.zone == mtgml_model::ZoneKind::Battlefield)
+        };
+        for (object, old) in &old_rules.permanents.permanents {
+            if new_rules.permanents.permanents.get(object) != Some(old)
+                && on_battlefield_after(object)
+            {
+                return uncovered();
+            }
+        }
+        // The object enters by an entry operation or by a zone transition
+        // into the battlefield (a resolving permanent spell).
+        for (object, new) in &new_rules.permanents.permanents {
+            if !old_rules.permanents.permanents.contains_key(object)
+                && (new.controlled_since_turn != after.core.turn_number
+                    || !has(&|operation| {
+                        matches!(operation,
+                        V3::ObjectEntered { new_object, to_zone: mtgml_model::ZoneKind::Battlefield, .. }
+                            if new_object == object)
+                            || matches!(operation,
+                            V3::ZoneTransition { transition }
+                                if transition.new_object == *object
+                                    && transition.to.zone == mtgml_model::ZoneKind::Battlefield)
+                    }))
+            {
+                return uncovered();
+            }
+        }
+    }
     if old_rules.abilities != new_rules.abilities
         && !has(&|operation| {
             matches!(
@@ -921,7 +1002,7 @@ fn validate_delta_operation_coverage(
                 cost_facts,
                 ..
             } => {
-                if before.zones.stack_records.contains_key(stack_object) {
+                if !spell_becomes_cast(before, after, *stack_object, *spell_object) {
                     return uncovered();
                 }
                 let Some(record) = after.zones.stack_records.get(stack_object) else {
@@ -943,7 +1024,10 @@ fn validate_delta_operation_coverage(
                         if created == stack_object && Some(created_payload.as_ref()) == payload)
                     })
                     .count();
-                if !expected || creation_count != 1 {
+                // The record is created in this transition, or already on
+                // the stack with its payment now complete.
+                let created_here = !before.zones.stack_records.contains_key(stack_object);
+                if !expected || creation_count != usize::from(created_here) {
                     return uncovered();
                 }
             }
@@ -1095,6 +1179,27 @@ fn validate_delta_operation_coverage(
         return uncovered();
     }
     Ok(())
+}
+
+/// Whether the transition from `before` to `after` is the one in which the
+/// spell `spell_object` on `stack_object` becomes cast (CR 601.2i): the one
+/// that puts its record on the stack when no payment is left to make, or the
+/// one that ends its Cast continuation because the cost is paid (CR 601.2h).
+/// A transition that creates the record and leaves the payment pending, or
+/// that leaves a pending payment pending, does not cast it. The delta coverage
+/// also requires that the transition ending the payment does cast it.
+pub fn spell_becomes_cast(
+    before: &EngineState,
+    after: &EngineState,
+    stack_object: StackObjectId,
+    spell_object: GameObjectId,
+) -> bool {
+    let paying = |state: &EngineState| state.cast_continuation_of(spell_object).is_some();
+    if before.zones.stack_records.contains_key(&stack_object) {
+        paying(before) && !paying(after)
+    } else {
+        !paying(after)
+    }
 }
 
 fn validate_turn_history_delta(

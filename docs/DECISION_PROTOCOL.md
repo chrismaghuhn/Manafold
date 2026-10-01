@@ -238,7 +238,29 @@ The bounded current endpoint uses `AuthoritativeDecisionRequest` /
 PlayerDecisionRequestV4, `CandidateIntent`, `EngineCandidateBinding`,
 `CandidateOrdering`, and DecisionResponseV3. It reuses DecisionDomainV2,
 DecisionAnswerV2, PlayerDecisionIdV1, and CandidateIdV1 unchanged. The V4
-Basic-Land PriorityAction domain is admitted only after the verified
-`basic-land@1.0.0` RulesKernel rederives the exact pass, legal PlayLand, and
-intrinsic basic-land mana-ability candidates. The current slice does not admit
-spell casting, non-mana abilities, or broader card support.
+PriorityAction domain is admitted only after the verified RulesKernel rederives
+the exact pass, legal PlayLand, intrinsic basic-land mana-ability, and CastSpell
+candidates. A CastSpell candidate stands for a vanilla creature card in the
+actor's hand whose printed cost the mana pool pays. A PriorityAction request
+names cards in a hand, so its visibility is `acting_player_only`.
+
+When the pool pays the cost in two or more ways, choosing the candidate puts
+the card on the stack and starts a Cast continuation (stage `PayingMana`,
+awaiting the final allocation, with no mana source activations). The actor then
+receives a `ManaPayment` request, `ChooseOne` and `acting_player_only`, with one
+`SelectManaPayment { spent_buckets }` candidate per way, in ascending
+`spent_buckets` order. The rules kernel rederives it from the continuation and
+the pool, so a restored checkpoint with the payment pending continues
+identically. The answer pays the cost, ends the continuation and casts the
+spell; with one way to pay there is no such request. The current slice does not
+admit non-creature spells, non-mana abilities, or broader card support.
+
+The AttackerDeclaration request is `ChooseMany { minimum: 0, maximum: n }`, where
+`n` is the number of candidates, and is `acting_player_only`. It has one
+`SelectObject` candidate for each untapped creature the active player controls
+that has been under their control since their turn began (CR 302.6, 508.1a), in
+the order of the actor's opaque ids. Every subset, including the empty one, is a
+legal answer, and the request is asked even when there is no candidate. The
+number of attackers is not limited. The rules kernel rederives the request from
+the state, so a restored checkpoint with the declaration pending continues
+identically.

@@ -33,6 +33,8 @@
     }
   ],
   "tapped": [],
+  "permanents": [],
+  "attacking": [],
   "mana_pools": [
     {
       "creature_spell_only": [

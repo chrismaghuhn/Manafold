@@ -33,14 +33,14 @@
 - **M3 Block 7:** Cleanup Reset + complete bounded turn merged and accepted in PR #219 at `c7cafa0356508164988fb92b0fcedc24bccbbdae`.
 - **M3 Block 8:** cumulative final closure accepted by PR #220; exact Foundation V2 turn integration reaches P2 Draw and its next visible priority Decision.
 - **M3 hardening acceptance:** PR #184 merged and accepted ADR 0054/Foundation V2; T0 was reauthorized under Issue #178, implemented by merged PRs #189/#190/#191, and finalized as COMPLETE / FROZEN
-- **Capability lifecycle:** 8 capabilities are `covered` and 7 `specified` (`cards/capabilities/registry.json`); `0` are certified.
-- **Current boundary:** `M3 = COMPLETE`; `M3_FINAL_ACCEPTANCE = PASS`; `M4 = IN_PROGRESS`; the executable real-card slice is Mountain + Plains under `basic-land@1.0.0`; no broader certification, card/deck/format/Commander/playability support is claimed.
+- **Capability lifecycle:** 15 capabilities are `covered` and 4 `specified` (`cards/capabilities/registry.json`); `0` are certified.
+- **Current boundary:** `M3 = COMPLETE`; `M3_FINAL_ACCEPTANCE = PASS`; `M4 = IN_PROGRESS`; the executable real-card slice is Mountain + Plains under `basic-land@1.0.0` and Savannah Lions + Gray Ogre + Hill Giant under `vanilla-creature@1.0.0`; no broader certification, card/deck/format/Commander/playability support is claimed.
 - **Project type:** independent greenfield MTG/ML rules and simulation engine
 - **Playable engine:** no
-- **Production turn loop:** the V8 runtime plays complete two-player turns with basic lands (untap, upkeep, draw, main phases, an empty combat, end step, cleanup with discard to hand size, turn change); a player who draws from an empty library loses and the game ends; proven through the production player endpoints (`crates/mtgml-environment/tests/production_turn.rs`); no creatures, combat damage, or spells; games start from deck lists (see Game start).
+- **Production turn loop:** the V8 runtime plays complete two-player turns with basic lands and vanilla creatures (untap, upkeep, draw, main phases, combat, end step, cleanup with discard to hand size, turn change). A player casts a creature card at sorcery speed through a one-item stack, choosing how to pay when more than one payment exists, and it resolves onto the battlefield; a creature that its controller has controlled since their turn began can attack; unblocked attackers deal combat damage to the defending player; a player at 0 life or less loses, as does a player who draws from an empty library, and the game ends. Blocks are not supported yet: a defending player with an untapped creature makes the declare blockers step fail closed. The only abilities are the basic lands' mana abilities, the only spells are creature spells without rules text, and no keyword exists. Proven through the production player endpoints (`crates/mtgml-environment/tests/production_turn.rs`, `creature_game.rs`, and the random smoke games in `random_smoke.rs`, which include a creature deck against a land deck); games start from deck lists (see Game start).
 - **Game start:** a game starts from two deck lists as CR 103 prescribes for the first game of a two-player match: a random player chooses who goes first, libraries are shuffled, players start at 20 life with seven cards, players may take London mulligans, and the starting player's first turn has no draw step (`crates/mtgml-environment/tests/game_start.rs`).
-- **Real Magic semantics:** the native turn progression covers turn structure, priority, draw, the combat phase with an empty attack, cleanup, and zone incarnation; combat damage, blockers, damage and life, and combat state-based actions are specified only. This does not claim arbitrary Magic support, cards, decks, formats, or playability.
-- **Bounded executable real-card support:** Mountain + Plains under `basic-land@1.0.0`; no broader card/deck support is claimed.
+- **Real Magic semantics:** the native turn progression covers turn structure, priority, draw, casting a creature spell and its resolution on a one-item stack, summoning sickness, the combat phase with attackers declared and unblocked combat damage, damage and life, combat state-based actions, cleanup, and zone incarnation; declaring blockers is specified only and fails closed. This does not claim arbitrary Magic support, cards, decks, formats, or playability.
+- **Bounded executable real-card support:** Mountain + Plains under `basic-land@1.0.0` and Savannah Lions + Gray Ogre + Hill Giant under `vanilla-creature@1.0.0`; no broader card/deck support is claimed.
 
 **Current resumable execution contract after the G0j activation cut:** V8.
 The production runtime uses the flat `EngineState`, `StateDelta`,
@@ -49,11 +49,11 @@ The production runtime uses the flat `EngineState`, `StateDelta`,
 V4, PlayerStep V4, `ObservationEnvelope` (`observation-envelope.v2`),
 `PlayerInformationState` / `InformationStateDigest`
 (`information-state-envelope.v3`), and `magic-shared-execution-observation.v1`. Its executable admission
-remains bounded to Mountain and Plains under `basic-land@1.0.0`; G0j preserves
-that M4.2 slice and adds no spell or deck support. It is the only runtime,
-and each format has only its current version; older versions were removed. M4.2 is
-`COMPLETE` only for the bounded Mountain/Plains slice; this does not claim
-broader card, deck, format, or playability support.
+is bounded to Mountain and Plains under `basic-land@1.0.0` and Savannah Lions,
+Gray Ogre and Hill Giant under `vanilla-creature@1.0.0`. It is the only
+runtime, and each format has only its current version; older versions were
+removed. M4.2 is `COMPLETE` only for the bounded Mountain/Plains slice; this
+does not claim broader card, deck, format, or playability support.
 
 Manafold prioritizes:
 

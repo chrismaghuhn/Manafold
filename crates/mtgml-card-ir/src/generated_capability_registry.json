@@ -22,6 +22,18 @@
     },
     {
       "dependencies": [
+        "rules/basic-priority",
+        "rules/mana-pool",
+        "rules/stack-resolution",
+        "rules/zone-incarnation"
+      ],
+      "key": "rules/cast-creature-spell",
+      "lifecycle": "covered",
+      "lifecycle_rank": 3,
+      "version": "0.1.0"
+    },
+    {
+      "dependencies": [
         "rules/turn-structure"
       ],
       "key": "rules/cleanup-reset",
@@ -36,8 +48,8 @@
         "rules/state-based-actions-combat"
       ],
       "key": "rules/combat-damage",
-      "lifecycle": "specified",
-      "lifecycle_rank": 1,
+      "lifecycle": "covered",
+      "lifecycle_rank": 3,
       "version": "0.1.0"
     },
     {
@@ -53,8 +65,8 @@
     {
       "dependencies": [],
       "key": "rules/damage-and-life",
-      "lifecycle": "specified",
-      "lifecycle_rank": 1,
+      "lifecycle": "covered",
+      "lifecycle_rank": 3,
       "version": "0.1.0"
     },
     {
@@ -116,11 +128,21 @@
     },
     {
       "dependencies": [
+        "rules/basic-priority",
+        "rules/zone-incarnation"
+      ],
+      "key": "rules/stack-resolution",
+      "lifecycle": "covered",
+      "lifecycle_rank": 3,
+      "version": "0.1.0"
+    },
+    {
+      "dependencies": [
         "rules/zone-incarnation"
       ],
       "key": "rules/state-based-actions-combat",
-      "lifecycle": "specified",
-      "lifecycle_rank": 1,
+      "lifecycle": "covered",
+      "lifecycle_rank": 3,
       "version": "0.1.0"
     },
     {
@@ -129,6 +151,16 @@
         "rules/turn-structure"
       ],
       "key": "rules/state-based-actions-empty-library",
+      "lifecycle": "covered",
+      "lifecycle_rank": 3,
+      "version": "0.1.0"
+    },
+    {
+      "dependencies": [
+        "rules/declare-attackers",
+        "rules/turn-structure"
+      ],
+      "key": "rules/summoning-sickness",
       "lifecycle": "covered",
       "lifecycle_rank": 3,
       "version": "0.1.0"

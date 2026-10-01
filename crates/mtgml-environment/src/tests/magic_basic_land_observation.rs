@@ -1,7 +1,7 @@
 use super::*;
 use mtgml_card_ir::{
     AbilityIdentityV1, BaseCharacteristicsV1, BasicLandProfileV1, BasicLandSubtypeV1,
-    CardDefinitionEnvelopeV1, CardSemanticBindingV1, CardSemanticProfileId,
+    CardDefinitionEnvelopeV1, CardProfileBodyV1, CardSemanticBindingV1, CardSemanticProfileId,
     ContentContractManifestV1, DefinitionProvenanceRecordV1, FaceDefinitionV1, FaceKey,
     ProvenanceCatalogV1, SourceProvenanceV1, TypeLineV1, VerifiedContentCatalogV1,
     BASIC_LAND_PROFILE_ID_V1,
@@ -13,8 +13,8 @@ use mtgml_model::{
 use mtgml_observation::MagicSharedExecutionObservationV1;
 use mtgml_state::{
     AbilityAuthorityStateV1, AttachmentStateV1, CardRulesAuthoritativeStateV1, CounterKindV1,
-    CounterStateV1, EngineState, FaceStateV1, ManaPoolV1, ManaStateV1, PlayerTurnHistoryV1,
-    TurnHistoryStateV1,
+    CounterStateV1, EngineState, FaceStateV1, ManaPoolV1, ManaStateV1, PermanentsState,
+    PlayerTurnHistoryV1, TurnHistoryStateV1,
 };
 use std::collections::BTreeMap;
 
@@ -65,15 +65,15 @@ fn catalog_for(definition_ids: &[u64]) -> VerifiedContentCatalogV1 {
                 semantic_binding: match subtype {
                     Some("Mountain") => CardSemanticBindingV1::ProfiledV1 {
                         profile_id: CardSemanticProfileId::parse(BASIC_LAND_PROFILE_ID_V1).unwrap(),
-                        body: BasicLandProfileV1 {
+                        body: CardProfileBodyV1::BasicLand(BasicLandProfileV1 {
                             subtype: BasicLandSubtypeV1::Mountain,
-                        },
+                        }),
                     },
                     Some("Plains") => CardSemanticBindingV1::ProfiledV1 {
                         profile_id: CardSemanticProfileId::parse(BASIC_LAND_PROFILE_ID_V1).unwrap(),
-                        body: BasicLandProfileV1 {
+                        body: CardProfileBodyV1::BasicLand(BasicLandProfileV1 {
                             subtype: BasicLandSubtypeV1::Plains,
-                        },
+                        }),
                     },
                     _ => CardSemanticBindingV1::UnprofiledV1,
                 },
@@ -182,6 +182,12 @@ pub(crate) fn basic_land_state(root_seed: mtgml_random::RootSeed256) -> EngineSt
     for object in state.zones.objects.keys() {
         faces.faces.insert(*object, 0);
     }
+    let mut permanents = PermanentsState::default();
+    for (object, location) in &state.zones.locations {
+        if location.zone == mtgml_model::ZoneKind::Battlefield {
+            permanents.enter(*object, state.core.turn_number).unwrap();
+        }
+    }
     let mut counters = CounterStateV1::default();
     if let Some((object, _)) = state
         .zones
@@ -205,6 +211,7 @@ pub(crate) fn basic_land_state(root_seed: mtgml_random::RootSeed256) -> EngineSt
         attachments: AttachmentStateV1::default(),
         faces,
         abilities: AbilityAuthorityStateV1::default(),
+        permanents,
     };
     state
 }
@@ -966,6 +973,13 @@ fn trusted_game_object_renaming_preserves_public_observation_and_information_byt
     if let Some(face) = renamed.card_rules.faces.faces.remove(&old_id) {
         renamed.card_rules.faces.faces.insert(new_id, face);
     }
+    if let Some(permanent) = renamed.card_rules.permanents.permanents.remove(&old_id) {
+        renamed
+            .card_rules
+            .permanents
+            .permanents
+            .insert(new_id, permanent);
+    }
 
     original.validate().unwrap();
     renamed.validate().unwrap();
@@ -1005,4 +1019,198 @@ fn trusted_game_object_renaming_preserves_public_observation_and_information_byt
         mtgml_wire::encode_canonical(&original_information).unwrap(),
         mtgml_wire::encode_canonical(&renamed_information).unwrap()
     );
+}
+
+/// A projection of `state` for player 1 over a catalog with the lands and
+/// definition 50, an unprofiled 2/2 creature.
+fn project_with_a_creature_definition(
+    state: &EngineState,
+) -> Result<mtgml_observation::MagicBasicLandObservationV1, crate::endpoint::PlayerEndpointError> {
+    let catalog = catalog_for(&[1, 2, 50]);
+    let (identity, semantic, rules) = execution_authority(&catalog);
+    crate::player_projection::project_magic_basic_land_observation(
+        state,
+        PlayerId(1),
+        &identity,
+        &semantic,
+        &rules,
+        &catalog,
+    )
+}
+
+#[test]
+fn magic_basic_land_projection_lists_each_permanent_and_shows_a_creatures_printed_power_toughness()
+{
+    use crate::endpoint::PlayerEndpointError::ServiceUnavailable;
+    use mtgml_state::CounterKindV1::{Lore, MinusOneMinusOne, PlusOnePlusOne};
+    let mut state = basic_land_state(seed());
+    // The state has one permanent, a land with two +1/+1 counters.
+    let permanent = state
+        .zones
+        .locations
+        .iter()
+        .find_map(|(object, location)| {
+            (location.zone == mtgml_model::ZoneKind::Battlefield).then_some(*object)
+        })
+        .unwrap();
+    state
+        .card_rules
+        .permanents
+        .permanents
+        .get_mut(&permanent)
+        .unwrap()
+        .controlled_since_turn = 0;
+    let controller = state.zones.objects[&permanent].controller;
+    let own = state.perspective_identities.players[&PlayerId(1)].object_to_opaque[&permanent];
+    let row = |power_toughness: Option<(i64, i64)>| mtgml_observation::PermanentObservationV1 {
+        object: own,
+        controller,
+        controlled_since_turn: 0,
+        power: power_toughness.map(|(power, _)| power),
+        toughness: power_toughness.map(|(_, toughness)| toughness),
+    };
+    let with_definition = |state: &EngineState, definition: u64| {
+        let mut state = state.clone();
+        state
+            .zones
+            .objects
+            .get_mut(&permanent)
+            .unwrap()
+            .card_definition = CardDefinitionId(definition);
+        state
+    };
+    let with_counter = |state: &EngineState, kind: CounterKindV1| {
+        let mut state = state.clone();
+        state
+            .card_rules
+            .counters
+            .counters
+            .insert(permanent, BTreeMap::from([(kind, 1)]));
+        state
+    };
+    let land = with_definition(&state, 1);
+    let creature = with_definition(&state, 50);
+
+    // A land is listed with its controller and the turn since which they have
+    // controlled it, and no power or toughness, counters or not.
+    let shown = project_with_a_creature_definition(&land).unwrap();
+    assert_eq!(shown.permanents, vec![row(None)]);
+    assert!(shown.attacking.is_empty());
+    assert_eq!(
+        project_with_a_creature_definition(&with_counter(&land, MinusOneMinusOne))
+            .unwrap()
+            .permanents,
+        vec![row(None)]
+    );
+
+    // A creature shows its printed 2/2, and may carry counters that cannot
+    // change that: the land's +1/+1 counters would, so the projection refuses.
+    let bare = |state: &EngineState| {
+        let mut state = state.clone();
+        state.card_rules.counters.counters.remove(&permanent);
+        state
+    };
+    assert_eq!(
+        project_with_a_creature_definition(&bare(&creature))
+            .unwrap()
+            .permanents,
+        vec![row(Some((2, 2)))]
+    );
+    assert_eq!(
+        project_with_a_creature_definition(&with_counter(&creature, Lore))
+            .unwrap()
+            .permanents,
+        vec![row(Some((2, 2)))]
+    );
+    assert_eq!(
+        project_with_a_creature_definition(&creature),
+        Err(ServiceUnavailable),
+        "a creature with +1/+1 counters"
+    );
+    for kind in [PlusOnePlusOne, MinusOneMinusOne] {
+        assert_eq!(
+            project_with_a_creature_definition(&with_counter(&creature, kind)),
+            Err(ServiceUnavailable),
+            "{kind:?}"
+        );
+    }
+
+    // An attacking creature is listed as attacking, under the viewer's id.
+    let mut attacking = bare(&creature);
+    attacking.combat = Some(mtgml_state::CombatState {
+        defending_player: PlayerId(2),
+        attackers: vec![permanent],
+        damage_step_completed: false,
+        blocked_attackers: Default::default(),
+        blockers: BTreeMap::from([(permanent, None)]),
+    });
+    assert_eq!(
+        project_with_a_creature_definition(&attacking)
+            .unwrap()
+            .attacking,
+        vec![own]
+    );
+    // A land is not a creature and cannot be an attacker: the observation is
+    // not made.
+    let mut land_attacks = attacking.clone();
+    land_attacks
+        .zones
+        .objects
+        .get_mut(&permanent)
+        .unwrap()
+        .card_definition = CardDefinitionId(1);
+    assert_eq!(
+        project_with_a_creature_definition(&land_attacks),
+        Err(ServiceUnavailable)
+    );
+
+    // The projection shows printed power and toughness only, so with a
+    // temporary effect around it shows no creature rather than a wrong one...
+    let effect = |state: &EngineState| {
+        let mut state = state.clone();
+        state.execution.effects.insert(
+            mtgml_model::EffectInstanceId(1),
+            mtgml_state::TemporaryEffectRecord {
+                id: mtgml_model::EffectInstanceId(1),
+                affected_objects: vec![permanent],
+                operation: mtgml_state::TemporaryOperation::PowerToughnessDelta {
+                    power: 1,
+                    toughness: 1,
+                },
+                expiry: mtgml_state::EffectExpiry::UntilEndOfTurn {
+                    turn_number: state.core.turn_number,
+                },
+                timestamp: None,
+            },
+        );
+        state
+    };
+    assert_eq!(
+        project_with_a_creature_definition(&effect(&bare(&creature))),
+        Err(ServiceUnavailable)
+    );
+    // ... and a game with an effect but no creature is projected as before.
+    assert_eq!(
+        project_with_a_creature_definition(&effect(&land))
+            .unwrap()
+            .permanents,
+        vec![row(None)]
+    );
+
+    // A face-down permanent is a creature whatever its card is (CR 708.2), and
+    // its card is hidden: it is not shown, so the projection fails closed.
+    for definition in [1, 50] {
+        let mut face_down = with_definition(&bare(&state), definition);
+        face_down
+            .zones
+            .objects
+            .get_mut(&permanent)
+            .unwrap()
+            .face_down = true;
+        assert_eq!(
+            project_with_a_creature_definition(&face_down),
+            Err(ServiceUnavailable),
+            "definition {definition}"
+        );
+    }
 }

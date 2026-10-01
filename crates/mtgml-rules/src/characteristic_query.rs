@@ -5,9 +5,9 @@
 //! supplied by the current RulesKernel path.
 
 use mtgml_card_ir::{
-    BaseCharacteristicsV1, BasicLandProfileV1, CardSemanticBindingV1, ExecutableProfileAdmissionV1,
+    BaseCharacteristicsV1, CardProfileBodyV1, CardSemanticBindingV1, ExecutableProfileAdmissionV1,
     FaceDefinitionV1, FaceKey, ManaColorV1, PrintedManaSymbolV1, VerifiedContentCatalogV1,
-    BASIC_LAND_PROFILE_ID_V1,
+    BASIC_LAND_PROFILE_ID_V1, VANILLA_CREATURE_PROFILE_ID_V1,
 };
 use mtgml_model::{CardDefinitionId, GameObjectId, PlayerId, ZoneKind};
 use mtgml_state::{EngineState, EngineStateError, GameObject, ZoneLocation};
@@ -55,9 +55,8 @@ pub(crate) struct S1QueryAuthority<'a> {
 }
 
 impl<'a> S1QueryAuthority<'a> {
-    // Current production callers query batches (`for_objects`); keep the
-    // single-object form for rules that ask about one object and for the
-    // unit witnesses, as with `derive_base_characteristics` below.
+    // Production callers query batches (`for_objects`); the single-object
+    // form serves the unit witnesses and rules that ask about one object.
     #[allow(dead_code)]
     pub(crate) fn for_object(
         admission: &'a ExecutableProfileAdmissionV1,
@@ -140,7 +139,7 @@ impl<'a> S1QueryAuthority<'a> {
                 face_key: FaceKey(current_face),
             })?;
 
-        if !is_admitted_basic_land_profile(definition) {
+        if !is_admitted_profile(definition) {
             return Err(S1QueryError::ProfileNotAdmitted);
         }
 
@@ -165,11 +164,8 @@ impl<'a> S1QueryAuthority<'a> {
         self.queried
     }
 
-    // The current admitted M4.2 Basic Land transition does not need to branch
-    // on these base facts. Keep this internal RulesKernel query available for
-    // the Shared consumers that follow S1-B; the real admission path and unit
-    // witnesses exercise it without adding a second public endpoint.
-    #[allow(dead_code)]
+    /// The queried object's base characteristics, derived from its face
+    /// (combat reads a creature's types and power from them).
     pub(crate) fn derive_base_characteristics(&self) -> S1BaseCharacteristicsV1 {
         derive_base_characteristics(self.queried, &self._face.base_characteristics)
     }
@@ -253,13 +249,19 @@ fn validate_admission_binding(
     Ok(catalog)
 }
 
-fn is_admitted_basic_land_profile(definition: &mtgml_card_ir::CardDefinitionEnvelopeV1) -> bool {
+fn is_admitted_profile(definition: &mtgml_card_ir::CardDefinitionEnvelopeV1) -> bool {
     matches!(
         &definition.semantic_binding,
         CardSemanticBindingV1::ProfiledV1 {
             profile_id,
-            body: BasicLandProfileV1 { .. },
+            body: CardProfileBodyV1::BasicLand(_),
         } if profile_id.as_str() == BASIC_LAND_PROFILE_ID_V1
+    ) || matches!(
+        &definition.semantic_binding,
+        CardSemanticBindingV1::ProfiledV1 {
+            profile_id,
+            body: CardProfileBodyV1::VanillaCreature,
+        } if profile_id.as_str() == VANILLA_CREATURE_PROFILE_ID_V1
     )
 }
 

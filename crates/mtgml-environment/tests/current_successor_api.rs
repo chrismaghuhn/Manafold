@@ -16,8 +16,8 @@ use mtgml_observation::{ObservationEnvelope, PlayerInformationState, PlayerStepV
 use mtgml_replay::AuthoritativeReplayV8;
 use mtgml_state::{
     AbilityAuthorityStateV1, AbilityAuthorityV1, CardRulesAuthoritativeStateV1, EngineState,
-    FaceStateV1, ManaStateV1, PlayerTurnHistoryV1, TurnHistoryStateV1, TurnPosition,
-    VisibilityPartition, ZoneKey, ZoneLocation, ZonePosition,
+    FaceStateV1, ManaStateV1, PermanentsState, PlayerTurnHistoryV1, TurnHistoryStateV1,
+    TurnPosition, VisibilityPartition, ZoneKey, ZoneLocation, ZonePosition,
 };
 
 struct ProductionAliasProbe {
@@ -143,7 +143,7 @@ fn verified_basic_land_runs_through_real_v8_controller_and_player_endpoints() {
         state,
         status,
         Default::default(),
-        common::replay_manifest(&admission, &checkpoint),
+        common::replay_manifest(&admission, common::CONTENT, &checkpoint),
     )
     .unwrap();
     let controller = TrustedEnvironmentController::new(runtime);
@@ -283,7 +283,7 @@ fn basic_land_state() -> EngineState {
             .iter()
             .find(|definition| {
                 matches!(definition.semantic_binding,
-                    CardSemanticBindingV1::ProfiledV1 { body, .. } if body.subtype == subtype)
+                    CardSemanticBindingV1::ProfiledV1 { body: mtgml_card_ir::CardProfileBodyV1::BasicLand(profile), .. } if profile.subtype == subtype)
             })
             .unwrap()
             .card_definition_id
@@ -355,11 +355,18 @@ fn basic_land_state() -> EngineState {
             },
         )]),
     };
+    let mut permanents = PermanentsState::default();
+    for (object, location) in &engine.zones.locations {
+        if location.zone == mtgml_model::ZoneKind::Battlefield {
+            permanents.enter(*object, engine.core.turn_number).unwrap();
+        }
+    }
     let card_rules = CardRulesAuthoritativeStateV1 {
         mana,
         turn_history,
         faces,
         abilities,
+        permanents,
         ..Default::default()
     };
     let mut state = engine;

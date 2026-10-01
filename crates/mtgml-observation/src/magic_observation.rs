@@ -3,6 +3,28 @@
 use mtgml_model::{parse_canonical_u64, OpaqueObjectId, PlayerId};
 use serde::{Deserialize, Serialize};
 
+/// A `u64` on the wire as a canonical decimal string, as `turn_number` is: no
+/// sign, no leading zeros, and a JSON number is refused.
+mod canonical_u64_string {
+    use mtgml_model::parse_canonical_u64;
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S>(value: &u64, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&value.to_string())
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<u64, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let text = String::deserialize(deserializer)?;
+        parse_canonical_u64(&text).map_err(serde::de::Error::custom)
+    }
+}
+
 use crate::MAGIC_BASIC_LAND_OBSERVATION_SCHEMA_V1;
 use crate::{ObservationValidationError, SyntheticPriority, SyntheticTurnPosition};
 
@@ -38,6 +60,32 @@ pub struct PlayerObservationV1 {
     pub life: i64,
     pub hand_count: u32,
     pub library_count: u32,
+}
+
+/// A permanent on the battlefield: who controls it and the turn since which
+/// that player has controlled it (CR 302.6) and, for a creature, its power
+/// and toughness (CR 208.1); both are null for any other permanent.
+///
+/// A creature's power and toughness are its printed ones, which are also its
+/// current ones: the projection is not made for a creature that an effect or a
+/// +1/+1 or -1/-1 counter could change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PermanentObservationV1 {
+    pub object: OpaqueObjectId,
+    pub controller: PlayerId,
+    #[serde(with = "canonical_u64_string")]
+    pub controlled_since_turn: u64,
+    #[serde(deserialize_with = "deserialize_required_option")]
+    pub power: Option<i64>,
+    #[serde(deserialize_with = "deserialize_required_option")]
+    pub toughness: Option<i64>,
+}
+
+impl PermanentObservationV1 {
+    fn is_creature(&self) -> bool {
+        self.power.is_some()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -79,6 +127,12 @@ pub struct MagicBasicLandObservationV1 {
     pub faces: Vec<FaceObservationV1>,
     /// Tapped permanents on the battlefield (CR 110.5), by opaque id.
     pub tapped: Vec<OpaqueObjectId>,
+    /// Every permanent on the battlefield, lands included, ascending by
+    /// opaque id.
+    pub permanents: Vec<PermanentObservationV1>,
+    /// The creatures that are attacking (CR 508.1k), ascending by opaque id.
+    /// Each is a creature among `permanents`.
+    pub attacking: Vec<OpaqueObjectId>,
 }
 
 impl MagicBasicLandObservationV1 {
@@ -97,6 +151,21 @@ impl MagicBasicLandObservationV1 {
                 .iter()
                 .any(|entry| entry.player == self.active_player)
             || self.tapped.windows(2).any(|pair| pair[0] >= pair[1])
+            || self
+                .permanents
+                .windows(2)
+                .any(|pair| pair[0].object >= pair[1].object)
+            || self
+                .permanents
+                .iter()
+                .any(|permanent| permanent.power.is_some() != permanent.toughness.is_some())
+            || self.attacking.windows(2).any(|pair| pair[0] >= pair[1])
+            || self.attacking.iter().any(|attacker| {
+                !self
+                    .permanents
+                    .binary_search_by_key(attacker, |permanent| permanent.object)
+                    .is_ok_and(|index| self.permanents[index].is_creature())
+            })
             || self
                 .mana_pools
                 .windows(2)
@@ -147,6 +216,14 @@ pub struct MagicCompletedOrder {
 pub struct MagicPendingSbaOrdering {
     pub completed_orders: Vec<MagicCompletedOrder>,
     pub next_order_owner: PlayerId,
+}
+
+fn deserialize_required_option<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::deserialize(deserializer)
 }
 
 fn deserialize_required_pending_ordering<'de, D>(

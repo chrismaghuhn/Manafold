@@ -268,8 +268,9 @@ digest binds the current observation envelope, the next visible sequence and
 the retained knowledge. Player products
 omit global StateRevision and use the existing perspective-local
 VisibleSequence. The current public payload is
-`magic-shared-execution-observation.v1`; it remains scoped to the admitted
-Mountain/Plains `basic-land@1.0.0` execution.
+`magic-shared-execution-observation.v1`; it covers the admitted executions of
+`basic-land@1.0.0` (Mountain, Plains) and `vanilla-creature@1.0.0` (Savannah
+Lions, Gray Ogre, Hill Giant).
 
 Besides turn, priority, mana pools, counters, attachments, faces, stack and
 temporary effects, the payload carries the public player state:
@@ -277,6 +278,22 @@ temporary effects, the payload carries the public player state:
   401.3). Both perspectives see the same rows.
 - `tapped`: the perspective's opaque ids of the tapped permanents on the
   battlefield (CR 110.5).
+- `permanents`: one row per permanent on the battlefield, lands included,
+  ascending by the perspective's opaque id. A row has the permanent's
+  controller, and `controlled_since_turn`, the turn since which that player
+  has controlled it (CR 302.6), a decimal string like `turn_number`. It
+  states that raw fact, not whether a creature can attack. For a creature the
+  row also has `power` and `toughness` (CR 208.1); for any other permanent
+  both are null.
+- `attacking`: the perspective's opaque ids of the attacking creatures
+  (CR 508.1k), ascending, each a creature among `permanents`; empty outside
+  combat.
+
+A creature's `power` and `toughness` are its printed ones, which are also its
+current ones because the projection applies neither effects nor counters: it
+fails closed (no observation is made) while a creature is on the battlefield
+and a temporary effect exists, for a creature with a +1/+1 or -1/-1 counter,
+and for a face-down permanent.
 
 None of these values depends on library order, hidden card identity or
 trusted ids.

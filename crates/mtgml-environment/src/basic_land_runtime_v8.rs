@@ -485,8 +485,8 @@ mod tests {
     };
     use mtgml_state::{
         AbilityAuthorityStateV1, AbilityAuthorityV1, CardRulesAuthoritativeStateV1, FaceStateV1,
-        ManaStateV1, PlayerTurnHistoryV1, TurnHistoryStateV1, TurnPosition, VisibilityPartition,
-        ZoneKey, ZoneLocation, ZonePosition,
+        ManaStateV1, PermanentsState, PlayerTurnHistoryV1, TurnHistoryStateV1, TurnPosition,
+        VisibilityPartition, ZoneKey, ZoneLocation, ZonePosition,
     };
 
     const CONTENT: &[u8] =
@@ -565,8 +565,8 @@ mod tests {
             .iter()
             .find(|definition| {
                 matches!(definition.semantic_binding,
-                CardSemanticBindingV1::ProfiledV1 { body, .. }
-                    if body.subtype == mtgml_card_ir::BasicLandSubtypeV1::Mountain)
+                CardSemanticBindingV1::ProfiledV1 { body: mtgml_card_ir::CardProfileBodyV1::BasicLand(profile), .. }
+                    if profile.subtype == mtgml_card_ir::BasicLandSubtypeV1::Mountain)
             })
             .unwrap()
             .card_definition_id;
@@ -575,8 +575,8 @@ mod tests {
             .iter()
             .find(|definition| {
                 matches!(definition.semantic_binding,
-                CardSemanticBindingV1::ProfiledV1 { body, .. }
-                    if body.subtype == mtgml_card_ir::BasicLandSubtypeV1::Plains)
+                CardSemanticBindingV1::ProfiledV1 { body: mtgml_card_ir::CardProfileBodyV1::BasicLand(profile), .. }
+                    if profile.subtype == mtgml_card_ir::BasicLandSubtypeV1::Plains)
             })
             .unwrap()
             .card_definition_id;
@@ -645,11 +645,18 @@ mod tests {
                 },
             )]),
         };
+        let mut permanents = PermanentsState::default();
+        for (object, location) in &engine.zones.locations {
+            if location.zone == mtgml_model::ZoneKind::Battlefield {
+                permanents.enter(*object, engine.core.turn_number).unwrap();
+            }
+        }
         let card_rules = CardRulesAuthoritativeStateV1 {
             mana,
             turn_history,
             faces,
             abilities,
+            permanents,
             ..Default::default()
         };
         let mut v2 = engine;
@@ -1105,7 +1112,7 @@ mod tests {
                 .iter()
                 .find(|definition| {
                     matches!(&definition.semantic_binding,
-                        CardSemanticBindingV1::ProfiledV1 { body, .. } if body.subtype == subtype)
+                        CardSemanticBindingV1::ProfiledV1 { body: mtgml_card_ir::CardProfileBodyV1::BasicLand(profile), .. } if profile.subtype == subtype)
                 })
                 .unwrap()
                 .card_definition_id
@@ -1434,7 +1441,7 @@ mod tests {
                 .iter()
                 .find(|definition| {
                     matches!(&definition.semantic_binding,
-                        CardSemanticBindingV1::ProfiledV1 { body, .. } if body.subtype == subtype)
+                        CardSemanticBindingV1::ProfiledV1 { body: mtgml_card_ir::CardProfileBodyV1::BasicLand(profile), .. } if profile.subtype == subtype)
                 })
                 .unwrap()
                 .card_definition_id

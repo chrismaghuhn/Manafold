@@ -1,9 +1,10 @@
 //! Fail-closed content validation through the canonical Capability Registry.
 
 use crate::{
-    BasicLandSubtypeV1, CardSemanticBindingV1, ContentContractManifestV1,
-    ContentValidationDiagnosticV1, DefinitionClosureErrorV1, ProvenanceCatalogV1,
-    VerifiedContentCatalogV1, BASIC_LAND_PROFILE_ID_V1,
+    BasicLandSubtypeV1, CardDefinitionEnvelopeV1, CardProfileBodyV1, CardSemanticBindingV1,
+    ContentContractManifestV1, ContentValidationDiagnosticV1, DefinitionClosureErrorV1,
+    PrintedManaSymbolV1, ProvenanceCatalogV1, VerifiedContentCatalogV1, BASIC_LAND_PROFILE_ID_V1,
+    VANILLA_CREATURE_PROFILE_ID_V1,
 };
 use mtgml_model::{
     CapabilityRequirementV1, CardDefinitionId, ContentContractIdV1, ExecutionIdentityV1,
@@ -18,13 +19,25 @@ use thiserror::Error;
 
 const GENERATED_CAPABILITY_REGISTRY: &str = include_str!("generated_capability_registry.json");
 const BASIC_LAND_RULES_SNAPSHOT: &str = "wotc-cr-2026-09-25-txt-20260925-sha256-8d860e451f20f38865b725b42d82feb714c725373dd8f3b32b8652b3eeb070ca";
-const ORACLE_SNAPSHOT: &str = "oracle-cards-20260925210158";
 const ORACLE_RECORD_CODEC: &str = "scryfall.oracle-card-jsonl-record.v1";
 
-const PROFILE_REQUIREMENT_ROOTS: [(&str, &str); 3] = [
+const BASIC_LAND_REQUIREMENT_ROOTS: [(&str, &str); 3] = [
     ("rules/basic-land-mana", "0.1.0"),
     ("rules/land-play", "0.1.0"),
     ("rules/mana-pool", "0.1.0"),
+];
+
+/// What a vanilla creature needs: to be cast and resolved, to wait out
+/// summoning sickness, and to fight. These are roots of the creature profile,
+/// not of every game, so a land-only admission keeps its closure and its
+/// rules contract identity.
+const VANILLA_CREATURE_REQUIREMENT_ROOTS: [(&str, &str); 6] = [
+    ("rules/cast-creature-spell", "0.1.0"),
+    ("rules/combat-damage", "0.1.0"),
+    ("rules/damage-and-life", "0.1.0"),
+    ("rules/stack-resolution", "0.1.0"),
+    ("rules/state-based-actions-combat", "0.1.0"),
+    ("rules/summoning-sickness", "0.1.0"),
 ];
 
 /// Rules every executable Magic game needs regardless of its cards: the game
@@ -42,17 +55,78 @@ pub const MAGIC_GAME_RULE_ROOTS: &[(&str, &str)] = &[
     ("rules/turn-structure", "0.1.0"),
 ];
 
-const BASIC_LAND_SOURCE_RECORDS: [(&str, BasicLandSubtypeV1, &str); 2] = [
-    (
-        "a3fb7228-e76b-4e96-a40e-20b5fed75685",
-        BasicLandSubtypeV1::Mountain,
-        "b57d8ce5dcbbb01e1c128aaa9ebeab8a26d5f297edb51eac6adce5c4af770033",
-    ),
-    (
-        "bc71ebf6-2056-41f7-be35-b2e5c34afa99",
-        BasicLandSubtypeV1::Plains,
-        "af82e883368b8211c1845af680e1b4dab52666b41969cc6987bffdde7ada86b7",
-    ),
+/// One Oracle record that content may be built from, with what a definition
+/// bound to it must say. The engine never sees the record bytes: admission
+/// compares the provenance (snapshot, codec, Oracle id, record digest) and the
+/// definition's characteristics against this row, so a manifest cannot pair a
+/// pinned record with other characteristics.
+struct PinnedOracleRecordV1 {
+    snapshot: &'static str,
+    oracle_id: &'static str,
+    record_sha256: &'static str,
+    expected: PinnedCharacteristicsV1,
+}
+
+enum PinnedCharacteristicsV1 {
+    BasicLand(BasicLandSubtypeV1),
+    VanillaCreature {
+        name: &'static str,
+        mana_cost: &'static [PrintedManaSymbolV1],
+        subtypes: &'static [&'static str],
+        power: i32,
+        toughness: i32,
+    },
+}
+
+const PINNED_ORACLE_RECORDS: [PinnedOracleRecordV1; 5] = [
+    PinnedOracleRecordV1 {
+        snapshot: "oracle-cards-20260925210158",
+        oracle_id: "a3fb7228-e76b-4e96-a40e-20b5fed75685",
+        record_sha256: "b57d8ce5dcbbb01e1c128aaa9ebeab8a26d5f297edb51eac6adce5c4af770033",
+        expected: PinnedCharacteristicsV1::BasicLand(BasicLandSubtypeV1::Mountain),
+    },
+    PinnedOracleRecordV1 {
+        snapshot: "oracle-cards-20260925210158",
+        oracle_id: "bc71ebf6-2056-41f7-be35-b2e5c34afa99",
+        record_sha256: "af82e883368b8211c1845af680e1b4dab52666b41969cc6987bffdde7ada86b7",
+        expected: PinnedCharacteristicsV1::BasicLand(BasicLandSubtypeV1::Plains),
+    },
+    PinnedOracleRecordV1 {
+        snapshot: "oracle-cards-20260925210158",
+        oracle_id: "60ba93eb-39e6-4af2-9c66-cd38f72daff2",
+        record_sha256: "84fce7b698d07816432dc2674941ffdc9e0ffe586793ad669310f1bbd438c4cf",
+        expected: PinnedCharacteristicsV1::VanillaCreature {
+            name: "Savannah Lions",
+            mana_cost: &[PrintedManaSymbolV1::White],
+            subtypes: &["Cat"],
+            power: 2,
+            toughness: 1,
+        },
+    },
+    PinnedOracleRecordV1 {
+        snapshot: "oracle-cards-20260925210158",
+        oracle_id: "83c8a3a6-2e1a-4e26-8847-6d066f42d906",
+        record_sha256: "f07e4de80207bf5701840eb63bc8f35070e2e07dca93721d4fabb03c16fc79fa",
+        expected: PinnedCharacteristicsV1::VanillaCreature {
+            name: "Gray Ogre",
+            mana_cost: &[PrintedManaSymbolV1::Generic(2), PrintedManaSymbolV1::Red],
+            subtypes: &["Ogre"],
+            power: 2,
+            toughness: 2,
+        },
+    },
+    PinnedOracleRecordV1 {
+        snapshot: "oracle-cards-20260925210158",
+        oracle_id: "342199e0-15b6-4824-83da-25caef2592b3",
+        record_sha256: "7278c29c3e7fe48fd5251930df1df553c5773e2199738a183d895ec3a0fc1952",
+        expected: PinnedCharacteristicsV1::VanillaCreature {
+            name: "Hill Giant",
+            mana_cost: &[PrintedManaSymbolV1::Generic(3), PrintedManaSymbolV1::Red],
+            subtypes: &["Giant"],
+            power: 3,
+            toughness: 3,
+        },
+    },
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -251,27 +325,33 @@ pub fn content_validation_only(
 }
 
 fn derived_requirement_roots(
-    definition: &crate::CardDefinitionEnvelopeV1,
+    definition: &CardDefinitionEnvelopeV1,
 ) -> Vec<CapabilityRequirementV1> {
-    match &definition.semantic_binding {
+    let roots: &[(&str, &str)] = match &definition.semantic_binding {
         CardSemanticBindingV1::ProfiledV1 { profile_id, .. }
             if profile_id.as_str() == BASIC_LAND_PROFILE_ID_V1 =>
         {
-            PROFILE_REQUIREMENT_ROOTS
-                .iter()
-                .map(|(key, version)| CapabilityRequirementV1 {
-                    key: (*key).to_owned(),
-                    version: (*version).to_owned(),
-                })
-                .collect()
+            &BASIC_LAND_REQUIREMENT_ROOTS
         }
-        _ => Vec::new(),
-    }
+        CardSemanticBindingV1::ProfiledV1 { profile_id, .. }
+            if profile_id.as_str() == VANILLA_CREATURE_PROFILE_ID_V1 =>
+        {
+            &VANILLA_CREATURE_REQUIREMENT_ROOTS
+        }
+        _ => &[],
+    };
+    roots
+        .iter()
+        .map(|(key, version)| CapabilityRequirementV1 {
+            key: (*key).to_owned(),
+            version: (*version).to_owned(),
+        })
+        .collect()
 }
 
-/// Admit the exact Mountain/Plains profile for later executable integration
-/// after provenance, recursive requirements, and the Rules/Semantic/
-/// Execution identity chain all verify.
+/// Admit a catalog of pinned basic lands and vanilla creatures for later
+/// executable integration after provenance, characteristics, recursive
+/// requirements, and the Rules/Semantic/Execution identity chain all verify.
 pub fn admit_executable_profile_v1(
     canonical_manifest: &[u8],
     supplied_content_contract_id: &ContentContractIdV1,
@@ -300,7 +380,7 @@ pub fn admit_executable_profile_v1(
         .map_err(ContentPreflightErrorV1::InvalidContent)?;
     let provenance = crate::decode_provenance_catalog_v1(canonical_provenance)
         .map_err(|_| ContentPreflightErrorV1::ProvenanceCatalogMismatch)?;
-    validate_pinned_basic_land_profile(&manifest, &provenance, supplied_content_contract_id)?;
+    validate_pinned_profiles(&manifest, &provenance, supplied_content_contract_id)?;
 
     let profile_definition_roots = manifest
         .definitions
@@ -368,28 +448,27 @@ pub fn admit_executable_profile_v1(
     })
 }
 
-fn validate_pinned_basic_land_profile(
+/// Every definition must be bound to exactly one pinned Oracle record and say
+/// exactly what that record pins. A pinned record backs at most one definition.
+fn validate_pinned_profiles(
     manifest: &ContentContractManifestV1,
     provenance: &ProvenanceCatalogV1,
     content_contract_id: &ContentContractIdV1,
 ) -> Result<(), ContentPreflightErrorV1> {
-    if manifest.definitions.len() != BASIC_LAND_SOURCE_RECORDS.len()
-        || provenance.records.len() != BASIC_LAND_SOURCE_RECORDS.len()
-    {
+    if manifest.definitions.is_empty() || provenance.records.len() != manifest.definitions.len() {
         return Err(ContentPreflightErrorV1::ExecutableProfileNotAdmitted);
     }
-    let mut found_mountain = false;
-    let mut found_plains = false;
+    let mut used = BTreeSet::new();
     for record in &provenance.records {
+        let source = &record.source_provenance;
         if &record.content_contract_id != content_contract_id
-            || record.source_provenance.source_snapshot_id != ORACLE_SNAPSHOT
-            || record.source_provenance.source_record_codec_id != ORACLE_RECORD_CODEC
+            || source.source_record_codec_id != ORACLE_RECORD_CODEC
         {
             return Err(ContentPreflightErrorV1::PinnedSourceProvenanceMismatch);
         }
-        let Some((_, subtype, digest)) = BASIC_LAND_SOURCE_RECORDS
+        let Some(pinned) = PINNED_ORACLE_RECORDS
             .iter()
-            .find(|(oracle_id, _, _)| *oracle_id == record.source_provenance.source_record_id)
+            .find(|pinned| pinned.oracle_id == source.source_record_id)
         else {
             return Err(ContentPreflightErrorV1::PinnedSourceProvenanceMismatch);
         };
@@ -398,29 +477,58 @@ fn validate_pinned_basic_land_profile(
             .iter()
             .find(|definition| definition.card_definition_id == record.card_definition_id)
             .ok_or(ContentPreflightErrorV1::PinnedSourceProvenanceMismatch)?;
-        let profile_subtype = match &definition.semantic_binding {
-            CardSemanticBindingV1::ProfiledV1 { profile_id, body }
-                if profile_id.as_str() == BASIC_LAND_PROFILE_ID_V1 =>
-            {
-                body.subtype
-            }
-            _ => return Err(ContentPreflightErrorV1::ExecutableProfileNotAdmitted),
-        };
-        let already_found = match profile_subtype {
-            BasicLandSubtypeV1::Mountain => std::mem::replace(&mut found_mountain, true),
-            BasicLandSubtypeV1::Plains => std::mem::replace(&mut found_plains, true),
-        };
-        if profile_subtype != *subtype
-            || record.source_provenance.source_record_digest != decode_digest(digest)
-            || already_found
+        let characteristics_match = match_pinned_characteristics(definition, &pinned.expected)?;
+        if !characteristics_match
+            || source.source_snapshot_id != pinned.snapshot
+            || source.source_record_digest != decode_digest(pinned.record_sha256)
+            || !used.insert(pinned.oracle_id)
         {
             return Err(ContentPreflightErrorV1::PinnedSourceProvenanceMismatch);
         }
     }
-    if !found_mountain || !found_plains {
-        return Err(ContentPreflightErrorV1::PinnedSourceProvenanceMismatch);
-    }
     Ok(())
+}
+
+/// `Err` when the definition is not of the pinned record's profile at all;
+/// `Ok(false)` when it is, but says something other than the record pins.
+fn match_pinned_characteristics(
+    definition: &CardDefinitionEnvelopeV1,
+    expected: &PinnedCharacteristicsV1,
+) -> Result<bool, ContentPreflightErrorV1> {
+    match (&definition.semantic_binding, expected) {
+        (
+            CardSemanticBindingV1::ProfiledV1 {
+                profile_id,
+                body: CardProfileBodyV1::BasicLand(profile),
+            },
+            PinnedCharacteristicsV1::BasicLand(subtype),
+        ) if profile_id.as_str() == BASIC_LAND_PROFILE_ID_V1 => Ok(profile.subtype == *subtype),
+        (
+            CardSemanticBindingV1::ProfiledV1 {
+                profile_id,
+                body: CardProfileBodyV1::VanillaCreature,
+            },
+            PinnedCharacteristicsV1::VanillaCreature {
+                name,
+                mana_cost,
+                subtypes,
+                power,
+                toughness,
+            },
+        ) if profile_id.as_str() == VANILLA_CREATURE_PROFILE_ID_V1 => {
+            // The profile has already fixed the rest: one face, no abilities,
+            // no supertypes, no color indicator, loyalty or defense.
+            let [face] = definition.faces.as_slice() else {
+                return Ok(false);
+            };
+            let face = &face.base_characteristics;
+            Ok(face.name == *name
+                && face.mana_cost.as_deref() == Some(*mana_cost)
+                && face.type_line.subtypes.iter().eq(subtypes.iter())
+                && face.power_toughness == Some((*power, *toughness)))
+        }
+        _ => Err(ContentPreflightErrorV1::ExecutableProfileNotAdmitted),
+    }
 }
 
 fn decode_digest(value: &str) -> [u8; 32] {
