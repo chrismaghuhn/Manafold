@@ -18,9 +18,9 @@ status from its first step.
 
 ## 2. Rules basis
 
-All of these values are public game information. The texts of 401.3, 402.3
-and 110.5 were checked overnight through the Academy Ruins rules API (current
-CR), but not against the hash of the pinned snapshot.
+All of these values are public game information. Every rule cited here was
+checked on 2026-10-01 against the pinned TXT (SHA-256 `8d860e45…`; kept locally in the
+git-ignored `.rules/` folder, never committed, per ADR 0051).
 - **Hand size:** a player can't look at the cards in another player's hand but
   may count them at any time (CR 402.3).
 - **Library size:** any player may count the cards in any library (CR 401.3).
