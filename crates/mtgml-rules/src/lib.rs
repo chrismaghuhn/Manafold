@@ -2,6 +2,7 @@
 //! incarnation, characteristic queries, and authoritative V3 events.
 
 mod basic_land;
+mod casting;
 mod characteristic_query;
 mod errors;
 mod events;

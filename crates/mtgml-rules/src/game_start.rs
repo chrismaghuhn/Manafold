@@ -694,7 +694,8 @@ fn to_library_bottom(
         crate::zone_incarnation::SelectedZoneTransitionKind::HandToOwnerLibraryBottom { reason },
         library_location(owner, offset),
         facts,
-    )
+    )?;
+    Ok(())
 }
 
 /// CR 103.8, 502: the starting player's first turn begins. Nothing is on the

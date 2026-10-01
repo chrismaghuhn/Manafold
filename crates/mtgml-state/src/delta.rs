@@ -885,6 +885,8 @@ fn validate_delta_operation_coverage(
                 return uncovered();
             }
         }
+        // The object enters by an entry operation or by a zone transition
+        // into the battlefield (a resolving permanent spell).
         for (object, new) in &new_rules.permanents.permanents {
             if !old_rules.permanents.permanents.contains_key(object)
                 && (new.controlled_since_turn != after.core.turn_number
@@ -892,6 +894,10 @@ fn validate_delta_operation_coverage(
                         matches!(operation,
                         V3::ObjectEntered { new_object, to_zone: mtgml_model::ZoneKind::Battlefield, .. }
                             if new_object == object)
+                            || matches!(operation,
+                            V3::ZoneTransition { transition }
+                                if transition.new_object == *object
+                                    && transition.to.zone == mtgml_model::ZoneKind::Battlefield)
                     }))
             {
                 return uncovered();

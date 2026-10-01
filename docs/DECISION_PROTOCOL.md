@@ -238,7 +238,10 @@ The bounded current endpoint uses `AuthoritativeDecisionRequest` /
 PlayerDecisionRequestV4, `CandidateIntent`, `EngineCandidateBinding`,
 `CandidateOrdering`, and DecisionResponseV3. It reuses DecisionDomainV2,
 DecisionAnswerV2, PlayerDecisionIdV1, and CandidateIdV1 unchanged. The V4
-Basic-Land PriorityAction domain is admitted only after the verified
-`basic-land@1.0.0` RulesKernel rederives the exact pass, legal PlayLand, and
-intrinsic basic-land mana-ability candidates. The current slice does not admit
-spell casting, non-mana abilities, or broader card support.
+PriorityAction domain is admitted only after the verified RulesKernel rederives
+the exact pass, legal PlayLand, intrinsic basic-land mana-ability, and CastSpell
+candidates. A CastSpell candidate stands for a vanilla creature card in the
+actor's hand whose printed cost the mana pool pays in exactly one way. A
+PriorityAction request names cards in a hand, so its visibility is
+`acting_player_only`. The current slice does not admit non-creature spells,
+non-mana abilities, or broader card support.

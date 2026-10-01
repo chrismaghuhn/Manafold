@@ -47,12 +47,12 @@
       "information_risk": "medium",
       "key": "rules/basic-priority",
       "lifecycle": "covered",
-      "notes": "Covered for two-player basic-land games on the native turn progression by the listed rules and production-endpoint cases. Priority passes with land plays and mana abilities as the only actions; no stack. No certification, card, deck, format, or playability support is claimed.",
+      "notes": "Covered for two-player basic-land games on the native turn progression by the listed rules and production-endpoint cases. Priority passes with land plays, mana abilities and creature casts (rules/cast-creature-spell) as the only actions; with a creature spell on the stack (rules/stack-resolution) only passing and mana abilities are offered. No certification, card, deck, format, or playability support is claimed.",
       "owners": [
         "priority"
       ],
       "spec_path": "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
-      "summary": "Empty-stack priority windows and explicit pass progression.",
+      "summary": "Priority windows with an empty stack or one creature spell on it, and explicit pass progression.",
       "version": "0.1.0"
     },
     {
@@ -62,18 +62,34 @@
       ],
       "benchmark_scenarios": [],
       "category": "core_rule",
-      "conformance_cases": [],
+      "conformance_cases": [
+        "gray_ogre_with_three_red_and_a_white_can_be_paid_two_ways",
+        "gray_ogre_with_one_red_cannot_be_paid",
+        "a_cost_the_pool_pays_one_way_has_one_option",
+        "the_printed_cost_of_each_vanilla_creature_is_read_from_its_symbols",
+        "a_creature_is_cast_and_resolves_onto_the_battlefield",
+        "casting_is_offered_only_at_sorcery_speed_with_an_exact_payment",
+        "a_payment_with_two_outcomes_is_not_offered_until_the_player_can_choose",
+        "the_opponent_learns_the_card_only_when_it_is_cast",
+        "a_restored_checkpoint_with_a_spell_on_the_stack_continues_identically",
+        "a_game_with_a_cast_replays_to_the_same_checkpoint",
+        "a_closed_episode_may_hold_a_creature_spell_on_the_stack"
+      ],
       "dependencies": [
         "rules/basic-priority",
         "rules/mana-pool",
         "rules/stack-resolution",
         "rules/zone-incarnation"
       ],
-      "implementation_paths": [],
+      "implementation_paths": [
+        "crates/mtgml-rules/src/basic_land.rs",
+        "crates/mtgml-rules/src/casting.rs",
+        "crates/mtgml-rules/src/zone_incarnation.rs"
+      ],
       "information_risk": "high",
       "key": "rules/cast-creature-spell",
-      "lifecycle": "specified",
-      "notes": "Specified only: nothing implements it yet. Instants, targets, X costs, cost changes and responses are excluded and fail closed. No certification, card, deck, format, or playability support is claimed.",
+      "lifecycle": "covered",
+      "notes": "Covered for two-player games of admitted lands and vanilla creatures by the listed rules and production-endpoint cases. A cast is offered only when the pool pays the cost in exactly one way; a cost that can be paid in two ways is not offered yet, and nothing is paid on the player's behalf. Instants, targets, X costs, cost changes and responses are excluded and fail closed. No certification, card, deck, format, or playability support is claimed.",
       "owners": [
         "casting"
       ],
@@ -382,16 +398,27 @@
       ],
       "benchmark_scenarios": [],
       "category": "core_rule",
-      "conformance_cases": [],
+      "conformance_cases": [
+        "a_creature_is_cast_and_resolves_onto_the_battlefield",
+        "the_opponent_can_only_pass_or_make_mana_while_a_spell_is_on_the_stack",
+        "a_restored_checkpoint_with_a_spell_on_the_stack_continues_identically",
+        "a_game_with_a_cast_replays_to_the_same_checkpoint",
+        "a_closed_episode_may_hold_a_creature_spell_on_the_stack",
+        "delta_accepts_an_entry_made_by_a_zone_transition_into_the_battlefield"
+      ],
       "dependencies": [
         "rules/basic-priority",
         "rules/zone-incarnation"
       ],
-      "implementation_paths": [],
+      "implementation_paths": [
+        "crates/mtgml-rules/src/casting.rs",
+        "crates/mtgml-rules/src/turn_progression.rs",
+        "crates/mtgml-rules/src/zone_incarnation.rs"
+      ],
       "information_risk": "medium",
       "key": "rules/stack-resolution",
-      "lifecycle": "specified",
-      "notes": "Specified only: nothing implements it yet. More than one stack object, abilities and responses are excluded and fail closed. No certification, card, deck, format, or playability support is claimed.",
+      "lifecycle": "covered",
+      "notes": "Covered for a stack of one creature spell in two-player games of admitted lands and vanilla creatures by the listed rules and production-endpoint cases. More than one stack object, abilities and responses are excluded and fail closed. No certification, card, deck, format, or playability support is claimed.",
       "owners": [
         "stack"
       ],

@@ -197,6 +197,63 @@ fn delta_accepts_an_entry_made_when_the_object_enters_the_battlefield() {
     assert_eq!(delta.apply_structural_only(&before).unwrap(), after);
 }
 
+/// The zone transition of a spell leaving the stack: object 9 becomes
+/// object 3 in `to_zone`.
+fn spell_zone_transition(to_zone: ZoneKind) -> SemanticDeltaOperation {
+    let snapshot = |object: u64, zone: ZoneKind| ObjectSnapshot {
+        object: GameObjectId(object),
+        physical_card: Some(PhysicalCardId(3)),
+        card_definition: CardDefinitionId(1),
+        owner: PlayerId(1),
+        controller: PlayerId(1),
+        tapped: false,
+        face_down: false,
+        location: ZoneLocation {
+            zone,
+            ..public_location()
+        },
+    };
+    SemanticDeltaOperation::ZoneTransition {
+        transition: Box::new(ZoneTransition {
+            old_object: GameObjectId(9),
+            new_object: GameObjectId(3),
+            physical_card: Some(PhysicalCardId(3)),
+            from: snapshot(9, ZoneKind::Stack).location,
+            to: snapshot(3, to_zone).location,
+            last_known: snapshot(9, ZoneKind::Stack),
+            new_snapshot: snapshot(3, to_zone),
+        }),
+    }
+}
+
+#[test]
+fn delta_accepts_an_entry_made_by_a_zone_transition_into_the_battlefield() {
+    let before = state_with_content_authority();
+    let after = with_object_on_the_battlefield(&before, Some(before.core.turn_number));
+    // The new object also needs its face covered, which is not under test.
+    let face = SemanticDeltaOperation::ObjectFaceChanged {
+        object: GameObjectId(3),
+        from_face: 0,
+        to_face: 0,
+    };
+    StateDelta::between_structural_only(
+        &before,
+        &after,
+        vec![spell_zone_transition(ZoneKind::Battlefield), face.clone()],
+    )
+    .expect("a resolving permanent spell enters the battlefield by a zone transition");
+    // A transition into any other zone does not make an entry.
+    assert_eq!(
+        StateDelta::between_structural_only(
+            &before,
+            &after,
+            vec![spell_zone_transition(ZoneKind::Graveyard), face]
+        )
+        .unwrap_err(),
+        DeltaApplicationError::UncoveredMutation
+    );
+}
+
 #[test]
 fn delta_rejects_an_entry_without_the_object_entering_the_battlefield() {
     let before = state_with_content_authority();

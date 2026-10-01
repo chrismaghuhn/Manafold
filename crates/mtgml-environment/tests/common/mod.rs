@@ -238,11 +238,37 @@ pub fn try_land_game(
     hands: &[Vec<CardDefinitionId>; 2],
     seed: u64,
 ) -> Result<TrustedEnvironmentController, mtgml_environment::ControllerError> {
-    let admission = game_admission();
+    game_at_first_main(&game_admission(), CONTENT, libraries, hands, seed)
+}
+
+/// As `land_game`, from the combined land and creature content: the libraries
+/// and hands may hold creatures.
+pub fn creature_game(
+    libraries: &[Vec<CardDefinitionId>; 2],
+    hands: &[Vec<CardDefinitionId>; 2],
+    seed: u64,
+) -> TrustedEnvironmentController {
+    game_at_first_main(
+        &creature_game_admission(),
+        CREATURE_CONTENT,
+        libraries,
+        hands,
+        seed,
+    )
+    .unwrap()
+}
+
+fn game_at_first_main(
+    admission: &ExecutableProfileAdmissionV1,
+    content: &[u8],
+    libraries: &[Vec<CardDefinitionId>; 2],
+    hands: &[Vec<CardDefinitionId>; 2],
+    seed: u64,
+) -> Result<TrustedEnvironmentController, mtgml_environment::ControllerError> {
     let mut state = land_game_state(libraries, hands, seed);
     let status = mtgml_model::EpisodeStatus::Running;
-    mtgml_rules::install_basic_land_request(&admission, &mut state, P1, &status).unwrap();
-    controller_for(&admission, CONTENT, state)
+    mtgml_rules::install_basic_land_request(admission, &mut state, P1, &status).unwrap();
+    controller_for(admission, content, state)
 }
 
 /// A game from two deck lists, started as CR 103 prescribes.

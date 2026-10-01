@@ -37,7 +37,8 @@ use mtgml_state::{
 
 use crate::{
     AuthoritativeRuleEvent, AuthoritativeRuleEventKind, BasicLandCandidateError,
-    BasicLandTransitionError as Error, BasicLandTransitionProduct, SelectedSuccessorDecisionV1,
+    BasicLandTransitionError as Error, BasicLandTransitionProduct, MagicActionRequestV1,
+    SelectedSuccessorDecisionV1,
 };
 
 /// Executes one V4 response. Land plays and mana abilities use the
@@ -69,6 +70,15 @@ pub fn execute_magic_response(
             match crate::selected_basic_land_action(admission, state, actor, response, status)
                 .map_err(|_| Error::InvalidSelection)?
             {
+                SelectedSuccessorDecisionV1::MagicAction(MagicActionRequestV1::CastSpell {
+                    actor,
+                    object,
+                }) => {
+                    if !matches!(status, EpisodeStatus::Running) {
+                        return Err(Error::InvalidSelection);
+                    }
+                    return cast(admission, state, request, actor, object);
+                }
                 SelectedSuccessorDecisionV1::MagicAction(_) => {
                     return crate::execute_basic_land_response(
                         admission, state, actor, response, status,
@@ -243,11 +253,11 @@ pub(crate) fn observe_public(
 }
 
 /// The slice this progression can evaluate (D13): exactly two players, only
-/// admitted lands and vanilla creatures on the battlefield, and none of the
-/// state no rule of this slice can evaluate. Creatures may be on the
-/// battlefield but cannot attack yet (see
-/// `reject_attackers_while_creatures_cannot_attack`), so no combat damage is
-/// dealt and no state-based action can apply.
+/// admitted lands and vanilla creatures on the battlefield, a stack that is
+/// empty or holds one creature spell, and none of the state no rule of this
+/// slice can evaluate. Creatures may be on the battlefield but cannot attack
+/// yet (see `reject_attackers_while_creatures_cannot_attack`), so no combat
+/// damage is dealt and no state-based action can apply.
 fn validate_slice(
     admission: &ExecutableProfileAdmissionV1,
     state: &EngineState,
@@ -262,8 +272,7 @@ fn validate_slice(
         || !execution.effects.is_empty()
         || !execution.waiting_triggers.is_empty()
         || !execution.delayed_effects.is_empty()
-        || !parts.zones.stack_order.is_empty()
-        || !parts.zones.stack_records.is_empty()
+        || !crate::casting::stack_within_profile(admission, state)
         || parts.combat.as_ref().is_some_and(|combat| {
             !combat.attackers.is_empty()
                 || !combat.blockers.is_empty()
@@ -346,7 +355,7 @@ fn hands_within_slice(state: &EngineState) -> bool {
     })
 }
 
-fn admits(admission: &ExecutableProfileAdmissionV1, key: &str) -> Result<(), Error> {
+pub(crate) fn admits(admission: &ExecutableProfileAdmissionV1, key: &str) -> Result<(), Error> {
     if admission
         .resolved_capabilities()
         .iter()
@@ -405,8 +414,16 @@ fn progress(
                 player,
                 consecutive_passes: 1,
             } if player == request.actor => {
-                next.core.priority = PriorityState::None;
-                advance(admission, &mut next, &mut facts)?
+                if next.zones.stack_order.is_empty() {
+                    next.core.priority = PriorityState::None;
+                    advance(admission, &mut next, &mut facts)?
+                } else {
+                    // CR 608.1, 117.4: with an object on the stack, the top
+                    // object resolves instead of the step ending. The active
+                    // player then receives priority (CR 117.3b).
+                    crate::casting::resolve_top(admission, &mut next, &mut facts)?;
+                    open_priority(&mut next)
+                }
             }
             _ => return Err(Error::TurnProgressUnsupported),
         },
@@ -446,6 +463,42 @@ fn progress(
         }
     };
     finish(admission, before, request, next, facts, next_decision)
+}
+
+/// CR 601.2: `caster` casts `card`, and then receives priority (CR 117.3c).
+/// The candidate that was selected stands for exactly one payment.
+fn cast(
+    admission: &ExecutableProfileAdmissionV1,
+    before: &EngineState,
+    request: &AuthoritativeDecisionRequest,
+    caster: PlayerId,
+    card: GameObjectId,
+) -> Result<BasicLandTransitionProduct, Error> {
+    let spent = crate::casting::sole_payment(admission, before, caster, card)?;
+    let mut next = before.clone();
+    next.execution.pending_decision = None;
+    next.revision = StateRevision(
+        before
+            .revision
+            .0
+            .checked_add(1)
+            .ok_or(Error::IdentityExhausted)?,
+    );
+    let mut facts = Facts::default();
+    crate::casting::cast_spell(admission, &mut next, caster, card, spent, &mut facts)?;
+    // An action ends any succession of passes (CR 117.4).
+    next.core.priority = PriorityState::HeldBy {
+        player: caster,
+        consecutive_passes: 0,
+    };
+    finish(
+        admission,
+        before,
+        request,
+        next,
+        facts,
+        NextDecision::Priority(caster),
+    )
 }
 
 /// Ends the current step and performs turn-based actions until a step in
@@ -650,7 +703,8 @@ pub(crate) fn draw(
             partition: None,
         },
         facts,
-    )
+    )?;
+    Ok(())
 }
 
 /// Moves one card through the shared zone-incarnation authority (new
@@ -661,7 +715,7 @@ pub(crate) fn move_card(
     kind: crate::zone_incarnation::SelectedZoneTransitionKind,
     claimed_to: ZoneLocation,
     facts: &mut Facts,
-) -> Result<(), Error> {
+) -> Result<GameObjectId, Error> {
     let claimed_from = next
         .zones
         .locations
@@ -669,7 +723,7 @@ pub(crate) fn move_card(
         .cloned()
         .ok_or(Error::InvalidResult)?;
     let mut events = Vec::new();
-    crate::zone_incarnation::apply_selected_zone_transition_in_workspace(
+    let transition = crate::zone_incarnation::apply_selected_zone_transition_in_workspace(
         next,
         &crate::zone_incarnation::SelectedZoneTransitionRequest {
             object,
@@ -681,20 +735,16 @@ pub(crate) fn move_card(
     )
     .map_err(|_| Error::TurnProgressUnsupported)?;
     // The new incarnation shows the same face as the card it came from.
-    for event in &events {
-        if let crate::zone_incarnation::ZoneMoveEvent::Transition(transition) = event {
-            let face = next
-                .card_rules
-                .faces
-                .faces
-                .remove(&transition.old_object)
-                .ok_or(Error::InvalidResult)?;
-            next.card_rules
-                .faces
-                .faces
-                .insert(transition.new_object, face);
-        }
-    }
+    let face = next
+        .card_rules
+        .faces
+        .faces
+        .remove(&transition.old_object)
+        .ok_or(Error::InvalidResult)?;
+    next.card_rules
+        .faces
+        .faces
+        .insert(transition.new_object, face);
     // A card that leaves the battlefield is no longer a permanent: only the
     // objects on the battlefield keep their entry.
     let battlefield = battlefield_objects(next).into_iter().collect();
@@ -702,7 +752,7 @@ pub(crate) fn move_card(
         .permanents
         .prune_departed_objects(&battlefield);
     facts.zone_events.extend(events);
-    Ok(())
+    Ok(transition.new_object)
 }
 
 /// Emits one net event per changed aspect, installs the next decision and
@@ -947,6 +997,14 @@ pub(crate) fn finish(
                 to: to.map(|record| Box::new(record.payload.clone())),
             });
         }
+    }
+    // Resolving or casting changes the stack order. The order is not derived
+    // from an event: it is one operation of its own.
+    if before.zones.stack_order != next.zones.stack_order {
+        operations.push(SemanticDeltaOperation::StackOrderChanged {
+            from: before.zones.stack_order.clone(),
+            to: next.zones.stack_order.clone(),
+        });
     }
     operations.push(SemanticDeltaOperation::PendingRequestChanged {
         from: Some(Box::new(answered.clone())),
