@@ -196,6 +196,8 @@ fn could_block(state: &EngineState, creatures: &[Creature]) -> Result<bool, Erro
 /// - it exists from the declaration to the end of combat;
 /// - the attackers are creatures on the battlefield that the active player
 ///   controls (CR 508.1a), and they attack the other player (CR 506.2);
+/// - each attacker is tapped (CR 508.1f) and has been under its controller's
+///   control since the turn began (CR 302.6, 508.1a);
 /// - from the declare blockers step on, with attackers, the defending player
 ///   controls no untapped creature (CR 509.1a): the game stops before that step
 ///   when one could block, because blocks are not supported yet.
@@ -220,6 +222,26 @@ pub(crate) fn validate_reachable_combat(
             .any(|creature| creature.object == *attacker && creature.controller == active)
     }) {
         return Err(Error::TurnProgressUnsupported);
+    }
+    // Declaring an attacker taps it, and nothing untaps it before the combat
+    // ends. Only a creature that is not summoning sick can be declared.
+    for attacker in &combat.attackers {
+        let tapped = state
+            .zones
+            .objects
+            .get(attacker)
+            .map(|object| object.tapped);
+        let controlled_since = state
+            .card_rules
+            .permanents
+            .permanents
+            .get(attacker)
+            .map(|permanent| permanent.controlled_since_turn);
+        if tapped != Some(true)
+            || controlled_since.is_none_or(|since| since >= state.core.turn_number)
+        {
+            return Err(Error::TurnProgressUnsupported);
+        }
     }
     let blocking_step = matches!(
         step,

@@ -12,8 +12,8 @@ use mtgml_decision::{
     DecisionVisibility, PlayerDecisionRequestV4, DECISION_RESPONSE_V3_SCHEMA,
 };
 use mtgml_environment::{
-    EnvironmentCheckpointV8, PlayerEndpoint, PlayerEndpointError, PlayerEndpointHandle,
-    TrustedEnvironmentController,
+    CheckpointV8Error, EnvironmentCheckpointV8, PlayerEndpoint, PlayerEndpointError,
+    PlayerEndpointHandle, TrustedEnvironmentController,
 };
 use mtgml_model::{
     CandidateIdV1, CardDefinitionId, EpisodeStatus, GameObjectId, OpaqueObjectId,
@@ -27,9 +27,9 @@ use mtgml_observation::{
 };
 use mtgml_rules::{AuthoritativeRuleEventKind, BasicLandTransitionProduct};
 use mtgml_state::{
-    CastContinuationStage, ContinuationPayload, DeltaApplicationError, EngineState,
+    CastContinuationStage, ContinuationPayload, DeltaApplicationError, EngineState, GameObject,
     ManaPaymentStage, ManaPaymentStaging, ManaPoolChangeCauseV1, ManaPoolV1, PriorityState,
-    SemanticDeltaOperation, StateDelta, TurnPosition,
+    SemanticDeltaOperation, StackItemPayload, StackRecord, StateDelta, TurnPosition,
 };
 use std::collections::BTreeMap;
 
@@ -214,6 +214,33 @@ impl Game {
         self.controller.checkpoint().unwrap().state
     }
 
+    /// As `answer`, and the checkpoint the answer leads to restores: it is a
+    /// state the game may be restored in.
+    fn answer_restorable(
+        &self,
+        wanted: impl Fn(&CandidateIntent) -> bool,
+        fallback: impl Fn(&CandidateIntent) -> bool,
+    ) {
+        self.answer(wanted, fallback);
+        self.assert_restorable();
+    }
+
+    /// The game's checkpoint is one that a restore accepts.
+    fn assert_restorable(&self) {
+        let reached = self.controller.checkpoint().unwrap();
+        let state = &reached.state;
+        let restored = restored(&reached, state.clone());
+        assert!(
+            restored.is_ok(),
+            "a state the game reached is refused on restore: {restored:?}\nturn {} {:?} {:?}, stack {:?}, request {:?}",
+            state.core.turn_number,
+            state.core.position,
+            state.core.priority,
+            state.zones.stack_order,
+            state.execution.pending_decision.as_ref().map(|request| &request.purpose),
+        );
+    }
+
     fn observation(&self, player: PlayerId) -> MagicSharedExecutionObservationV1 {
         mtgml_wire::decode_canonical(&self.observation_payload(player)).unwrap()
     }
@@ -283,6 +310,21 @@ fn tap_for_mana(intent: &CandidateIntent) -> bool {
 
 fn cast_spell(intent: &CandidateIntent) -> bool {
     matches!(intent, CandidateIntent::CastSpell { .. })
+}
+
+/// Restoring `state` in place of the game that reached `reached`: the same
+/// admission, status and counters, and the checkpoint a restore builds.
+fn restored(
+    reached: &EnvironmentCheckpointV8,
+    state: EngineState,
+) -> Result<EnvironmentCheckpointV8, CheckpointV8Error> {
+    EnvironmentCheckpointV8::new_for_basic_land_profile(
+        &creature_game_admission(),
+        state,
+        reached.status.clone(),
+        reached.limit_counters.clone(),
+        reached.execution_identity.clone(),
+    )
 }
 
 /// 20 Mountains and Plains.
@@ -2010,6 +2052,303 @@ fn a_restored_combat_the_game_could_not_reach_is_refused() {
     forged.combat.as_mut().unwrap().defending_player = P1;
     assert!(restore(forged).is_err());
     assert_eq!(game.controller.checkpoint().unwrap(), reached);
+}
+
+/// Savannah Lions cast on P1's turn 1 and on the stack: P1 holds priority
+/// with the cast complete. And Gray Ogre cast on P1's turn 7 and on the
+/// stack, with P1 still choosing how to pay. Each is a state the game reaches.
+fn checkpoints_with_a_spell_on_the_stack() -> [(&'static str, EnvironmentCheckpointV8); 2] {
+    let (mountain, plains) = land_definitions();
+    let [lions, _, _] = creature_definitions();
+    let cast = Game::with_hands([vec![plains, lions], vec![mountain]]);
+    cast.answer(play_land, pass);
+    cast.answer(tap_for_mana, pass);
+    cast.answer(cast_spell, pass);
+    let cast = cast.controller.checkpoint().unwrap();
+    assert_eq!(
+        cast.state
+            .execution
+            .pending_decision
+            .as_ref()
+            .unwrap()
+            .purpose,
+        DecisionPurposeV4::PriorityAction
+    );
+    let paying = ogre_cast_awaiting_payment()
+        .controller
+        .checkpoint()
+        .unwrap();
+    assert_eq!(
+        paying
+            .state
+            .execution
+            .pending_decision
+            .as_ref()
+            .unwrap()
+            .purpose,
+        DecisionPurposeV4::ManaPayment
+    );
+    [("a cast spell", cast), ("a spell being paid for", paying)]
+}
+
+/// `state` with `forge` applied to the one spell on its stack: its stack
+/// record and its card object.
+fn with_the_spell_forged(
+    state: &EngineState,
+    forge: impl FnOnce(&mut StackRecord, &mut GameObject),
+) -> EngineState {
+    let mut forged = state.clone();
+    let [top] = forged.zones.stack_order.as_slice() else {
+        panic!("not one spell on the stack");
+    };
+    let record = forged.zones.stack_records.get_mut(top).unwrap();
+    let Some(StackItemPayload::Spell {
+        stack_card_object, ..
+    }) = record.payload.clone()
+    else {
+        panic!("the stack holds no spell");
+    };
+    let object = forged.zones.objects.get_mut(&stack_card_object).unwrap();
+    forge(record, object);
+    forged
+}
+
+/// Only the active player casts a creature spell (CR 302.1, 117.1a), and the
+/// player who casts it controls it (CR 112.2, 601.2a) and owns its card
+/// (CR 108.3: every card of this slice's decks starts in its owner's deck). So
+/// P1, the active player, controls the spell's stack record and card object
+/// and owns the card. A restore refuses any other state, and accepts the
+/// state it was forged from.
+fn assert_forged_spell_is_refused(forge: impl Fn(&mut StackRecord, &mut GameObject), what: &str) {
+    let mut forgeries = Forgeries::default();
+    for (state_name, reached) in checkpoints_with_a_spell_on_the_stack() {
+        let state = &reached.state;
+        assert_eq!(state.core.active_player, P1);
+        restored(&reached, state.clone()).unwrap();
+        let forged = with_the_spell_forged(state, &forge);
+        forgeries.restore(format!("{what}, {state_name}"), &reached, forged);
+    }
+    forgeries.assert_all_refused();
+}
+
+/// The forged states a restore accepted instead of refusing.
+#[derive(Default)]
+struct Forgeries {
+    accepted: Vec<String>,
+}
+
+impl Forgeries {
+    /// Restores `forged` in place of the game that reached `reached`: it must
+    /// be refused as an invalid state.
+    fn restore(
+        &mut self,
+        what: impl std::fmt::Display,
+        reached: &EnvironmentCheckpointV8,
+        forged: EngineState,
+    ) {
+        match restored(reached, forged) {
+            Err(CheckpointV8Error::State) => {}
+            other => self
+                .accepted
+                .push(format!("{what}: {:?}", other.map(|_| ()))),
+        }
+    }
+
+    fn assert_all_refused(self) {
+        assert!(
+            self.accepted.is_empty(),
+            "a restore accepted what the game cannot reach:
+{}",
+            self.accepted.join(
+                "
+"
+            )
+        );
+    }
+}
+
+#[test]
+fn a_restored_spell_with_a_stack_record_the_active_player_does_not_control_is_refused() {
+    assert_forged_spell_is_refused(
+        |record, _| record.controller = P2,
+        "the stack record is controlled by P2",
+    );
+}
+
+#[test]
+fn a_restored_spell_with_a_card_the_active_player_does_not_own_is_refused() {
+    assert_forged_spell_is_refused(|_, object| object.owner = P2, "the card is owned by P2");
+}
+
+#[test]
+fn a_restored_spell_with_a_card_object_the_active_player_does_not_control_is_refused() {
+    assert_forged_spell_is_refused(
+        |_, object| object.controller = P2,
+        "the card object is controlled by P2",
+    );
+}
+
+#[test]
+fn a_restored_spell_of_the_player_who_is_not_active_is_refused() {
+    // The record, the card and its object agree with each other, and the
+    // active player is the other one.
+    assert_forged_spell_is_refused(
+        |record, object| {
+            record.controller = P2;
+            object.owner = P2;
+            object.controller = P2;
+        },
+        "the spell is P2's, and P1 is the active player",
+    );
+}
+
+#[test]
+fn a_restored_spell_outside_a_main_phase_is_refused() {
+    let mut forgeries = Forgeries::default();
+    for (state_name, reached) in checkpoints_with_a_spell_on_the_stack() {
+        for position in [
+            TurnPosition::Beginning {
+                step: mtgml_state::BeginningStep::Upkeep,
+            },
+            TurnPosition::Combat {
+                step: mtgml_state::CombatStep::BeginningOfCombat,
+            },
+            TurnPosition::Ending {
+                step: mtgml_state::EndingStep::EndStep,
+            },
+        ] {
+            let mut forged = reached.state.clone();
+            forged.core.position = position;
+            forgeries.restore(format!("{state_name} in {position:?}"), &reached, forged);
+        }
+    }
+    forgeries.assert_all_refused();
+}
+
+#[test]
+fn a_restored_permanent_its_owner_does_not_control_is_refused() {
+    // P1's turn 1: it plays its Plains, taps it, and casts Savannah Lions,
+    // which resolves. The state has a land and a creature, both P1's; the
+    // Plains is tapped, so no mana ability of it is on offer to change.
+    let (mountain, plains) = land_definitions();
+    let [lions, _, _] = creature_definitions();
+    let game = Game::with_hands([vec![plains, lions], vec![mountain]]);
+    let creature = cast_on_turn_one(&game, lions);
+    let land = game.only_object(P1, plains, ZoneKind::Battlefield);
+    let reached = game.controller.checkpoint().unwrap();
+    assert!(reached.state.zones.objects[&land].tapped);
+    restored(&reached, reached.state.clone()).unwrap();
+
+    // A permanent is controlled by the player under whose control it entered
+    // the battlefield (CR 110.2), and no card of this pool changes control: a
+    // permanent that P2 controls and P1 owns is not one the game makes.
+    let mut forgeries = Forgeries::default();
+    for (what, object) in [("the creature", creature), ("the land", land)] {
+        let mut forged = reached.state.clone();
+        forged.zones.objects.get_mut(&object).unwrap().controller = P2;
+        forgeries.restore(
+            format!("{what} is controlled by P2 and owned by P1"),
+            &reached,
+            forged,
+        );
+    }
+    forgeries.assert_all_refused();
+}
+
+#[test]
+fn a_restored_attacker_that_could_not_have_attacked_is_refused() {
+    let (game, creature) = lions_ready_to_attack(20);
+    game.declare_attackers(&[opaque_of(&game.state(), P1, creature)]);
+    let reached = game.controller.checkpoint().unwrap();
+    let state = &reached.state;
+    assert_eq!(state.combat.as_ref().unwrap().attackers, vec![creature]);
+    assert!(state.zones.objects[&creature].tapped);
+    assert!(
+        state.card_rules.permanents.permanents[&creature].controlled_since_turn
+            < state.core.turn_number
+    );
+    restored(&reached, state.clone()).unwrap();
+
+    // CR 508.1f: declaring an attacker taps it.
+    let mut forgeries = Forgeries::default();
+    let mut untapped = state.clone();
+    untapped.zones.objects.get_mut(&creature).unwrap().tapped = false;
+    forgeries.restore("an attacker that is untapped", &reached, untapped);
+    // CR 302.6, 508.1a: a creature that came under its controller's control
+    // this turn cannot attack.
+    let mut sick = state.clone();
+    sick.card_rules
+        .permanents
+        .permanents
+        .get_mut(&creature)
+        .unwrap()
+        .controlled_since_turn = state.core.turn_number;
+    forgeries.restore("an attacker that arrived this turn", &reached, sick);
+    forgeries.assert_all_refused();
+}
+
+#[test]
+fn every_boundary_of_a_cast_a_resolution_an_attack_and_its_damage_restores() {
+    let (mountain, plains) = land_definitions();
+    let [lions, _, _] = creature_definitions();
+
+    // P1 casts Savannah Lions on turn 1, attacks with it on turn 3, and casts
+    // a second one in its postcombat main phase. Every answer on the way
+    // leads to a checkpoint that restores.
+    let game = Game::with_hands_and_life(
+        [vec![plains, plains, lions, lions], vec![mountain]],
+        [20, 20],
+    );
+    game.answer_restorable(play_land, pass);
+    game.answer_restorable(tap_for_mana, pass);
+    game.answer_restorable(cast_spell, pass);
+    game.answer_restorable(pass, pass);
+    game.answer_restorable(pass, pass);
+    let first = game.only_object(P1, lions, ZoneKind::Battlefield);
+    while !at_attackers(3)(&game.state()) {
+        game.answer_restorable(play_land, pass);
+    }
+    game.declare_attackers(&[opaque_of(&game.state(), P1, first)]);
+    game.assert_restorable();
+    while game.state().core.position != TurnPosition::PostcombatMain {
+        game.answer_restorable(pass, pass);
+    }
+    let state = game.state();
+    assert_eq!(state.core.turn_number, 3);
+    assert_eq!(state.core.players[&P2].life, 18, "the attack dealt damage");
+    // The second spell is cast and resolves in the postcombat main phase.
+    game.answer_restorable(tap_for_mana, pass);
+    game.answer_restorable(cast_spell, pass);
+    let state = game.state();
+    assert_eq!(state.core.position, TurnPosition::PostcombatMain);
+    assert_eq!(state.zones.stack_order.len(), 1);
+    game.answer_restorable(pass, pass);
+    game.answer_restorable(pass, pass);
+    assert_eq!(game.zones_of(P1, &[lions]), vec![ZoneKind::Battlefield; 2]);
+
+    // Gray Ogre is paid for in a choice of two ways, and attacks on turn 9.
+    let game = ogre_with_red_red_red_and_white();
+    game.assert_restorable();
+    game.answer_restorable(cast_spell, pass);
+    assert_eq!(game.pending().1.purpose, DecisionPurposeV4::ManaPayment);
+    game.answer_restorable(pay(RED_RED_WHITE), any_payment);
+    game.answer_restorable(pass, pass);
+    game.answer_restorable(pass, pass);
+    while !at_attackers(9)(&game.state()) {
+        game.answer_restorable(play_land, pass);
+    }
+    let ogre = game.only_object(P1, creature_definitions()[1], ZoneKind::Battlefield);
+    let life = game.state().core.players[&P2].life;
+    game.declare_attackers(&[opaque_of(&game.state(), P1, ogre)]);
+    game.assert_restorable();
+    while game.state().core.position != TurnPosition::PostcombatMain {
+        game.answer_restorable(pass, pass);
+    }
+    assert_eq!(
+        game.state().core.players[&P2].life,
+        life - 2,
+        "Gray Ogre is a 2/2 and dealt its damage"
+    );
 }
 
 /// The permanent `object` as `player` is shown it: under their own opaque id,

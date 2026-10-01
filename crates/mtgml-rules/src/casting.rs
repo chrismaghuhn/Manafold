@@ -45,7 +45,8 @@ pub(crate) enum CastError {
 }
 
 /// Whether the stack of `state` is one this profile can hold: empty, or one
-/// creature spell without rules text that it cast, with no modes or targets.
+/// creature spell without rules text, with no modes or targets, that the
+/// active player cast in a main phase (see `spell_within_profile`).
 pub(crate) fn stack_within_profile(
     admission: &ExecutableProfileAdmissionV1,
     state: &EngineState,
@@ -54,24 +55,52 @@ pub(crate) fn stack_within_profile(
         [] => state.zones.stack_records.is_empty(),
         [top] => {
             state.zones.stack_records.len() == 1
-                && matches!(
-                    state
-                        .zones
-                        .stack_records
-                        .get(top)
-                        .and_then(|record| record.payload.as_ref()),
-                    Some(StackItemPayload::Spell {
-                        card_definition_id,
-                        modes,
-                        targets,
-                        ..
-                    }) if modes.is_empty()
-                        && targets.is_empty()
-                        && is_vanilla_creature(admission, *card_definition_id)
-                )
+                && state
+                    .zones
+                    .stack_records
+                    .get(top)
+                    .is_some_and(|record| spell_within_profile(admission, state, record))
         }
         _ => false,
     }
+}
+
+/// The spell of `record` is one this slice can have on the stack. Only the
+/// active player casts a creature spell, in a main phase (CR 302.1, 117.1a),
+/// and a spell stays on the stack until both players pass in succession in
+/// that phase (CR 608.1), so the position is a main phase. The player who
+/// casts a spell controls it (CR 112.2, 601.2a), and casts a card they own
+/// from their hand, so its stack record, its card object and its owner are all
+/// the active player.
+fn spell_within_profile(
+    admission: &ExecutableProfileAdmissionV1,
+    state: &EngineState,
+    record: &StackRecord,
+) -> bool {
+    let Some(StackItemPayload::Spell {
+        stack_card_object,
+        card_definition_id,
+        modes,
+        targets,
+        ..
+    }) = record.payload.as_ref()
+    else {
+        return false;
+    };
+    let active = state.core.active_player;
+    modes.is_empty()
+        && targets.is_empty()
+        && is_vanilla_creature(admission, *card_definition_id)
+        && matches!(
+            state.core.position,
+            TurnPosition::PrecombatMain | TurnPosition::PostcombatMain
+        )
+        && record.controller == active
+        && state
+            .zones
+            .objects
+            .get(stack_card_object)
+            .is_some_and(|object| object.owner == active && object.controller == active)
 }
 
 fn is_vanilla_creature(

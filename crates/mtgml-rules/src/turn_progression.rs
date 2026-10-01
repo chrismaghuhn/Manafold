@@ -178,6 +178,7 @@ pub fn validate_magic_pending_request(
     // know combat: a restored combat is checked here, for every request and
     // every status.
     if !hands_within_slice(state)
+        || !permanents_controlled_by_their_owners(state)
         || (matches!(status, EpisodeStatus::Running) && state_based_action_pending(state))
         || crate::combat::validate_reachable_combat(admission, state).is_err()
     {
@@ -282,11 +283,12 @@ pub(crate) fn record_unobserved(facts: &mut Facts, event: AuthoritativeRuleEvent
 }
 
 /// The slice this progression can evaluate (D13): exactly two players, only
-/// admitted lands and vanilla creatures on the battlefield, a stack that is
-/// empty or holds one creature spell, no continuation but the payment of that
-/// spell, a combat that this slice could have produced (see
-/// `crate::combat::validate_reachable_combat`), and none of the state no rule
-/// of this slice can evaluate. State-based actions are checked before
+/// admitted lands and vanilla creatures on the battlefield, each controlled by
+/// its owner, a stack that is empty or holds one creature spell that the active
+/// player cast in a main phase (see `crate::casting::stack_within_profile`), no
+/// continuation but the payment of that spell, a combat that this slice could
+/// have produced (see `crate::combat::validate_reachable_combat`), and none of
+/// the state no rule of this slice can evaluate. State-based actions are checked before
 /// a player would receive priority (CR 704.3), so a decision is never pending
 /// while one applies: a player at 0 or less life who has not lost is not a
 /// state of this slice (CR 704.5a).
@@ -313,7 +315,7 @@ fn validate_slice(
     {
         return Err(Error::TurnProgressUnsupported);
     }
-    if !hands_within_slice(state) {
+    if !hands_within_slice(state) || !permanents_controlled_by_their_owners(state) {
         return Err(Error::TurnProgressUnsupported);
     }
     crate::S1QueryAuthority::for_objects(admission, state, &battlefield_objects(state))
@@ -330,6 +332,21 @@ fn state_based_action_pending(state: &EngineState) -> bool {
         .players
         .values()
         .any(|player| !player.has_lost && player.life <= 0)
+}
+
+/// A permanent's controller is by default the player under whose control it
+/// entered the battlefield (CR 110.2), and a permanent spell enters under its
+/// controller's control (CR 608.3a), who is its owner (CR 112.2, 302.1). No
+/// card of this slice changes control, so every permanent is controlled by its
+/// owner; a state in which one is not is not one this slice can have made.
+fn permanents_controlled_by_their_owners(state: &EngineState) -> bool {
+    battlefield_objects(state).iter().all(|object| {
+        state
+            .zones
+            .objects
+            .get(object)
+            .is_some_and(|object| object.controller == object.owner)
+    })
 }
 
 pub(crate) fn battlefield_objects(state: &EngineState) -> Vec<GameObjectId> {
