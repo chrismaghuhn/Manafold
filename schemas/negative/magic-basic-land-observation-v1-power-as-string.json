@@ -71,7 +71,7 @@
     {
       "object": "3",
       "controller": "1",
-      "power": 3,
+      "power": "3",
       "toughness": 3,
       "controlled_since_turn": 1
     },

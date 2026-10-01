@@ -10,6 +10,10 @@
       "target": "7"
     }
   ],
+  "attacking": [
+    "7",
+    "7"
+  ],
   "counters": [
     {
       "count": 1,
@@ -22,6 +26,22 @@
       "object": "7"
     }
   ],
+  "creatures": [
+    {
+      "controlled_since_turn": 1,
+      "controller": "1",
+      "object": "3",
+      "power": 3,
+      "toughness": 3
+    },
+    {
+      "controlled_since_turn": 1,
+      "controller": "0",
+      "object": "7",
+      "power": 2,
+      "toughness": 1
+    }
+  ],
   "faces": [
     {
       "face": "front",
@@ -32,9 +52,6 @@
       "object": "7"
     }
   ],
-  "tapped": [],
-  "creatures": [],
-  "attacking": [],
   "mana_pools": [
     {
       "creature_spell_only": [
@@ -75,8 +92,21 @@
       ]
     }
   ],
-  "players": [{"player": "0", "life": 20, "hand_count": 7, "library_count": 33}, {"player": "1", "life": 20, "hand_count": 7, "library_count": 33}],
   "pending_sba_ordering": null,
+  "players": [
+    {
+      "hand_count": 6,
+      "library_count": 33,
+      "life": 20,
+      "player": "0"
+    },
+    {
+      "hand_count": 7,
+      "library_count": 33,
+      "life": -2,
+      "player": "1"
+    }
+  ],
   "priority": {
     "kind": "held_by",
     "player": "0"
@@ -139,7 +169,9 @@
       ]
     }
   ],
-  "state_revision": "5",
+  "tapped": [
+    "7"
+  ],
   "temporary_effects": [
     {
       "affected_objects": [

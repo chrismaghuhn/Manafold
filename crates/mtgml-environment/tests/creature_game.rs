@@ -21,8 +21,9 @@ use mtgml_model::{
     ZoneKind,
 };
 use mtgml_observation::{
-    MagicSharedExecutionObservationV1, ObservedEventEnvelopeV4, ObservedEventKindV4,
-    PlayerStepSubmissionV1, PlayerStepV4, PublicStackItemV1, StackItemRemovalCauseV1,
+    CreatureObservationV1, MagicSharedExecutionObservationV1, ObservedEventEnvelopeV4,
+    ObservedEventKindV4, PlayerStepSubmissionV1, PlayerStepV4, PublicStackItemV1,
+    StackItemRemovalCauseV1,
 };
 use mtgml_rules::{AuthoritativeRuleEventKind, BasicLandTransitionProduct};
 use mtgml_state::{
@@ -1990,4 +1991,162 @@ fn a_restored_combat_the_game_could_not_reach_is_refused() {
     forged.combat.as_mut().unwrap().defending_player = P1;
     assert!(restore(forged).is_err());
     assert_eq!(game.controller.checkpoint().unwrap(), reached);
+}
+
+/// The creature `object` as `player` is shown it: under their own opaque id.
+fn creature_row(
+    state: &EngineState,
+    player: PlayerId,
+    object: GameObjectId,
+    (power, toughness): (i64, i64),
+    controlled_since_turn: u64,
+) -> CreatureObservationV1 {
+    CreatureObservationV1 {
+        object: opaque_of(state, player, object),
+        controller: state.zones.objects[&object].controller,
+        power,
+        toughness,
+        controlled_since_turn,
+    }
+}
+
+/// The rows in the order a player is shown them: ascending by the opaque ids
+/// that player has for the creatures.
+fn ascending(mut rows: Vec<CreatureObservationV1>) -> Vec<CreatureObservationV1> {
+    rows.sort_by_key(|row| row.object);
+    rows
+}
+
+#[test]
+fn both_players_see_the_creature_with_its_power_toughness_and_arrival_turn() {
+    let (mountain, plains) = land_definitions();
+    let [lions, _, giant] = creature_definitions();
+    let game = Game::with_hands([vec![plains, lions], vec![plains, lions]]);
+    for player in [P1, P2] {
+        assert!(game.observation(player).creatures.is_empty(), "{player:?}");
+    }
+
+    // P1's Savannah Lions arrives on turn 1. Both players see it, under their
+    // own opaque id, with its printed power and toughness (CR 208.1), the
+    // player who controls it and the turn since which they have (CR 302.6).
+    let first = cast_on_turn_one(&game, lions);
+    let state = game.state();
+    for player in [P1, P2] {
+        assert_eq!(
+            game.observation(player).creatures,
+            vec![creature_row(&state, player, first, (2, 1), 1)],
+            "{player:?}"
+        );
+    }
+
+    // P2's arrives on turn 2: the rows are one per creature, whoever controls
+    // it, and ascending by the viewer's opaque ids.
+    game.run_until(start_of_main_phase(2));
+    game.answer(play_land, pass);
+    game.answer(tap_for_mana, pass);
+    game.answer(cast_spell, pass);
+    game.answer(pass, pass);
+    game.answer(pass, pass);
+    let second = game.only_object(P2, lions, ZoneKind::Battlefield);
+    let state = game.state();
+    for player in [P1, P2] {
+        assert_eq!(
+            game.observation(player).creatures,
+            ascending(vec![
+                creature_row(&state, player, first, (2, 1), 1),
+                creature_row(&state, player, second, (2, 1), 2),
+            ]),
+            "{player:?}"
+        );
+    }
+
+    // Lands are not creatures, and another creature has its own printed
+    // power and toughness: Hill Giant is 3/3 and arrives on turn 7.
+    let game = Game::with_hands([
+        vec![mountain, mountain, mountain, mountain, giant],
+        vec![mountain],
+    ]);
+    game.run_until(start_of_main_phase(7));
+    game.answer(play_land, pass);
+    for _ in 0..4 {
+        game.answer(tap_for_mana, pass);
+    }
+    game.answer(cast_spell, pass);
+    game.answer(pass, pass);
+    game.answer(pass, pass);
+    let creature = game.only_object(P1, giant, ZoneKind::Battlefield);
+    let state = game.state();
+    for player in [P1, P2] {
+        assert_eq!(
+            game.observation(player).creatures,
+            vec![creature_row(&state, player, creature, (3, 3), 7)],
+            "{player:?}"
+        );
+    }
+}
+
+#[test]
+fn both_players_see_which_creatures_attack() {
+    let (_, plains) = land_definitions();
+    let [lions, _, _] = creature_definitions();
+    let game = Game::with_hands([vec![plains, plains, lions, lions], vec![plains]]);
+    let first = cast_on_turn_one(&game, lions);
+
+    // On turn 3 P1 casts a second Savannah Lions, which cannot attack the turn
+    // it arrives (CR 302.6); the first can.
+    game.run_until(start_of_main_phase(3));
+    game.answer(play_land, pass);
+    game.answer(tap_for_mana, pass);
+    game.answer(cast_spell, pass);
+    game.answer(pass, pass);
+    game.answer(pass, pass);
+    let state = game.state();
+    let second = state
+        .zones
+        .objects
+        .values()
+        .map(|object| object.id)
+        .find(|id| {
+            *id != first
+                && state.zones.objects[id].card_definition == lions
+                && state.zones.locations[id].zone == ZoneKind::Battlefield
+        })
+        .expect("the second Savannah Lions is on the battlefield");
+    game.run_until(at_attackers(3));
+    for player in [P1, P2] {
+        let observation = game.observation(player);
+        assert_eq!(observation.creatures.len(), 2, "{player:?}");
+        assert!(observation.attacking.is_empty(), "{player:?}");
+    }
+
+    // The attack is declared: both players see it, as the ids of the
+    // attackers they know, and the other creature is not in it.
+    game.declare_attackers(&[opaque_of(&state, P1, first)]);
+    let state = game.state();
+    assert_eq!(state.combat.as_ref().unwrap().attackers, vec![first]);
+    for player in [P1, P2] {
+        let observation = game.observation(player);
+        assert_eq!(
+            observation.attacking,
+            vec![opaque_of(&state, player, first)],
+            "{player:?}"
+        );
+        assert_eq!(observation.creatures.len(), 2, "{player:?}");
+        assert!(observation
+            .creatures
+            .iter()
+            .any(|row| row.object == opaque_of(&state, player, second)));
+        assert!(observation
+            .attacking
+            .iter()
+            .all(|id| observation.creatures.iter().any(|row| row.object == *id)));
+    }
+
+    // The combat ends with the step: nothing attacks any more.
+    game.run_until(|state| state.combat.is_none());
+    for player in [P1, P2] {
+        let observation = game.observation(player);
+        assert!(observation.attacking.is_empty(), "{player:?}");
+        assert_eq!(observation.creatures.len(), 2, "{player:?}");
+    }
 }

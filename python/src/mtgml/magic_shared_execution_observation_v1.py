@@ -345,6 +345,8 @@ class MagicSharedExecutionObservationV1:
             "attachments",
             "faces",
             "tapped",
+            "creatures",
+            "attacking",
         }
         obj = require_exact_keys(value, base_fields | {"stack", "temporary_effects"})
         if obj["schema_version"] != MAGIC_SHARED_EXECUTION_OBSERVATION_SCHEMA_V1:

@@ -161,3 +161,81 @@ fn basic_land_observation_v1_shows_life_card_counts_and_tapped_permanents() {
     })
     .is_err());
 }
+
+#[test]
+fn basic_land_observation_v1_shows_creatures_and_attackers() {
+    let example: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../schemas/examples/magic-basic-land-observation-v1.json"
+    ))
+    .unwrap();
+    let observation: MagicBasicLandObservationV1 = serde_json::from_value(example.clone()).unwrap();
+    observation.validate().unwrap();
+    assert_eq!(
+        observation.creatures,
+        vec![
+            CreatureObservationV1 {
+                object: mtgml_model::OpaqueObjectId(3),
+                controller: PlayerId(1),
+                power: 3,
+                toughness: 3,
+                controlled_since_turn: 1,
+            },
+            CreatureObservationV1 {
+                object: mtgml_model::OpaqueObjectId(7),
+                controller: PlayerId(0),
+                power: 2,
+                toughness: 1,
+                controlled_since_turn: 1,
+            },
+        ]
+    );
+    assert_eq!(observation.attacking, vec![mtgml_model::OpaqueObjectId(7)]);
+
+    let broken = |edit: &dyn Fn(&mut serde_json::Value)| {
+        let mut value = example.clone();
+        edit(&mut value);
+        serde_json::from_value::<MagicBasicLandObservationV1>(value)
+            .map_err(|_| ())
+            .and_then(|observation| observation.validate().map_err(|_| ()))
+    };
+    // Creatures are listed once each, in ascending order.
+    assert!(broken(&|value| value["creatures"].as_array_mut().unwrap().reverse()).is_err());
+    assert!(broken(&|value| {
+        let second = value["creatures"][1].clone();
+        value["creatures"][0] = second;
+    })
+    .is_err());
+    // Attackers are listed once each, in ascending order, and are creatures.
+    assert!(broken(&|value| value["attacking"] = serde_json::json!(["3", "7"])).is_ok());
+    assert!(broken(&|value| value["attacking"] = serde_json::json!(["7", "3"])).is_err());
+    assert!(broken(&|value| value["attacking"] = serde_json::json!(["7", "7"])).is_err());
+    assert!(broken(&|value| value["attacking"] = serde_json::json!(["8"])).is_err());
+    assert!(broken(&|value| value["attacking"] = serde_json::json!(["3", "8"])).is_err());
+    // Numbers are numbers, not strings; every field and list is required.
+    assert!(broken(&|value| value["creatures"][0]["power"] = serde_json::json!("3")).is_err());
+    assert!(broken(&|value| value["creatures"][0]["toughness"] = serde_json::json!("3")).is_err());
+    assert!(broken(&|value| {
+        value["creatures"][0]["controlled_since_turn"] = serde_json::json!("1");
+    })
+    .is_err());
+    assert!(broken(&|value| {
+        value["creatures"][0]["controlled_since_turn"] = serde_json::json!(-1);
+    })
+    .is_err());
+    assert!(broken(&|value| value["creatures"][0]["extra"] = serde_json::json!(0)).is_err());
+    assert!(broken(&|value| {
+        value["creatures"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("controller");
+    })
+    .is_err());
+    assert!(broken(&|value| {
+        value.as_object_mut().unwrap().remove("creatures");
+    })
+    .is_err());
+    assert!(broken(&|value| {
+        value.as_object_mut().unwrap().remove("attacking");
+    })
+    .is_err());
+}

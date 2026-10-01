@@ -10,6 +10,9 @@
       "target": "7"
     }
   ],
+  "attacking": [
+    "7"
+  ],
   "counters": [
     {
       "count": 1,
@@ -20,6 +23,22 @@
       "count": 2,
       "counter_kind": "plus_one_plus_one",
       "object": "7"
+    }
+  ],
+  "creatures": [
+    {
+      "controlled_since_turn": 1,
+      "controller": "1",
+      "object": "3",
+      "power": 3,
+      "toughness": 3
+    },
+    {
+      "controlled_since_turn": 1,
+      "controller": "0",
+      "object": "7",
+      "power": 2,
+      "toughness": 1
     }
   ],
   "faces": [

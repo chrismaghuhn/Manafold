@@ -8,7 +8,11 @@ from pathlib import Path
 
 from mtgml.errors import WireError
 from mtgml.magic_shared_execution_observation_v1 import MagicSharedExecutionObservationV1
-from mtgml.observation import MagicBasicLandObservationV1, PlayerObservationV1
+from mtgml.observation import (
+    CreatureObservationV1,
+    MagicBasicLandObservationV1,
+    PlayerObservationV1,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -75,6 +79,87 @@ class PublicPlayerStateTests(unittest.TestCase):
             missing,
         ):
             with self.assertRaises(WireError):
+                MagicBasicLandObservationV1.from_wire(broken)
+
+
+class CreatureObservationTests(unittest.TestCase):
+    def test_observation_shows_creatures_and_attackers(self) -> None:
+        value = _example("magic-basic-land-observation-v1.json")
+        observation = MagicBasicLandObservationV1.from_wire(value)
+        self.assertEqual(
+            observation.creatures,
+            (
+                CreatureObservationV1(
+                    object=3, controller=1, power=3, toughness=3, controlled_since_turn=1
+                ),
+                CreatureObservationV1(
+                    object=7, controller=0, power=2, toughness=1, controlled_since_turn=1
+                ),
+            ),
+        )
+        self.assertEqual(observation.attacking, (7,))
+        self.assertEqual(observation.to_wire()["creatures"], value["creatures"])
+        self.assertEqual(observation.to_wire()["attacking"], value["attacking"])
+
+    def test_shared_observation_carries_the_same_fields(self) -> None:
+        value = _example("magic-shared-execution-observation-v1.json")
+        observation = MagicSharedExecutionObservationV1.from_wire(value)
+        self.assertEqual(observation.base_observation.attacking, (7,))
+        self.assertEqual(len(observation.base_observation.creatures), 2)
+        self.assertEqual(observation.to_wire()["creatures"], value["creatures"])
+        self.assertEqual(observation.to_wire()["attacking"], value["attacking"])
+
+    def test_malformed_creatures_and_attackers_are_rejected(self) -> None:
+        value = _example("magic-basic-land-observation-v1.json")
+
+        def creatures(edit: Callable[[list[dict[str, object]]], None]) -> dict[str, object]:
+            broken = copy.deepcopy(value)
+            rows = broken["creatures"]
+            assert isinstance(rows, list)
+            edit(rows)
+            return broken
+
+        def field(key: str, replacement: object) -> dict[str, object]:
+            broken = copy.deepcopy(value)
+            broken[key] = replacement
+            return broken
+
+        def entry(key: str, replacement: object) -> dict[str, object]:
+            return creatures(lambda rows: rows[0].__setitem__(key, replacement))
+
+        missing = copy.deepcopy(value)
+        del missing["attacking"]
+        no_creatures = copy.deepcopy(value)
+        del no_creatures["creatures"]
+        no_controller = creatures(lambda rows: rows[0].pop("controller"))
+        # Attackers that are creatures, in order, are accepted.
+        MagicBasicLandObservationV1.from_wire(field("attacking", ["3", "7"]))
+        # Each case is wrong in exactly one way, and says so.
+        for broken, reason in (
+            (creatures(lambda rows: rows.reverse()), "creature rows are not ordered"),
+            (
+                creatures(lambda rows: rows.__setitem__(0, dict(rows[1]))),
+                "creature rows are not ordered",
+            ),
+            (field("attacking", ["7", "3"]), "attacking creatures are not ordered"),
+            (field("attacking", ["7", "7"]), "attacking creatures are not ordered"),
+            (field("attacking", ["8"]), "an attacker is not a creature"),
+            (field("attacking", ["3", "8"]), "an attacker is not a creature"),
+            (entry("power", "3"), "power is outside its i64 range"),
+            (entry("power", True), "power is outside its i64 range"),
+            (entry("power", 2**63), "power is outside its i64 range"),
+            (entry("toughness", "3"), "toughness is outside its i64 range"),
+            (entry("controlled_since_turn", "1"), "expected unsigned 64-bit JSON integer"),
+            (entry("controlled_since_turn", -1), "expected unsigned 64-bit JSON integer"),
+            (entry("controlled_since_turn", 2**64), "expected unsigned 64-bit JSON integer"),
+            (entry("controlled_since_turn", True), "expected unsigned 64-bit JSON integer"),
+            (entry("controller", 1), "expected canonical unsigned decimal string"),
+            (entry("extra", 0), "closed contract"),
+            (no_controller, "closed contract"),
+            (no_creatures, "closed contract"),
+            (missing, "closed contract"),
+        ):
+            with self.assertRaisesRegex(WireError, reason):
                 MagicBasicLandObservationV1.from_wire(broken)
 
 

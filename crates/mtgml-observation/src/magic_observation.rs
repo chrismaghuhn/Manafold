@@ -40,6 +40,19 @@ pub struct PlayerObservationV1 {
     pub library_count: u32,
 }
 
+/// A creature on the battlefield: who controls it, its printed power and
+/// toughness (CR 208.1) and the turn since which that player has controlled it
+/// (CR 302.6). Counters on it are listed in `counters`, not added here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CreatureObservationV1 {
+    pub object: OpaqueObjectId,
+    pub controller: PlayerId,
+    pub power: i64,
+    pub toughness: i64,
+    pub controlled_since_turn: u64,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CounterObservationV1 {
@@ -79,6 +92,11 @@ pub struct MagicBasicLandObservationV1 {
     pub faces: Vec<FaceObservationV1>,
     /// Tapped permanents on the battlefield (CR 110.5), by opaque id.
     pub tapped: Vec<OpaqueObjectId>,
+    /// The creatures on the battlefield, ascending by opaque id.
+    pub creatures: Vec<CreatureObservationV1>,
+    /// The creatures that are attacking (CR 508.1k), ascending by opaque id.
+    /// Each is one of `creatures`.
+    pub attacking: Vec<OpaqueObjectId>,
 }
 
 impl MagicBasicLandObservationV1 {
@@ -97,6 +115,16 @@ impl MagicBasicLandObservationV1 {
                 .iter()
                 .any(|entry| entry.player == self.active_player)
             || self.tapped.windows(2).any(|pair| pair[0] >= pair[1])
+            || self
+                .creatures
+                .windows(2)
+                .any(|pair| pair[0].object >= pair[1].object)
+            || self.attacking.windows(2).any(|pair| pair[0] >= pair[1])
+            || self.attacking.iter().any(|attacker| {
+                self.creatures
+                    .binary_search_by_key(attacker, |creature| creature.object)
+                    .is_err()
+            })
             || self
                 .mana_pools
                 .windows(2)

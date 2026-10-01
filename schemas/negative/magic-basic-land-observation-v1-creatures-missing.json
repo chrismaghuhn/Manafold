@@ -67,22 +67,6 @@
   "tapped": [
     "7"
   ],
-  "creatures": [
-    {
-      "object": "3",
-      "controller": "1",
-      "power": 3,
-      "toughness": 3,
-      "controlled_since_turn": 1
-    },
-    {
-      "object": "7",
-      "controller": "0",
-      "power": 2,
-      "toughness": 1,
-      "controlled_since_turn": 1
-    }
-  ],
   "attacking": [
     "7"
   ]

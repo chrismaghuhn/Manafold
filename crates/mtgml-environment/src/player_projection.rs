@@ -9,12 +9,13 @@ use mtgml_model::{
     ExecutionIdentityV1, PlayerId, RulesContractManifestV1, SemanticContractManifestV1,
 };
 use mtgml_observation::{
-    AttachmentObservationV1, CounterObservationV1, FaceObservationV1, InformationStateDigestInput,
-    MagicBasicLandObservationV1, MagicSharedExecutionObservationV1, ManaPoolObservationV1,
-    ObservationEnvelope, ObservedFaceV1, PlayerInformationState, PlayerKnowledgeCauseV1,
-    PlayerKnowledgeChannelV1, PlayerKnowledgeInvalidationReasonV1, PlayerKnowledgeProvenanceV1,
-    PlayerKnownLocationFactV1, PlayerKnownLocationV1, PlayerKnownObjectV1, SyntheticBeginningStep,
-    SyntheticCombatStep, SyntheticEndingStep, SyntheticPriority, SyntheticTurnPosition,
+    AttachmentObservationV1, CounterObservationV1, CreatureObservationV1, FaceObservationV1,
+    InformationStateDigestInput, MagicBasicLandObservationV1, MagicSharedExecutionObservationV1,
+    ManaPoolObservationV1, ObservationEnvelope, ObservedFaceV1, PlayerInformationState,
+    PlayerKnowledgeCauseV1, PlayerKnowledgeChannelV1, PlayerKnowledgeInvalidationReasonV1,
+    PlayerKnowledgeProvenanceV1, PlayerKnownLocationFactV1, PlayerKnownLocationV1,
+    PlayerKnownObjectV1, SyntheticBeginningStep, SyntheticCombatStep, SyntheticEndingStep,
+    SyntheticPriority, SyntheticTurnPosition,
 };
 use mtgml_observation::{MagicCompletedOrder, MagicPendingSbaOrdering};
 use mtgml_state::{
@@ -62,6 +63,7 @@ pub(crate) fn project_magic_basic_land_observation(
     }
     let content_id = catalog.content_contract_id();
     let mut public_faces = std::collections::BTreeMap::new();
+    let mut printed_creatures = std::collections::BTreeMap::new();
     for object in engine.zones.objects.values() {
         let definition = catalog
             .get(content_id, object.card_definition)
@@ -85,6 +87,38 @@ pub(crate) fn project_magic_basic_land_observation(
         if !object.face_down {
             public_faces.insert(object.id, orientation);
         }
+        let on_battlefield = engine
+            .zones
+            .locations
+            .get(&object.id)
+            .is_some_and(|location| location.zone == mtgml_model::ZoneKind::Battlefield);
+        if !on_battlefield {
+            continue;
+        }
+        // A face-down permanent is a creature whatever its card is (CR 708.2),
+        // and its card is hidden: not supported.
+        if object.face_down {
+            return Err(PlayerEndpointError::ServiceUnavailable);
+        }
+        let base = &definition.faces[face_index].base_characteristics;
+        if base
+            .type_line
+            .card_types
+            .iter()
+            .any(|card_type| card_type == "Creature")
+        {
+            // Every creature has a power and a toughness (CR 208.1).
+            let (power, toughness) = base
+                .power_toughness
+                .ok_or(PlayerEndpointError::ServiceUnavailable)?;
+            printed_creatures.insert(object.id, (i64::from(power), i64::from(toughness)));
+        }
+    }
+    // The creatures show their printed power and toughness. An effect could
+    // have changed them, and the projection does not apply effects: fail
+    // closed rather than show a wrong number.
+    if !printed_creatures.is_empty() && !engine.execution.effects.is_empty() {
+        return Err(PlayerEndpointError::ServiceUnavailable);
     }
     for authority in parts.card_rules.abilities.by_instance.values() {
         let source = engine
@@ -107,13 +141,19 @@ pub(crate) fn project_magic_basic_land_observation(
             return Err(PlayerEndpointError::ServiceUnavailable);
         }
     }
-    project_magic_basic_land_observation_from_verified_faces(parts, perspective, &public_faces)
+    project_magic_basic_land_observation_from_verified_faces(
+        parts,
+        perspective,
+        &public_faces,
+        &printed_creatures,
+    )
 }
 
 fn project_magic_basic_land_observation_from_verified_faces(
     parts: &EngineState,
     perspective: PlayerId,
     public_faces: &std::collections::BTreeMap<mtgml_model::GameObjectId, ObservedFaceV1>,
+    printed_creatures: &std::collections::BTreeMap<mtgml_model::GameObjectId, (i64, i64)>,
 ) -> Result<MagicBasicLandObservationV1, PlayerEndpointError> {
     let state = parts;
     let identity = state
@@ -188,6 +228,8 @@ fn project_magic_basic_land_observation_from_verified_faces(
         attachments: Vec::new(),
         faces: Vec::new(),
         tapped: Vec::new(),
+        creatures: Vec::new(),
+        attacking: Vec::new(),
     };
     for (object, counters) in &parts.card_rules.counters.counters {
         if !public_battlefield(*object) {
@@ -213,6 +255,41 @@ fn project_magic_basic_land_observation_from_verified_faces(
     for (object, card) in &state.zones.objects {
         if card.tapped && public_battlefield(*object) {
             value.tapped.push(opaque(*object)?);
+        }
+    }
+    // CR 208.1, 302.6: a creature's controller, printed power and toughness,
+    // and the turn since which it has been controlled are public. The raw
+    // turn is shown; whether the creature can attack is for the viewer to
+    // derive.
+    for (object, (power, toughness)) in printed_creatures {
+        if !public_battlefield(*object) {
+            continue;
+        }
+        let controller = state
+            .zones
+            .objects
+            .get(object)
+            .ok_or(PlayerEndpointError::ServiceUnavailable)?
+            .controller;
+        let permanent = state
+            .card_rules
+            .permanents
+            .permanents
+            .get(object)
+            .ok_or(PlayerEndpointError::ServiceUnavailable)?;
+        value.creatures.push(CreatureObservationV1 {
+            object: opaque(*object)?,
+            controller,
+            power: *power,
+            toughness: *toughness,
+            controlled_since_turn: permanent.controlled_since_turn,
+        });
+    }
+    // CR 508.1k: the attacking creatures are public. One that is not a
+    // creature on the battlefield fails validation below.
+    if let Some(combat) = &state.combat {
+        for attacker in &combat.attackers {
+            value.attacking.push(opaque(*attacker)?);
         }
     }
     for (source, edge) in &parts.card_rules.attachments.by_source {
@@ -247,6 +324,8 @@ fn project_magic_basic_land_observation_from_verified_faces(
     value.attachments.sort_by_key(|entry| entry.source);
     value.faces.sort_by_key(|entry| entry.object);
     value.tapped.sort();
+    value.creatures.sort_by_key(|entry| entry.object);
+    value.attacking.sort();
     value
         .validate()
         .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
@@ -493,6 +572,8 @@ fn project_shared_execution_observation(
         attachments: basic.attachments,
         faces: basic.faces,
         tapped: basic.tapped,
+        creatures: basic.creatures,
+        attacking: basic.attacking,
         stack,
         temporary_effects,
     })

@@ -25,9 +25,9 @@ pub use knowledge::{
     PlayerKnownLocationV1, PlayerKnownObjectV1,
 };
 pub use magic_observation::{
-    AttachmentObservationV1, CounterObservationV1, FaceObservationV1, MagicBasicLandObservationV1,
-    MagicCompletedOrder, MagicPendingSbaOrdering, ManaPoolObservationV1, PlayerObservationV1,
-    PublicCounterKindV1, PublicFaceV1,
+    AttachmentObservationV1, CounterObservationV1, CreatureObservationV1, FaceObservationV1,
+    MagicBasicLandObservationV1, MagicCompletedOrder, MagicPendingSbaOrdering,
+    ManaPoolObservationV1, PlayerObservationV1, PublicCounterKindV1, PublicFaceV1,
 };
 pub use magic_shared_execution_observation_v1::{
     MagicSharedExecutionObservationV1, PublicEffectExpiryV1, PublicEffectKeywordV1, PublicModeV1,

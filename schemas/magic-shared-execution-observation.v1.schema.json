@@ -409,6 +409,14 @@
       },
       "type": "array"
     },
+    "attacking": {
+      "items": {
+        "pattern": "^(0|[1-9][0-9]*)$",
+        "type": "string"
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
     "counters": {
       "items": {
         "additionalProperties": false,
@@ -434,6 +442,45 @@
           "object",
           "counter_kind",
           "count"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "creatures": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "controlled_since_turn": {
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "controller": {
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string"
+          },
+          "object": {
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string"
+          },
+          "power": {
+            "maximum": 9223372036854775807,
+            "minimum": -9223372036854775808,
+            "type": "integer"
+          },
+          "toughness": {
+            "maximum": 9223372036854775807,
+            "minimum": -9223372036854775808,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "object",
+          "controller",
+          "power",
+          "toughness",
+          "controlled_since_turn"
         ],
         "type": "object"
       },
@@ -744,6 +791,8 @@
     "attachments",
     "faces",
     "tapped",
+    "creatures",
+    "attacking",
     "stack",
     "temporary_effects"
   ],

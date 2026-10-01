@@ -1020,3 +1020,143 @@ fn trusted_game_object_renaming_preserves_public_observation_and_information_byt
         mtgml_wire::encode_canonical(&renamed_information).unwrap()
     );
 }
+
+/// A projection of `state` for player 1 over a catalog with the lands and
+/// definition 50, an unprofiled 2/2 creature.
+fn project_with_a_creature_definition(
+    state: &EngineState,
+) -> Result<mtgml_observation::MagicBasicLandObservationV1, crate::endpoint::PlayerEndpointError> {
+    let catalog = catalog_for(&[1, 2, 50]);
+    let (identity, semantic, rules) = execution_authority(&catalog);
+    crate::player_projection::project_magic_basic_land_observation(
+        state,
+        PlayerId(1),
+        &identity,
+        &semantic,
+        &rules,
+        &catalog,
+    )
+}
+
+#[test]
+fn magic_basic_land_projection_shows_printed_creature_facts_and_fails_closed_when_unsure() {
+    use crate::endpoint::PlayerEndpointError::ServiceUnavailable;
+    let mut state = basic_land_state(seed());
+    // The state has one permanent, a land; make it the creature.
+    let creature = state
+        .zones
+        .locations
+        .iter()
+        .find_map(|(object, location)| {
+            (location.zone == mtgml_model::ZoneKind::Battlefield).then_some(*object)
+        })
+        .unwrap();
+    state
+        .zones
+        .objects
+        .get_mut(&creature)
+        .unwrap()
+        .card_definition = CardDefinitionId(50);
+    state
+        .card_rules
+        .permanents
+        .permanents
+        .get_mut(&creature)
+        .unwrap()
+        .controlled_since_turn = 0;
+    let controller = state.zones.objects[&creature].controller;
+    let own = state.perspective_identities.players[&PlayerId(1)].object_to_opaque[&creature];
+
+    // The creature shows its printed 2/2, who controls it and since when, and
+    // nobody attacks.
+    let shown = project_with_a_creature_definition(&state).unwrap();
+    assert_eq!(
+        shown.creatures,
+        vec![mtgml_observation::CreatureObservationV1 {
+            object: own,
+            controller,
+            power: 2,
+            toughness: 2,
+            controlled_since_turn: 0,
+        }]
+    );
+    assert!(shown.attacking.is_empty());
+
+    // An attacking creature is listed as attacking, under the viewer's id.
+    let mut attacking = state.clone();
+    attacking.combat = Some(mtgml_state::CombatState {
+        defending_player: PlayerId(2),
+        attackers: vec![creature],
+        damage_step_completed: false,
+        blocked_attackers: Default::default(),
+        blockers: BTreeMap::from([(creature, None)]),
+    });
+    assert_eq!(
+        project_with_a_creature_definition(&attacking)
+            .unwrap()
+            .attacking,
+        vec![own]
+    );
+    // A land is not a creature and cannot be an attacker: the observation is
+    // not made.
+    let mut land_attacks = attacking.clone();
+    land_attacks
+        .zones
+        .objects
+        .get_mut(&creature)
+        .unwrap()
+        .card_definition = CardDefinitionId(1);
+    assert_eq!(
+        project_with_a_creature_definition(&land_attacks),
+        Err(ServiceUnavailable)
+    );
+
+    // The projection shows printed power and toughness only, so with a
+    // temporary effect around it shows no creature rather than a wrong one...
+    let mut with_effect = state.clone();
+    with_effect.execution.effects.insert(
+        mtgml_model::EffectInstanceId(1),
+        mtgml_state::TemporaryEffectRecord {
+            id: mtgml_model::EffectInstanceId(1),
+            affected_objects: vec![creature],
+            operation: mtgml_state::TemporaryOperation::PowerToughnessDelta {
+                power: 1,
+                toughness: 1,
+            },
+            expiry: mtgml_state::EffectExpiry::UntilEndOfTurn {
+                turn_number: state.core.turn_number,
+            },
+            timestamp: None,
+        },
+    );
+    assert_eq!(
+        project_with_a_creature_definition(&with_effect),
+        Err(ServiceUnavailable)
+    );
+    // ... and a game with an effect but no creature is projected as before.
+    let mut no_creature = with_effect.clone();
+    no_creature
+        .zones
+        .objects
+        .get_mut(&creature)
+        .unwrap()
+        .card_definition = CardDefinitionId(1);
+    assert!(project_with_a_creature_definition(&no_creature)
+        .unwrap()
+        .creatures
+        .is_empty());
+
+    // A face-down permanent is a creature whatever its card is (CR 708.2), and
+    // its card is hidden: it is not shown, so the projection fails closed.
+    for definition in [1, 50] {
+        let mut face_down = state.clone();
+        let object = face_down.zones.objects.get_mut(&creature).unwrap();
+        object.card_definition = CardDefinitionId(definition);
+        object.face_down = true;
+        assert_eq!(
+            project_with_a_creature_definition(&face_down),
+            Err(ServiceUnavailable),
+            "definition {definition}"
+        );
+    }
+}
