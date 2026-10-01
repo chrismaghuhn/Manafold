@@ -78,13 +78,14 @@ pub fn execute_magic_response(
             }
         }
         DecisionPurposeV4::AttackerDeclaration => {
+            reject_attackers_while_creatures_cannot_attack(admission, state)?;
             validate_magic_pending_request(admission, state, status)
                 .map_err(|_| Error::InvalidSelection)?;
             match &response.answer {
                 DecisionAnswerV2::SelectMany { candidate_ids } if candidate_ids.is_empty() => {
                     Answer::NoAttackers
                 }
-                // Attacking creatures are outside the land-only slice.
+                // Attacking creatures are not supported yet.
                 _ => return Err(Error::TurnProgressUnsupported),
             }
         }
@@ -149,6 +150,8 @@ pub fn validate_magic_pending_request(
         .validate_structure()
         .map_err(|_| BasicLandCandidateError::InvalidState)?;
     validate_slice(admission, state).map_err(|_| BasicLandCandidateError::InvalidState)?;
+    reject_attackers_while_creatures_cannot_attack(admission, state)
+        .map_err(|_| BasicLandCandidateError::InvalidState)?;
     // Only an admission with the rule that creates this request accepts it.
     admits(admission, "rules/declare-attackers")
         .map_err(|_| BasicLandCandidateError::PendingCandidateSetMismatch)?;
@@ -239,9 +242,12 @@ pub(crate) fn observe_public(
     Ok(())
 }
 
-/// The land-only slice (D13): exactly two players, only admitted basic lands
-/// on the battlefield, and none of the state no rule of this slice can
-/// evaluate. Under it no state-based action can apply.
+/// The slice this progression can evaluate (D13): exactly two players, only
+/// admitted lands and vanilla creatures on the battlefield, and none of the
+/// state no rule of this slice can evaluate. Creatures may be on the
+/// battlefield but cannot attack yet (see
+/// `reject_attackers_while_creatures_cannot_attack`), so no combat damage is
+/// dealt and no state-based action can apply.
 fn validate_slice(
     admission: &ExecutableProfileAdmissionV1,
     state: &EngineState,
@@ -269,15 +275,45 @@ fn validate_slice(
     if !hands_within_slice(state) {
         return Err(Error::TurnProgressUnsupported);
     }
-    let battlefield: Vec<GameObjectId> = parts
+    crate::S1QueryAuthority::for_objects(admission, state, &battlefield_objects(state))
+        .map_err(|_| Error::TurnProgressUnsupported)?;
+    Ok(())
+}
+
+fn battlefield_objects(state: &EngineState) -> Vec<GameObjectId> {
+    state
         .zones
         .locations
         .iter()
         .filter(|(_, location)| location.zone == ZoneKind::Battlefield)
         .map(|(object, _)| *object)
-        .collect();
-    crate::S1QueryAuthority::for_objects(admission, state, &battlefield)
-        .map_err(|_| Error::TurnProgressUnsupported)?;
+        .collect()
+}
+
+/// Declaring attackers fails closed while the active player controls a
+/// creature (CR 302.6, 508.1a): the request cannot yet offer it as an
+/// attacker, and offering no candidate would hide a legal choice. Attacks
+/// arrive with a later rule; until then such a state is unsupported rather
+/// than played as though the creature could not attack. Creatures the
+/// non-active player controls may stay: they cannot attack on this turn.
+fn reject_attackers_while_creatures_cannot_attack(
+    admission: &ExecutableProfileAdmissionV1,
+    state: &EngineState,
+) -> Result<(), Error> {
+    let queries =
+        crate::S1QueryAuthority::for_objects(admission, state, &battlefield_objects(state))
+            .map_err(|_| Error::TurnProgressUnsupported)?;
+    let controls_creature = queries.iter().any(|query| {
+        query.queried_object().controller == state.core.active_player
+            && query
+                .derive_base_characteristics()
+                .card_types
+                .iter()
+                .any(|card_type| card_type == "Creature")
+    });
+    if controls_creature {
+        return Err(Error::TurnProgressUnsupported);
+    }
     Ok(())
 }
 
@@ -502,6 +538,7 @@ fn advance(
                 step: CombatStep::DeclareAttackers,
             } => {
                 admits(admission, "rules/declare-attackers")?;
+                reject_attackers_while_creatures_cannot_attack(admission, next)?;
                 return Ok(NextDecision::Attackers);
             }
             // Only reachable with declared attackers, which this slice has not.
@@ -1037,8 +1074,9 @@ fn actor_only_request_matches(state: &EngineState, request: &AuthoritativeDecisi
         && request.project_player_request().is_ok()
 }
 
-/// CR 508.1: the active player declares attackers. The land-only slice has
-/// no creatures, so the request offers no candidates.
+/// CR 508.1: the active player declares attackers. Creatures cannot attack
+/// yet, and the active player controls none here (the step before this
+/// refuses otherwise), so the request offers no candidates.
 fn install_attacker_request(next: &mut EngineState) -> Result<AuthoritativeDecisionRequest, Error> {
     install_actor_only_request(
         next,
@@ -1308,6 +1346,31 @@ mod tests {
 
     fn game(library: u64) -> (ExecutableProfileAdmissionV1, EngineState) {
         game_with(crate::basic_land::basic_land_admission_fixture(), library)
+    }
+
+    /// As `game`, under the admission with vanilla creatures, with a
+    /// creature on `controller`'s battlefield.
+    fn game_with_creature(
+        library: u64,
+        controller: PlayerId,
+    ) -> (ExecutableProfileAdmissionV1, EngineState) {
+        let admission = crate::basic_land::vanilla_creature_admission_fixture();
+        let mut state = crate::basic_land::s1_b_state_with_two_lands_fixture();
+        make_synthetic_library_card_ordinary(&mut state);
+        add_library_cards(&mut state, P1, library);
+        add_library_cards(&mut state, P2, library);
+        crate::basic_land::put_vanilla_creature_on_battlefield(&mut state, controller);
+        crate::install_basic_land_request(&admission, &mut state, P1, &EpisodeStatus::Running)
+            .unwrap();
+        (admission, state)
+    }
+
+    fn at_attacker_declaration(state: &EngineState) -> bool {
+        state
+            .execution
+            .pending_decision
+            .as_ref()
+            .is_some_and(|request| request.purpose == DecisionPurposeV4::AttackerDeclaration)
     }
 
     pub(super) fn pending(state: &EngineState) -> &AuthoritativeDecisionRequest {
@@ -1706,6 +1769,68 @@ mod tests {
             }
         );
         assert!(request.candidates.is_empty());
+    }
+
+    #[test]
+    fn a_creature_on_the_battlefield_does_not_stop_the_turn_before_combat() {
+        // Creatures may be on the battlefield; only attacking with them is
+        // missing. Every step up to the beginning of combat still runs.
+        let (admission, state) = game_with_creature(3, P1);
+        let state = pass_until(&admission, state, at(BEGIN_COMBAT, 1));
+        assert_eq!(zone_count(&state, P1, ZoneKind::Battlefield), 2);
+    }
+
+    #[test]
+    fn declaring_attackers_fails_closed_while_the_active_player_controls_a_creature() {
+        let (admission, state) = game_with_creature(3, P1);
+        let state = pass_until(&admission, state, at(BEGIN_COMBAT, 1));
+        let state = pass(&admission, &state).0;
+        // The second pass would open the declaration of attackers, which
+        // cannot offer the creature yet and must not offer none.
+        assert_eq!(
+            submit(&admission, &state, pass_answer(pending(&state))),
+            Err(crate::BasicLandTransitionError::TurnProgressUnsupported)
+        );
+    }
+
+    #[test]
+    fn a_pending_attacker_declaration_is_refused_while_the_active_player_controls_a_creature() {
+        let (admission, state) =
+            game_with(crate::basic_land::vanilla_creature_admission_fixture(), 3);
+        let mut state = pass_until(&admission, state, at_attacker_declaration);
+        let status = EpisodeStatus::Running;
+        assert!(validate_magic_pending_request(&admission, &state, &status).is_ok());
+
+        // The same pending request in a restored state that also holds a
+        // creature of the active player is refused, and so is its answer.
+        crate::basic_land::put_vanilla_creature_on_battlefield(&mut state, P1);
+        assert!(validate_magic_pending_request(&admission, &state, &status).is_err());
+        assert_eq!(
+            submit(&admission, &state, pass_answer(pending(&state))),
+            Err(crate::BasicLandTransitionError::TurnProgressUnsupported)
+        );
+    }
+
+    #[test]
+    fn a_creature_only_the_other_player_controls_does_not_stop_the_declaration() {
+        let (admission, state) = game_with_creature(3, P2);
+        let state = pass_until(&admission, state, at_attacker_declaration);
+        let status = EpisodeStatus::Running;
+        assert!(validate_magic_pending_request(&admission, &state, &status).is_ok());
+        let after = pass(&admission, &state).0;
+        assert!(after
+            .combat
+            .as_ref()
+            .is_some_and(|combat| combat.attackers.is_empty()));
+
+        // On its controller's own turn the declaration fails closed.
+        let state = pass_until(&admission, after, at(BEGIN_COMBAT, 2));
+        let state = pass(&admission, &state).0;
+        assert_eq!(state.core.active_player, P2);
+        assert_eq!(
+            submit(&admission, &state, pass_answer(pending(&state))),
+            Err(crate::BasicLandTransitionError::TurnProgressUnsupported)
+        );
     }
 
     #[test]

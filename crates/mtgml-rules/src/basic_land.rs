@@ -1176,6 +1176,21 @@ pub(crate) fn basic_land_admission_fixture() -> mtgml_card_ir::ExecutableProfile
     tests::admission()
 }
 
+/// The admission of Mountain, Plains and three vanilla creatures.
+#[cfg(test)]
+pub(crate) fn vanilla_creature_admission_fixture() -> mtgml_card_ir::ExecutableProfileAdmissionV1 {
+    tests::creature_admission()
+}
+
+/// Puts a vanilla creature on `owner`'s battlefield.
+#[cfg(test)]
+pub(crate) fn put_vanilla_creature_on_battlefield(
+    state: &mut EngineState,
+    owner: PlayerId,
+) -> mtgml_model::GameObjectId {
+    tests::add_vanilla_creature(state, owner)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1226,6 +1241,45 @@ mod tests {
             "rules/turn-structure",
             "rules/zone-incarnation",
         ])
+    }
+
+    pub(super) fn creature_admission() -> ExecutableProfileAdmissionV1 {
+        admission_of(
+            COMBINED_MANIFEST,
+            COMBINED_PROVENANCE,
+            &[
+                "rules/basic-land-mana",
+                "rules/basic-priority",
+                "rules/cast-creature-spell",
+                "rules/cleanup-reset",
+                "rules/combat-damage",
+                "rules/combat-phase",
+                "rules/damage-and-life",
+                "rules/declare-attackers",
+                "rules/declare-blockers",
+                "rules/draw-card",
+                "rules/game-start",
+                "rules/land-play",
+                "rules/mana-pool",
+                "rules/stack-resolution",
+                "rules/state-based-actions-combat",
+                "rules/state-based-actions-empty-library",
+                "rules/summoning-sickness",
+                "rules/turn-structure",
+                "rules/zone-incarnation",
+            ],
+        )
+    }
+
+    /// A Savannah Lions (definition 3 of the combined catalog) on `owner`'s
+    /// battlefield, with its face entry.
+    pub(super) fn add_vanilla_creature(
+        state: &mut mtgml_state::EngineState,
+        owner: PlayerId,
+    ) -> mtgml_model::GameObjectId {
+        let object = add_object(state, CardDefinitionId(3), owner, ZoneKind::Battlefield, 40);
+        state.card_rules.faces.faces.insert(object, 0);
+        object
     }
 
     pub(super) fn admission_with_closure(keys: &[&str]) -> ExecutableProfileAdmissionV1 {
@@ -1736,31 +1790,7 @@ mod tests {
 
     #[test]
     fn s1_a_resolves_a_vanilla_creature_on_the_battlefield() {
-        let admission = admission_of(
-            COMBINED_MANIFEST,
-            COMBINED_PROVENANCE,
-            &[
-                "rules/basic-land-mana",
-                "rules/basic-priority",
-                "rules/cast-creature-spell",
-                "rules/cleanup-reset",
-                "rules/combat-damage",
-                "rules/combat-phase",
-                "rules/damage-and-life",
-                "rules/declare-attackers",
-                "rules/declare-blockers",
-                "rules/draw-card",
-                "rules/game-start",
-                "rules/land-play",
-                "rules/mana-pool",
-                "rules/stack-resolution",
-                "rules/state-based-actions-combat",
-                "rules/state-based-actions-empty-library",
-                "rules/summoning-sickness",
-                "rules/turn-structure",
-                "rules/zone-incarnation",
-            ],
-        );
+        let admission = creature_admission();
         let mut state = successor_state_with_two_lands();
         let expected = [
             (3, "Cat", mtgml_card_ir::ManaColorV1::White, (2, 1)),
