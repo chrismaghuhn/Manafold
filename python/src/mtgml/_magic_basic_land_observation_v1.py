@@ -104,7 +104,7 @@ class PermanentObservationV1:
         return self.power is not None
 
     @classmethod
-    def from_wire(cls, value: object) -> PermanentObservationV1:
+    def from_wire(cls, value: JsonValue) -> PermanentObservationV1:
         obj = require_exact_keys(
             value, {"object", "controller", "controlled_since_turn", "power", "toughness"}
         )
@@ -116,7 +116,7 @@ class PermanentObservationV1:
             None if obj["toughness"] is None else _i64(obj["toughness"], "toughness"),
         )
 
-    def to_wire(self) -> dict[str, object]:
+    def to_wire(self) -> dict[str, JsonValue]:
         return {
             "object": uint_wire(self.object),
             "controller": uint_wire(self.controller),
