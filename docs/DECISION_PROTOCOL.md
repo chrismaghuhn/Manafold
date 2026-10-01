@@ -254,3 +254,13 @@ the pool, so a restored checkpoint with the payment pending continues
 identically. The answer pays the cost, ends the continuation and casts the
 spell; with one way to pay there is no such request. The current slice does not
 admit non-creature spells, non-mana abilities, or broader card support.
+
+The AttackerDeclaration request is `ChooseMany { minimum: 0, maximum: n }`, where
+`n` is the number of candidates, and is `acting_player_only`. It has one
+`SelectObject` candidate for each untapped creature the active player controls
+that has been under their control since their turn began (CR 302.6, 508.1a), in
+the order of the actor's opaque ids. Every subset, including the empty one, is a
+legal answer, and the request is asked even when there is no candidate. The
+number of attackers is not limited. The rules kernel rederives the request from
+the state, so a restored checkpoint with the declaration pending continues
+identically.

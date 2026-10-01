@@ -123,6 +123,10 @@
     {
       "contract": "observed-event-envelope.v4",
       "path": "observed-event-v4-mulligan-declared.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "path": "observed-event-v4-attackers-declared.json"
     }
   ]
 }

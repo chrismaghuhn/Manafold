@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from itertools import pairwise
 
 from ._generated_contract_vocab import ZONE_KINDS
 from .canonical import parse_u64_number, parse_uint, require_exact_keys, uint_wire
@@ -62,12 +63,15 @@ NEW_EVENT_KINDS_V1 = frozenset(
     }
 )
 GAME_START_EVENT_KINDS = frozenset({"starting_player_chosen", "mulligan_declared"})
-EVENT_KINDS_V4 = EVENT_KINDS_V3 | NEW_EVENT_KINDS_V1 | GAME_START_EVENT_KINDS
+COMBAT_EVENT_KINDS = frozenset({"attackers_declared"})
+EVENT_KINDS_V4 = EVENT_KINDS_V3 | NEW_EVENT_KINDS_V1 | GAME_START_EVENT_KINDS | COMBAT_EVENT_KINDS
 _UINT_FIELDS = frozenset(
     {
         "object",
         "chooser",
         "starting_player",
+        "attacking_player",
+        "defending_player",
         "old_object",
         "new_object",
         "player",
@@ -226,6 +230,29 @@ class ObservedEventV4:
             if not isinstance(obj["mulligan"], bool):
                 raise WireError("decode.invalid_json", "mulligan must be boolean")
             fields = {"player": parse_uint(obj["player"]), "mulligan": obj["mulligan"]}
+        elif kind == "attackers_declared":
+            obj = require_exact_keys(
+                value, {"kind", "attacking_player", "defending_player", "attackers"}
+            )
+            if not isinstance(obj["attackers"], list):
+                raise WireError("decode.invalid_json", "attackers must be a list")
+            attackers = tuple(parse_uint(item) for item in obj["attackers"])
+            attacking, defending = (
+                parse_uint(obj["attacking_player"]),
+                parse_uint(obj["defending_player"]),
+            )
+            if attacking == defending or any(
+                first >= second for first, second in pairwise(attackers)
+            ):
+                raise WireError(
+                    "semantic.observed_event",
+                    "attackers are ascending and the attacker is not the defender",
+                )
+            fields = {
+                "attacking_player": attacking,
+                "defending_player": defending,
+                "attackers": attackers,
+            }
         elif kind in {"temporary_effect_created", "temporary_effect_expired"}:
             obj = require_exact_keys(value, {"kind", "effect"})
             fields = {"effect": PublicTemporaryEffectV1.from_wire(obj["effect"]).to_wire()}
@@ -236,7 +263,9 @@ class ObservedEventV4:
     def to_wire(self) -> dict[str, object]:
         result: dict[str, object] = {"kind": self.kind}
         for key, value in self.fields:
-            if key in _UINT_FIELDS:
+            if key == "attackers":
+                result[key] = [uint_wire(item) for item in value]  # type: ignore[attr-defined]
+            elif key in _UINT_FIELDS:
                 result[key] = None if value is None else uint_wire(value)  # type: ignore[arg-type]
             else:
                 result[key] = value

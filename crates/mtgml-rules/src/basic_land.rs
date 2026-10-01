@@ -1365,7 +1365,15 @@ mod tests {
         state: &mut mtgml_state::EngineState,
         owner: PlayerId,
     ) -> mtgml_model::GameObjectId {
-        let object = add_object(state, CardDefinitionId(3), owner, ZoneKind::Battlefield, 40);
+        // Each creature has its own opaque identity.
+        let opaque_id = 40 + state.allocators.next_object_id.0;
+        let object = add_object(
+            state,
+            CardDefinitionId(3),
+            owner,
+            ZoneKind::Battlefield,
+            opaque_id,
+        );
         state.card_rules.faces.faces.insert(object, 0);
         state
             .card_rules

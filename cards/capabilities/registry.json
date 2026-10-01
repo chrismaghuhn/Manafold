@@ -149,22 +149,33 @@
       ],
       "benchmark_scenarios": [],
       "category": "core_rule",
-      "conformance_cases": [],
+      "conformance_cases": [
+        "unblocked_attackers_deal_combat_damage_to_the_defending_player",
+        "a_defender_with_an_untapped_creature_fails_closed",
+        "combat_damage_to_a_player_must_match_the_life_change",
+        "combat_damage_to_a_creature_fails_closed",
+        "the_damage_step_completes_once",
+        "an_unblocked_attack_lowers_the_defenders_life"
+      ],
       "dependencies": [
         "rules/declare-blockers",
         "rules/damage-and-life",
         "rules/state-based-actions-combat"
       ],
-      "implementation_paths": [],
+      "implementation_paths": [
+        "crates/mtgml-rules/src/combat.rs",
+        "crates/mtgml-rules/src/events.rs",
+        "crates/mtgml-rules/src/turn_progression.rs"
+      ],
       "information_risk": "high",
       "key": "rules/combat-damage",
-      "lifecycle": "specified",
-      "notes": "Specified only: nothing implements it yet; the implementation was removed with the old rules kernel on 2026-09-30; see git history. The multi-blocker kernel it now describes is specified in docs/superpowers/specs/2026-10-01-vanilla-creatures-design.md. No certification, card, deck, format, or playability support is claimed.",
+      "lifecycle": "covered",
+      "notes": "Covered for unblocked attackers in two-player games of admitted lands and vanilla creatures by the listed rules and production-endpoint cases. A defending player who controls an untapped creature, blocked attackers and damage to creatures are specified in docs/superpowers/specs/2026-10-01-vanilla-creatures-design.md and fail closed. No certification, card, deck, format, or playability support is claimed.",
       "owners": [
         "combat"
       ],
-      "spec_path": "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
-      "summary": "One normal combat-damage step: unblocked attackers damage the defending player, each blocker damages the attacker it blocks, and a blocked attacker's damage is divided among its blockers as its controller chooses.",
+      "spec_path": "docs/rules/capabilities/rules/combat-damage.md",
+      "summary": "One normal combat-damage step: each unblocked attacker deals damage equal to its power to the defending player.",
       "version": "0.1.0"
     },
     {
@@ -190,7 +201,7 @@
       "information_risk": "medium",
       "key": "rules/combat-phase",
       "lifecycle": "covered",
-      "notes": "Covered for two-player basic-land games on the native turn progression by the listed rules and production-endpoint cases. Beginning of combat to end of combat with no attackers; blockers and damage steps are skipped. No certification, card, deck, format, or playability support is claimed.",
+      "notes": "Covered for two-player games on the native turn progression by the listed rules and production-endpoint cases. Beginning of combat to end of combat; with no attackers the blockers and damage steps are skipped, with attackers they run as described by rules/combat-damage. No certification, card, deck, format, or playability support is claimed.",
       "owners": [
         "combat"
       ],
@@ -208,30 +219,46 @@
       ],
       "benchmark_scenarios": [],
       "category": "core_rule",
-      "conformance_cases": [],
+      "conformance_cases": [
+        "unblocked_attackers_deal_combat_damage_to_the_defending_player",
+        "combat_damage_to_a_player_must_match_the_life_change",
+        "an_unblocked_attack_lowers_the_defenders_life",
+        "overkill_damage_shows_negative_life_and_ends_the_game"
+      ],
       "dependencies": [],
-      "implementation_paths": [],
+      "implementation_paths": [
+        "crates/mtgml-rules/src/combat.rs",
+        "crates/mtgml-rules/src/events.rs"
+      ],
       "information_risk": "high",
       "key": "rules/damage-and-life",
-      "lifecycle": "specified",
-      "notes": "Specified only: nothing implements it yet; the implementation was removed with the old rules kernel on 2026-09-30; see git history. The multi-blocker kernel it now describes is specified in docs/superpowers/specs/2026-10-01-vanilla-creatures-design.md. No certification, card, deck, format, or playability support is claimed.",
+      "lifecycle": "covered",
+      "notes": "Covered for combat damage dealt to a player in two-player games of admitted lands and vanilla creatures by the listed rules and production-endpoint cases. Damage marked on a creature is specified in docs/superpowers/specs/2026-10-01-vanilla-creatures-design.md and fails closed. No certification, card, deck, format, or playability support is claimed.",
       "owners": [
         "damage"
       ],
-      "spec_path": "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
-      "summary": "Combat damage results: life loss for a player and damage marked on a creature.",
+      "spec_path": "docs/rules/capabilities/rules/damage-and-life.md",
+      "summary": "Combat damage results: life loss for a player. Damage marked on a creature is specified and not implemented.",
       "version": "0.1.0"
     },
     {
       "authority_refs": [
         "docs/adr/0054-m3-pre-t0-hardening.md",
         "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
-        "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f"
+        "docs/superpowers/specs/2026-10-01-vanilla-creatures-design.md",
+        "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f",
+        "wotc-cr-2026-09-25-txt-20260925-sha256-8d860e451f20f38865b725b42d82feb714c725373dd8f3b32b8652b3eeb070ca"
       ],
       "benchmark_scenarios": [],
       "category": "core_rule",
       "conformance_cases": [
-        "empty_attack_declaration_ends_combat_without_damage"
+        "empty_attack_declaration_ends_combat_without_damage",
+        "a_creature_can_attack_from_its_controllers_next_turn",
+        "declaring_an_attacker_taps_it_and_makes_the_attack_public",
+        "an_empty_declaration_is_public_too",
+        "nine_attackers_are_a_valid_combat",
+        "attackers_tap_and_both_players_see_the_attack",
+        "an_empty_attack_declaration_is_public"
       ],
       "dependencies": [
         "rules/combat-phase"
@@ -242,12 +269,12 @@
       "information_risk": "high",
       "key": "rules/declare-attackers",
       "lifecycle": "covered",
-      "notes": "Covered for two-player basic-land games on the native turn progression by the listed rules and production-endpoint cases. The empty declaration only; there are no creatures in this slice. No certification, card, deck, format, or playability support is claimed.",
+      "notes": "Covered for two-player games of admitted lands and vanilla creatures on the native turn progression by the listed rules and production-endpoint cases. The active player declares any subset of the untapped creatures that can attack (see rules/summoning-sickness); the creatures tap, and every declaration, including an empty one, is public. The bound of at most eight attackers in the M3 foundation no longer applies: the number of attackers is not limited. No certification, card, deck, format, or playability support is claimed.",
       "owners": [
         "combat"
       ],
       "spec_path": "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
-      "summary": "Bounded attacker declaration and legality.",
+      "summary": "Attacker declaration: any subset of the creatures that can attack, or none.",
       "version": "0.1.0"
     },
     {
@@ -268,11 +295,11 @@
       "information_risk": "high",
       "key": "rules/declare-blockers",
       "lifecycle": "specified",
-      "notes": "Specified only: nothing implements it yet; the implementation was removed with the old rules kernel on 2026-09-30; see git history. The multi-blocker kernel it now describes is specified in docs/superpowers/specs/2026-10-01-vanilla-creatures-design.md. No certification, card, deck, format, or playability support is claimed.",
+      "notes": "Specified only: no block is declared yet. The declare blockers step runs when the defending player controls no untapped creature (there is nothing to declare) and fails closed otherwise. The multi-blocker rule is specified in docs/superpowers/specs/2026-10-01-vanilla-creatures-design.md. No certification, card, deck, format, or playability support is claimed.",
       "owners": [
         "combat"
       ],
-      "spec_path": "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
+      "spec_path": "docs/superpowers/specs/2026-10-01-vanilla-creatures-design.md",
       "summary": "Blocker declaration for any number of blockers: each untapped creature of the defending player blocks at most one attacker, and an attacker may be blocked by several.",
       "version": "0.1.0"
     },
@@ -442,25 +469,34 @@
       "authority_refs": [
         "docs/adr/0054-m3-pre-t0-hardening.md",
         "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
+        "docs/superpowers/specs/2026-10-01-vanilla-creatures-design.md",
         "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f",
         "wotc-cr-2026-09-25-txt-20260925-sha256-8d860e451f20f38865b725b42d82feb714c725373dd8f3b32b8652b3eeb070ca"
       ],
       "benchmark_scenarios": [],
       "category": "core_rule",
-      "conformance_cases": [],
+      "conformance_cases": [
+        "lethal_combat_damage_ends_the_game_before_anyone_receives_priority",
+        "a_decision_state_with_a_player_at_zero_life_who_has_not_lost_is_rejected",
+        "zero_life_ends_the_game",
+        "overkill_damage_shows_negative_life_and_ends_the_game"
+      ],
       "dependencies": [
         "rules/zone-incarnation"
       ],
-      "implementation_paths": [],
+      "implementation_paths": [
+        "crates/mtgml-rules/src/combat.rs",
+        "crates/mtgml-rules/src/turn_progression.rs"
+      ],
       "information_risk": "high",
       "key": "rules/state-based-actions-combat",
-      "lifecycle": "specified",
-      "notes": "Specified only: the implementation was removed with the old rules kernel on 2026-09-30; see git history. No certification, card, deck, format, or playability support is claimed.",
+      "lifecycle": "covered",
+      "notes": "Covered for the loss of a player at 0 or less life in two-player games of admitted lands and vanilla creatures by the listed rules and production-endpoint cases. Lethal damage to a creature, the graveyard order and simultaneous losses are specified in docs/superpowers/specs/2026-10-01-vanilla-creatures-design.md and fail closed. No certification, card, deck, format, or playability support is claimed.",
       "owners": [
         "state_based_actions"
       ],
-      "spec_path": "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
-      "summary": "Bounded selected state-based-action fixed point for the combat foundation.",
+      "spec_path": "docs/rules/capabilities/rules/state-based-actions-combat.md",
+      "summary": "A player at 0 or less life loses the game after combat damage. Other state-based actions are specified and fail closed.",
       "version": "0.1.0"
     },
     {
@@ -498,16 +534,26 @@
       ],
       "benchmark_scenarios": [],
       "category": "core_rule",
-      "conformance_cases": [],
+      "conformance_cases": [
+        "a_creature_cannot_attack_the_turn_it_arrives",
+        "a_creature_can_attack_from_its_controllers_next_turn",
+        "a_tapped_creature_is_not_offered_as_an_attacker",
+        "a_creature_is_offered_only_to_its_controller_on_their_own_turn",
+        "a_wrong_candidate_set_for_the_declaration_is_refused",
+        "a_creature_cannot_attack_the_turn_it_arrives_but_can_on_its_controllers_next_turn"
+      ],
       "dependencies": [
         "rules/declare-attackers",
         "rules/turn-structure"
       ],
-      "implementation_paths": [],
+      "implementation_paths": [
+        "crates/mtgml-rules/src/combat.rs",
+        "crates/mtgml-rules/src/turn_progression.rs"
+      ],
       "information_risk": "low",
       "key": "rules/summoning-sickness",
-      "lifecycle": "specified",
-      "notes": "Specified only: nothing implements it yet. Haste, other keywords and change of control are excluded and fail closed. No certification, card, deck, format, or playability support is claimed.",
+      "lifecycle": "covered",
+      "notes": "Covered for two-player games of admitted lands and vanilla creatures by the listed rules and production-endpoint cases. Haste, other keywords and change of control are excluded and fail closed. No certification, card, deck, format, or playability support is claimed.",
       "owners": [
         "combat"
       ],

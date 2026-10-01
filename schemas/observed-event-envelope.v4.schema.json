@@ -493,6 +493,34 @@
             "mulligan"
           ],
           "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "attackers": {
+              "items": {
+                "$ref": "#/$defs/uint"
+              },
+              "type": "array",
+              "uniqueItems": true
+            },
+            "attacking_player": {
+              "$ref": "#/$defs/uint"
+            },
+            "defending_player": {
+              "$ref": "#/$defs/uint"
+            },
+            "kind": {
+              "const": "attackers_declared"
+            }
+          },
+          "required": [
+            "kind",
+            "attacking_player",
+            "defending_player",
+            "attackers"
+          ],
+          "type": "object"
         }
       ]
     },

@@ -5,21 +5,23 @@ mod common;
 
 use common::{
     creature_deck_game, creature_definitions, creature_game, creature_game_admission,
-    game_admission, land_definitions, P1, P2,
+    creature_game_with_life, game_admission, land_definitions, P1, P2,
 };
 use mtgml_decision::{
     CandidateIntent, DecisionAnswerV2, DecisionDomainV2, DecisionPurposeV4, DecisionResponseV3,
     DecisionVisibility, PlayerDecisionRequestV4, DECISION_RESPONSE_V3_SCHEMA,
 };
-use mtgml_environment::{PlayerEndpoint, PlayerEndpointHandle, TrustedEnvironmentController};
+use mtgml_environment::{
+    PlayerEndpoint, PlayerEndpointError, PlayerEndpointHandle, TrustedEnvironmentController,
+};
 use mtgml_model::{
     CandidateIdV1, CardDefinitionId, EpisodeStatus, GameObjectId, OpaqueObjectId,
     PlayerDecisionIdV1, PlayerId, PlayerOutcome, PlayerResult, TerminalReason, TruncationReason,
     ZoneKind,
 };
 use mtgml_observation::{
-    MagicSharedExecutionObservationV1, ObservedEventKindV4, PlayerStepSubmissionV1, PlayerStepV4,
-    PublicStackItemV1, StackItemRemovalCauseV1,
+    MagicSharedExecutionObservationV1, ObservedEventEnvelopeV4, ObservedEventKindV4,
+    PlayerStepSubmissionV1, PlayerStepV4, PublicStackItemV1, StackItemRemovalCauseV1,
 };
 use mtgml_rules::{AuthoritativeRuleEventKind, BasicLandTransitionProduct};
 use mtgml_state::{
@@ -27,6 +29,7 @@ use mtgml_state::{
     ManaPaymentStage, ManaPaymentStaging, ManaPoolChangeCauseV1, ManaPoolV1, PriorityState,
     SemanticDeltaOperation, StateDelta, TurnPosition,
 };
+use std::collections::BTreeMap;
 
 struct Game {
     controller: TrustedEnvironmentController,
@@ -44,6 +47,13 @@ impl Game {
         let (mountain, _) = land_definitions();
         let libraries = [vec![mountain; 10], vec![mountain; 10]];
         Self::bound(creature_game(&libraries, &hands, 5))
+    }
+
+    /// As `with_hands`, with the players at the given life totals.
+    fn with_hands_and_life(hands: [Vec<CardDefinitionId>; 2], life: [i64; 2]) -> Self {
+        let (mountain, _) = land_definitions();
+        let libraries = [vec![mountain; 10], vec![mountain; 10]];
+        Self::bound(creature_game_with_life(&libraries, &hands, 5, life))
     }
 
     fn bound(controller: TrustedEnvironmentController) -> Self {
@@ -109,7 +119,7 @@ impl Game {
                 candidate_ids: vec![request.candidates[0].candidate_id],
             }
         } else if request.purpose == DecisionPurposeV4::AttackerDeclaration {
-            // No creature has been cast on a turn that reaches combat.
+            // Declares no attackers; `declare_attackers` attacks.
             DecisionAnswerV2::SelectMany {
                 candidate_ids: Vec::new(),
             }
@@ -136,6 +146,34 @@ impl Game {
                 player_decision_id: request.player_decision_id,
                 view_sequence: request.view_sequence,
                 answer,
+            })
+            .unwrap();
+        assert_eq!(step.submission, PlayerStepSubmissionV1::Accepted);
+        (player, step)
+    }
+
+    /// The deciding player declares exactly `attackers`, which the request
+    /// must offer.
+    fn declare_attackers(&self, attackers: &[OpaqueObjectId]) -> (PlayerId, PlayerStepV4) {
+        let (player, request) = self.pending();
+        assert_eq!(request.purpose, DecisionPurposeV4::AttackerDeclaration);
+        let candidate_ids: Vec<_> = request
+            .candidates
+            .iter()
+            .filter(|candidate| {
+                matches!(candidate.intent,
+                    CandidateIntent::SelectObject { object } if attackers.contains(&object))
+            })
+            .map(|candidate| candidate.candidate_id)
+            .collect();
+        assert_eq!(candidate_ids.len(), attackers.len(), "{attackers:?}");
+        let step = self
+            .endpoint(player)
+            .submit(DecisionResponseV3 {
+                schema_version: DECISION_RESPONSE_V3_SCHEMA.to_owned(),
+                player_decision_id: request.player_decision_id,
+                view_sequence: request.view_sequence,
+                answer: DecisionAnswerV2::SelectMany { candidate_ids },
             })
             .unwrap();
         assert_eq!(step.submission, PlayerStepSubmissionV1::Accepted);
@@ -1352,4 +1390,545 @@ fn a_closed_episode_may_hold_a_creature_spell_on_the_stack() {
     assert!(
         mtgml_rules::validate_magic_pending_request(&game_admission(), &state, &terminal).is_err()
     );
+}
+
+/// The attacker declaration of `turn`, before it is answered.
+fn at_attackers(turn: u64) -> impl Fn(&EngineState) -> bool {
+    move |state| {
+        state.core.turn_number == turn
+            && state
+                .execution
+                .pending_decision
+                .as_ref()
+                .is_some_and(|request| request.purpose == DecisionPurposeV4::AttackerDeclaration)
+    }
+}
+
+/// P1's turn 1: it plays its Plains, taps it for {W} and casts `creature`
+/// (which must cost {W}), and the creature resolves.
+fn cast_on_turn_one(game: &Game, creature: CardDefinitionId) -> GameObjectId {
+    game.answer(play_land, pass);
+    game.answer(tap_for_mana, pass);
+    game.answer(cast_spell, pass);
+    game.answer(pass, pass);
+    game.answer(pass, pass);
+    game.only_object(P1, creature, ZoneKind::Battlefield)
+}
+
+/// P1 cast Savannah Lions on turn 1 and is at its attacker declaration of
+/// turn 3, where the Lions can attack. P2 controls no creature and has
+/// `p2_life` life.
+fn lions_ready_to_attack(p2_life: i64) -> (Game, GameObjectId) {
+    let (mountain, plains) = land_definitions();
+    let [lions, _, _] = creature_definitions();
+    let game = Game::with_hands_and_life([vec![plains, lions], vec![mountain]], [20, p2_life]);
+    let creature = cast_on_turn_one(&game, lions);
+    game.run_until(at_attackers(3));
+    (game, creature)
+}
+
+/// The opaque id `player` has for `object`.
+fn opaque_of(state: &EngineState, player: PlayerId, object: GameObjectId) -> OpaqueObjectId {
+    state.perspective_identities.players[&player].object_to_opaque[&object]
+}
+
+/// What `execute_magic_response` makes of `answer` by the deciding player,
+/// and what each player observes of it: the same entry points the controller
+/// runs, with every perspective's events, not only the actor's.
+fn product_and_observations(
+    state: &EngineState,
+    answer: DecisionAnswerV2,
+) -> (
+    BasicLandTransitionProduct,
+    BTreeMap<PlayerId, Vec<ObservedEventEnvelopeV4>>,
+) {
+    let admission = creature_game_admission();
+    let request = state.execution.pending_decision.as_ref().unwrap();
+    let product = mtgml_rules::execute_magic_response(
+        &admission,
+        state,
+        request.actor,
+        &DecisionResponseV3 {
+            schema_version: DECISION_RESPONSE_V3_SCHEMA.to_owned(),
+            player_decision_id: request.player_decision_id,
+            view_sequence: request.view_sequence,
+            answer,
+        },
+        &EpisodeStatus::Running,
+    )
+    .unwrap();
+    let observed =
+        mtgml_environment::successor_projection::project_successor_events_v4_for_basic_land_profile(
+            &admission,
+            state,
+            &EpisodeStatus::Running,
+            &product.next_state,
+            &product.status,
+            &product.events,
+            Some(&product.delta),
+        )
+        .unwrap();
+    (product, observed)
+}
+
+/// The answer that passes priority.
+fn pass_answer(state: &EngineState) -> DecisionAnswerV2 {
+    let request = state.execution.pending_decision.as_ref().unwrap();
+    DecisionAnswerV2::SelectOne {
+        candidate_id: request
+            .candidates
+            .iter()
+            .find(|candidate| candidate.visible_intent == CandidateIntent::PassPriority)
+            .expect("no pass")
+            .candidate_id,
+    }
+}
+
+fn life_of(observation: &MagicSharedExecutionObservationV1, player: PlayerId) -> i64 {
+    observation
+        .players
+        .iter()
+        .find(|entry| entry.player == player)
+        .unwrap()
+        .life
+}
+
+#[test]
+fn a_creature_cannot_attack_the_turn_it_arrives_but_can_on_its_controllers_next_turn() {
+    let (mountain, plains) = land_definitions();
+    let [lions, _, _] = creature_definitions();
+    let game = Game::with_hands([vec![plains, lions], vec![mountain]]);
+    let creature = cast_on_turn_one(&game, lions);
+    assert_eq!(
+        game.state().card_rules.permanents.permanents[&creature].controlled_since_turn,
+        1
+    );
+
+    // CR 302.6: it came under P1's control this turn, so it cannot attack on
+    // it. The declaration is still asked, and offers no attacker.
+    game.run_until(at_attackers(1));
+    let (actor, request) = game.pending();
+    assert_eq!(actor, P1);
+    assert_eq!(
+        request.decision_domain_v2,
+        DecisionDomainV2::ChooseMany {
+            minimum: 0,
+            maximum: 0
+        }
+    );
+    assert!(request.candidates.is_empty());
+    game.declare_attackers(&[]);
+
+    // On P1's next turn it has been under P1's control since the turn began.
+    game.run_until(at_attackers(3));
+    let own = opaque_of(&game.state(), P1, creature);
+    let (actor, request) = game.pending();
+    assert_eq!(actor, P1);
+    assert_eq!(request.visibility, DecisionVisibility::ActingPlayerOnly);
+    assert_eq!(
+        request.decision_domain_v2,
+        DecisionDomainV2::ChooseMany {
+            minimum: 0,
+            maximum: 1
+        }
+    );
+    assert_eq!(
+        game.offered(),
+        vec![CandidateIntent::SelectObject { object: own }]
+    );
+}
+
+#[test]
+fn an_unblocked_attack_lowers_the_defenders_life() {
+    let (mountain, _) = land_definitions();
+    let [_, _, giant] = creature_definitions();
+    let game = Game::with_hands_and_life(
+        [
+            vec![mountain, mountain, mountain, mountain, giant],
+            vec![mountain],
+        ],
+        [20, 20],
+    );
+    // Hill Giant costs {3}{R}: P1 casts it on turn 7 with four Mountains.
+    game.run_until(start_of_main_phase(7));
+    game.answer(play_land, pass);
+    for _ in 0..4 {
+        game.answer(tap_for_mana, pass);
+    }
+    game.answer(cast_spell, pass);
+    game.answer(pass, pass);
+    game.answer(pass, pass);
+    let creature = game.only_object(P1, giant, ZoneKind::Battlefield);
+    game.run_until(at_attackers(9));
+    let own = opaque_of(&game.state(), P1, creature);
+    game.declare_attackers(&[own]);
+    for player in [P1, P2] {
+        assert_eq!(life_of(&game.observation(player), P2), 20);
+    }
+
+    // Both players pass in the declare attackers step; P2 has no creature, so
+    // the blockers step has no declaration, and both pass again.
+    game.answer(pass, pass);
+    game.answer(pass, pass);
+    assert_eq!(
+        game.state().core.position,
+        TurnPosition::Combat {
+            step: mtgml_state::CombatStep::DeclareBlockers
+        }
+    );
+    game.answer(pass, pass);
+
+    // CR 510.1a, 510.2: P2's pass opens the combat damage step, in which the
+    // Giant deals 3 damage to P2 (CR 120.3a).
+    let before = game.state();
+    assert_eq!(before.core.active_player, P1);
+    let (product, observed) = product_and_observations(&before, pass_answer(&before));
+    for player in [P1, P2] {
+        assert!(
+            observed[&player].iter().any(|envelope| envelope.event
+                == ObservedEventKindV4::LifeChanged {
+                    player: P2,
+                    from: 20,
+                    to: 17
+                }),
+            "{player:?} observes the life change"
+        );
+    }
+    let (second, step) = game.answer(pass, pass);
+    assert_eq!(second, P2);
+    assert_eq!(step.observed_events, observed[&P2]);
+    assert_eq!(game.state(), product.next_state);
+
+    let state = game.state();
+    assert_eq!(state.core.players[&P2].life, 17);
+    assert_eq!(state.core.players[&P1].life, 20);
+    for player in [P1, P2] {
+        let observation = game.observation(player);
+        assert_eq!(life_of(&observation, P2), 17, "{player:?}");
+        assert_eq!(life_of(&observation, P1), 20, "{player:?}");
+    }
+    assert!(state.combat.as_ref().unwrap().damage_step_completed);
+    assert!(state.card_rules.turn_history.players[&P2].lost_life_this_turn);
+    assert!(!state.card_rules.turn_history.players[&P1].lost_life_this_turn);
+    // CR 510.3: the active player receives priority in the damage step.
+    assert_eq!(
+        state.core.position,
+        TurnPosition::Combat {
+            step: mtgml_state::CombatStep::CombatDamage
+        }
+    );
+    assert_eq!(
+        state.core.priority,
+        PriorityState::HeldBy {
+            player: P1,
+            consecutive_passes: 0
+        }
+    );
+    assert_eq!(game.pending().0, P1);
+    // The Giant survives: nothing damages it.
+    game.only_object(P1, giant, ZoneKind::Battlefield);
+}
+
+#[test]
+fn attackers_tap_and_both_players_see_the_attack() {
+    let (game, creature) = lions_ready_to_attack(20);
+    let before = game.state();
+    assert!(!before.zones.objects[&creature].tapped);
+    let request = before.execution.pending_decision.as_ref().unwrap();
+    let (product, observed) = product_and_observations(
+        &before,
+        DecisionAnswerV2::SelectMany {
+            candidate_ids: vec![request.candidates[0].candidate_id],
+        },
+    );
+    // CR 508.1f: the creature taps, and then it is declared (CR 508.1k);
+    // both players see both.
+    for player in [P1, P2] {
+        let id = opaque_of(&before, player, creature);
+        let events: Vec<_> = observed[&player]
+            .iter()
+            .map(|envelope| &envelope.event)
+            .collect();
+        let tapped = events
+            .iter()
+            .position(|event| {
+                **event
+                    == ObservedEventKindV4::ObjectTapped {
+                        object: id,
+                        tapped: true,
+                    }
+            })
+            .unwrap_or_else(|| panic!("{player:?} does not see the creature tap: {events:?}"));
+        let declared = events
+            .iter()
+            .position(|event| {
+                **event
+                    == ObservedEventKindV4::AttackersDeclared {
+                        attacking_player: P1,
+                        defending_player: P2,
+                        attackers: vec![id],
+                    }
+            })
+            .unwrap_or_else(|| panic!("{player:?} does not see the attack: {events:?}"));
+        assert!(tapped < declared);
+    }
+
+    let (actor, step) = game.declare_attackers(&[opaque_of(&before, P1, creature)]);
+    assert_eq!(actor, P1);
+    assert_eq!(step.observed_events, observed[&P1]);
+    let state = game.state();
+    assert_eq!(state, product.next_state);
+    assert!(state.zones.objects[&creature].tapped);
+    let combat = state.combat.as_ref().unwrap();
+    assert_eq!(combat.defending_player, P2);
+    assert_eq!(combat.attackers, vec![creature]);
+    assert_eq!(combat.blockers, BTreeMap::from([(creature, None)]));
+    assert!(combat.blocked_attackers.is_empty());
+    for player in [P1, P2] {
+        assert!(game
+            .observation(player)
+            .tapped
+            .contains(&opaque_of(&state, player, creature)));
+    }
+    // CR 508.2: the active player receives priority in the declare attackers
+    // step.
+    assert_eq!(
+        state.core.position,
+        TurnPosition::Combat {
+            step: mtgml_state::CombatStep::DeclareAttackers
+        }
+    );
+    assert_eq!(game.pending().0, P1);
+}
+
+#[test]
+fn an_empty_attack_declaration_is_public() {
+    let (mountain, plains) = land_definitions();
+    let game = Game::with_hands([vec![plains], vec![mountain]]);
+    game.run_until(at_attackers(1));
+    let before = game.state();
+    let (_, observed) = product_and_observations(
+        &before,
+        DecisionAnswerV2::SelectMany {
+            candidate_ids: Vec::new(),
+        },
+    );
+    for player in [P1, P2] {
+        assert!(
+            observed[&player].iter().any(|envelope| envelope.event
+                == ObservedEventKindV4::AttackersDeclared {
+                    attacking_player: P1,
+                    defending_player: P2,
+                    attackers: Vec::new(),
+                }),
+            "{player:?} observes that nobody attacks"
+        );
+    }
+}
+
+/// P1 attacks with its Savannah Lions, and both players pass until P2's pass
+/// would open the combat damage step.
+fn attack_to_the_damage_step(p2_life: i64) -> Game {
+    let (game, creature) = lions_ready_to_attack(p2_life);
+    game.declare_attackers(&[opaque_of(&game.state(), P1, creature)]);
+    for _ in 0..3 {
+        game.answer(pass, pass);
+    }
+    assert_eq!(
+        game.state().core.position,
+        TurnPosition::Combat {
+            step: mtgml_state::CombatStep::DeclareBlockers
+        }
+    );
+    assert_eq!(game.pending().0, P2);
+    game
+}
+
+/// P2 lost to combat damage and is at `life`: the status, the checkpoint and
+/// what both players observe say so.
+fn assert_p2_lost_to_combat_damage(game: &Game, life: i64) {
+    let checkpoint = game.controller.checkpoint().unwrap();
+    assert_eq!(
+        checkpoint.status,
+        EpisodeStatus::Terminal {
+            reason: TerminalReason::RulesLoss,
+            players: vec![
+                PlayerOutcome {
+                    player: P1,
+                    result: PlayerResult::Win,
+                },
+                PlayerOutcome {
+                    player: P2,
+                    result: PlayerResult::Loss,
+                },
+            ],
+        }
+    );
+    assert_eq!(checkpoint.state.core.players[&P2].life, life);
+    assert!(checkpoint.state.core.players[&P2].has_lost);
+    assert!(!checkpoint.state.core.players[&P1].has_lost);
+    for player in [P1, P2] {
+        assert_eq!(game.endpoint(player).visible_decision().unwrap(), None);
+        // A closed episode still shows its final observation, with the life
+        // that ended the game.
+        assert_eq!(life_of(&game.observation(player), P2), life, "{player:?}");
+    }
+}
+
+#[test]
+fn zero_life_ends_the_game() {
+    let game = attack_to_the_damage_step(2);
+    let (actor, request) = game.pending();
+    assert_eq!(actor, P2);
+    let (second, step) = game.answer(pass, pass);
+    assert_eq!(second, P2);
+    // CR 120.3a, 704.5a: Savannah Lions deals 2 damage, P2 is at 0 life and
+    // loses (CR 104.2a: P1 wins).
+    assert!(step.observed_events.iter().any(|envelope| envelope.event
+        == ObservedEventKindV4::LifeChanged {
+            player: P2,
+            from: 2,
+            to: 0
+        }));
+    assert!(matches!(step.status, EpisodeStatus::Terminal { .. }));
+    assert_p2_lost_to_combat_damage(&game, 0);
+
+    // The episode is closed: a further answer is refused, and changes nothing.
+    let checkpoint = game.controller.checkpoint().unwrap();
+    let late = game
+        .endpoint(P2)
+        .submit(DecisionResponseV3 {
+            schema_version: DECISION_RESPONSE_V3_SCHEMA.to_owned(),
+            player_decision_id: request.player_decision_id,
+            view_sequence: request.view_sequence,
+            answer: DecisionAnswerV2::SelectOne {
+                candidate_id: request.candidates[0].candidate_id,
+            },
+        })
+        .unwrap();
+    assert_eq!(
+        late.submission,
+        PlayerStepSubmissionV1::Rejected {
+            code: mtgml_observation::PlayerSubmissionCodeV1::EpisodeClosed
+        }
+    );
+    assert_eq!(game.controller.checkpoint().unwrap(), checkpoint);
+
+    let report = game
+        .controller
+        .execute_replay(game.controller.export_replay().unwrap())
+        .unwrap();
+    assert_eq!(report.final_checkpoint, checkpoint);
+}
+
+#[test]
+fn overkill_damage_shows_negative_life_and_ends_the_game() {
+    let game = attack_to_the_damage_step(1);
+    let (_, step) = game.answer(pass, pass);
+    // The Lions deals 2 damage to a player at 1 life: the life total goes
+    // below 0 (CR 120.3a), and the observation shows it.
+    assert!(step.observed_events.iter().any(|envelope| envelope.event
+        == ObservedEventKindV4::LifeChanged {
+            player: P2,
+            from: 1,
+            to: -1
+        }));
+    assert_p2_lost_to_combat_damage(&game, -1);
+    let checkpoint = game.controller.checkpoint().unwrap();
+    let report = game
+        .controller
+        .execute_replay(game.controller.export_replay().unwrap())
+        .unwrap();
+    assert_eq!(report.final_checkpoint, checkpoint);
+}
+
+#[test]
+fn a_defender_with_an_untapped_creature_fails_closed() {
+    let (_, plains) = land_definitions();
+    let [lions, _, _] = creature_definitions();
+    let game = Game::with_hands([vec![plains, lions], vec![plains, lions]]);
+    let attacker = cast_on_turn_one(&game, lions);
+    // P2 casts its own Savannah Lions on turn 2, and it stays untapped.
+    game.run_until(start_of_main_phase(2));
+    game.answer(play_land, pass);
+    game.answer(tap_for_mana, pass);
+    game.answer(cast_spell, pass);
+    game.answer(pass, pass);
+    game.answer(pass, pass);
+    let blocker = game.only_object(P2, lions, ZoneKind::Battlefield);
+    assert!(!game.state().zones.objects[&blocker].tapped);
+
+    game.run_until(at_attackers(3));
+    game.declare_attackers(&[opaque_of(&game.state(), P1, attacker)]);
+    game.answer(pass, pass);
+
+    // P2's pass would open the declare blockers step, in which P2 could block.
+    // Blocks are not supported yet: the endpoint reports the unsupported rule
+    // instead of a step, and nothing changes.
+    let before = game.controller.checkpoint().unwrap();
+    let (actor, request) = game.pending();
+    assert_eq!(actor, P2);
+    let outcome = game.endpoint(P2).submit(DecisionResponseV3 {
+        schema_version: DECISION_RESPONSE_V3_SCHEMA.to_owned(),
+        player_decision_id: request.player_decision_id,
+        view_sequence: request.view_sequence,
+        answer: pass_answer(&before.state),
+    });
+    assert_eq!(outcome, Err(PlayerEndpointError::ServiceUnavailable));
+    assert_eq!(game.controller.checkpoint().unwrap(), before);
+    assert_eq!(game.pending().1, request);
+
+    // The rules say why.
+    let pending = before.state.execution.pending_decision.as_ref().unwrap();
+    assert_eq!(
+        mtgml_rules::execute_magic_response(
+            &creature_game_admission(),
+            &before.state,
+            P2,
+            &DecisionResponseV3 {
+                schema_version: DECISION_RESPONSE_V3_SCHEMA.to_owned(),
+                player_decision_id: pending.player_decision_id,
+                view_sequence: pending.view_sequence,
+                answer: pass_answer(&before.state),
+            },
+            &EpisodeStatus::Running,
+        ),
+        Err(mtgml_rules::BasicLandTransitionError::TurnProgressUnsupported)
+    );
+}
+
+#[test]
+fn a_restored_attack_continues_identically() {
+    let (game, creature) = lions_ready_to_attack(20);
+    let attacker = opaque_of(&game.state(), P1, creature);
+    let at_declaration = game.controller.checkpoint().unwrap();
+    game.declare_attackers(&[attacker]);
+    let declared = game.controller.checkpoint().unwrap();
+    for _ in 0..4 {
+        game.answer(pass, pass);
+    }
+    let damaged = game.controller.checkpoint().unwrap();
+    assert_eq!(damaged.state.core.players[&P2].life, 18);
+
+    // The pending declaration, with its candidate, restores and continues.
+    game.controller.restore(at_declaration.clone()).unwrap();
+    assert_eq!(game.controller.checkpoint().unwrap(), at_declaration);
+    assert_eq!(game.offered().len(), 1);
+    game.declare_attackers(&[attacker]);
+    assert_eq!(game.controller.checkpoint().unwrap(), declared);
+
+    // So does an attack in progress.
+    game.controller.restore(declared.clone()).unwrap();
+    assert_eq!(game.controller.checkpoint().unwrap(), declared);
+    for _ in 0..4 {
+        game.answer(pass, pass);
+    }
+    assert_eq!(game.controller.checkpoint().unwrap(), damaged);
+
+    // The whole game, attack included, replays to the same checkpoint.
+    let report = game
+        .controller
+        .execute_replay(game.controller.export_replay().unwrap())
+        .unwrap();
+    assert_eq!(report.final_checkpoint, damaged);
 }

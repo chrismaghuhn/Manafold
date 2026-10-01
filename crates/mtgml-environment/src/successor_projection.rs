@@ -318,7 +318,9 @@ fn requires_all_player_audience(
         | Event::StackItemRemoved { .. }
         | Event::ManaPoolChanged { .. }
         | Event::StartingPlayerChosen { .. }
-        | Event::MulliganDeclared { .. } => Ok(true),
+        | Event::MulliganDeclared { .. }
+        | Event::LifeChanged { .. }
+        | Event::AttackersDeclared { .. } => Ok(true),
         Event::CounterChanged { object, .. } => {
             Ok(public_face_up_battlefield_object(*object, before, after))
         }
@@ -426,6 +428,38 @@ fn project_v4_public_source_event(
             player: *player,
             mulligan: *mulligan,
         }),
+        // CR 119: every player sees a life total change.
+        Event::LifeChanged { player, from, to } => Ok(ObservedEventKindV4::LifeChanged {
+            player: *player,
+            from: *from,
+            to: *to,
+        }),
+        // CR 508.1: every player sees who attacks, even when nobody does.
+        Event::AttackersDeclared {
+            defending_player,
+            attackers,
+        } => {
+            let mut attackers = attackers
+                .iter()
+                .map(|attacker| {
+                    crate::player_projection::public_opaque_object(
+                        after,
+                        after_identity,
+                        knowledge,
+                        *attacker,
+                    )
+                    .ok_or(SuccessorProjectionError::MissingOpaqueIdentity)
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            // Ascending opaque ids: the attackers' object order means nothing
+            // to a player.
+            attackers.sort();
+            Ok(ObservedEventKindV4::AttackersDeclared {
+                attacking_player: after.core.active_player,
+                defending_player: *defending_player,
+                attackers,
+            })
+        }
         Event::ObjectTapped { object, to, .. } => Ok(ObservedEventKindV4::ObjectTapped {
             object: crate::player_projection::public_opaque_object(
                 after,

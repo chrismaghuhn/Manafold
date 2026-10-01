@@ -242,3 +242,39 @@ fn simultaneous_violations_preserve_the_existing_error_precedence() {
         ))
     ));
 }
+
+#[test]
+fn nine_attackers_are_a_valid_combat() {
+    // CR 508.1a: the active player chooses any number of their creatures that
+    // can attack. The state has no cap.
+    let mut state = synthetic_state();
+    let attackers: Vec<GameObjectId> = (3..12).map(GameObjectId).collect();
+    for id in &attackers {
+        state.zones.objects.insert(
+            *id,
+            GameObject {
+                id: *id,
+                physical_card: Some(PhysicalCardId(id.0)),
+                card_definition: CardDefinitionId(1),
+                owner: PlayerId(1),
+                controller: PlayerId(1),
+                tapped: true,
+                face_down: false,
+            },
+        );
+        state.zones.locations.insert(*id, public_location());
+    }
+    state.allocators.next_object_id = GameObjectId(12);
+    state.core.position = TurnPosition::Combat {
+        step: crate::CombatStep::DeclareAttackers,
+    };
+    state.combat = Some(CombatState {
+        defending_player: PlayerId(2),
+        attackers: attackers.clone(),
+        damage_step_completed: false,
+        blocked_attackers: BTreeSet::new(),
+        blockers: attackers.iter().map(|attacker| (*attacker, None)).collect(),
+    });
+    assert_eq!(attackers.len(), 9);
+    validate_engine_state(&state).unwrap();
+}

@@ -139,6 +139,14 @@ pub enum ObservedEventKindV4 {
         player: PlayerId,
         mulligan: bool,
     },
+    /// CR 508.1: the attacking player declared these creatures as attackers
+    /// against the defending player (CR 506.2), possibly none. The creatures
+    /// are listed by ascending opaque id.
+    AttackersDeclared {
+        attacking_player: PlayerId,
+        defending_player: PlayerId,
+        attackers: Vec<OpaqueObjectId>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -209,6 +217,15 @@ impl ObservedEventEnvelopeV4 {
             {
                 return Err(ObservationValidationError::ObservationPayload);
             }
+            ObservedEventKindV4::AttackersDeclared {
+                attacking_player,
+                defending_player,
+                attackers,
+            } if attacking_player == defending_player
+                || attackers.windows(2).any(|pair| pair[0] >= pair[1]) =>
+            {
+                return Err(ObservationValidationError::ObservationPayload);
+            }
             ObservedEventKindV4::StackItemAdded { item, .. }
             | ObservedEventKindV4::StackItemRemoved { item, .. } => item.validate_public()?,
             ObservedEventKindV4::TemporaryEffectCreated { effect }
@@ -255,6 +272,70 @@ mod tests {
             assert_eq!(
                 serde_json::from_value::<ObservedEventKindV4>(json).unwrap(),
                 envelope.event
+            );
+        }
+    }
+
+    fn attackers_declared(
+        attacking_player: u64,
+        defending_player: u64,
+        attackers: &[u64],
+    ) -> ObservedEventEnvelopeV4 {
+        ObservedEventEnvelopeV4 {
+            schema_version: OBSERVED_EVENT_SCHEMA_V4.into(),
+            sequence: VisibleSequence(4),
+            event: ObservedEventKindV4::AttackersDeclared {
+                attacking_player: PlayerId(attacking_player),
+                defending_player: PlayerId(defending_player),
+                attackers: attackers.iter().copied().map(OpaqueObjectId).collect(),
+            },
+        }
+    }
+
+    #[test]
+    fn attackers_declared_round_trips_as_a_public_wire_value() {
+        for (envelope, json) in [
+            (
+                attackers_declared(1, 2, &[4, 9]),
+                serde_json::json!({
+                    "kind": "attackers_declared",
+                    "attacking_player": "1",
+                    "defending_player": "2",
+                    "attackers": ["4", "9"],
+                }),
+            ),
+            // An empty declaration is public too.
+            (
+                attackers_declared(2, 1, &[]),
+                serde_json::json!({
+                    "kind": "attackers_declared",
+                    "attacking_player": "2",
+                    "defending_player": "1",
+                    "attackers": [],
+                }),
+            ),
+        ] {
+            envelope.validate().unwrap();
+            assert_eq!(serde_json::to_value(&envelope.event).unwrap(), json);
+            assert_eq!(
+                serde_json::from_value::<ObservedEventKindV4>(json).unwrap(),
+                envelope.event
+            );
+        }
+    }
+
+    #[test]
+    fn a_malformed_attackers_declaration_is_rejected() {
+        for envelope in [
+            // The attacker is not the defender.
+            attackers_declared(1, 1, &[4]),
+            // Ascending and distinct.
+            attackers_declared(1, 2, &[9, 4]),
+            attackers_declared(1, 2, &[4, 4]),
+        ] {
+            assert_eq!(
+                envelope.validate(),
+                Err(ObservationValidationError::ObservationPayload)
             );
         }
     }

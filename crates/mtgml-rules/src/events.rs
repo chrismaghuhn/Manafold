@@ -936,6 +936,8 @@ fn is_projectable_public_source_event(event: &AuthoritativeRuleEventKind) -> boo
             | AuthoritativeRuleEventKind::TemporaryEffectExpired { .. }
             | AuthoritativeRuleEventKind::ZoneTransition { .. }
             | AuthoritativeRuleEventKind::ObjectTapped { .. }
+            | AuthoritativeRuleEventKind::LifeChanged { .. }
+            | AuthoritativeRuleEventKind::AttackersDeclared { .. }
             | AuthoritativeRuleEventKind::StartingPlayerChosen { .. }
             | AuthoritativeRuleEventKind::MulliganDeclared { .. }
     )
@@ -1402,16 +1404,26 @@ fn validate_event_projection_v3(
                 }
             })
         }
-        AuthoritativeRuleEventKind::CombatDamageStepCompleted => after
-            .combat
-            .as_ref()
-            .is_some_and(|combat| combat.damage_step_completed),
+        AuthoritativeRuleEventKind::CombatDamageStepCompleted => {
+            before
+                .combat
+                .as_ref()
+                .is_some_and(|combat| !combat.damage_step_completed)
+                && after
+                    .combat
+                    .as_ref()
+                    .is_some_and(|combat| combat.damage_step_completed)
+        }
         AuthoritativeRuleEventKind::AttackersDeclared {
             defending_player,
             attackers,
-        } => after.combat.as_ref().is_some_and(|combat| {
-            combat.defending_player == *defending_player && combat.attackers == *attackers
-        }),
+        } => {
+            // A declaration begins the combat (CR 508.1).
+            before.combat.is_none()
+                && after.combat.as_ref().is_some_and(|combat| {
+                    combat.defending_player == *defending_player && combat.attackers == *attackers
+                })
+        }
         AuthoritativeRuleEventKind::CombatEnded => {
             before.combat.is_some() && after.combat.is_none()
         }
@@ -1433,10 +1445,42 @@ fn validate_event_projection_v3(
         AuthoritativeRuleEventKind::TurnNumberChanged { from, to } => {
             from != to && before.core.turn_number == *from && after.core.turn_number == *to
         }
-        // Combat assignment/blocked-state state projection remains closed
-        // until its exact legal relation is characterized and accepted.
-        AuthoritativeRuleEventKind::CombatDamageDealt { .. }
-        | AuthoritativeRuleEventKind::BlockersDeclared { .. } => false,
+        // CR 510.2, 120.3a: attacking creatures deal damage to the defending
+        // player, and the player loses that much life. Damage to a creature
+        // has no state to check it against yet and fails closed.
+        AuthoritativeRuleEventKind::CombatDamageDealt { assignments } => {
+            before.combat.as_ref().is_some_and(|combat| {
+                let dealt = assignments.iter().try_fold(0_u64, |total, assignment| {
+                    let to_defender = matches!(assignment.recipient,
+                        mtgml_state::DamageRecipientV1::Player { player }
+                            if player == combat.defending_player);
+                    if assignment.amount == 0
+                        || !to_defender
+                        || !combat.attackers.contains(&assignment.source)
+                    {
+                        return None;
+                    }
+                    total.checked_add(assignment.amount)
+                });
+                let life = |state: &EngineState| {
+                    state
+                        .core
+                        .players
+                        .get(&combat.defending_player)
+                        .map(|player| i128::from(player.life))
+                };
+                !assignments.is_empty()
+                    && match (dealt, life(before), life(after)) {
+                        (Some(dealt), Some(before), Some(after)) => {
+                            before - after == i128::from(dealt)
+                        }
+                        _ => false,
+                    }
+            })
+        }
+        // Blocked-state state projection remains closed until its exact
+        // legal relation is characterized and accepted.
+        AuthoritativeRuleEventKind::BlockersDeclared { .. } => false,
         AuthoritativeRuleEventKind::PerspectiveObservationOccurrence { .. } => true,
         AuthoritativeRuleEventKind::DamageApplied { .. } => true,
         AuthoritativeRuleEventKind::StackItemAdded {
@@ -3130,6 +3174,154 @@ mod tests {
         assert!(!casts(&being_paid_for, &being_paid_for));
         // The record is gone, so nothing was cast.
         assert!(!casts(&being_paid_for, &empty));
+    }
+
+    /// P1's creature (object 1) attacks P2, who has 40 life. In `before` the
+    /// combat damage step is open; in `after` P2 has lost 3 life and the step
+    /// is complete.
+    fn combat_damage_states() -> (EngineState, EngineState) {
+        let mut before = state();
+        before.core.position = TurnPosition::Combat {
+            step: mtgml_state::CombatStep::CombatDamage,
+        };
+        before.combat = Some(mtgml_state::CombatState {
+            defending_player: PlayerId(2),
+            attackers: vec![GameObjectId(1)],
+            damage_step_completed: false,
+            blocked_attackers: Default::default(),
+            blockers: std::collections::BTreeMap::from([(GameObjectId(1), None)]),
+        });
+        before.validate().unwrap();
+        let mut after = before.clone();
+        after.revision = StateRevision(before.revision.0 + 1);
+        after.core.players.get_mut(&PlayerId(2)).unwrap().life -= 3;
+        after.combat.as_mut().unwrap().damage_step_completed = true;
+        after
+            .card_rules
+            .turn_history
+            .players
+            .get_mut(&PlayerId(2))
+            .unwrap()
+            .lost_life_this_turn = true;
+        (before, after)
+    }
+
+    /// Whether the events of a combat damage step that deal `assignments`
+    /// and take P2 from 40 to 37 life are valid for `combat_damage_states`.
+    fn combat_damage_is_valid(
+        assignments: Vec<mtgml_state::DamageAssignmentV1>,
+    ) -> Result<(), EventDeltaError> {
+        let (before, mut after) = combat_damage_states();
+        let (events, next) = allocate_rule_events(
+            before.allocators.next_rule_event_id,
+            after.revision,
+            [
+                AuthoritativeRuleEventKind::CombatDamageDealt { assignments },
+                AuthoritativeRuleEventKind::LifeChanged {
+                    player: PlayerId(2),
+                    from: 40,
+                    to: 37,
+                },
+                AuthoritativeRuleEventKind::CombatDamageStepCompleted,
+            ],
+        )
+        .unwrap();
+        after.allocators.next_rule_event_id = next;
+        let delta = StateDelta::between(
+            &before,
+            &after,
+            events
+                .iter()
+                .flat_map(AuthoritativeRuleEvent::semantic_operations)
+                .collect(),
+        )
+        .unwrap();
+        validate_event_delta_state(&before, &after, &events, &delta)
+    }
+
+    fn damage(
+        source: u64,
+        recipient: mtgml_state::DamageRecipientV1,
+        amount: u64,
+    ) -> mtgml_state::DamageAssignmentV1 {
+        mtgml_state::DamageAssignmentV1 {
+            source: GameObjectId(source),
+            recipient,
+            amount,
+        }
+    }
+
+    #[test]
+    fn combat_damage_to_a_player_must_match_the_life_change() {
+        let to_p2 = mtgml_state::DamageRecipientV1::Player {
+            player: PlayerId(2),
+        };
+        assert_eq!(combat_damage_is_valid(vec![damage(1, to_p2, 3)]), Ok(()));
+        // Less or more than the player lost, and damage to nobody.
+        for amount in [2, 4] {
+            assert_eq!(
+                combat_damage_is_valid(vec![damage(1, to_p2, amount)]),
+                Err(EventDeltaError::Mismatch),
+                "{amount}"
+            );
+        }
+        assert_eq!(
+            combat_damage_is_valid(Vec::new()),
+            Err(EventDeltaError::Mismatch)
+        );
+        // Assigned damage is positive (CR 510.1a).
+        assert_eq!(
+            combat_damage_is_valid(vec![damage(1, to_p2, 3), damage(1, to_p2, 0)]),
+            Err(EventDeltaError::Mismatch)
+        );
+        // The damage is dealt to the defending player by an attacking
+        // creature.
+        assert_eq!(
+            combat_damage_is_valid(vec![damage(
+                1,
+                mtgml_state::DamageRecipientV1::Player {
+                    player: PlayerId(1)
+                },
+                3
+            )]),
+            Err(EventDeltaError::Mismatch)
+        );
+        assert_eq!(
+            combat_damage_is_valid(vec![damage(2, to_p2, 3)]),
+            Err(EventDeltaError::Mismatch)
+        );
+    }
+
+    #[test]
+    fn combat_damage_to_a_creature_fails_closed() {
+        assert_eq!(
+            combat_damage_is_valid(vec![damage(
+                1,
+                mtgml_state::DamageRecipientV1::Creature {
+                    object: GameObjectId(2)
+                },
+                3
+            )]),
+            Err(EventDeltaError::Mismatch)
+        );
+    }
+
+    #[test]
+    fn the_damage_step_completes_once() {
+        let (before, mut after) = combat_damage_states();
+        // A step that is already complete cannot complete again.
+        let mut completed = before.clone();
+        completed.combat.as_mut().unwrap().damage_step_completed = true;
+        after.revision = StateRevision(before.revision.0 + 1);
+        let event = AuthoritativeRuleEventKind::CombatDamageStepCompleted;
+        assert_eq!(
+            validate_event_projection_v3(&before, &after, &event),
+            Ok(())
+        );
+        assert_eq!(
+            validate_event_projection_v3(&completed, &after, &event),
+            Err(EventDeltaError::Mismatch)
+        );
     }
 }
 

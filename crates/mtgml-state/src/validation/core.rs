@@ -50,8 +50,8 @@ fn validate_combat(
     {
         return Err(EngineStateViolation::CombatState);
     }
+    // CR 508.1a: the active player may declare any number of attackers.
     if !players.contains(&combat.defending_player)
-        || combat.attackers.len() > 8
         || combat
             .attackers
             .windows(2)

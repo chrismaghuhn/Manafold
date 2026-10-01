@@ -258,6 +258,23 @@ pub fn creature_game(
     .unwrap()
 }
 
+/// As `creature_game`, with P1 and P2 starting at the given life totals.
+pub fn creature_game_with_life(
+    libraries: &[Vec<CardDefinitionId>; 2],
+    hands: &[Vec<CardDefinitionId>; 2],
+    seed: u64,
+    life: [i64; 2],
+) -> TrustedEnvironmentController {
+    let mut state = land_game_state(libraries, hands, seed);
+    for (player, life) in [P1, P2].into_iter().zip(life) {
+        state.core.players.get_mut(&player).unwrap().life = life;
+    }
+    let admission = creature_game_admission();
+    let status = mtgml_model::EpisodeStatus::Running;
+    mtgml_rules::install_basic_land_request(&admission, &mut state, P1, &status).unwrap();
+    controller_for(&admission, CREATURE_CONTENT, state).unwrap()
+}
+
 fn game_at_first_main(
     admission: &ExecutableProfileAdmissionV1,
     content: &[u8],
