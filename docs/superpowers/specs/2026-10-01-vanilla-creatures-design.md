@@ -100,10 +100,9 @@ New game-rule roots (lifecycle `specified` until their step is covered):
 
 ## 3. Rules scope
 
-Source: CR 2026-09-25. The texts of 302.1, 506.4, 509.1h and 510.1c were
-checked overnight through the Academy Ruins rules API (current CR). They were
-not checked against the hash of the pinned snapshot. The other subrule numbers
-are re-checked before the plan is frozen.
+Source: CR 2026-09-25. Every rule cited here was
+checked on 2026-10-01 against the pinned TXT (SHA-256 `8d860e45…`; kept locally in the
+git-ignored `.rules/` folder, never committed, per ADR 0051).
 
 - **Casting (601.2).**
   - Timing: CR 302.1 and 117.1a. The caster must be the active player, in a
