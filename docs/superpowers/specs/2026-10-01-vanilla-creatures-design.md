@@ -100,9 +100,10 @@ New game-rule roots (lifecycle `specified` until their step is covered):
 
 ## 3. Rules scope
 
-Source: CR 2026-09-25. Subrule numbers are re-checked against the pinned text
-before the plan is frozen. The 500 and 700 sections could not be read overnight
-because the fetch tool truncates the file.
+Source: CR 2026-09-25. The texts of 302.1, 506.4, 509.1h and 510.1c were
+checked overnight through the Academy Ruins rules API (current CR). They were
+not checked against the hash of the pinned snapshot. The other subrule numbers
+are re-checked before the plan is frozen.
 
 - **Casting (601.2).**
   - Timing: CR 302.1 and 117.1a. The caster must be the active player, in a
@@ -146,8 +147,8 @@ because the fetch tool truncates the file.
   - unblocked attackers deal damage to the defending player, as life loss;
   - each blocker deals damage to the attacker it blocks;
   - a blocked attacker deals damage to its blockers, divided as its controller
-    chooses. There is no damage assignment order after Foundations, and 0 to
-    some blockers is allowed (verify 510.1c against the pinned text).
+    chooses among the blockers (510.1c, checked). There is no damage
+    assignment order, and 0 to some blockers is allowed.
 - **Removal from combat (506.4).** A creature that leaves the battlefield is
   removed from combat before the zone move. `zone_incarnation` refuses to move
   objects that combat still references, so lethal-damage destruction fails
