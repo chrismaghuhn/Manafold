@@ -1337,10 +1337,17 @@ fn validate_turn_history_delta(
         if old_history.red_noncombat_damage_dealt != new_history.red_noncombat_damage_dealt {
             return false;
         }
-        // A permanent card put into this player's graveyard from the battlefield
-        // (a creature destroyed by lethal damage) is the zone transition of
-        // that card, which leaves the fact true for the rest of the turn. No
-        // other move of this slice sets it, and nothing clears it.
+        // The fact means that a permanent card was put into this player's
+        // graveyard from anywhere this turn. This rule accepts it only for the
+        // move from the battlefield (a creature destroyed by lethal damage): the
+        // zone transition of that card makes it true for the rest of the turn,
+        // and nothing clears it within the turn.
+        //
+        // Known gap: no other move sets it yet. A permanent card put into the
+        // graveyard from the hand (a land discarded at cleanup, CR 514.1) is a
+        // hand -> graveyard transition, which does not set the fact, and this
+        // rule rejects a state that sets it for one. A fix that makes discards
+        // set the fact has to widen this rule in the same change.
         let permanent_card_put_into_the_graveyard = operations.iter().any(|operation| {
             matches!(operation,
                 V3::ZoneTransition { transition }

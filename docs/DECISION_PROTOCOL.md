@@ -285,3 +285,25 @@ a restored checkpoint with the declaration pending continues identically. Every
 combination of answers is legal for the creatures of the current slice; menace
 and block requirements would need a check over the whole declaration (CR
 509.1b, 509.1c).
+
+The SbaGraveyardOrder request is `Order { minimum: n, maximum: n }` and
+`acting_player_only`. Its actor is an owner of cards that are put into their
+graveyard together by the state-based actions (CR 404.3, 704.3), who need not be
+the active player, and `n` is the number of that owner's cards in the batch.
+Only an owner of two or more is asked. It has one `SelectObject` candidate for
+each of those cards, in ascending order of the actor's opaque ids; the answer
+lists all of them, top to bottom, and the first is the topmost card. The owners
+are asked one after another in APNAP order (CR 101.4). Each answer is its own
+transition and is recorded in the MagicSbaGraveyardOrderV1 continuation; the
+batch applies with the last answer, and the state-based actions are checked
+again. The creatures stay on the battlefield, with their lethal damage, until
+then. The rules kernel rederives the request and the continuation from the
+state, so a restored checkpoint with an order pending continues identically.
+
+A batch in which a player loses asks nobody (owner decision 2026-10-01). The
+game ends with the loss (CR 104.2a), so an order could never change an outcome,
+and a decision with no consequence is noise in the data. The batch applies at
+once, and its cards go to their graveyards in object order, the card with the
+higher object id on top. A state with a pending graveyard order whose batch holds
+a loss is not one the game makes, and is refused. Every player losing at once
+(CR 104.4a) is not supported and fails closed.

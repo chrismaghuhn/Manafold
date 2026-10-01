@@ -562,6 +562,8 @@ fn progress(
             top_to_bottom,
         )?,
         // CR 514.1: the discard ends cleanup; the turn then ends (CR 514.3).
+        // `advance` removes the marked damage (CR 514.2) in this same
+        // transition, after the discard.
         Answer::Discard(object) => {
             move_card(
                 &mut next,

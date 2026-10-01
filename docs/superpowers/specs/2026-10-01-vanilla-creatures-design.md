@@ -163,8 +163,7 @@ git-ignored `.rules/` folder, never committed, per ADR 0051).
     assignment order, and 0 to some blockers is allowed.
 - **Removal from combat (506.4).** A creature that leaves the battlefield is
   removed from combat before the zone move. `zone_incarnation` refuses to move
-  objects that combat still references, so lethal-damage destruction fails
-  today.
+  objects that combat still references, so the removal comes first.
 - **State-based actions.**
   - 704.5a: a player at 0 or less life loses.
   - 704.5g: a creature with lethal damage marked on it is destroyed.
@@ -174,9 +173,11 @@ git-ignored `.rules/` folder, never committed, per ADR 0051).
     game ends (104.2a) and the cards go to their graveyards in object order
     without a decision (owner decision 2026-10-01: a decision with no
     consequence is noise, as with the excluded 103.3 cut).
-  - Only the contract exists. State shape, validation and projection are in
-    place, but nothing in `mtgml-rules` produces or executes it; that is new
-    runtime work.
+  - `crates/mtgml-rules/src/state_based_actions.rs` produces and executes the
+    contract. Only an owner of two or more of the cards is asked, in APNAP
+    order (101.4), and each later owner knows the earlier orders (101.4b). The
+    batch waits in a continuation, with its creatures still on the battlefield,
+    and applies with the last answer. The request reaches only its actor.
   - Both players losing at once (104.4a) cannot happen with this card pool and
     fails closed.
 - **Cleanup (514.2).** All marked damage is removed after the 514.1 discard
