@@ -60,8 +60,9 @@ cast, and not a noncreature one.
 
 While the caster chooses the payment, one Cast continuation exists, for the
 spell on the stack: stage `PayingMana`, awaiting the final allocation, with no
-mana source activations (mana abilities are activated before the cost is paid,
-CR 601.2g), and the printed cost. State validation requires its card to be the
+mana source activations (this slice pays from the pool; the rules would let
+mana abilities be activated while casting, CR 601.2g, 605.3a), and the printed
+cost. State validation requires its card to be the
 spell's card on the stack, controlled by the actor. The caster keeps priority
 while paying; the pool, the turn history and the stack record are unchanged
 until the payment.

@@ -868,7 +868,19 @@ fn a_spell_is_cast_only_when_its_payment_completes() {
             }
         )
     });
-    assert!(cast_at < committed_at && committed_at < spent_at);
+    assert!(
+        committed_at < spent_at,
+        "the pool shows the mana spent after the cost is committed"
+    );
+    // This is the trusted order today, not the order of the rules: CR 601.2h
+    // has the cost paid before CR 601.2i makes the spell cast, so the payment
+    // would come first. The order is a known deferred item (nothing projected
+    // depends on it; revisit it with the first trigger on a cast spell). This
+    // assertion pins today's order so that changing it is deliberate.
+    assert!(
+        cast_at < committed_at,
+        "the trusted order today is SpellCast before the payment; CR 601.2h to 601.2i would put the payment first (deferred)"
+    );
     assert!(!paying.iter().any(|event| matches!(
         event,
         AuthoritativeRuleEventKind::StackItemAdded { .. }

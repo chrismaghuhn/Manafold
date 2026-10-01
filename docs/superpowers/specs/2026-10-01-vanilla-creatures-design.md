@@ -128,7 +128,11 @@ git-ignored `.rules/` folder, never committed, per ADR 0051).
     is itself a legal action, the caster keeps priority, and every end state
     601.2g can reach is reachable this way.
   - Revisit when the total cost is known only mid-cast: X, cost changes under
-    601.2f, convoke, delve, restricted mana.
+    601.2f, convoke, delve.
+  - Mana that only pays for creature spells is spent like any other mana,
+    because every spell of this slice is a creature spell: `payment_options`
+    spends the creature-spell-only buckets as well as the unrestricted ones.
+    Restricted mana therefore does not make the total cost known only mid-cast.
 - **Payment choice.** `ManaPayment` (`SelectManaPayment`) is asked only when
   two or more spend vectors pay the cost and leave different pools. It runs
   through the existing typed `CastContinuation`, stage `PayingMana`:
@@ -241,8 +245,19 @@ the cast itself.
 `record_land_play` is used.
 
 **Validation.**
-- `validate_slice` and `candidate_state` accept a stack with one spell and a
-  cast continuation, including terminal and truncated checkpoints mid-cast.
+- `validate_slice` accepts a stack with one spell and, while its payment is
+  pending, the one cast continuation. `candidate_state` accepts a stack with
+  one spell and no continuation. The spell is a creature spell that the active
+  player cast in a main phase: its stack record, its card object and its card's
+  owner are all the active player (CR 302.1, 117.1a, 112.2, 601.2a), and every
+  permanent is controlled by its owner. Every attacker of a combat is tapped
+  and has been under its controller's control since the turn began (CR 508.1f,
+  302.6).
+- A closed checkpoint (terminal or truncated) may hold a fully cast spell on the
+  stack. A closed checkpoint while a payment is pending is refused, because
+  `candidate_state` rejects any continuation: truncation mid-cast is not
+  supported, so it fails closed until it is. No production path produces a
+  truncated status yet, so this is unreachable there.
 - The assumption "no SBA can apply" in `turn_progression.rs` no longer holds.
   It becomes an assertion that no SBA is pending at a decision boundary.
 

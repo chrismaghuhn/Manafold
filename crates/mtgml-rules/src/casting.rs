@@ -492,7 +492,7 @@ pub(crate) fn cast_spell(
 
 /// The Cast continuation of `spell_object`, a vanilla creature spell of
 /// `actor` that costs `cost`, while the caster chooses how to pay: nothing is
-/// chosen but the allocation (CR 601.2g, 601.2h).
+/// chosen but the allocation (CR 601.2h).
 fn cast_continuation(
     actor: PlayerId,
     spell_object: GameObjectId,

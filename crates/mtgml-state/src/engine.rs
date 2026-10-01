@@ -821,9 +821,12 @@ impl EngineState {
                 {
                     return Err(EngineStateError::ManaPaymentStaging);
                 }
-                // CR 601.2g: mana abilities are activated before the cost is
-                // paid, so paying leaves only the allocation to choose: it
-                // stages no mana source of its own.
+                // This slice pays from the pool: a cast is offered only when
+                // the pool already pays (spec §3), so paying leaves only the
+                // allocation to choose and stages no mana source of its own.
+                // That is a design choice, not a requirement of the rules:
+                // CR 601.2g and 605.3a let mana abilities be activated while
+                // casting.
                 if matches!(value.stage, crate::CastContinuationStage::PayingMana)
                     && value.mana_payment_staging.as_ref().is_none_or(|staging| {
                         staging.stage != crate::ManaPaymentStage::AwaitingFinalAllocation

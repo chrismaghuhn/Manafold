@@ -1316,8 +1316,10 @@ fn a_cast_continuation_awaiting_the_final_allocation_is_a_valid_payment() {
 #[test]
 fn a_cast_continuation_paying_mana_has_no_source_activation() {
     // The source is a live untapped land that could be activated, so only the
-    // cast's own rule rejects the activation: mana abilities are activated
-    // before the cost is paid (CR 601.2g), never as part of the payment.
+    // cast's own rule rejects the activation: this slice pays from the pool
+    // (a design choice of the vanilla-creatures spec §3, not a requirement of
+    // the rules, which let mana abilities be activated while casting, CR
+    // 601.2g and 605.3a), so the payment stages no mana source of its own.
     let mut state = paying_for_a_spell();
     cast_continuation(&mut state)
         .mana_payment_staging
