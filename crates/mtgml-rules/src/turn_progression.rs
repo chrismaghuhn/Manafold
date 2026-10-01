@@ -42,8 +42,8 @@ use crate::{
 };
 
 /// Executes one V4 response. Land plays and mana abilities use the
-/// basic-land path; passing priority and declaring attackers run the turn
-/// progression.
+/// basic-land path; passing priority, casting a spell, paying for it and
+/// declaring attackers run the turn progression.
 pub fn execute_magic_response(
     admission: &ExecutableProfileAdmissionV1,
     state: &EngineState,
@@ -87,6 +87,26 @@ pub fn execute_magic_response(
                 SelectedSuccessorDecisionV1::PassPriority => Answer::Pass,
             }
         }
+        // CR 601.2h: the caster chose how to pay for the spell on the stack.
+        DecisionPurposeV4::ManaPayment => {
+            validate_magic_pending_request(admission, state, status)
+                .map_err(|_| Error::InvalidSelection)?;
+            let DecisionAnswerV2::SelectOne { candidate_id } = &response.answer else {
+                return Err(Error::InvalidSelection);
+            };
+            let Some(EngineCandidateBinding::SelectManaPayment { spent_buckets }) = request
+                .candidates
+                .iter()
+                .find(|candidate| candidate.candidate_id == *candidate_id)
+                .map(|candidate| &candidate.trusted_binding)
+            else {
+                return Err(Error::InvalidSelection);
+            };
+            if !matches!(status, EpisodeStatus::Running) {
+                return Err(Error::InvalidSelection);
+            }
+            return pay(admission, state, request, *spent_buckets);
+        }
         DecisionPurposeV4::AttackerDeclaration => {
             reject_attackers_while_creatures_cannot_attack(admission, state)?;
             validate_magic_pending_request(admission, state, status)
@@ -127,8 +147,8 @@ pub fn execute_magic_response(
 }
 
 /// Validates the pending V4 request of a restored or committed state: priority
-/// windows through the basic-land candidate owner, the attacker declaration
-/// against the request this progression creates.
+/// windows through the basic-land candidate owner, the other requests against
+/// the request this progression creates.
 pub fn validate_magic_pending_request(
     admission: &ExecutableProfileAdmissionV1,
     state: &EngineState,
@@ -148,13 +168,18 @@ pub fn validate_magic_pending_request(
     let Some(request) = state.execution.pending_decision.as_ref().filter(|request| {
         matches!(
             request.purpose,
-            DecisionPurposeV4::AttackerDeclaration | DecisionPurposeV4::HandSizeDiscard
+            DecisionPurposeV4::AttackerDeclaration
+                | DecisionPurposeV4::HandSizeDiscard
+                | DecisionPurposeV4::ManaPayment
         )
     }) else {
         return crate::validate_basic_land_pending_request(admission, state, status);
     };
     if request.purpose == DecisionPurposeV4::HandSizeDiscard {
         return validate_discard_request(admission, state, request, status);
+    }
+    if request.purpose == DecisionPurposeV4::ManaPayment {
+        return validate_payment_request(admission, state, request, status);
     }
     state
         .validate_structure()
@@ -194,6 +219,8 @@ enum Answer {
 
 pub(crate) enum NextDecision {
     Priority(PlayerId),
+    /// The caster of the spell on the stack chooses how to pay for it.
+    Payment,
     Attackers,
     Discard,
     /// The next request of the start of the game (CR 103).
@@ -254,10 +281,11 @@ pub(crate) fn observe_public(
 
 /// The slice this progression can evaluate (D13): exactly two players, only
 /// admitted lands and vanilla creatures on the battlefield, a stack that is
-/// empty or holds one creature spell, and none of the state no rule of this
-/// slice can evaluate. Creatures may be on the battlefield but cannot attack
-/// yet (see `reject_attackers_while_creatures_cannot_attack`), so no combat
-/// damage is dealt and no state-based action can apply.
+/// empty or holds one creature spell, no continuation but the payment of that
+/// spell, and none of the state no rule of this slice can evaluate. Creatures
+/// may be on the battlefield but cannot attack yet (see
+/// `reject_attackers_while_creatures_cannot_attack`), so no combat damage is
+/// dealt and no state-based action can apply.
 fn validate_slice(
     admission: &ExecutableProfileAdmissionV1,
     state: &EngineState,
@@ -268,7 +296,8 @@ fn validate_slice(
     if parts.core.players.len() != 2
         || cards.counters != Default::default()
         || cards.attachments != Default::default()
-        || !execution.continuations.is_empty()
+        || (!execution.continuations.is_empty()
+            && crate::casting::pending_payment(admission, state).is_err())
         || !execution.effects.is_empty()
         || !execution.waiting_triggers.is_empty()
         || !execution.delayed_effects.is_empty()
@@ -465,8 +494,9 @@ fn progress(
     finish(admission, before, request, next, facts, next_decision)
 }
 
-/// CR 601.2: `caster` casts `card`, and then receives priority (CR 117.3c).
-/// The candidate that was selected stands for exactly one payment.
+/// CR 601.2: `caster` casts `card`. With one way to pay, the cast is complete
+/// and the caster receives priority (CR 117.3c). With several, the card is on
+/// the stack and the caster is asked how to pay (CR 601.2h).
 fn cast(
     admission: &ExecutableProfileAdmissionV1,
     before: &EngineState,
@@ -474,7 +504,7 @@ fn cast(
     caster: PlayerId,
     card: GameObjectId,
 ) -> Result<BasicLandTransitionProduct, Error> {
-    let spent = crate::casting::sole_payment(admission, before, caster, card)?;
+    let options = crate::casting::payment_options_of(admission, before, caster, card)?;
     let mut next = before.clone();
     next.execution.pending_decision = None;
     next.revision = StateRevision(
@@ -485,20 +515,51 @@ fn cast(
             .ok_or(Error::IdentityExhausted)?,
     );
     let mut facts = Facts::default();
-    crate::casting::cast_spell(admission, &mut next, caster, card, spent, &mut facts)?;
-    // An action ends any succession of passes (CR 117.4).
+    let next_decision = match options.as_slice() {
+        [] => return Err(Error::InvalidSelection),
+        [spent] => {
+            crate::casting::cast_spell(admission, &mut next, caster, card, *spent, &mut facts)?;
+            hold_priority(&mut next, caster)
+        }
+        _ => {
+            crate::casting::begin_cast(admission, &mut next, caster, card, &mut facts)?;
+            NextDecision::Payment
+        }
+    };
+    finish(admission, before, request, next, facts, next_decision)
+}
+
+/// CR 601.2h, 601.2i: the caster of the spell on the stack pays for it with
+/// `spent`, and then receives priority (CR 117.3c).
+fn pay(
+    admission: &ExecutableProfileAdmissionV1,
+    before: &EngineState,
+    request: &AuthoritativeDecisionRequest,
+    spent: [u32; 12],
+) -> Result<BasicLandTransitionProduct, Error> {
+    let mut next = before.clone();
+    next.execution.pending_decision = None;
+    next.revision = StateRevision(
+        before
+            .revision
+            .0
+            .checked_add(1)
+            .ok_or(Error::IdentityExhausted)?,
+    );
+    let mut facts = Facts::default();
+    crate::casting::complete_cast(&mut next, spent, &mut facts)?;
+    let next_decision = hold_priority(&mut next, request.actor);
+    finish(admission, before, request, next, facts, next_decision)
+}
+
+/// An action ends any succession of passes (CR 117.4): `player`, who acted,
+/// holds priority again.
+fn hold_priority(next: &mut EngineState, player: PlayerId) -> NextDecision {
     next.core.priority = PriorityState::HeldBy {
-        player: caster,
+        player,
         consecutive_passes: 0,
     };
-    finish(
-        admission,
-        before,
-        request,
-        next,
-        facts,
-        NextDecision::Priority(caster),
-    )
+    NextDecision::Priority(player)
 }
 
 /// Ends the current step and performs turn-based actions until a step in
@@ -907,6 +968,12 @@ pub(crate) fn finish(
                     .map_err(|_| Error::InvalidResult)?,
             ),
         ),
+        NextDecision::Payment => (
+            running,
+            Some(crate::casting::install_payment_request(
+                admission, &mut next,
+            )?),
+        ),
         NextDecision::Attackers => (running, Some(install_attacker_request(&mut next)?)),
         NextDecision::Pregame => (
             running,
@@ -1118,24 +1185,63 @@ fn validate_discard_request(
     Ok(())
 }
 
+/// The request is the latest one: the identities, revision and view sequence
+/// the installer allocates, and a projection a player can receive.
+fn request_is_current(state: &EngineState, request: &AuthoritativeDecisionRequest) -> bool {
+    let Some(knowledge) = state.knowledge.players.get(&request.actor) else {
+        return false;
+    };
+    let Some(identity) = state.perspective_identities.players.get(&request.actor) else {
+        return false;
+    };
+    request.decision_id.0.checked_add(1) == Some(state.allocators.next_decision_id.0)
+        && request.player_decision_id.0.checked_add(1) == Some(identity.next_player_decision_id.0)
+        && request.state_revision == state.revision
+        && request.view_sequence == knowledge.next_visible_sequence
+        && request.parent_player_decision_id.is_none()
+        && request.project_player_request().is_ok()
+}
+
 /// Identity, sequence and visibility fields every actor-only request shares.
 fn actor_only_request_matches(state: &EngineState, request: &AuthoritativeDecisionRequest) -> bool {
-    let parts = state;
-    let Some(knowledge) = parts.knowledge.players.get(&request.actor) else {
-        return false;
-    };
-    let Some(identity) = parts.perspective_identities.players.get(&request.actor) else {
-        return false;
-    };
-    request.actor == parts.core.active_player
-        && request.decision_id.0.checked_add(1) == Some(parts.allocators.next_decision_id.0)
-        && request.player_decision_id.0.checked_add(1) == Some(identity.next_player_decision_id.0)
-        && request.state_revision == parts.revision
-        && request.view_sequence == knowledge.next_visible_sequence
+    request.actor == state.core.active_player
+        && request_is_current(state, request)
         && request.visibility == DecisionVisibility::ActingPlayerOnly
-        && request.parent_player_decision_id.is_none()
         && request.continuation_id.is_none()
-        && request.project_player_request().is_ok()
+}
+
+/// CR 601.2h: a restored or committed payment request is exactly the one the
+/// pending cast calls for, with the identities the installer allocates.
+fn validate_payment_request(
+    admission: &ExecutableProfileAdmissionV1,
+    state: &EngineState,
+    request: &AuthoritativeDecisionRequest,
+    status: &EpisodeStatus,
+) -> Result<(), BasicLandCandidateError> {
+    state
+        .validate_structure()
+        .map_err(|_| BasicLandCandidateError::InvalidState)?;
+    validate_slice(admission, state).map_err(|_| BasicLandCandidateError::InvalidState)?;
+    // Only an admission with the rule that creates this request accepts it.
+    admits(admission, "rules/cast-creature-spell")
+        .map_err(|_| BasicLandCandidateError::PendingCandidateSetMismatch)?;
+    let mismatch = BasicLandCandidateError::PendingCandidateSetMismatch;
+    let expected = crate::casting::payment_request_shape(admission, state).map_err(|_| mismatch)?;
+    let shape = RequestShape {
+        actor: request.actor,
+        visibility: request.visibility,
+        continuation_id: request.continuation_id,
+        purpose: request.purpose.clone(),
+        decision_domain_v2: request.decision_domain_v2.clone(),
+        candidates: request.candidates.clone(),
+    };
+    if !matches!(status, EpisodeStatus::Running)
+        || shape != expected
+        || !request_is_current(state, request)
+    {
+        return Err(mismatch);
+    }
+    Ok(())
 }
 
 /// CR 508.1: the active player declares attackers. Creatures cannot attack

@@ -59,7 +59,7 @@ pub enum MagicActionRequestV1 {
         ability: mtgml_model::AbilityInstanceId,
     },
     /// Cast a creature card from the hand. The turn progression executes it,
-    /// with the payment its candidate stands for.
+    /// asking how to pay if the pool pays the cost in more than one way.
     CastSpell {
         actor: PlayerId,
         object: mtgml_model::GameObjectId,
@@ -668,8 +668,9 @@ pub struct BasicLandTransitionProduct {
 }
 
 /// The state candidates are derived from: the current state without its
-/// pending request. The bounded profile owns no continuation, effect or
-/// trigger state, and its stack holds at most one creature spell it cast.
+/// pending request. Priority candidates exist only without a continuation,
+/// effect or trigger (while a payment is pending its request is the only
+/// decision), and the stack holds at most one creature spell.
 fn candidate_state(
     admission: &ExecutableProfileAdmissionV1,
     state: &EngineState,
@@ -860,9 +861,9 @@ pub fn derive_basic_land_candidates(
             }
             // CR 302.1, 117.1a: a creature spell is cast by the active player
             // with priority, in a main phase, with the stack empty. It is
-            // offered only when the pool pays its cost in exactly one way:
-            // choosing between several payments is a decision this profile
-            // does not have yet, and nothing is chosen for the player.
+            // offered when the pool pays its cost; with several ways to pay,
+            // the cast asks the player to choose one (CR 601.2h), and nothing
+            // is chosen for them.
             CardProfileBodyV1::VanillaCreature
                 if profile_id.as_str() == VANILLA_CREATURE_PROFILE_ID_V1 =>
             {
@@ -888,7 +889,7 @@ pub fn derive_basic_land_candidates(
                                 .pools
                                 .get(&actor)
                                 .ok_or(BasicLandCandidateError::InvalidState)?;
-                            if crate::casting::payment_options(pool, &cost).len() == 1 {
+                            if !crate::casting::payment_options(pool, &cost).is_empty() {
                                 let opaque =
                                     public_object.ok_or(BasicLandCandidateError::InvalidState)?;
                                 raw.push((

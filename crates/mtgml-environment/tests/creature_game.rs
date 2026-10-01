@@ -8,19 +8,25 @@ use common::{
     game_admission, land_definitions, P1, P2,
 };
 use mtgml_decision::{
-    CandidateIntent, DecisionAnswerV2, DecisionPurposeV4, DecisionResponseV3, DecisionVisibility,
-    PlayerDecisionRequestV4, DECISION_RESPONSE_V3_SCHEMA,
+    CandidateIntent, DecisionAnswerV2, DecisionDomainV2, DecisionPurposeV4, DecisionResponseV3,
+    DecisionVisibility, PlayerDecisionRequestV4, DECISION_RESPONSE_V3_SCHEMA,
 };
 use mtgml_environment::{PlayerEndpoint, PlayerEndpointHandle, TrustedEnvironmentController};
 use mtgml_model::{
-    CardDefinitionId, EpisodeStatus, GameObjectId, OpaqueObjectId, PlayerId, PlayerOutcome,
-    PlayerResult, TerminalReason, TruncationReason, ZoneKind,
+    CandidateIdV1, CardDefinitionId, EpisodeStatus, GameObjectId, OpaqueObjectId,
+    PlayerDecisionIdV1, PlayerId, PlayerOutcome, PlayerResult, TerminalReason, TruncationReason,
+    ZoneKind,
 };
 use mtgml_observation::{
     MagicSharedExecutionObservationV1, ObservedEventKindV4, PlayerStepSubmissionV1, PlayerStepV4,
     PublicStackItemV1, StackItemRemovalCauseV1,
 };
-use mtgml_state::{EngineState, PriorityState, TurnPosition};
+use mtgml_rules::{AuthoritativeRuleEventKind, BasicLandTransitionProduct};
+use mtgml_state::{
+    CastContinuationStage, ContinuationPayload, DeltaApplicationError, EngineState,
+    ManaPaymentStage, ManaPaymentStaging, ManaPoolChangeCauseV1, ManaPoolV1, PriorityState,
+    SemanticDeltaOperation, StateDelta, TurnPosition,
+};
 
 struct Game {
     controller: TrustedEnvironmentController,
@@ -495,21 +501,32 @@ fn casting_is_offered_only_at_sorcery_speed_with_an_exact_payment() {
     assert!(game.casts().is_empty());
 }
 
-#[test]
-fn a_payment_with_two_outcomes_is_not_offered_until_the_player_can_choose() {
-    // Gray Ogre costs {2}{R}. With {R}{R}{R}{W} in the pool, paying {R}{R}{R}
-    // and paying {R}{R}{W} leave different pools, so the cast needs a payment
-    // decision that does not exist yet: it is not offered, and nothing is
-    // paid on the player's behalf.
+/// The mana spent from each bucket: W, U, B, R, G, C, then the same six
+/// buckets of mana that only pays for creature spells.
+type Spend = [u32; 12];
+
+/// {R}{R}{R}: leaves {W}.
+const RED_RED_RED: Spend = [0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0];
+/// {R}{R}{W}: leaves {R}.
+const RED_RED_WHITE: Spend = [1, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0];
+
+fn pay(spend: Spend) -> impl Fn(&CandidateIntent) -> bool {
+    move |intent| matches!(intent, CandidateIntent::SelectManaPayment { spent_buckets } if *spent_buckets == spend)
+}
+
+fn any_payment(intent: &CandidateIntent) -> bool {
+    matches!(intent, CandidateIntent::SelectManaPayment { .. })
+}
+
+/// P1's main phase of turn 7 with {R}{R}{R}{W} in the pool (three Mountains
+/// and a Plains tapped for mana) and Gray Ogre in hand.
+fn ogre_with_red_red_red_and_white() -> Game {
     let (mountain, plains) = land_definitions();
     let [_, ogre, _] = creature_definitions();
-    let hands = || {
-        [
-            vec![mountain, mountain, mountain, plains, ogre],
-            vec![mountain],
-        ]
-    };
-    let game = Game::with_hands(hands());
+    let game = Game::with_hands([
+        vec![mountain, mountain, mountain, plains, ogre],
+        vec![mountain],
+    ]);
     game.run_until(start_of_main_phase(7));
     game.answer(play_land, pass);
     for _ in 0..4 {
@@ -517,11 +534,446 @@ fn a_payment_with_two_outcomes_is_not_offered_until_the_player_can_choose() {
     }
     let pool = game.state().card_rules.mana.pools[&P1];
     assert_eq!((pool.unrestricted[3], pool.unrestricted[0]), (3, 1));
-    assert!(game.casts().is_empty());
-    assert_eq!(game.zones_of(P1, &[ogre]), vec![ZoneKind::Hand]);
+    game
+}
 
-    // With {R}{R}{R} alone, the one way to pay is offered.
-    let game = Game::with_hands(hands());
+/// As `ogre_with_red_red_red_and_white`, with the Ogre cast: P1 is asked how
+/// to pay for it.
+fn ogre_cast_awaiting_payment() -> Game {
+    let game = ogre_with_red_red_red_and_white();
+    game.answer(cast_spell, pass);
+    assert_eq!(game.pending().1.purpose, DecisionPurposeV4::ManaPayment);
+    game
+}
+
+/// The rule events of a step, in order.
+fn rule_events(product: &BasicLandTransitionProduct) -> Vec<&AuthoritativeRuleEventKind> {
+    product.events.iter().map(|record| &record.event).collect()
+}
+
+/// What `execute_magic_response` makes of the answer of the deciding player
+/// that `wanted` accepts: the same entry point the controller runs.
+fn respond(
+    state: &EngineState,
+    wanted: impl Fn(&CandidateIntent) -> bool,
+) -> BasicLandTransitionProduct {
+    let request = state.execution.pending_decision.as_ref().unwrap();
+    let candidate = request
+        .candidates
+        .iter()
+        .find(|candidate| wanted(&candidate.visible_intent))
+        .expect("no such candidate");
+    mtgml_rules::execute_magic_response(
+        &creature_game_admission(),
+        state,
+        request.actor,
+        &DecisionResponseV3 {
+            schema_version: DECISION_RESPONSE_V3_SCHEMA.to_owned(),
+            player_decision_id: request.player_decision_id,
+            view_sequence: request.view_sequence,
+            answer: DecisionAnswerV2::SelectOne {
+                candidate_id: candidate.candidate_id,
+            },
+        },
+        &EpisodeStatus::Running,
+    )
+    .unwrap()
+}
+
+/// Casting Gray Ogre with {R}{R}{R}{W} in the pool, and paying {R}{R}{R}: the
+/// state before, and the two steps.
+struct OgreCast {
+    before: EngineState,
+    begin: BasicLandTransitionProduct,
+    complete: BasicLandTransitionProduct,
+}
+
+fn ogre_cast() -> OgreCast {
+    let before = ogre_with_red_red_red_and_white().state();
+    let begin = respond(&before, cast_spell);
+    let complete = respond(&begin.next_state, pay(RED_RED_RED));
+    OgreCast {
+        before,
+        begin,
+        complete,
+    }
+}
+
+#[test]
+fn gray_ogre_with_three_mountains_and_a_plains_asks_how_to_pay() {
+    // Gray Ogre costs {2}{R}. With {R}{R}{R}{W} in the pool, paying {R}{R}{R}
+    // and paying {R}{R}{W} leave different pools, so the player decides.
+    let [_, ogre, _] = creature_definitions();
+    let game = ogre_with_red_red_red_and_white();
+    assert_eq!(game.casts().len(), 1, "the Ogre has two ways to be paid");
+    assert_eq!(game.zones_of(P1, &[ogre]), vec![ZoneKind::Hand]);
+    let at_priority = game.controller.checkpoint().unwrap();
+
+    // CR 601.2a: the card is on the stack, in public, while P1 pays.
+    let (caster, step) = game.answer(cast_spell, pass);
+    assert_eq!(caster, P1);
+    assert!(step.observed_events.iter().any(|envelope| matches!(
+        &envelope.event,
+        ObservedEventKindV4::StackItemAdded {
+            item: PublicStackItemV1::Spell { controller, .. },
+            ..
+        } if *controller == P1
+    )));
+    let (asked, request) = game.pending();
+    assert_eq!(asked, P1);
+    assert_eq!(request.purpose, DecisionPurposeV4::ManaPayment);
+    assert_eq!(request.decision_domain_v2, DecisionDomainV2::ChooseOne);
+    assert_eq!(request.visibility, DecisionVisibility::ActingPlayerOnly);
+    assert_eq!(
+        request
+            .candidates
+            .iter()
+            .map(|candidate| candidate.intent.clone())
+            .collect::<Vec<_>>(),
+        [RED_RED_RED, RED_RED_WHITE]
+            .map(|spent_buckets| CandidateIntent::SelectManaPayment { spent_buckets })
+    );
+    assert!(game.endpoint(P2).visible_decision().unwrap().is_none());
+
+    // Nothing is paid yet, and the spell is not cast (CR 601.2i).
+    let paying = game.state();
+    assert_eq!(game.zones_of(P1, &[ogre]), vec![ZoneKind::Stack]);
+    assert_eq!(paying.zones.stack_order.len(), 1);
+    let pool = paying.card_rules.mana.pools[&P1];
+    assert_eq!((pool.unrestricted[3], pool.unrestricted[0]), (3, 1));
+    assert_eq!(
+        paying.card_rules.turn_history.players[&P1].spells_cast_total,
+        0
+    );
+    let continuations: Vec<_> = paying.execution.continuations.values().collect();
+    let [record] = continuations.as_slice() else {
+        panic!("{continuations:?}")
+    };
+    let ContinuationPayload::Cast(cast) = &record.payload else {
+        panic!("{record:?}")
+    };
+    assert_eq!(cast.actor, P1);
+    assert_eq!(cast.stage, CastContinuationStage::PayingMana);
+    assert_eq!(
+        cast.mana_payment_staging,
+        Some(ManaPaymentStaging {
+            stage: ManaPaymentStage::AwaitingFinalAllocation,
+            mana_source_activations: Vec::new(),
+        })
+    );
+    assert_eq!(
+        paying.core.priority,
+        PriorityState::HeldBy {
+            player: P1,
+            consecutive_passes: 0
+        }
+    );
+    for player in [P1, P2] {
+        assert!(
+            matches!(
+                game.observation(player).stack.as_slice(),
+                [PublicStackItemV1::Spell { .. }]
+            ),
+            "{player:?} sees the spell on the stack"
+        );
+    }
+
+    // Keeping {W}: the {R}{R}{R} payment leaves {W} in the pool.
+    let (payer, step) = game.answer(pay(RED_RED_RED), any_payment);
+    assert_eq!(payer, P1);
+    assert!(step.observed_events.iter().any(|envelope| matches!(
+        &envelope.event,
+        ObservedEventKindV4::ManaPoolChanged { player, .. } if *player == P1
+    )));
+    let paid = game.state();
+    let pool = paid.card_rules.mana.pools[&P1];
+    assert_eq!((pool.unrestricted[3], pool.unrestricted[0]), (0, 1));
+    assert_eq!(
+        paid.card_rules.turn_history.players[&P1].spells_cast_total,
+        1
+    );
+    assert!(paid.execution.continuations.is_empty());
+    assert_eq!(paid.zones.stack_order.len(), 1);
+    assert_eq!(
+        paid.core.priority,
+        PriorityState::HeldBy {
+            player: P1,
+            consecutive_passes: 0
+        }
+    );
+    assert_eq!(game.pending().1.purpose, DecisionPurposeV4::PriorityAction);
+    assert_eq!(game.pending().0, P1, "the caster has priority (CR 117.3c)");
+
+    // Paying {R}{R}{W} instead leaves {R}.
+    game.controller.restore(at_priority).unwrap();
+    game.answer(cast_spell, pass);
+    game.answer(pay(RED_RED_WHITE), any_payment);
+    let pool = game.state().card_rules.mana.pools[&P1];
+    assert_eq!((pool.unrestricted[3], pool.unrestricted[0]), (1, 0));
+
+    // The spell resolves as any other creature spell does.
+    game.answer(pass, pass);
+    game.answer(pass, pass);
+    game.only_object(P1, ogre, ZoneKind::Battlefield);
+    assert!(game.state().zones.stack_order.is_empty());
+}
+
+#[test]
+fn a_spell_is_cast_only_when_its_payment_completes() {
+    let cast = ogre_cast();
+    // Asking how to pay puts the card on the stack and nothing else: no cost
+    // is committed, no mana leaves the pool, and the spell is not cast.
+    let asking = rule_events(&cast.begin);
+    assert!(asking
+        .iter()
+        .any(|event| matches!(event, AuthoritativeRuleEventKind::StackItemAdded { .. })));
+    assert!(!asking.iter().any(|event| matches!(
+        event,
+        AuthoritativeRuleEventKind::SpellCast { .. }
+            | AuthoritativeRuleEventKind::CostCommitted { .. }
+            | AuthoritativeRuleEventKind::ManaPoolChanged { .. }
+    )));
+    // Paying casts it (CR 601.2h, 601.2i): the cost, the pool and the cast
+    // are in the one step, and the card is not put on the stack again.
+    let paying = rule_events(&cast.complete);
+    let position = |wanted: fn(&AuthoritativeRuleEventKind) -> bool| {
+        paying.iter().position(|event| wanted(event)).unwrap()
+    };
+    let cast_at = position(|event| {
+        matches!(
+            event,
+            AuthoritativeRuleEventKind::SpellCast {
+                is_creature_spell: true,
+                ..
+            }
+        )
+    });
+    let committed_at = position(|event| {
+        matches!(
+            event,
+            AuthoritativeRuleEventKind::CostCommitted { spent_buckets, source_activations, .. }
+                if *spent_buckets == RED_RED_RED && source_activations.is_empty()
+        )
+    });
+    let spent_at = position(|event| {
+        matches!(
+            event,
+            AuthoritativeRuleEventKind::ManaPoolChanged {
+                cause: ManaPoolChangeCauseV1::Spent,
+                ..
+            }
+        )
+    });
+    assert!(cast_at < committed_at && committed_at < spent_at);
+    assert!(!paying.iter().any(|event| matches!(
+        event,
+        AuthoritativeRuleEventKind::StackItemAdded { .. }
+            | AuthoritativeRuleEventKind::ZoneTransition { .. }
+    )));
+}
+
+#[test]
+fn a_restored_payment_checkpoint_continues_identically() {
+    let game = ogre_cast_awaiting_payment();
+    let at_payment = game.controller.checkpoint().unwrap();
+    assert_eq!(at_payment.state.execution.continuations.len(), 1);
+
+    game.answer(pay(RED_RED_WHITE), any_payment);
+    let paid = game.controller.checkpoint().unwrap();
+    assert!(paid.state.execution.continuations.is_empty());
+
+    // The game that was paid for replays to the same checkpoint.
+    let report = game
+        .controller
+        .execute_replay(game.controller.export_replay().unwrap())
+        .unwrap();
+    assert_eq!(report.final_checkpoint, paid);
+
+    // Restoring the checkpoint with the payment pending restores the request
+    // and the same continuation, and the same answer leads to the same state.
+    game.controller.restore(at_payment.clone()).unwrap();
+    assert_eq!(game.controller.checkpoint().unwrap(), at_payment);
+    assert_eq!(game.pending().1.purpose, DecisionPurposeV4::ManaPayment);
+    game.answer(pay(RED_RED_WHITE), any_payment);
+    assert_eq!(game.controller.checkpoint().unwrap(), paid);
+}
+
+#[test]
+fn a_rejected_payment_answer_changes_nothing() {
+    let game = ogre_cast_awaiting_payment();
+    let at_payment = game.controller.checkpoint().unwrap();
+    let (_, request) = game.pending();
+    let answer = |player: PlayerId, answer: DecisionAnswerV2, stale: bool| {
+        let step = game
+            .endpoint(player)
+            .submit(DecisionResponseV3 {
+                schema_version: DECISION_RESPONSE_V3_SCHEMA.to_owned(),
+                player_decision_id: if stale {
+                    PlayerDecisionIdV1(request.player_decision_id.0 + 1)
+                } else {
+                    request.player_decision_id
+                },
+                view_sequence: request.view_sequence,
+                answer,
+            })
+            .unwrap();
+        assert!(
+            matches!(step.submission, PlayerStepSubmissionV1::Rejected { .. }),
+            "{:?}",
+            step.submission
+        );
+        assert_eq!(game.controller.checkpoint().unwrap(), at_payment);
+        assert_eq!(game.pending().1, request);
+    };
+    // A payment the request does not offer.
+    answer(
+        P1,
+        DecisionAnswerV2::SelectOne {
+            candidate_id: CandidateIdV1(2),
+        },
+        false,
+    );
+    // Both payments at once.
+    answer(
+        P1,
+        DecisionAnswerV2::SelectMany {
+            candidate_ids: vec![CandidateIdV1(0), CandidateIdV1(1)],
+        },
+        false,
+    );
+    // An answer to another decision.
+    answer(
+        P1,
+        DecisionAnswerV2::SelectOne {
+            candidate_id: CandidateIdV1(0),
+        },
+        true,
+    );
+    // The opponent has no decision to answer.
+    answer(
+        P2,
+        DecisionAnswerV2::SelectOne {
+            candidate_id: CandidateIdV1(0),
+        },
+        false,
+    );
+    // The payment is still asked, and still works.
+    game.answer(pay(RED_RED_RED), any_payment);
+    assert_eq!(
+        game.state().card_rules.turn_history.players[&P1].spells_cast_total,
+        1
+    );
+}
+
+#[test]
+fn a_payment_request_the_pending_cast_does_not_call_for_is_refused() {
+    let admission = creature_game_admission();
+    let state = ogre_cast_awaiting_payment().state();
+    let running = EpisodeStatus::Running;
+    mtgml_rules::validate_magic_pending_request(&admission, &state, &running).unwrap();
+
+    let refused = |what: &str, tampered: &EngineState| {
+        assert!(
+            mtgml_rules::validate_magic_pending_request(&admission, tampered, &running).is_err(),
+            "{what}"
+        );
+    };
+
+    // The offered payments are not the ones the pool allows.
+    let mut tampered = state.clone();
+    tampered
+        .execution
+        .pending_decision
+        .as_mut()
+        .unwrap()
+        .candidates
+        .truncate(1);
+    refused("a payment left out", &tampered);
+    let mut tampered = state.clone();
+    let candidates = &mut tampered
+        .execution
+        .pending_decision
+        .as_mut()
+        .unwrap()
+        .candidates;
+    candidates.reverse();
+    for (index, candidate) in candidates.iter_mut().enumerate() {
+        candidate.candidate_id = CandidateIdV1(index as u32);
+    }
+    refused("the payments out of order", &tampered);
+    // The pool no longer pays two ways, so there is no choice to ask for.
+    let mut tampered = state.clone();
+    tampered
+        .card_rules
+        .mana
+        .pools
+        .get_mut(&P1)
+        .unwrap()
+        .unrestricted[0] = 0;
+    refused("a payment with one way", &tampered);
+    // The request is for the actor only.
+    let mut tampered = state.clone();
+    tampered
+        .execution
+        .pending_decision
+        .as_mut()
+        .unwrap()
+        .visibility = DecisionVisibility::Public;
+    refused("a public payment request", &tampered);
+    // The continuation is not the cast of the spell the catalog describes.
+    let mut tampered = state.clone();
+    let record = tampered
+        .execution
+        .continuations
+        .values_mut()
+        .next()
+        .unwrap();
+    let ContinuationPayload::Cast(cast) = &mut record.payload else {
+        unreachable!()
+    };
+    cast.action_cost_facts
+        .mana_cost
+        .as_mut()
+        .unwrap()
+        .generic_count = 1;
+    refused("another printed cost", &tampered);
+    // The caster does not hold priority.
+    let mut tampered = state.clone();
+    tampered.core.priority = PriorityState::HeldBy {
+        player: P2,
+        consecutive_passes: 0,
+    };
+    refused("the opponent holding priority", &tampered);
+    // The episode is closed, or the admission has no such rule.
+    let closed = EpisodeStatus::Truncated {
+        reason: TruncationReason::ExternalStop,
+        players: vec![
+            PlayerOutcome {
+                player: P1,
+                result: PlayerResult::Loss,
+            },
+            PlayerOutcome {
+                player: P2,
+                result: PlayerResult::Loss,
+            },
+        ],
+    };
+    assert!(mtgml_rules::validate_magic_pending_request(&admission, &state, &closed).is_err());
+    assert!(
+        mtgml_rules::validate_magic_pending_request(&game_admission(), &state, &running).is_err()
+    );
+}
+
+#[test]
+fn a_payment_with_one_way_is_not_asked() {
+    // With {R}{R}{R} alone, the one way to pay Gray Ogre is the payment: the
+    // cast is one step, and nothing is asked.
+    let (mountain, plains) = land_definitions();
+    let [_, ogre, _] = creature_definitions();
+    let game = Game::with_hands([
+        vec![mountain, mountain, mountain, plains, ogre],
+        vec![mountain],
+    ]);
     game.run_until(start_of_main_phase(5));
     game.answer(play_land, pass);
     for _ in 0..3 {
@@ -530,6 +982,117 @@ fn a_payment_with_two_outcomes_is_not_offered_until_the_player_can_choose() {
     let pool = game.state().card_rules.mana.pools[&P1];
     assert_eq!((pool.unrestricted[3], pool.unrestricted[0]), (3, 0));
     assert_eq!(game.casts().len(), 1);
+    game.answer(cast_spell, pass);
+    assert_eq!(game.pending().1.purpose, DecisionPurposeV4::PriorityAction);
+    let state = game.state();
+    assert!(state.execution.continuations.is_empty());
+    assert_eq!(state.zones.stack_order.len(), 1);
+    assert_eq!(state.card_rules.mana.pools[&P1], ManaPoolV1::default());
+    assert_eq!(
+        state.card_rules.turn_history.players[&P1].spells_cast_total,
+        1
+    );
+}
+
+#[test]
+fn a_spell_record_needs_its_creation_operation() {
+    let cast = ogre_cast();
+    let ops = |product: &BasicLandTransitionProduct| product.delta.operations.clone();
+    // The steps themselves are the delta rule's positive cases.
+    StateDelta::between_structural_only(&cast.before, &cast.begin.next_state, ops(&cast.begin))
+        .unwrap();
+    StateDelta::between_structural_only(
+        &cast.begin.next_state,
+        &cast.complete.next_state,
+        ops(&cast.complete),
+    )
+    .unwrap();
+
+    let mut without_creation = ops(&cast.begin);
+    without_creation
+        .retain(|operation| !matches!(operation, SemanticDeltaOperation::StackItemCreated { .. }));
+    assert_eq!(
+        StateDelta::between_structural_only(&cast.before, &cast.begin.next_state, without_creation),
+        Err(DeltaApplicationError::UncoveredMutation)
+    );
+}
+
+#[test]
+fn a_spell_is_cast_in_the_transition_that_creates_its_record_or_ends_its_payment() {
+    let cast = ogre_cast();
+    let spell_cast = cast
+        .complete
+        .delta
+        .operations
+        .iter()
+        .find(|operation| matches!(operation, SemanticDeltaOperation::SpellCast { .. }))
+        .unwrap()
+        .clone();
+    let with_a_cast_counted = |state: &EngineState| {
+        let mut state = state.clone();
+        state
+            .card_rules
+            .turn_history
+            .players
+            .get_mut(&P1)
+            .unwrap()
+            .spells_cast_total += 1;
+        state
+    };
+
+    // The step that only asks how to pay creates the record: it is not the
+    // step that casts the spell, even if it counts one.
+    let mut creating = cast.begin.delta.operations.clone();
+    creating.push(spell_cast.clone());
+    assert_eq!(
+        StateDelta::between_structural_only(
+            &cast.before,
+            &with_a_cast_counted(&cast.begin.next_state),
+            creating
+        ),
+        Err(DeltaApplicationError::UncoveredMutation)
+    );
+
+    // A step that leaves the payment pending neither creates the record nor
+    // ends the continuation.
+    let mut waiting = cast.begin.next_state.clone();
+    waiting.revision.0 += 1;
+    waiting
+        .execution
+        .pending_decision
+        .as_mut()
+        .unwrap()
+        .state_revision = waiting.revision;
+    let waiting = with_a_cast_counted(&waiting);
+    let operations = vec![
+        spell_cast.clone(),
+        SemanticDeltaOperation::PendingRequestChanged {
+            from: cast
+                .begin
+                .next_state
+                .execution
+                .pending_decision
+                .clone()
+                .map(Box::new),
+            to: waiting.execution.pending_decision.clone().map(Box::new),
+        },
+    ];
+    assert_eq!(
+        StateDelta::between_structural_only(&cast.begin.next_state, &waiting, operations),
+        Err(DeltaApplicationError::UncoveredMutation)
+    );
+
+    // The step that ends the payment must cast the spell.
+    let mut without_cast = cast.complete.delta.operations.clone();
+    without_cast.retain(|operation| !matches!(operation, SemanticDeltaOperation::SpellCast { .. }));
+    assert_eq!(
+        StateDelta::between_structural_only(
+            &cast.begin.next_state,
+            &cast.complete.next_state,
+            without_cast
+        ),
+        Err(DeltaApplicationError::UncoveredMutation)
+    );
 }
 
 #[test]

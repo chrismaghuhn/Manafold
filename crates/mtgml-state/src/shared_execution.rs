@@ -1,8 +1,7 @@
-//! Detached, closed values for the accepted shared-execution successor cut.
-//!
-//! These values are not connected to the current state aggregate, RulesKernel,
-//! candidate generation, or any writer. G0d adds successor ownership and
-//! semantic validation; G0e adds canonical persistence.
+//! Closed values of the execution state: continuations, stack items, waiting
+//! triggers and temporary effects. The rules crate writes two continuations,
+//! the start of the game and a Cast whose payment is a choice. The others are
+//! validated and digested, but nothing creates them yet.
 
 use std::collections::{BTreeMap, BTreeSet};
 

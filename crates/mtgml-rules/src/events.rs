@@ -1063,7 +1063,7 @@ fn validate_delta_operation_projection_v3(
             semantic_profile_id,
             cost_facts,
             ..
-        } => !before.zones.stack_records.contains_key(stack_object)
+        } => mtgml_state::spell_becomes_cast(before, after, *stack_object, *spell_object)
             && after
                 .zones
                 .stack_records
@@ -1473,7 +1473,7 @@ fn validate_event_projection_v3(
             cost_facts,
             ..
         } => {
-            !before.zones.stack_records.contains_key(stack_object)
+            mtgml_state::spell_becomes_cast(before, after, *stack_object, *spell_object)
                 && after
                     .zones
                     .stack_records
@@ -1965,6 +1965,13 @@ fn validate_cost_commit_projection(
             Some(_) => return false,
             None if source_activations.is_empty() => {}
             None => return false,
+        }
+    } else if let CostCommitActionV1::Cast { stack_object, .. } = action {
+        // A spell that was already on the stack was staged by its Cast
+        // continuation. Only a spell this transition puts on the stack is
+        // paid for without one.
+        if before.zones.stack_records.contains_key(&stack_object) {
+            return false;
         }
     }
 
@@ -2954,6 +2961,175 @@ mod tests {
             validate_observation_occurrence_lifecycle(&before, &after, &bad_lifecycle, &delta),
             Err(EventDeltaError::Mismatch)
         );
+    }
+
+    /// The spell of a cast: card object 50 on the stack as stack object 1,
+    /// cast by P1 for {R}.
+    const SPELL_OBJECT: GameObjectId = GameObjectId(50);
+    const SPELL_STACK_OBJECT: StackObjectId = StackObjectId(1);
+    const RED_SPENT: [u32; 12] = [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0];
+
+    fn spell_cost_facts() -> CostFacts {
+        CostFacts {
+            selected_route: Some(mtgml_state::CostRoute::Normal),
+            paid_additional_cost_ids: Vec::new(),
+        }
+    }
+
+    fn spell_profile() -> mtgml_card_ir::CardSemanticProfileId {
+        mtgml_card_ir::CardSemanticProfileId::parse("test/spell@1.0.0").unwrap()
+    }
+
+    fn red_cast_facts() -> ActionCostFacts {
+        ActionCostFacts {
+            mana_cost: Some(ManaCost {
+                colored_wubrg_counts: [0, 0, 0, 1, 0],
+                colorless_count: 0,
+                generic_count: 0,
+            }),
+            reserved_nonmana_costs: Vec::new(),
+            selected_cost_operands: Vec::new(),
+        }
+    }
+
+    /// `state` with the spell on the stack.
+    fn with_the_spell_on_the_stack(mut state: EngineState) -> EngineState {
+        state.zones.stack_records.insert(
+            SPELL_STACK_OBJECT,
+            StackRecord {
+                id: SPELL_STACK_OBJECT,
+                controller: PlayerId(1),
+                payload: Some(StackItemPayload::Spell {
+                    stack_card_object: SPELL_OBJECT,
+                    card_definition_id: mtgml_model::CardDefinitionId(50),
+                    face_key: mtgml_card_ir::FaceKey(0),
+                    semantic_profile_id: spell_profile(),
+                    modes: Vec::new(),
+                    targets: Vec::new(),
+                    cost_facts: spell_cost_facts(),
+                }),
+            },
+        );
+        state.zones.stack_order.push(SPELL_STACK_OBJECT);
+        state
+    }
+
+    /// `state` with P1 paying for the spell: its Cast continuation.
+    fn with_the_spell_being_paid_for(mut state: EngineState) -> EngineState {
+        state.execution.continuations.insert(
+            ContinuationId(1),
+            mtgml_state::ContinuationRecord {
+                id: ContinuationId(1),
+                created_at_revision: StateRevision(0),
+                payload: mtgml_state::ContinuationPayload::Cast(mtgml_state::CastContinuation {
+                    actor: PlayerId(1),
+                    spell_object: SPELL_OBJECT,
+                    card_definition_id: mtgml_model::CardDefinitionId(50),
+                    face_key: mtgml_card_ir::FaceKey(0),
+                    semantic_profile_id: spell_profile(),
+                    stage: mtgml_state::CastContinuationStage::PayingMana,
+                    selected_route: Some(mtgml_state::CostRoute::Normal),
+                    modes: Vec::new(),
+                    targets: Vec::new(),
+                    paid_cost_choices: Vec::new(),
+                    action_cost_facts: red_cast_facts(),
+                    mana_payment_staging: Some(mtgml_state::ManaPaymentStaging {
+                        stage: mtgml_state::ManaPaymentStage::AwaitingFinalAllocation,
+                        mana_source_activations: Vec::new(),
+                    }),
+                }),
+            },
+        );
+        state
+    }
+
+    /// `state` with `{R}` in P1's pool (or, if not `red`, nothing).
+    fn with_red_in_the_pool(mut state: EngineState, red: bool) -> EngineState {
+        let mut pool = ManaPoolV1::default();
+        pool.unrestricted[3] = u32::from(red);
+        state.card_rules.mana.pools.insert(PlayerId(1), pool);
+        state
+    }
+
+    #[test]
+    fn a_cast_that_pays_for_a_spell_on_the_stack_needs_the_continuation_that_staged_it() {
+        let commits = |before: &EngineState, after: &EngineState| {
+            validate_cost_commit_projection(
+                before,
+                after,
+                PlayerId(1),
+                CostCommitActionV1::Cast {
+                    stack_object: SPELL_STACK_OBJECT,
+                    spell_object: SPELL_OBJECT,
+                },
+                &red_cast_facts(),
+                &[],
+                &RED_SPENT,
+            )
+        };
+        let after = with_red_in_the_pool(with_the_spell_on_the_stack(state()), false);
+        let on_the_stack = with_red_in_the_pool(with_the_spell_on_the_stack(state()), true);
+        // Nothing staged the payment of the spell that was already on the
+        // stack: the check does not skip, it fails.
+        assert!(!commits(&on_the_stack, &after));
+        // Its Cast continuation did.
+        let staged = with_the_spell_being_paid_for(on_the_stack.clone());
+        assert!(commits(&staged, &after));
+        // The staged cost is the one that is committed.
+        let mut other_cost = staged.clone();
+        let mtgml_state::ContinuationPayload::Cast(cast) = &mut other_cost
+            .execution
+            .continuations
+            .get_mut(&ContinuationId(1))
+            .unwrap()
+            .payload
+        else {
+            unreachable!()
+        };
+        cast.action_cost_facts.mana_cost = Some(ManaCost {
+            colored_wubrg_counts: [0, 0, 0, 0, 0],
+            colorless_count: 0,
+            generic_count: 1,
+        });
+        assert!(!commits(&other_cost, &after));
+        // A spell whose record this very transition creates cannot have been
+        // staged: casting it at once pays without a continuation.
+        let before_the_cast = with_red_in_the_pool(state(), true);
+        assert!(commits(&before_the_cast, &after));
+    }
+
+    #[test]
+    fn a_spell_is_cast_in_the_transition_that_creates_its_record_or_ends_its_payment() {
+        let cast = AuthoritativeRuleEventKind::SpellCast {
+            stack_object: SPELL_STACK_OBJECT,
+            spell_object: SPELL_OBJECT,
+            card_definition: mtgml_model::CardDefinitionId(50),
+            face_key: mtgml_card_ir::FaceKey(0),
+            semantic_profile_id: spell_profile(),
+            is_creature_spell: true,
+            cost_facts: spell_cost_facts(),
+        };
+        let operation = cast.semantic_operations().remove(0);
+        let casts = |before: &EngineState, after: &EngineState| {
+            let event = validate_event_projection_v3(before, after, &cast);
+            let operation = validate_delta_operation_projection_v3(before, after, &operation);
+            assert_eq!(event, operation);
+            event.is_ok()
+        };
+        let empty = state();
+        let on_the_stack = with_the_spell_on_the_stack(state());
+        let being_paid_for = with_the_spell_being_paid_for(on_the_stack.clone());
+        // Creating the record with nothing left to pay: the spell is cast.
+        assert!(casts(&empty, &on_the_stack));
+        // Creating it while its payment is pending: not yet.
+        assert!(!casts(&empty, &being_paid_for));
+        // Ending the payment: now.
+        assert!(casts(&being_paid_for, &on_the_stack));
+        // A transition that does neither.
+        assert!(!casts(&on_the_stack, &on_the_stack));
+        assert!(!casts(&being_paid_for, &being_paid_for));
+        // The record is gone, so nothing was cast.
+        assert!(!casts(&being_paid_for, &empty));
     }
 }
 

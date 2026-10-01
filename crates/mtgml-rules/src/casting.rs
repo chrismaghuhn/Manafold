@@ -2,24 +2,34 @@
 //!
 //! The only spells of this slice are creature spells without rules text, cast
 //! by the active player at sorcery speed (CR 302.1, 117.1a) from a mana pool
-//! that already pays the printed cost. A cast is one atomic transition: the
-//! card moves to the stack, the cost is paid, and the spell becomes cast. The
-//! spell resolves when both players pass in succession with it on the stack.
-
-use std::collections::BTreeMap;
+//! that already pays the printed cost. When one payment pays the cost, a cast
+//! is one atomic transition: the card moves to the stack, the cost is paid,
+//! and the spell becomes cast. When two or more do, the cast takes two: the
+//! card moves to the stack under a Cast continuation and the caster is asked
+//! how to pay (`begin_cast`); their answer pays the cost and the spell becomes
+//! cast (`complete_cast`, CR 601.2h, 601.2i). The spell resolves when both
+//! players pass in succession with it on the stack.
 
 use mtgml_card_ir::{
-    CardProfileBodyV1, CardSemanticBindingV1, ExecutableProfileAdmissionV1, FaceDefinitionV1,
-    FaceKey, PrintedManaSymbolV1,
+    CardProfileBodyV1, CardSemanticBindingV1, CardSemanticProfileId, ExecutableProfileAdmissionV1,
+    FaceDefinitionV1, FaceKey, PrintedManaSymbolV1,
 };
-use mtgml_model::{CardDefinitionId, GameObjectId, PlayerId, StackObjectId, ZoneKind};
+use mtgml_decision::{
+    AuthoritativeDecisionRequest, CandidateIntent, CandidateOrdering, DecisionDomainV2,
+    DecisionPurposeV4, DecisionVisibility, EngineCandidateBinding,
+};
+use mtgml_model::{
+    CardDefinitionId, ContinuationId, GameObjectId, PlayerId, StackObjectId, ZoneKind,
+};
 use mtgml_state::{
-    ActionCostFacts, CostCommitActionV1, CostFacts, CostRoute, EngineState, ManaCost,
-    ManaPoolChangeCauseV1, ManaPoolV1, StackItemEndKindV1, StackItemPayload, StackRecord,
-    VisibilityPartition, ZoneLocation, ZonePosition,
+    ActionCostFacts, CastContinuation, CastContinuationStage, ContinuationPayload,
+    ContinuationRecord, CostCommitActionV1, CostFacts, CostRoute, EngineState, ManaCost,
+    ManaPaymentStage, ManaPaymentStaging, ManaPoolChangeCauseV1, ManaPoolV1, PriorityState,
+    StackItemEndKindV1, StackItemPayload, StackRecord, TurnPosition, VisibilityPartition,
+    ZoneLocation, ZonePosition,
 };
 
-use crate::turn_progression::{admits, move_card, observe_public, Facts};
+use crate::turn_progression::{admits, move_card, observe_public, Facts, RequestShape};
 use crate::zone_incarnation::{SelectedZoneTransitionKind, ZoneMoveEvent};
 use crate::{AuthoritativeRuleEventKind, BasicLandTransitionError as Error};
 
@@ -129,9 +139,9 @@ pub(crate) fn mana_cost_of(face: &FaceDefinitionV1) -> Result<ManaCost, CastErro
 /// bucket: unrestricted W, U, B, R, G, C, then the same six creature-spell-only
 /// buckets (every spell of this slice is a creature spell). A way pays each
 /// colored symbol with mana of its color, `{C}` with colorless mana and the
-/// generic part with whatever else it spends, and spends nothing more. Ways
-/// that leave the same pool are one way, kept as its smallest vector. The
-/// result is ascending, and empty if the pool cannot pay.
+/// generic part with whatever else it spends, and spends nothing more. Each
+/// vector is one way, and leaves its own pool. The result is ascending, and
+/// empty if the pool cannot pay.
 pub(crate) fn payment_options(pool: &ManaPoolV1, cost: &ManaCost) -> Vec<[u32; 12]> {
     let mut available = [0_u32; 12];
     available[..6].copy_from_slice(&pool.unrestricted);
@@ -151,24 +161,24 @@ pub(crate) fn payment_options(pool: &ManaPoolV1, cost: &ManaCost) -> Vec<[u32; 1
         capacity: [0; 13],
         required,
         spend: [0; 12],
-        by_remaining: BTreeMap::new(),
+        options: Vec::new(),
     };
     for index in (0..12).rev() {
         search.capacity[index] = search.capacity[index + 1] + u64::from(available[index]);
     }
     search.spend_from(0, total);
-    let mut options: Vec<[u32; 12]> = search.by_remaining.into_values().collect();
-    options.sort();
-    options
+    // The search takes each bucket's amount in ascending order, so the ways
+    // come out ascending too.
+    search.options
 }
 
-/// The search of `payment_options`: the ways found so far, by what they leave.
+/// The search of `payment_options`: the ways found so far.
 struct Search {
     available: [u32; 12],
     capacity: [u64; 13],
     required: [u32; 6],
     spend: [u32; 12],
-    by_remaining: BTreeMap<[u32; 12], [u32; 12]>,
+    options: Vec<[u32; 12]>,
 }
 
 impl Search {
@@ -183,15 +193,7 @@ impl Search {
             // Each color's two buckets together cover that color's symbols.
             if (0..6).all(|color| self.spend[color] + self.spend[color + 6] >= self.required[color])
             {
-                let mut remaining = self.available;
-                for (left_in_bucket, spent) in remaining.iter_mut().zip(self.spend) {
-                    *left_in_bucket -= spent;
-                }
-                let spend = self.spend;
-                self.by_remaining
-                    .entry(remaining)
-                    .and_modify(|kept| *kept = (*kept).min(spend))
-                    .or_insert(spend);
+                self.options.push(self.spend);
             }
             return;
         }
@@ -206,7 +208,7 @@ impl Search {
 /// What casting a card needs, read from the verified catalog.
 struct CastableCard<'a> {
     object: mtgml_state::GameObject,
-    profile_id: &'a mtgml_card_ir::CardSemanticProfileId,
+    profile_id: &'a CardSemanticProfileId,
     face_key: FaceKey,
     cost: ManaCost,
 }
@@ -265,14 +267,14 @@ fn castable_card<'a>(
     })
 }
 
-/// The one way `caster` can pay for casting `card` from their pool. A cast is
-/// executed only for a candidate that stands for exactly one payment.
-pub(crate) fn sole_payment(
+/// Every way `caster` can pay for casting `card` from their pool. A cast with
+/// one way is executed at once; with several, the caster chooses.
+pub(crate) fn payment_options_of(
     admission: &ExecutableProfileAdmissionV1,
     state: &EngineState,
     caster: PlayerId,
     card: GameObjectId,
-) -> Result<[u32; 12], Error> {
+) -> Result<Vec<[u32; 12]>, Error> {
     let castable = castable_card(admission, state, caster, card)?;
     let pool = state
         .card_rules
@@ -280,41 +282,24 @@ pub(crate) fn sole_payment(
         .pools
         .get(&caster)
         .ok_or(Error::InvalidResult)?;
-    match payment_options(pool, &castable.cost).as_slice() {
-        [only] => Ok(*only),
-        _ => Err(Error::InvalidSelection),
-    }
+    Ok(payment_options(pool, &castable.cost))
 }
 
-/// CR 601.2: `caster` casts `card` from their hand, paying `spent`. The card
-/// moves to the stack as a new public incarnation with a stack record, the
-/// cost leaves the pool, and the spell is cast, all in this transition. The
-/// caller gives priority back to the caster (CR 117.3c).
-pub(crate) fn cast_spell(
-    admission: &ExecutableProfileAdmissionV1,
+/// The spell that `put_on_stack` made.
+struct SpellOnStack {
+    stack_object: StackObjectId,
+    spell_object: GameObjectId,
+}
+
+/// CR 601.2a: `card` moves from `caster`'s hand to the stack as a new public
+/// incarnation, with a stack record that `caster` controls.
+fn put_on_stack(
     next: &mut EngineState,
     caster: PlayerId,
     card: GameObjectId,
-    spent: [u32; 12],
+    castable: &CastableCard<'_>,
     facts: &mut Facts,
-) -> Result<StackObjectId, Error> {
-    let CastableCard {
-        object,
-        profile_id,
-        face_key,
-        cost,
-    } = castable_card(admission, next, caster, card)?;
-    let pool_before = *next
-        .card_rules
-        .mana
-        .pools
-        .get(&caster)
-        .ok_or(Error::InvalidResult)?;
-    if !payment_options(&pool_before, &cost).contains(&spent) {
-        return Err(Error::InvalidSelection);
-    }
-
-    // CR 601.2a: the card moves to the stack.
+) -> Result<SpellOnStack, Error> {
     let spell_object = move_card(
         next,
         card,
@@ -335,18 +320,17 @@ pub(crate) fn cast_spell(
             .checked_add(1)
             .ok_or(Error::IdentityExhausted)?,
     );
-    let cost_facts = CostFacts {
-        selected_route: Some(CostRoute::Normal),
-        paid_additional_cost_ids: Vec::new(),
-    };
     let payload = StackItemPayload::Spell {
         stack_card_object: spell_object,
-        card_definition_id: object.card_definition,
-        face_key,
-        semantic_profile_id: profile_id.clone(),
+        card_definition_id: castable.object.card_definition,
+        face_key: castable.face_key,
+        semantic_profile_id: castable.profile_id.clone(),
         modes: Vec::new(),
         targets: Vec::new(),
-        cost_facts: cost_facts.clone(),
+        cost_facts: CostFacts {
+            selected_route: Some(CostRoute::Normal),
+            paid_additional_cost_ids: Vec::new(),
+        },
     };
     next.zones.stack_records.insert(
         stack_object,
@@ -365,15 +349,54 @@ pub(crate) fn cast_spell(
             payload,
         },
     )?;
+    Ok(SpellOnStack {
+        stack_object,
+        spell_object,
+    })
+}
 
-    // CR 601.2h, 601.2i: the cost is paid, and the spell becomes cast.
+/// CR 601.2h, 601.2i: the cost is paid with `spent` from the pool of the
+/// controller of the spell on `stack_object`, and the spell becomes cast.
+fn commit_cast(
+    next: &mut EngineState,
+    stack_object: StackObjectId,
+    cost: ManaCost,
+    spent: [u32; 12],
+    facts: &mut Facts,
+) -> Result<(), Error> {
+    let record = next
+        .zones
+        .stack_records
+        .get(&stack_object)
+        .ok_or(Error::InvalidResult)?;
+    let caster = record.controller;
+    let Some(StackItemPayload::Spell {
+        stack_card_object: spell_object,
+        card_definition_id: card_definition,
+        face_key,
+        semantic_profile_id,
+        cost_facts,
+        ..
+    }) = record.payload.clone()
+    else {
+        return Err(Error::InvalidResult);
+    };
+    let pool_before = *next
+        .card_rules
+        .mana
+        .pools
+        .get(&caster)
+        .ok_or(Error::InvalidResult)?;
+    if !payment_options(&pool_before, &cost).contains(&spent) {
+        return Err(Error::InvalidSelection);
+    }
     facts.zone_events.push(ZoneMoveEvent::Public(Box::new(
         AuthoritativeRuleEventKind::SpellCast {
             stack_object,
             spell_object,
-            card_definition: object.card_definition,
+            card_definition,
             face_key,
-            semantic_profile_id: profile_id.clone(),
+            semantic_profile_id,
             is_creature_spell: true,
             cost_facts,
         },
@@ -417,8 +440,269 @@ pub(crate) fn cast_spell(
     next.card_rules
         .turn_history
         .record_spell_cast(caster, false)
+        .map_err(|_| Error::InvalidResult)
+}
+
+/// CR 601.2: `caster` casts `card` from their hand, paying `spent`, the one
+/// way to pay. The card moves to the stack as a new public incarnation with a
+/// stack record, the cost leaves the pool, and the spell is cast, all in this
+/// transition. The caller gives priority back to the caster (CR 117.3c).
+pub(crate) fn cast_spell(
+    admission: &ExecutableProfileAdmissionV1,
+    next: &mut EngineState,
+    caster: PlayerId,
+    card: GameObjectId,
+    spent: [u32; 12],
+    facts: &mut Facts,
+) -> Result<StackObjectId, Error> {
+    let castable = castable_card(admission, next, caster, card)?;
+    let spell = put_on_stack(next, caster, card, &castable, facts)?;
+    commit_cast(next, spell.stack_object, castable.cost, spent, facts)?;
+    Ok(spell.stack_object)
+}
+
+/// The Cast continuation of `spell_object`, a vanilla creature spell of
+/// `actor` that costs `cost`, while the caster chooses how to pay: nothing is
+/// chosen but the allocation (CR 601.2g, 601.2h).
+fn cast_continuation(
+    actor: PlayerId,
+    spell_object: GameObjectId,
+    card_definition_id: CardDefinitionId,
+    face_key: FaceKey,
+    semantic_profile_id: CardSemanticProfileId,
+    cost: ManaCost,
+) -> CastContinuation {
+    CastContinuation {
+        actor,
+        spell_object,
+        card_definition_id,
+        face_key,
+        semantic_profile_id,
+        stage: CastContinuationStage::PayingMana,
+        selected_route: Some(CostRoute::Normal),
+        modes: Vec::new(),
+        targets: Vec::new(),
+        paid_cost_choices: Vec::new(),
+        action_cost_facts: ActionCostFacts {
+            mana_cost: Some(cost),
+            reserved_nonmana_costs: Vec::new(),
+            selected_cost_operands: Vec::new(),
+        },
+        mana_payment_staging: Some(ManaPaymentStaging {
+            stage: ManaPaymentStage::AwaitingFinalAllocation,
+            mana_source_activations: Vec::new(),
+        }),
+    }
+}
+
+/// CR 601.2a, 601.2h: `caster` starts to cast `card` from their hand, which
+/// has two or more ways to be paid. The card moves to the stack as a new
+/// public incarnation with a stack record, and a Cast continuation waits for
+/// the payment. The spell is not cast yet (CR 601.2i), and nothing is paid.
+/// The caller asks the caster how to pay (`install_payment_request`).
+pub(crate) fn begin_cast(
+    admission: &ExecutableProfileAdmissionV1,
+    next: &mut EngineState,
+    caster: PlayerId,
+    card: GameObjectId,
+    facts: &mut Facts,
+) -> Result<(), Error> {
+    let castable = castable_card(admission, next, caster, card)?;
+    let spell = put_on_stack(next, caster, card, &castable, facts)?;
+    let continuation = next.allocators.next_continuation_id;
+    next.allocators.next_continuation_id = ContinuationId(
+        continuation
+            .0
+            .checked_add(1)
+            .ok_or(Error::IdentityExhausted)?,
+    );
+    next.execution.continuations.insert(
+        continuation,
+        ContinuationRecord {
+            id: continuation,
+            created_at_revision: next.revision,
+            payload: ContinuationPayload::Cast(cast_continuation(
+                caster,
+                spell.spell_object,
+                castable.object.card_definition,
+                castable.face_key,
+                castable.profile_id.clone(),
+                castable.cost,
+            )),
+        },
+    );
+    Ok(())
+}
+
+/// CR 601.2h, 601.2i: the caster paid with `spent`, one of the ways their
+/// pool offers. The cost leaves the pool, the spell becomes cast, and the
+/// continuation ends. The caller gives priority back to the caster
+/// (CR 117.3c).
+pub(crate) fn complete_cast(
+    next: &mut EngineState,
+    spent: [u32; 12],
+    facts: &mut Facts,
+) -> Result<(), Error> {
+    let (continuation, cast) = match next.execution.continuations.iter().collect::<Vec<_>>()[..] {
+        [(
+            id,
+            ContinuationRecord {
+                payload: ContinuationPayload::Cast(cast),
+                ..
+            },
+        )] => (*id, cast.clone()),
+        _ => return Err(Error::InvalidResult),
+    };
+    let cost = cast
+        .action_cost_facts
+        .mana_cost
+        .ok_or(Error::InvalidResult)?;
+    let stack_object = next
+        .zones
+        .stack_records
+        .iter()
+        .find_map(|(id, record)| match &record.payload {
+            Some(StackItemPayload::Spell {
+                stack_card_object, ..
+            }) if *stack_card_object == cast.spell_object => Some(*id),
+            _ => None,
+        })
+        .ok_or(Error::InvalidResult)?;
+    commit_cast(next, stack_object, cost, spent, facts)?;
+    next.execution.continuations.remove(&continuation);
+    Ok(())
+}
+
+/// A cast whose caster is choosing how to pay, as `pending_payment` found it.
+pub(crate) struct PendingPayment {
+    continuation: ContinuationId,
+    caster: PlayerId,
+    /// Every way to pay, ascending: two or more.
+    options: Vec<[u32; 12]>,
+}
+
+/// The cast `state` waits on, checked against the verified catalog: exactly
+/// one Cast continuation, for the spell on the stack, which is a vanilla
+/// creature spell of the active player who holds priority in a main phase
+/// (CR 302.1, 117.1a), with the cost the face prints and nothing chosen but
+/// the allocation. The pool pays the cost in two or more ways; with one, the
+/// cast has no payment to ask for.
+pub(crate) fn pending_payment(
+    admission: &ExecutableProfileAdmissionV1,
+    state: &EngineState,
+) -> Result<PendingPayment, Error> {
+    let [(continuation, record)] = state.execution.continuations.iter().collect::<Vec<_>>()[..]
+    else {
+        return Err(Error::InvalidResult);
+    };
+    let ContinuationPayload::Cast(cast) = &record.payload else {
+        return Err(Error::InvalidResult);
+    };
+    let object = state
+        .zones
+        .objects
+        .get(&cast.spell_object)
+        .ok_or(Error::InvalidResult)?;
+    let definition = admission
+        .verified_catalog()
+        .get(admission.content_contract_id(), object.card_definition)
         .map_err(|_| Error::InvalidResult)?;
-    Ok(stack_object)
+    let CardSemanticBindingV1::ProfiledV1 {
+        profile_id,
+        body: CardProfileBodyV1::VanillaCreature,
+    } = &definition.semantic_binding
+    else {
+        return Err(Error::InvalidResult);
+    };
+    let face_key = FaceKey(
+        *state
+            .card_rules
+            .faces
+            .faces
+            .get(&cast.spell_object)
+            .ok_or(Error::InvalidResult)?,
+    );
+    let face = definition
+        .faces
+        .iter()
+        .find(|face| face.face_key == face_key)
+        .ok_or(Error::InvalidResult)?;
+    let cost = mana_cost_of(face).map_err(|_| Error::InvalidResult)?;
+    let expected = cast_continuation(
+        cast.actor,
+        cast.spell_object,
+        object.card_definition,
+        face_key,
+        profile_id.clone(),
+        cost,
+    );
+    let core = &state.core;
+    if *cast != expected
+        || !stack_within_profile(admission, state)
+        || cast.actor != core.active_player
+        || !matches!(
+            core.position,
+            TurnPosition::PrecombatMain | TurnPosition::PostcombatMain
+        )
+        || !matches!(core.priority, PriorityState::HeldBy { player, .. } if player == cast.actor)
+    {
+        return Err(Error::InvalidResult);
+    }
+    let pool = state
+        .card_rules
+        .mana
+        .pools
+        .get(&cast.actor)
+        .ok_or(Error::InvalidResult)?;
+    let options = payment_options(pool, &cost);
+    if options.len() < 2 {
+        return Err(Error::InvalidResult);
+    }
+    Ok(PendingPayment {
+        continuation: *continuation,
+        caster: cast.actor,
+        options,
+    })
+}
+
+/// The request that asks the caster of the pending cast how to pay (CR 601.2h):
+/// one `SelectManaPayment` per way, in the canonical order.
+pub(crate) fn payment_request_shape(
+    admission: &ExecutableProfileAdmissionV1,
+    state: &EngineState,
+) -> Result<RequestShape, Error> {
+    let pending = pending_payment(admission, state)?;
+    let raw = pending
+        .options
+        .iter()
+        .map(|spent_buckets| {
+            (
+                CandidateIntent::SelectManaPayment {
+                    spent_buckets: *spent_buckets,
+                },
+                EngineCandidateBinding::SelectManaPayment {
+                    spent_buckets: *spent_buckets,
+                },
+            )
+        })
+        .collect();
+    Ok(RequestShape {
+        actor: pending.caster,
+        visibility: DecisionVisibility::ActingPlayerOnly,
+        continuation_id: Some(pending.continuation),
+        purpose: DecisionPurposeV4::ManaPayment,
+        decision_domain_v2: DecisionDomainV2::ChooseOne,
+        candidates: CandidateOrdering::assign_dense(raw).map_err(|_| Error::InvalidResult)?,
+    })
+}
+
+/// Installs the request that asks the caster how to pay.
+pub(crate) fn install_payment_request(
+    admission: &ExecutableProfileAdmissionV1,
+    next: &mut EngineState,
+) -> Result<AuthoritativeDecisionRequest, Error> {
+    let shape = payment_request_shape(admission, next)?;
+    crate::turn_progression::install_request(next, shape)
 }
 
 /// CR 608.3a: the spell on top of the stack resolves, and its card enters the
@@ -604,6 +888,29 @@ mod tests {
                 [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
             ]
         );
+    }
+
+    #[test]
+    fn the_ways_to_pay_are_ascending_and_distinct() {
+        // Every bucket holds mana, so the search crosses all of them.
+        let mut rich = pool([1, 1, 1, 2, 1, 1]);
+        rich.creature_spell_only = [1, 0, 0, 1, 0, 1];
+        let options = payment_options(&rich, &gray_ogre_cost());
+        assert!(options.len() > 4, "{options:?}");
+        let mut ascending = options.clone();
+        ascending.sort();
+        ascending.dedup();
+        assert_eq!(options, ascending);
+        // Each way spends exactly the cost's three mana and has its own
+        // remaining pool.
+        assert!(options.iter().all(|spend| spend.iter().sum::<u32>() == 3));
+        let mut left: Vec<[u32; 12]> = options
+            .iter()
+            .map(|spend| remaining(&rich, spend))
+            .collect();
+        left.sort();
+        left.dedup();
+        assert_eq!(left.len(), options.len());
     }
 
     #[test]

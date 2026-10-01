@@ -54,6 +54,23 @@ impl EngineState {
         self.validate_components()
     }
 
+    /// The Cast continuation of the spell whose card object is
+    /// `spell_object`, while its cost is still being paid (CR 601.2h).
+    pub fn cast_continuation_of(
+        &self,
+        spell_object: GameObjectId,
+    ) -> Option<&crate::CastContinuation> {
+        self.execution
+            .continuations
+            .values()
+            .find_map(|record| match &record.payload {
+                crate::ContinuationPayload::Cast(cast) if cast.spell_object == spell_object => {
+                    Some(cast)
+                }
+                _ => None,
+            })
+    }
+
     fn validate_components(&self) -> Result<(), EngineStateError> {
         crate::validate_engine_state(self).map_err(|_| EngineStateError::StateInvariant)?;
         self.validate_card_rules()?;
@@ -765,12 +782,33 @@ impl EngineState {
                 .map_err(|_| EngineStateError::ContinuationRecord)?;
             }
             crate::ContinuationPayload::Cast(value) => {
+                // CR 601.2a: the card is on the stack from the start of the
+                // cast, as the spell its caster controls.
+                let on_the_stack_as_its_spell = self
+                    .zones
+                    .locations
+                    .get(&value.spell_object)
+                    .is_some_and(|location| location.zone == mtgml_model::ZoneKind::Stack)
+                    && self.zones.stack_records.values().any(|record| {
+                        record.controller == value.actor
+                            && matches!(&record.payload, Some(crate::StackItemPayload::Spell {
+                                stack_card_object,
+                                card_definition_id,
+                                face_key,
+                                semantic_profile_id,
+                                ..
+                            }) if *stack_card_object == value.spell_object
+                                && *card_definition_id == value.card_definition_id
+                                && *face_key == value.face_key
+                                && *semantic_profile_id == value.semantic_profile_id)
+                    });
                 if !players.contains(&value.actor)
                     || self
                         .zones
                         .objects
                         .get(&value.spell_object)
                         .is_none_or(|object| object.card_definition != value.card_definition_id)
+                    || !on_the_stack_as_its_spell
                 {
                     return Err(EngineStateError::ContinuationRecord);
                 }
@@ -780,6 +818,17 @@ impl EngineState {
                 if (value.mana_payment_staging.is_some() && !cost_has_mana)
                     || (matches!(value.stage, crate::CastContinuationStage::PayingMana)
                         != value.mana_payment_staging.is_some())
+                {
+                    return Err(EngineStateError::ManaPaymentStaging);
+                }
+                // CR 601.2g: mana abilities are activated before the cost is
+                // paid, so paying leaves only the allocation to choose: it
+                // stages no mana source of its own.
+                if matches!(value.stage, crate::CastContinuationStage::PayingMana)
+                    && value.mana_payment_staging.as_ref().is_none_or(|staging| {
+                        staging.stage != crate::ManaPaymentStage::AwaitingFinalAllocation
+                            || !staging.mana_source_activations.is_empty()
+                    })
                 {
                     return Err(EngineStateError::ManaPaymentStaging);
                 }

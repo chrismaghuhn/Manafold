@@ -42,8 +42,8 @@ pub use core::{
 };
 pub use damage::{DamageAssignmentV1, DamageRecipientV1};
 pub use delta::{
-    CostCommitActionV1, DeltaApplicationError, ManaPoolChangeCauseV1, SemanticDeltaOperation,
-    StackItemEndKindV1, StateDelta,
+    spell_becomes_cast, CostCommitActionV1, DeltaApplicationError, ManaPoolChangeCauseV1,
+    SemanticDeltaOperation, StackItemEndKindV1, StateDelta,
 };
 pub use digest::{
     calculate_full_state_digest, calculate_full_state_digest_structural_only,
