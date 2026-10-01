@@ -382,14 +382,16 @@ fn project_v4_public_source_event(
                 to_zone: transition.to.zone,
                 old_object: transition.old_object,
                 new_object: transition.new_object,
-                // Preserve the V7 Basic-Land projection rule: an old
-                // incarnation is visible only when this perspective had
-                // an opaque identity for it before the move. A newly
-                // public incarnation is allocated separately below.
+                // An incarnation is visible exactly when this perspective
+                // has an opaque identity for it: the old one before the
+                // move, the new one after it. A card that disappears into
+                // a hidden zone shows only its old identity.
                 reveals_old: before_identity
                     .object_to_opaque
                     .contains_key(&transition.old_object),
-                reveals_new: true,
+                reveals_new: after_identity
+                    .object_to_opaque
+                    .contains_key(&transition.new_object),
             };
             project_v4_legacy_observation_policy(
                 after,

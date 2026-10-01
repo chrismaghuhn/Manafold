@@ -18,6 +18,11 @@ pub(crate) enum SelectedZoneTransitionKind {
     LibraryTopToOwnerHand,
     /// A discard (CR 701.9a): hand to the top of the owner's public graveyard.
     HandToOwnerGraveyard,
+    /// A hand card to the bottom of its owner's face-down library (CR 103.5).
+    /// The owner stops tracking it, for `reason`.
+    HandToOwnerLibraryBottom {
+        reason: mtgml_state::KnowledgeInvalidationReason,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,14 +51,17 @@ fn validate_old_references(
             ZoneIncarnationError::CombatReference,
         ));
     }
-    if matches!(kind, SelectedZoneTransitionKind::LibraryTopToOwnerHand)
-        && state
-            .perspective_identities
-            .players
-            .iter()
-            .any(|(perspective, identity)| {
-                *perspective != owner && identity.object_to_opaque.contains_key(&object)
-            })
+    if matches!(
+        kind,
+        SelectedZoneTransitionKind::LibraryTopToOwnerHand
+            | SelectedZoneTransitionKind::HandToOwnerLibraryBottom { .. }
+    ) && state
+        .perspective_identities
+        .players
+        .iter()
+        .any(|(perspective, identity)| {
+            *perspective != owner && identity.object_to_opaque.contains_key(&object)
+        })
     {
         return Err(KernelExecutionError::ZoneIncarnation(
             ZoneIncarnationError::NonOwnerTracksHiddenSource,
@@ -140,7 +148,8 @@ pub(crate) fn apply_selected_zone_transition_in_workspace(
                 && actual_from.visibility == mtgml_state::VisibilityPartition::FaceDown
                 && actual_from.partition.is_none()
         }
-        SelectedZoneTransitionKind::HandToOwnerGraveyard => {
+        SelectedZoneTransitionKind::HandToOwnerGraveyard
+        | SelectedZoneTransitionKind::HandToOwnerLibraryBottom { .. } => {
             actual_from.zone == mtgml_model::ZoneKind::Hand
                 && actual_from.player == Some(old_object.owner)
                 && matches!(
@@ -181,6 +190,30 @@ pub(crate) fn apply_selected_zone_transition_in_workspace(
             visibility: mtgml_state::VisibilityPartition::OwnerOnly,
             partition: None,
         },
+        SelectedZoneTransitionKind::HandToOwnerLibraryBottom { .. } => {
+            let library = ZoneLocation {
+                zone: mtgml_model::ZoneKind::Library,
+                player: Some(old_object.owner),
+                position: ZonePosition::Top { offset: 0 },
+                visibility: mtgml_state::VisibilityPartition::FaceDown,
+                partition: None,
+            };
+            let below = state
+                .zones
+                .ordered_zones
+                .get(&library.key())
+                .map_or(0, Vec::len);
+            ZoneLocation {
+                position: ZonePosition::Top {
+                    offset: u32::try_from(below).map_err(|_| {
+                        KernelExecutionError::ZoneIncarnation(
+                            ZoneIncarnationError::GraveyardOffsetOverflow,
+                        )
+                    })?,
+                },
+                ..library
+            }
+        }
     };
     if request.claimed_to != required_to {
         return Err(KernelExecutionError::ZoneIncarnation(
@@ -250,8 +283,11 @@ pub(crate) fn apply_selected_zone_transition_in_workspace(
         ));
     }
 
-    if let (SelectedZoneTransitionKind::HandToOwnerGraveyard, ZonePosition::Top { offset }) =
-        (request.kind, actual_from.position)
+    if let (
+        SelectedZoneTransitionKind::HandToOwnerGraveyard
+        | SelectedZoneTransitionKind::HandToOwnerLibraryBottom { .. },
+        ZonePosition::Top { offset },
+    ) = (request.kind, actual_from.position)
     {
         // An ordered hand closes the gap the discarded card leaves.
         let source_key = actual_from.key();
@@ -313,6 +349,13 @@ pub(crate) fn apply_selected_zone_transition_in_workspace(
                 .entry(graveyard_key.clone())
                 .or_default()
                 .insert(0, new_object_id);
+        }
+        SelectedZoneTransitionKind::HandToOwnerLibraryBottom { .. } => {
+            next.zones
+                .ordered_zones
+                .entry(required_to.key())
+                .or_default()
+                .push(new_object_id);
         }
         SelectedZoneTransitionKind::LibraryTopToOwnerHand => {
             let source_key = actual_from.key();
@@ -593,6 +636,50 @@ pub(crate) fn apply_selected_zone_transition_in_workspace(
                 mutation: PerspectiveLifecycleMutationV1 {
                     identity: identity_mutation,
                     knowledge: knowledge_mutation,
+                },
+            };
+            emit_perspective_occurrence(&mut next, &mut staged_events, lifecycle)?;
+        }
+        // The card disappears face down into the library: its owner, who
+        // knew it in hand, sees it go and no longer tracks it. No other
+        // perspective tracked it (checked above).
+        SelectedZoneTransitionKind::HandToOwnerLibraryBottom { reason } => {
+            let owner = old_object.owner;
+            let identity = state.perspective_identities.players.get(&owner).ok_or(
+                KernelExecutionError::ZoneIncarnation(
+                    ZoneIncarnationError::PerspectiveKnowledgeMismatch,
+                ),
+            )?;
+            let knowledge = state.knowledge.players.get(&owner).ok_or(
+                KernelExecutionError::ZoneIncarnation(
+                    ZoneIncarnationError::PerspectiveKnowledgeMismatch,
+                ),
+            )?;
+            let opaque = identity
+                .object_to_opaque
+                .get(&request.object)
+                .copied()
+                .ok_or(KernelExecutionError::ZoneIncarnation(
+                    ZoneIncarnationError::PerspectiveKnowledgeMismatch,
+                ))?;
+            let sequence = knowledge.next_visible_sequence;
+            let lifecycle = PerspectiveLifecycleAuditV1 {
+                perspective: owner,
+                sequence,
+                mutation: PerspectiveLifecycleMutationV1 {
+                    identity: IdentityMutationV1::Retire {
+                        opaque,
+                        object: request.object,
+                    },
+                    knowledge: Some(KnowledgeMutationV1::Invalidate {
+                        opaque,
+                        reason,
+                        invalidation_provenance: KnowledgeAcquisitionReason::Observed {
+                            channel: KnowledgeHistoryChannel::Private,
+                            sequence,
+                            cause: KnowledgeAcquisitionCause::OwnPrivateIdentity,
+                        },
+                    }),
                 },
             };
             emit_perspective_occurrence(&mut next, &mut staged_events, lifecycle)?;

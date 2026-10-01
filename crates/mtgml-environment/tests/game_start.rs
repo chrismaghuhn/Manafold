@@ -212,3 +212,93 @@ fn a_restored_pregame_checkpoint_continues_identically() {
     game.answer(keep);
     assert_eq!(game.controller.checkpoint().unwrap(), ahead);
 }
+
+fn mulligan(intent: &CandidateIntent) -> bool {
+    matches!(intent, CandidateIntent::ChooseBoolean { value: true })
+}
+
+impl Game {
+    /// The bottoming player puts the candidates at `picks` on the bottom.
+    fn bottom(&self, picks: &[usize]) -> (PlayerId, PlayerStepV4) {
+        let (player, request) = self.pending();
+        assert_eq!(request.purpose, DecisionPurposeV4::MulliganBottom);
+        let step = self
+            .endpoint(player)
+            .submit(DecisionResponseV3 {
+                schema_version: DECISION_RESPONSE_V3_SCHEMA.to_owned(),
+                player_decision_id: request.player_decision_id,
+                view_sequence: request.view_sequence,
+                answer: DecisionAnswerV2::Order {
+                    candidate_ids: picks
+                        .iter()
+                        .map(|index| request.candidates[*index].candidate_id)
+                        .collect(),
+                },
+            })
+            .unwrap();
+        assert_eq!(step.submission, PlayerStepSubmissionV1::Accepted);
+        (player, step)
+    }
+}
+
+#[test]
+fn a_mulligan_hides_the_hand_and_the_bottom_choice_from_the_opponent() {
+    // Two games that differ only in which card P1 puts on the bottom.
+    let mut p2_views: [Vec<Vec<u8>>; 2] = [Vec::new(), Vec::new()];
+    let mut digests = Vec::new();
+    for (pick, views) in [0_usize, 6].into_iter().zip(&mut p2_views) {
+        let game = Game::new([deck(6, 6), deck(6, 6)], 41);
+        let mut record = |game: &Game, player: PlayerId, step: &PlayerStepV4| {
+            if player == P2 {
+                views.push(mtgml_wire::encode_canonical(step).unwrap());
+            }
+            views.push(
+                mtgml_wire::encode_canonical(&game.endpoint(P2).information_state().unwrap())
+                    .unwrap(),
+            );
+        };
+        let (player, step) = game.answer(starting_player(P1));
+        record(&game, player, &step);
+        let (player, step) = game.answer(mulligan);
+        record(&game, player, &step);
+        let (player, step) = game.answer(keep);
+        record(&game, player, &step);
+        // P1 saw its old hand leave for the library.
+        let (_, bottom_request) = game.pending();
+        assert_eq!(bottom_request.actor, P1);
+        let (player, step) = game.bottom(&[pick]);
+        record(&game, player, &step);
+        let (player, step) = game.answer(keep);
+        record(&game, player, &step);
+        assert_eq!(game.core().turn_number, 1);
+        digests.push(game.controller.checkpoint().unwrap().checkpoint_digest);
+    }
+    assert_eq!(p2_views[0], p2_views[1]);
+    // The games do differ: a different card lies at the bottom.
+    assert_ne!(digests[0], digests[1]);
+}
+
+#[test]
+fn the_mulligan_owner_observes_its_cards_leave() {
+    let game = Game::new([deck(6, 6), deck(6, 6)], 43);
+    game.answer(starting_player(P2));
+    game.answer(keep);
+    let (_, step) = game.answer(mulligan);
+    let left: Vec<_> = step
+        .observed_events
+        .iter()
+        .filter(|envelope| {
+            matches!(
+                envelope.event,
+                ObservedEventKindV4::ObjectMoved {
+                    old_object: Some(_),
+                    new_object: None,
+                    from: mtgml_model::ZoneKind::Hand,
+                    to: mtgml_model::ZoneKind::Library,
+                    ..
+                }
+            )
+        })
+        .collect();
+    assert_eq!(left.len(), 7, "the old hand went into the library");
+}

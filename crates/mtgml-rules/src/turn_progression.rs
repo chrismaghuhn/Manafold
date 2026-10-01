@@ -618,7 +618,7 @@ pub(crate) fn draw(
 
 /// Moves one card through the shared zone-incarnation authority (new
 /// incarnation, knowledge and identity updates) and carries its face over.
-fn move_card(
+pub(crate) fn move_card(
     next: &mut EngineState,
     object: GameObjectId,
     kind: crate::zone_incarnation::SelectedZoneTransitionKind,

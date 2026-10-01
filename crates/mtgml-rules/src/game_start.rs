@@ -329,7 +329,49 @@ fn expected_request_shape(state: &EngineState) -> Result<RequestShape, Error> {
                 })
                 .collect(),
         ),
-        GameStartStage::Bottoming { .. } => return Err(Error::TurnProgressUnsupported),
+        // CR 103.5: as many cards as mulligans taken go to the bottom, in
+        // an order the player chooses (top to bottom).
+        GameStartStage::Bottoming { player } => {
+            let identity = state
+                .perspective_identities
+                .players
+                .get(&player)
+                .ok_or(Error::InvalidResult)?;
+            let hand = hand_cards(state, player);
+            let taken = start
+                .mulligans_taken
+                .get(&player)
+                .copied()
+                .ok_or(Error::InvalidResult)?;
+            let count = u32::try_from(hand.len())
+                .map_err(|_| Error::InvalidResult)?
+                .min(taken);
+            let raw = hand
+                .into_iter()
+                .map(|object| {
+                    identity
+                        .object_to_opaque
+                        .get(&object)
+                        .map(|opaque| {
+                            (
+                                CandidateIntent::SelectObject { object: *opaque },
+                                EngineCandidateBinding::SelectObject { object },
+                            )
+                        })
+                        .ok_or(Error::InvalidResult)
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            (
+                player,
+                DecisionPurposeV4::MulliganBottom,
+                DecisionDomainV2::Order {
+                    minimum: count,
+                    maximum: count,
+                },
+                DecisionVisibility::ActingPlayerOnly,
+                raw,
+            )
+        }
     };
     Ok(RequestShape {
         actor,
@@ -406,15 +448,14 @@ pub(crate) fn execute_pregame_response(
 ) -> Result<BasicLandTransitionProduct, Error> {
     validate_pregame_request(admission, before, request, status)
         .map_err(|_| Error::InvalidSelection)?;
-    let DecisionAnswerV2::SelectOne { candidate_id } = &response.answer else {
-        return Err(Error::InvalidSelection);
+    let chosen = |candidate_id: &mtgml_model::CandidateIdV1| {
+        request
+            .candidates
+            .iter()
+            .find(|candidate| candidate.candidate_id == *candidate_id)
+            .map(|candidate| candidate.trusted_binding.clone())
+            .ok_or(Error::InvalidSelection)
     };
-    let binding = request
-        .candidates
-        .iter()
-        .find(|candidate| candidate.candidate_id == *candidate_id)
-        .map(|candidate| candidate.trusted_binding.clone())
-        .ok_or(Error::InvalidSelection)?;
     let (continuation, start) = game_start(before).ok_or(Error::InvalidResult)?;
     let mut start = start.clone();
     let mut next = before.clone();
@@ -427,8 +468,11 @@ pub(crate) fn execute_pregame_response(
             .ok_or(Error::IdentityExhausted)?,
     );
     let mut facts = Facts::default();
-    match (&request.purpose, binding) {
-        (DecisionPurposeV4::StartingPlayer, EngineCandidateBinding::SelectPlayer { player }) => {
+    let bottomed = match (&request.purpose, &response.answer) {
+        (DecisionPurposeV4::StartingPlayer, DecisionAnswerV2::SelectOne { candidate_id }) => {
+            let EngineCandidateBinding::SelectPlayer { player } = chosen(candidate_id)? else {
+                return Err(Error::InvalidSelection);
+            };
             crate::turn_progression::observe_public(
                 &mut next,
                 &mut facts,
@@ -445,19 +489,14 @@ pub(crate) fn execute_pregame_response(
                 shuffle_library(&mut next, *owner, &mut facts)?;
             }
             for owner in &order {
-                for _ in 0..STARTING_HAND_SIZE {
-                    crate::turn_progression::draw(&mut next, *owner, &mut facts)?;
-                }
+                draw_starting_hand(&mut next, *owner, &mut facts)?;
             }
+            false
         }
-        (
-            DecisionPurposeV4::MulliganDeclaration,
-            EngineCandidateBinding::ChooseBoolean { value },
-        ) => {
-            if value {
-                // London mulligans come with the next change.
-                return Err(Error::TurnProgressUnsupported);
-            }
+        (DecisionPurposeV4::MulliganDeclaration, DecisionAnswerV2::SelectOne { candidate_id }) => {
+            let EngineCandidateBinding::ChooseBoolean { value } = chosen(candidate_id)? else {
+                return Err(Error::InvalidSelection);
+            };
             crate::turn_progression::observe_public(
                 &mut next,
                 &mut facts,
@@ -466,17 +505,73 @@ pub(crate) fn execute_pregame_response(
                     mulligan: value,
                 },
             )?;
-            start.kept.insert(request.actor);
+            if value {
+                start.round_mulligans.insert(request.actor);
+            } else {
+                start.kept.insert(request.actor);
+            }
+            false
+        }
+        (DecisionPurposeV4::MulliganBottom, DecisionAnswerV2::Order { candidate_ids }) => {
+            for candidate_id in candidate_ids {
+                let EngineCandidateBinding::SelectObject { object } = chosen(candidate_id)? else {
+                    return Err(Error::InvalidSelection);
+                };
+                to_library_bottom(
+                    &mut next,
+                    object,
+                    mtgml_state::KnowledgeInvalidationReason::HiddenTransition,
+                    &mut facts,
+                )?;
+            }
+            start.round_mulligans.remove(&request.actor);
+            true
         }
         _ => return Err(Error::InvalidSelection),
-    }
+    };
     let starting_player = start.starting_player.ok_or(Error::InvalidResult)?;
-    let next_declarer = turn_order(&next, starting_player)
-        .into_iter()
-        .find(|player| !start.kept.contains(player) && !start.round_mulligans.contains(player));
-    let next_decision = match next_declarer {
-        Some(player) => {
-            start.stage = GameStartStage::Declaring { player };
+    let order = turn_order(&next, starting_player);
+    let next_declarer = |start: &GameStartContinuation| {
+        order
+            .iter()
+            .copied()
+            .find(|player| !start.kept.contains(player) && !start.round_mulligans.contains(player))
+    };
+    let next_bottomer = |start: &GameStartContinuation| {
+        order
+            .iter()
+            .copied()
+            .find(|player| start.round_mulligans.contains(player))
+    };
+    // While declaring, the next undeclared player declares; once everyone
+    // has, the players who chose a mulligan take it together (CR 103.5) and
+    // then bottom in turn order. After the last bottom, a new round starts
+    // with the players who have not kept.
+    let stage = if bottomed {
+        next_bottomer(&start)
+            .map(|player| GameStartStage::Bottoming { player })
+            .or_else(|| next_declarer(&start).map(|player| GameStartStage::Declaring { player }))
+    } else if let Some(player) = next_declarer(&start) {
+        Some(GameStartStage::Declaring { player })
+    } else if let Some(first) = next_bottomer(&start) {
+        for player in order
+            .iter()
+            .filter(|player| start.round_mulligans.contains(player))
+        {
+            take_mulligan(&mut next, *player, &mut facts)?;
+            let taken = start
+                .mulligans_taken
+                .get_mut(player)
+                .ok_or(Error::InvalidResult)?;
+            *taken = taken.checked_add(1).ok_or(Error::IdentityExhausted)?;
+        }
+        Some(GameStartStage::Bottoming { player: first })
+    } else {
+        None
+    };
+    let next_decision = match stage {
+        Some(stage) => {
+            start.stage = stage;
             next.execution
                 .continuations
                 .get_mut(&continuation)
@@ -484,13 +579,79 @@ pub(crate) fn execute_pregame_response(
                 .payload = ContinuationPayload::GameStart(start);
             NextDecision::Pregame
         }
-        None if start.round_mulligans.is_empty() => {
+        None => {
             next.execution.continuations.remove(&continuation);
             begin_first_turn(&mut next, &mut facts)
         }
-        None => return Err(Error::TurnProgressUnsupported),
     };
     crate::turn_progression::finish(admission, before, request, next, facts, next_decision)
+}
+
+/// `owner`'s hand, in object order.
+fn hand_cards(state: &EngineState, owner: PlayerId) -> Vec<GameObjectId> {
+    state
+        .zones
+        .locations
+        .iter()
+        .filter(|(_, location)| location.zone == ZoneKind::Hand && location.player == Some(owner))
+        .map(|(object, _)| *object)
+        .collect()
+}
+
+/// CR 103.5: draws a starting hand of seven.
+fn draw_starting_hand(
+    next: &mut EngineState,
+    owner: PlayerId,
+    facts: &mut Facts,
+) -> Result<(), Error> {
+    for _ in 0..STARTING_HAND_SIZE {
+        crate::turn_progression::draw(next, owner, facts)?;
+    }
+    Ok(())
+}
+
+/// CR 103.5: the hand goes into the library, which is shuffled, and a new
+/// hand of seven is drawn. The cards to put on the bottom are chosen next.
+fn take_mulligan(next: &mut EngineState, owner: PlayerId, facts: &mut Facts) -> Result<(), Error> {
+    for object in hand_cards(next, owner) {
+        to_library_bottom(
+            next,
+            object,
+            mtgml_state::KnowledgeInvalidationReason::Shuffle,
+            facts,
+        )?;
+    }
+    shuffle_library(next, owner, facts)?;
+    draw_starting_hand(next, owner, facts)
+}
+
+/// Moves a hand card to the bottom of its owner's library; its owner stops
+/// tracking it, for `reason`.
+fn to_library_bottom(
+    next: &mut EngineState,
+    object: GameObjectId,
+    reason: mtgml_state::KnowledgeInvalidationReason,
+    facts: &mut Facts,
+) -> Result<(), Error> {
+    let owner = next
+        .zones
+        .objects
+        .get(&object)
+        .map(|card| card.owner)
+        .ok_or(Error::InvalidResult)?;
+    let below = next
+        .zones
+        .ordered_zones
+        .get(&library_location(owner, 0).key())
+        .map_or(0, Vec::len);
+    let offset = u32::try_from(below).map_err(|_| Error::IdentityExhausted)?;
+    crate::turn_progression::move_card(
+        next,
+        object,
+        crate::zone_incarnation::SelectedZoneTransitionKind::HandToOwnerLibraryBottom { reason },
+        library_location(owner, offset),
+        facts,
+    )
 }
 
 /// CR 103.8, 502: the starting player's first turn begins. Nothing is on the
@@ -851,14 +1012,184 @@ mod tests {
         assert_eq!(zone_count(&state, P2, ZoneKind::Hand), 7);
     }
 
+    /// The physical cards of `owner`'s library, top to bottom.
+    fn library(state: &EngineState, owner: PlayerId) -> Vec<mtgml_model::PhysicalCardId> {
+        state
+            .zones
+            .ordered_zones
+            .iter()
+            .find(|(key, _)| key.zone == ZoneKind::Library && key.player == Some(owner))
+            .map(|(_, members)| {
+                members
+                    .iter()
+                    .map(|object| state.zones.objects[object].physical_card.unwrap())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Bottoms the first `count` cards the request offers, in offer order.
+    fn bottom_first(state: &EngineState) -> (DecisionAnswerV2, Vec<mtgml_model::PhysicalCardId>) {
+        let request = pending(state);
+        let DecisionDomainV2::Order { minimum, .. } = request.decision_domain_v2 else {
+            panic!("not an order request");
+        };
+        let chosen: Vec<_> = request.candidates.iter().take(minimum as usize).collect();
+        let cards = chosen
+            .iter()
+            .map(|candidate| match &candidate.trusted_binding {
+                EngineCandidateBinding::SelectObject { object } => {
+                    state.zones.objects[object].physical_card.unwrap()
+                }
+                other => panic!("unexpected binding {other:?}"),
+            })
+            .collect();
+        (
+            DecisionAnswerV2::Order {
+                candidate_ids: chosen
+                    .iter()
+                    .map(|candidate| candidate.candidate_id)
+                    .collect(),
+            },
+            cards,
+        )
+    }
+
     #[test]
-    fn a_mulligan_is_not_yet_supported_and_fails_closed() {
+    fn a_mulligan_redraws_seven_and_puts_one_on_the_bottom() {
         let (admission, state) = new_game(7);
         let state = answer(&admission, &state, select_player(&state, P1)).unwrap();
+        let state = answer(&admission, &state, mulligan(&state)).unwrap();
+        // P2 still declares this round before anyone redraws.
+        assert_eq!(pending(&state).actor, P2);
+        let state = answer(&admission, &state, keep(&state)).unwrap();
+        let start = game_start(&state);
+        assert_eq!(start.stage, GameStartStage::Bottoming { player: P1 });
+        assert_eq!(start.mulligans_taken[&P1], 1);
+        assert_eq!(zone_count(&state, P1, ZoneKind::Hand), 7);
+        let request = pending(&state);
+        assert_eq!(request.purpose, DecisionPurposeV4::MulliganBottom);
+        assert_eq!(request.actor, P1);
+        assert_eq!(request.visibility, DecisionVisibility::ActingPlayerOnly);
         assert_eq!(
-            answer(&admission, &state, mulligan(&state)),
-            Err(crate::BasicLandTransitionError::TurnProgressUnsupported)
+            request.decision_domain_v2,
+            DecisionDomainV2::Order {
+                minimum: 1,
+                maximum: 1
+            }
         );
+        assert_eq!(request.candidates.len(), 7);
+        let (bottom, cards) = bottom_first(&state);
+        let state = answer(&admission, &state, bottom).unwrap();
+        assert_eq!(zone_count(&state, P1, ZoneKind::Hand), 6);
+        assert_eq!(library(&state, P1).last(), cards.last());
+        // A new round: P1 has not kept yet.
+        assert_eq!(
+            game_start(&state).stage,
+            GameStartStage::Declaring { player: P1 }
+        );
+        let state = answer(&admission, &state, keep(&state)).unwrap();
+        assert_eq!(state.core.turn_number, 1);
+        assert_eq!(zone_count(&state, P1, ZoneKind::Hand), 6);
+        assert_eq!(zone_count(&state, P2, ZoneKind::Hand), 7);
+    }
+
+    #[test]
+    fn both_players_mulligan_together_and_bottom_in_turn_order() {
+        let (admission, state) = new_game(7);
+        let state = answer(&admission, &state, select_player(&state, P2)).unwrap();
+        let state = answer(&admission, &state, mulligan(&state)).unwrap();
+        let state = answer(&admission, &state, mulligan(&state)).unwrap();
+        assert_eq!(
+            game_start(&state).stage,
+            GameStartStage::Bottoming { player: P2 }
+        );
+        for player in [P1, P2] {
+            assert_eq!(zone_count(&state, player, ZoneKind::Hand), 7);
+        }
+        let (bottom, _) = bottom_first(&state);
+        let state = answer(&admission, &state, bottom).unwrap();
+        assert_eq!(
+            game_start(&state).stage,
+            GameStartStage::Bottoming { player: P1 }
+        );
+        let (bottom, _) = bottom_first(&state);
+        let state = answer(&admission, &state, bottom).unwrap();
+        assert_eq!(
+            game_start(&state).stage,
+            GameStartStage::Declaring { player: P2 }
+        );
+        let state = answer(&admission, &state, keep(&state)).unwrap();
+        let state = answer(&admission, &state, keep(&state)).unwrap();
+        assert_eq!(state.core.turn_number, 1);
+        assert_eq!(state.core.active_player, P2);
+        for player in [P1, P2] {
+            assert_eq!(zone_count(&state, player, ZoneKind::Hand), 6);
+            assert_eq!(zone_count(&state, player, ZoneKind::Library), 6);
+        }
+    }
+
+    #[test]
+    fn seven_mulligans_leave_an_empty_hand() {
+        let (admission, mut state) = new_game(7);
+        state = answer(&admission, &state, select_player(&state, P1)).unwrap();
+        for round in 1..=7_u32 {
+            state = answer(&admission, &state, mulligan(&state)).unwrap();
+            if round == 1 {
+                state = answer(&admission, &state, keep(&state)).unwrap();
+            }
+            assert_eq!(
+                pending(&state).decision_domain_v2,
+                DecisionDomainV2::Order {
+                    minimum: round,
+                    maximum: round
+                }
+            );
+            let (bottom, _) = bottom_first(&state);
+            state = answer(&admission, &state, bottom).unwrap();
+        }
+        state = answer(&admission, &state, keep(&state)).unwrap();
+        assert_eq!(state.core.turn_number, 1);
+        assert_eq!(zone_count(&state, P1, ZoneKind::Hand), 0);
+        assert_eq!(zone_count(&state, P1, ZoneKind::Library), 12);
+    }
+
+    #[test]
+    fn the_owner_forgets_cards_returned_to_the_library() {
+        let (admission, state) = new_game(7);
+        let state = answer(&admission, &state, select_player(&state, P1)).unwrap();
+        let state = answer(&admission, &state, mulligan(&state)).unwrap();
+        let state = answer(&admission, &state, keep(&state)).unwrap();
+        let reasons = |state: &EngineState| -> Vec<mtgml_state::KnowledgeInvalidationReason> {
+            state.knowledge.players[&P1]
+                .retired
+                .values()
+                .map(|record| record.invalidation.reason)
+                .collect()
+        };
+        // The redraw shuffled the old hand away.
+        assert_eq!(
+            reasons(&state),
+            vec![mtgml_state::KnowledgeInvalidationReason::Shuffle; 7]
+        );
+        let (bottom, _) = bottom_first(&state);
+        let state = answer(&admission, &state, bottom).unwrap();
+        let reasons = reasons(&state);
+        assert_eq!(reasons.len(), 8);
+        assert!(reasons.contains(&mtgml_state::KnowledgeInvalidationReason::HiddenTransition));
+        // Nobody tracks a library card.
+        let library_objects: Vec<_> = state
+            .zones
+            .locations
+            .iter()
+            .filter(|(_, location)| location.zone == ZoneKind::Library)
+            .map(|(object, _)| *object)
+            .collect();
+        for identity in state.perspective_identities.players.values() {
+            assert!(library_objects
+                .iter()
+                .all(|object| !identity.object_to_opaque.contains_key(object)));
+        }
     }
 
     #[test]

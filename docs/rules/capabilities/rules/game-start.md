@@ -1,7 +1,7 @@
 # Game Start
 
 **Capability key/version:** `rules/game-start@0.1.0`
-**Lifecycle:** `specified`
+**Lifecycle:** `covered`
 **Owner role:** `turn`
 **Authority snapshots:** WotC Comprehensive Rules snapshot `wotc-cr-2026-09-25-txt-20260925-sha256-8d860e451f20f38865b725b42d82feb714c725373dd8f3b32b8652b3eeb070ca`, rules 103.1, 103.3, 103.4, 103.5, 103.8, 103.8a, 500.11.
 
@@ -64,4 +64,23 @@ next decision (shuffles, the draws, the start of turn 1).
 
 ## Conformance evidence
 
-Listed when the lifecycle advances to `covered`.
+Rules (`crates/mtgml-rules/src/game_start.rs`):
+- `game_start::tests::a_new_game_waits_for_the_chosen_player_to_pick_who_starts`
+- `game_start::tests::a_new_game_is_a_pure_function_of_decks_and_seed`
+- `game_start::tests::a_deck_that_cannot_draw_a_starting_hand_is_refused`
+- `game_start::tests::choosing_the_starting_player_shuffles_and_deals_seven_cards`
+- `game_start::tests::the_shuffle_hides_the_deck_order`
+- `game_start::tests::both_players_keep_and_turn_one_skips_the_draw_step`
+- `game_start::tests::a_mulligan_redraws_seven_and_puts_one_on_the_bottom`
+- `game_start::tests::both_players_mulligan_together_and_bottom_in_turn_order`
+- `game_start::tests::seven_mulligans_leave_an_empty_hand`
+- `game_start::tests::the_owner_forgets_cards_returned_to_the_library`
+- `game_start::tests::a_tampered_pregame_fails_validation`
+
+Production endpoints, restore and noninterference (`crates/mtgml-environment/tests/game_start.rs`):
+- `the_chooser_picks_and_both_players_observe_the_choice`
+- `both_players_keep_and_the_starting_player_takes_the_first_turn`
+- `a_player_learns_nothing_about_the_opponents_deck_order`
+- `a_restored_pregame_checkpoint_continues_identically`
+- `a_mulligan_hides_the_hand_and_the_bottom_choice_from_the_opponent`
+- `the_mulligan_owner_observes_its_cards_leave`
