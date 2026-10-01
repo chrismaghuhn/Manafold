@@ -1,11 +1,11 @@
 //! Native turn progression for the slice of lands and vanilla creatures.
 //!
 //! Passing priority and every turn-based action run directly on V3 state:
-//! step changes, untap, draw, attackers and unblocked combat damage, cleanup
-//! and the turn change. One response is one transition (`StateRevision` +1, one
-//! `StateDelta`). V3 validates turn-position, priority, active-player and
-//! turn-number events against the transition's endpoints, so each changed
-//! aspect gets exactly one net event.
+//! step changes, untap, draw, attackers, blockers and unblocked combat damage,
+//! cleanup and the turn change. One response is one transition
+//! (`StateRevision` +1, one `StateDelta`). V3 validates turn-position,
+//! priority, active-player and turn-number events against the transition's
+//! endpoints, so each changed aspect gets exactly one net event.
 //!
 //! What a step reports, and what it does not:
 //! - A step that crosses several positions reports one
@@ -43,7 +43,7 @@ use crate::{
 
 /// Executes one V4 response. Land plays and mana abilities use the
 /// basic-land path; passing priority, casting a spell, paying for it and
-/// declaring attackers run the turn progression.
+/// declaring attackers and blockers run the turn progression.
 pub fn execute_magic_response(
     admission: &ExecutableProfileAdmissionV1,
     state: &EngineState,
@@ -131,6 +131,27 @@ pub fn execute_magic_response(
             attackers.sort();
             Answer::Attackers(attackers)
         }
+        // CR 509.1a: the defending player chose, for one creature, which
+        // attacker it blocks, or none.
+        DecisionPurposeV4::BlockerDeclaration => {
+            validate_magic_pending_request(admission, state, status)
+                .map_err(|_| Error::InvalidSelection)?;
+            let DecisionAnswerV2::SelectOne { candidate_id } = &response.answer else {
+                return Err(Error::InvalidSelection);
+            };
+            let Some(EngineCandidateBinding::DeclareBlock { blocker, attacker }) = request
+                .candidates
+                .iter()
+                .find(|candidate| candidate.candidate_id == *candidate_id)
+                .map(|candidate| &candidate.trusted_binding)
+            else {
+                return Err(Error::InvalidSelection);
+            };
+            Answer::Block {
+                blocker: *blocker,
+                attacker: *attacker,
+            }
+        }
         DecisionPurposeV4::HandSizeDiscard => {
             validate_magic_pending_request(admission, state, status)
                 .map_err(|_| Error::InvalidSelection)?;
@@ -188,6 +209,7 @@ pub fn validate_magic_pending_request(
         matches!(
             request.purpose,
             DecisionPurposeV4::AttackerDeclaration
+                | DecisionPurposeV4::BlockerDeclaration
                 | DecisionPurposeV4::HandSizeDiscard
                 | DecisionPurposeV4::ManaPayment
         )
@@ -196,6 +218,9 @@ pub fn validate_magic_pending_request(
     };
     if request.purpose == DecisionPurposeV4::HandSizeDiscard {
         return validate_discard_request(admission, state, request, status);
+    }
+    if request.purpose == DecisionPurposeV4::BlockerDeclaration {
+        return validate_block_request(admission, state, request, status);
     }
     if request.purpose == DecisionPurposeV4::ManaPayment {
         return validate_payment_request(admission, state, request, status);
@@ -207,6 +232,12 @@ enum Answer {
     Pass,
     /// The creatures the active player declares as attackers, in object order.
     Attackers(Vec<GameObjectId>),
+    /// The defending player's choice for one creature: it blocks `attacker`,
+    /// or nothing.
+    Block {
+        blocker: GameObjectId,
+        attacker: Option<GameObjectId>,
+    },
     Discard(GameObjectId),
 }
 
@@ -215,6 +246,9 @@ pub(crate) enum NextDecision {
     /// The caster of the spell on the stack chooses how to pay for it.
     Payment,
     Attackers,
+    /// The defending player is asked about the next creature of a block
+    /// declaration.
+    Blockers,
     Discard,
     /// The next request of the start of the game (CR 103).
     Pregame,
@@ -286,12 +320,13 @@ pub(crate) fn record_unobserved(facts: &mut Facts, event: AuthoritativeRuleEvent
 /// admitted lands and vanilla creatures on the battlefield, each controlled by
 /// its owner, a stack that is empty or holds one creature spell that the active
 /// player cast in a main phase (see `crate::casting::stack_within_profile`), no
-/// continuation but the payment of that spell, a combat that this slice could
-/// have produced (see `crate::combat::validate_reachable_combat`), and none of
-/// the state no rule of this slice can evaluate. State-based actions are checked before
-/// a player would receive priority (CR 704.3), so a decision is never pending
-/// while one applies: a player at 0 or less life who has not lost is not a
-/// state of this slice (CR 704.5a).
+/// continuation but the payment of that spell or the defending player's block
+/// declaration (see `crate::combat::validate_pending_block_declaration`), a combat that
+/// this slice could have produced (see `crate::combat::validate_reachable_combat`),
+/// and none of the state no rule of this slice can evaluate. State-based actions
+/// are checked before a player would receive priority (CR 704.3), so a decision
+/// is never pending while one applies: a player at 0 or less life who has not
+/// lost is not a state of this slice (CR 704.5a).
 fn validate_slice(
     admission: &ExecutableProfileAdmissionV1,
     state: &EngineState,
@@ -303,14 +338,12 @@ fn validate_slice(
         || cards.counters != Default::default()
         || cards.attachments != Default::default()
         || (!execution.continuations.is_empty()
-            && crate::casting::pending_payment(admission, state).is_err())
+            && crate::casting::pending_payment(admission, state).is_err()
+            && crate::combat::validate_pending_block_declaration(admission, state).is_err())
         || !execution.effects.is_empty()
         || !execution.waiting_triggers.is_empty()
         || !execution.delayed_effects.is_empty()
         || !crate::casting::stack_within_profile(admission, state)
-        || parts.combat.as_ref().is_some_and(|combat| {
-            !combat.blocked_attackers.is_empty() || !combat.blockers.is_empty()
-        })
         || state_based_action_pending(state)
     {
         return Err(Error::TurnProgressUnsupported);
@@ -469,6 +502,15 @@ fn progress(
                 consecutive_passes: 0,
             };
             NextDecision::Priority(active)
+        }
+        // CR 509.1a: the defending player answers for one creature. After the
+        // last one the active player receives priority (CR 509.2).
+        Answer::Block { blocker, attacker } => {
+            if crate::combat::declare_block(&mut next, &mut facts, blocker, attacker)? {
+                open_priority(&mut next)
+            } else {
+                NextDecision::Blockers
+            }
         }
         // CR 514.1: the discard ends cleanup; the turn then ends (CR 514.3).
         Answer::Discard(object) => {
@@ -656,10 +698,10 @@ fn advance(
                 step: CombatStep::DeclareBlockers,
             } => {
                 admits(admission, "rules/declare-blockers")?;
-                // CR 509.1a: a defender with an untapped creature could block.
-                // Blocks arrive with a later rule.
-                if crate::combat::defender_could_block(admission, next)? {
-                    return Err(Error::TurnProgressUnsupported);
+                // CR 509.1a: a defender with an untapped creature declares
+                // blockers, one creature at a time.
+                if crate::combat::begin_block_declaration(admission, next)? {
+                    return Ok(NextDecision::Blockers);
                 }
                 // CR 509.2: with nothing to declare, the active player gets
                 // priority.
@@ -992,6 +1034,10 @@ pub(crate) fn finish(
             running,
             Some(install_attacker_request(admission, &mut next)?),
         ),
+        NextDecision::Blockers => (
+            running,
+            Some(crate::combat::install_block_request(&mut next)?),
+        ),
         NextDecision::Pregame => (
             running,
             Some(crate::game_start::install_pregame_request(&mut next)?),
@@ -1316,6 +1362,43 @@ fn validate_attacker_request(
         || !actor_only_request_matches(state, request)
     {
         return Err(BasicLandCandidateError::PendingCandidateSetMismatch);
+    }
+    Ok(())
+}
+
+/// CR 509.1a: a restored or committed block request is exactly the one the
+/// pending declaration calls for: for the defending player, who is not the
+/// active player, about the next creature, with the identities the installer
+/// allocates.
+fn validate_block_request(
+    admission: &ExecutableProfileAdmissionV1,
+    state: &EngineState,
+    request: &AuthoritativeDecisionRequest,
+    status: &EpisodeStatus,
+) -> Result<(), BasicLandCandidateError> {
+    state
+        .validate_structure()
+        .map_err(|_| BasicLandCandidateError::InvalidState)?;
+    validate_slice(admission, state).map_err(|_| BasicLandCandidateError::InvalidState)?;
+    // Only an admission with the rule that creates this request accepts it.
+    admits(admission, "rules/declare-blockers")
+        .map_err(|_| BasicLandCandidateError::PendingCandidateSetMismatch)?;
+    let mismatch = BasicLandCandidateError::PendingCandidateSetMismatch;
+    // `validate_slice` has checked the continuation against the battlefield.
+    let expected = crate::combat::block_request_shape(state).map_err(|_| mismatch)?;
+    let shape = RequestShape {
+        actor: request.actor,
+        visibility: request.visibility,
+        continuation_id: request.continuation_id,
+        purpose: request.purpose.clone(),
+        decision_domain_v2: request.decision_domain_v2.clone(),
+        candidates: request.candidates.clone(),
+    };
+    if !matches!(status, EpisodeStatus::Running)
+        || shape != expected
+        || !request_is_current(state, request)
+    {
+        return Err(mismatch);
     }
     Ok(())
 }
@@ -2425,27 +2508,251 @@ mod tests {
         );
     }
 
-    #[test]
-    fn a_defender_with_an_untapped_creature_fails_closed() {
-        // CR 509.1: P2 could block with its creature. Blocks arrive with a
-        // later rule; until then the step is unsupported.
-        let (admission, state) = game_with_creatures(3, &[P1, P2]);
-        let state = after_declaring_an_attacker(&admission, state);
-        let state = pass(&admission, &state).0;
-        assert_eq!(pending(&state).actor, P2);
-        assert_eq!(
-            submit(&admission, &state, pass_answer(pending(&state))),
-            Err(crate::BasicLandTransitionError::TurnProgressUnsupported)
-        );
-        // A tapped creature cannot block (CR 509.1a).
-        let mut tapped = state.clone();
-        let creatures = battlefield_creatures(&tapped);
-        let defender = *creatures
+    /// The answer in `request` in which its creature blocks `attacker`, or
+    /// nothing.
+    fn block_answer(
+        request: &AuthoritativeDecisionRequest,
+        attacker: Option<GameObjectId>,
+    ) -> DecisionAnswerV2 {
+        DecisionAnswerV2::SelectOne {
+            candidate_id: candidate(request, |binding| {
+                matches!(binding,
+                    EngineCandidateBinding::DeclareBlock { attacker: bound, .. }
+                        if *bound == attacker)
+            })
+            .unwrap(),
+        }
+    }
+
+    /// The block declaration in progress: the defender, the creatures still to
+    /// ask, and the answers so far.
+    fn block_declaration(
+        state: &EngineState,
+    ) -> (
+        PlayerId,
+        Vec<GameObjectId>,
+        std::collections::BTreeMap<GameObjectId, Option<GameObjectId>>,
+    ) {
+        let [record] = state
+            .execution
+            .continuations
+            .values()
+            .collect::<Vec<_>>()
+            .try_into()
+            .expect("one continuation");
+        match &record.payload {
+            mtgml_state::ContinuationPayload::BlockDeclaration {
+                defender,
+                pending_blockers,
+                declared,
+            } => (*defender, pending_blockers.clone(), declared.clone()),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// The block declarations the product's events make.
+    fn declarations(
+        product: &crate::BasicLandTransitionProduct,
+    ) -> Vec<Vec<mtgml_state::CombatBlockerAssignmentV1>> {
+        product
+            .events
             .iter()
-            .find(|creature| tapped.zones.objects[creature].controller == P2)
+            .filter_map(|event| match &event.event {
+                AuthoritativeRuleEventKind::BlockersDeclared { assignments } => {
+                    Some(assignments.clone())
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// `declared` with P2 holding priority in the declare attackers step:
+    /// P1's pass has been made.
+    fn defender_to_pass(
+        admission: &ExecutableProfileAdmissionV1,
+        declared: &EngineState,
+    ) -> EngineState {
+        let state = pass(admission, declared).0;
+        assert_eq!(pending(&state).actor, P2);
+        state
+    }
+
+    #[test]
+    fn a_defender_with_an_untapped_creature_is_asked_to_block() {
+        // CR 509.1a: P2 may block with its creature, so the declare blockers
+        // step begins with P2's declaration, which nobody has priority for.
+        let (admission, state) = game_with_creatures(3, &[P1, P2]);
+        let attacking = after_declaring_an_attacker(&admission, state);
+        let attacker = attacking.combat.as_ref().unwrap().attackers[0];
+        let blocker = *battlefield_creatures(&attacking)
+            .iter()
+            .find(|creature| attacking.zones.objects[creature].controller == P2)
             .unwrap();
-        tapped.zones.objects.get_mut(&defender).unwrap().tapped = true;
-        assert!(submit(&admission, &tapped, pass_answer(pending(&tapped))).is_ok());
+        let at_priority = defender_to_pass(&admission, &attacking);
+        let product = submit(&admission, &at_priority, pass_answer(pending(&at_priority))).unwrap();
+        assert_eq!(declarations(&product), Vec::<Vec<_>>::new());
+        let asked = apply(&at_priority, &product);
+
+        let request = pending(&asked);
+        assert_eq!(request.actor, P2);
+        assert_eq!(request.purpose, DecisionPurposeV4::BlockerDeclaration);
+        assert_eq!(request.decision_domain_v2, DecisionDomainV2::ChooseOne);
+        assert_eq!(request.visibility, DecisionVisibility::ActingPlayerOnly);
+        assert_eq!(asked.core.priority, PriorityState::None);
+        assert_eq!(
+            block_declaration(&asked),
+            (P2, vec![blocker], std::collections::BTreeMap::new())
+        );
+        assert_eq!(
+            request.continuation_id,
+            asked.execution.continuations.keys().next().copied()
+        );
+        // The creature does not block, or blocks the attacker.
+        let bindings: Vec<_> = request
+            .candidates
+            .iter()
+            .map(|candidate| candidate.trusted_binding.clone())
+            .collect();
+        assert_eq!(
+            bindings,
+            vec![
+                EngineCandidateBinding::DeclareBlock {
+                    blocker,
+                    attacker: None
+                },
+                EngineCandidateBinding::DeclareBlock {
+                    blocker,
+                    attacker: Some(attacker)
+                },
+            ]
+        );
+        validate_magic_pending_request(&admission, &asked, &EpisodeStatus::Running).unwrap();
+
+        // No block: one declaration with nothing in it. P1 has priority.
+        let product = submit(&admission, &asked, block_answer(request, None)).unwrap();
+        assert_eq!(declarations(&product), vec![Vec::new()]);
+        let unblocked = apply(&asked, &product);
+        assert!(unblocked.execution.continuations.is_empty());
+        let combat = unblocked.combat.as_ref().unwrap();
+        assert!(combat.blockers.is_empty() && combat.blocked_attackers.is_empty());
+        assert_eq!(
+            unblocked.core.priority,
+            PriorityState::HeldBy {
+                player: P1,
+                consecutive_passes: 0
+            }
+        );
+        assert_eq!(pending(&unblocked).actor, P1);
+        assert_eq!(
+            pending(&unblocked).purpose,
+            DecisionPurposeV4::PriorityAction
+        );
+        validate_magic_pending_request(&admission, &unblocked, &EpisodeStatus::Running).unwrap();
+
+        // A block: the attacker is blocked (CR 509.1g, 509.1h).
+        let product = submit(&admission, &asked, block_answer(request, Some(attacker))).unwrap();
+        assert_eq!(
+            declarations(&product),
+            vec![vec![mtgml_state::CombatBlockerAssignmentV1 {
+                blocker,
+                attacker
+            }]]
+        );
+        let blocked = apply(&asked, &product);
+        let combat = blocked.combat.as_ref().unwrap();
+        assert_eq!(
+            combat.blockers,
+            std::collections::BTreeMap::from([(blocker, attacker)])
+        );
+        assert_eq!(
+            combat.blocked_attackers,
+            std::collections::BTreeSet::from([attacker])
+        );
+        validate_magic_pending_request(&admission, &blocked, &EpisodeStatus::Running).unwrap();
+
+        // CR 509.1a: a tapped creature cannot block, so nothing is asked.
+        let mut tapped = at_priority.clone();
+        tapped.zones.objects.get_mut(&blocker).unwrap().tapped = true;
+        let product = submit(&admission, &tapped, pass_answer(pending(&tapped))).unwrap();
+        assert_eq!(declarations(&product), Vec::<Vec<_>>::new());
+        let next = apply(&tapped, &product);
+        assert!(next.execution.continuations.is_empty());
+        assert_eq!(pending(&next).actor, P1);
+        assert_eq!(pending(&next).purpose, DecisionPurposeV4::PriorityAction);
+    }
+
+    #[test]
+    fn creatures_are_asked_in_the_order_of_the_defenders_opaque_ids() {
+        // Requests and candidates follow the actor's opaque ids, never the
+        // engine's object ids (INFORMATION_MODEL, Noninterference).
+        let (admission, state) = game_with_creatures(3, &[P1, P2, P2]);
+        let attacking = after_declaring_an_attacker(&admission, state);
+        let [first, second]: [GameObjectId; 2] = battlefield_creatures(&attacking)
+            .into_iter()
+            .filter(|creature| attacking.zones.objects[creature].controller == P2)
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
+        assert!(first < second);
+        let at_priority = defender_to_pass(&admission, &attacking);
+        let ask = |state: &EngineState| {
+            apply(
+                state,
+                &submit(&admission, state, pass_answer(pending(state))).unwrap(),
+            )
+        };
+
+        // The fixture's opaque ids rise with the object ids.
+        let asked = ask(&at_priority);
+        assert_eq!(
+            block_declaration(&asked),
+            (P2, vec![first, second], std::collections::BTreeMap::new())
+        );
+
+        // With P2's opaque ids of the two creatures swapped, the second object
+        // is asked about first, and the request shows its opaque id.
+        let mut swapped = at_priority.clone();
+        let identity = swapped.perspective_identities.players.get_mut(&P2).unwrap();
+        let (low, high) = (
+            identity.object_to_opaque[&first],
+            identity.object_to_opaque[&second],
+        );
+        assert!(low < high);
+        identity.object_to_opaque.insert(first, high);
+        identity.object_to_opaque.insert(second, low);
+        identity.opaque_to_object.insert(low, second);
+        identity.opaque_to_object.insert(high, first);
+        let asked = ask(&swapped);
+        assert_eq!(
+            block_declaration(&asked),
+            (P2, vec![second, first], std::collections::BTreeMap::new())
+        );
+        assert!(pending(&asked).candidates.iter().all(|candidate| matches!(
+            candidate.visible_intent,
+            CandidateIntent::DeclareBlock { blocker, .. } if blocker == low
+        )));
+        validate_magic_pending_request(&admission, &asked, &EpisodeStatus::Running).unwrap();
+
+        // The first answer leaves the other creature to ask.
+        let attacker = asked.combat.as_ref().unwrap().attackers[0];
+        let product = submit(
+            &admission,
+            &asked,
+            block_answer(pending(&asked), Some(attacker)),
+        )
+        .unwrap();
+        assert_eq!(declarations(&product), Vec::<Vec<_>>::new());
+        let half = apply(&asked, &product);
+        assert_eq!(
+            block_declaration(&half),
+            (
+                P2,
+                vec![first],
+                std::collections::BTreeMap::from([(second, Some(attacker))])
+            )
+        );
+        assert!(half.combat.as_ref().unwrap().blockers.is_empty());
+        validate_magic_pending_request(&admission, &half, &EpisodeStatus::Running).unwrap();
     }
 
     /// `state` with its combat moved to `step`, as a restored checkpoint could
@@ -2469,39 +2776,42 @@ mod tests {
     }
 
     #[test]
-    fn a_restored_combat_with_a_possible_blocker_is_refused() {
-        // CR 509.1a: P2 controls an untapped creature, so it could block, and
-        // blocks arrive with a later rule. The state is a reachable one while
-        // the attack is declared (the pass out of the step fails closed), but
-        // no state from the declare blockers step on is.
-        let (admission, state) = game_with_creatures(3, &[P1, P2]);
+    fn a_restored_state_after_blocks_were_declared_may_hold_an_unblocking_creature() {
+        // CR 509.1a: blocking is a choice. Once the declaration is over, in the
+        // declare blockers step or after it, P2's untapped creature that did
+        // not block is legal.
+        let (admission, state) = game_with_creatures(3, &[P1, P2, P2]);
         let declared = after_declaring_an_attacker(&admission, state);
         validate_magic_pending_request(&admission, &declared, &EpisodeStatus::Running).unwrap();
+        let defenders: Vec<_> = battlefield_creatures(&declared)
+            .into_iter()
+            .filter(|creature| declared.zones.objects[creature].controller == P2)
+            .collect();
+        assert!(defenders
+            .iter()
+            .all(|defender| !declared.zones.objects[defender].tapped));
+        let running = EpisodeStatus::Running;
+
+        // Neither creature blocked.
         for step in [
             CombatStep::DeclareBlockers,
             CombatStep::CombatDamage,
             CombatStep::EndOfCombat,
         ] {
             let restored = in_combat_step(&declared, step);
-            assert!(is_refused(&admission, &restored), "{step:?}");
+            validate_magic_pending_request(&admission, &restored, &running)
+                .unwrap_or_else(|error| panic!("{step:?}: {error:?}"));
         }
 
-        // The same combat against a defender whose creature is tapped could
-        // not be blocked, and validates in each of those steps.
-        let defender = *battlefield_creatures(&declared)
-            .iter()
-            .find(|creature| declared.zones.objects[creature].controller == P2)
-            .unwrap();
-        let mut tapped = declared.clone();
-        tapped.zones.objects.get_mut(&defender).unwrap().tapped = true;
-        for step in [
-            CombatStep::DeclareBlockers,
-            CombatStep::CombatDamage,
-            CombatStep::EndOfCombat,
-        ] {
-            let restored = in_combat_step(&tapped, step);
-            validate_magic_pending_request(&admission, &restored, &EpisodeStatus::Running)
-                .unwrap_or_else(|error| panic!("{step:?}: {error:?}"));
+        // One creature blocked and the other did not.
+        let blocked = with_the_attacker_blocked(&declared, CombatStep::DeclareBlockers);
+        assert_eq!(blocked.combat.as_ref().unwrap().blockers.len(), 1);
+        validate_magic_pending_request(&admission, &blocked, &running).unwrap();
+        // Damage with a block is not supported yet, so no game has dealt it: a
+        // state that claims it was dealt is not one the game reaches.
+        for step in [CombatStep::CombatDamage, CombatStep::EndOfCombat] {
+            let restored = with_the_attacker_blocked(&declared, step);
+            assert!(is_refused(&admission, &restored), "{step:?}");
         }
     }
 

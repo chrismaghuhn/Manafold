@@ -756,6 +756,58 @@ impl EngineState {
         Ok(())
     }
 
+    /// CR 509.1a: a block declaration in progress belongs to the combat's
+    /// defending player, in the declare blockers step of an attack, before
+    /// anything is blocked and while no player has priority. It names
+    /// untapped permanents that player controls, each exactly once, with at
+    /// least one still to ask, and every answered creature blocks one of the
+    /// attackers or none.
+    fn block_declaration_is_valid(
+        &self,
+        defender: mtgml_model::PlayerId,
+        pending_blockers: &[mtgml_model::GameObjectId],
+        declared: &std::collections::BTreeMap<
+            mtgml_model::GameObjectId,
+            Option<mtgml_model::GameObjectId>,
+        >,
+    ) -> bool {
+        let Some(combat) = self.combat.as_ref() else {
+            return false;
+        };
+        let could_block = |object: &mtgml_model::GameObjectId| {
+            self.zones
+                .objects
+                .get(object)
+                .is_some_and(|value| value.controller == defender && !value.tapped)
+                && self
+                    .zones
+                    .locations
+                    .get(object)
+                    .is_some_and(|location| location.zone == mtgml_model::ZoneKind::Battlefield)
+        };
+        let asked: BTreeSet<_> = pending_blockers
+            .iter()
+            .chain(declared.keys())
+            .copied()
+            .collect();
+        self.core.position
+            == (crate::TurnPosition::Combat {
+                step: crate::CombatStep::DeclareBlockers,
+            })
+            && self.core.priority == crate::PriorityState::None
+            && combat.defending_player == defender
+            && !combat.attackers.is_empty()
+            && combat.blockers.is_empty()
+            && combat.blocked_attackers.is_empty()
+            && !pending_blockers.is_empty()
+            && asked.len() == pending_blockers.len() + declared.len()
+            && asked.iter().all(could_block)
+            && declared
+                .values()
+                .flatten()
+                .all(|attacker| combat.attackers.contains(attacker))
+    }
+
     fn validate_continuation_payload(
         &self,
         payload: &crate::ContinuationPayload,
@@ -917,6 +969,15 @@ impl EngineState {
             crate::ContinuationPayload::GameStart(value) => {
                 if !game_start_shape_is_valid(value, players) {
                     return Err(EngineStateError::GameStart);
+                }
+            }
+            crate::ContinuationPayload::BlockDeclaration {
+                defender,
+                pending_blockers,
+                declared,
+            } => {
+                if !self.block_declaration_is_valid(*defender, pending_blockers, declared) {
+                    return Err(EngineStateError::BlockDeclaration);
                 }
             }
             crate::ContinuationPayload::StackResolution(value) => {
@@ -1113,6 +1174,7 @@ impl EngineState {
                 crate::GameStartStage::Declaring { player }
                 | crate::GameStartStage::Bottoming { player } => player,
             }),
+            crate::ContinuationPayload::BlockDeclaration { defender, .. } => Some(*defender),
         }
     }
 
@@ -1158,6 +1220,10 @@ impl EngineState {
                     Purpose::MulliganBottom
                 )
             ),
+            crate::ContinuationPayload::BlockDeclaration { .. } => {
+                matches!(&request.purpose, Purpose::BlockerDeclaration)
+                    && matches!(&request.decision_domain_v2, Domain::ChooseOne)
+            }
             crate::ContinuationPayload::MagicSbaGraveyardOrderV1 { .. } => {
                 matches!(&request.purpose, Purpose::SbaGraveyardOrder)
                     && matches!(&request.decision_domain_v2, Domain::Order { .. })
@@ -1432,6 +1498,41 @@ impl EngineState {
                         .get(bound)
                         .and_then(|record| self.safe_trigger_descriptor(request.actor, record))
                         .is_some_and(|expected| expected == *trigger)
+                }
+                (
+                    Intent::DeclareBlock { blocker, attacker },
+                    Binding::DeclareBlock {
+                        blocker: bound_blocker,
+                        attacker: bound_attacker,
+                    },
+                ) => {
+                    // CR 509.1a: the request asks about the next creature of
+                    // the declaration, and each candidate is that creature
+                    // blocking one of the attackers, or nothing.
+                    let attacker_is_visible = match (attacker, bound_attacker) {
+                        (None, None) => true,
+                        (Some(visible), Some(bound)) => {
+                            identities.opaque_to_object.get(visible) == Some(bound)
+                                && self
+                                    .combat
+                                    .as_ref()
+                                    .is_some_and(|combat| combat.attackers.contains(bound))
+                        }
+                        _ => false,
+                    };
+                    identities.opaque_to_object.get(blocker) == Some(bound_blocker)
+                        && attacker_is_visible
+                        && request.purpose == mtgml_decision::DecisionPurposeV4::BlockerDeclaration
+                        && request
+                            .continuation_id
+                            .and_then(|id| self.execution.continuations.get(&id))
+                            .is_some_and(|record| match &record.payload {
+                                crate::ContinuationPayload::BlockDeclaration {
+                                    pending_blockers,
+                                    ..
+                                } => pending_blockers.first() == Some(bound_blocker),
+                                _ => false,
+                            })
                 }
                 _ => false,
             };
@@ -2154,6 +2255,8 @@ pub enum EngineStateError {
     StateInvariant,
     #[error("the start of the game is inconsistent with turn 0 or the state")]
     GameStart,
+    #[error("the block declaration is inconsistent with the combat or the battlefield")]
+    BlockDeclaration,
     #[error("successor stack order is not a bijection with stack records")]
     StackOrder,
     #[error("successor stack record identity is inconsistent")]

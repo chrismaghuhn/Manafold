@@ -12,8 +12,8 @@ use mtgml_decision::{
     DecisionVisibility, PlayerDecisionRequestV4, DECISION_RESPONSE_V3_SCHEMA,
 };
 use mtgml_environment::{
-    CheckpointV8Error, EnvironmentCheckpointV8, PlayerEndpoint, PlayerEndpointError,
-    PlayerEndpointHandle, TrustedEnvironmentController,
+    CheckpointV8Error, EnvironmentCheckpointV8, PlayerEndpoint, PlayerEndpointHandle,
+    TrustedEnvironmentController,
 };
 use mtgml_model::{
     CandidateIdV1, CardDefinitionId, EpisodeStatus, GameObjectId, OpaqueObjectId,
@@ -2056,61 +2056,6 @@ fn overkill_damage_shows_negative_life_and_ends_the_game() {
 }
 
 #[test]
-fn a_defender_with_an_untapped_creature_fails_closed() {
-    let (_, plains) = land_definitions();
-    let [lions, _, _] = creature_definitions();
-    let game = Game::with_hands([vec![plains, lions], vec![plains, lions]]);
-    let attacker = cast_on_turn_one(&game, lions);
-    // P2 casts its own Savannah Lions on turn 2, and it stays untapped.
-    game.run_until(start_of_main_phase(2));
-    game.answer(play_land, pass);
-    game.answer(tap_for_mana, pass);
-    game.answer(cast_spell, pass);
-    game.answer(pass, pass);
-    game.answer(pass, pass);
-    let blocker = game.only_object(P2, lions, ZoneKind::Battlefield);
-    assert!(!game.state().zones.objects[&blocker].tapped);
-
-    game.run_until(at_attackers(3));
-    game.declare_attackers(&[opaque_of(&game.state(), P1, attacker)]);
-    game.answer(pass, pass);
-
-    // P2's pass would open the declare blockers step, in which P2 could block.
-    // Blocks are not supported yet: the endpoint reports the unsupported rule
-    // instead of a step, and nothing changes.
-    let before = game.controller.checkpoint().unwrap();
-    let (actor, request) = game.pending();
-    assert_eq!(actor, P2);
-    let outcome = game.endpoint(P2).submit(DecisionResponseV3 {
-        schema_version: DECISION_RESPONSE_V3_SCHEMA.to_owned(),
-        player_decision_id: request.player_decision_id,
-        view_sequence: request.view_sequence,
-        answer: pass_answer(&before.state),
-    });
-    assert_eq!(outcome, Err(PlayerEndpointError::ServiceUnavailable));
-    assert_eq!(game.controller.checkpoint().unwrap(), before);
-    assert_eq!(game.pending().1, request);
-
-    // The rules say why.
-    let pending = before.state.execution.pending_decision.as_ref().unwrap();
-    assert_eq!(
-        mtgml_rules::execute_magic_response(
-            &creature_game_admission(),
-            &before.state,
-            P2,
-            &DecisionResponseV3 {
-                schema_version: DECISION_RESPONSE_V3_SCHEMA.to_owned(),
-                player_decision_id: pending.player_decision_id,
-                view_sequence: pending.view_sequence,
-                answer: pass_answer(&before.state),
-            },
-            &EpisodeStatus::Running,
-        ),
-        Err(mtgml_rules::BasicLandTransitionError::TurnProgressUnsupported)
-    );
-}
-
-#[test]
 fn a_restored_attack_continues_identically() {
     let (game, creature) = lions_ready_to_attack(20);
     let attacker = opaque_of(&game.state(), P1, creature);
@@ -2158,7 +2103,7 @@ fn a_restored_combat_the_game_could_not_reach_is_refused() {
     game.answer(cast_spell, pass);
     game.answer(pass, pass);
     game.answer(pass, pass);
-    let blocker = game.only_object(P2, lions, ZoneKind::Battlefield);
+    game.only_object(P2, lions, ZoneKind::Battlefield);
     game.run_until(at_attackers(3));
     game.declare_attackers(&[opaque_of(&game.state(), P1, attacker)]);
 
@@ -2179,23 +2124,20 @@ fn a_restored_combat_the_game_could_not_reach_is_refused() {
     game.controller.restore(checkpoint).unwrap();
     assert_eq!(game.controller.checkpoint().unwrap(), reached);
 
-    // It never reaches the declare blockers step, or any later one, with a
-    // blocker possible: the pass that would open it is refused.
-    for step in [
-        mtgml_state::CombatStep::DeclareBlockers,
-        mtgml_state::CombatStep::CombatDamage,
-    ] {
-        let mut forged = reached.state.clone();
-        forged.core.position = TurnPosition::Combat { step };
-        assert!(restore(forged).is_err(), "{step:?}");
-    }
-    // Were the blocker tapped, it could not block (CR 509.1a).
-    let mut tapped = reached.state.clone();
-    tapped.zones.objects.get_mut(&blocker).unwrap().tapped = true;
-    tapped.core.position = TurnPosition::Combat {
+    // CR 509.1a: with the declaration over, an untapped Lions that did not
+    // block is legal, so the declare blockers step restores.
+    let mut forged = reached.state.clone();
+    forged.core.position = TurnPosition::Combat {
         step: mtgml_state::CombatStep::DeclareBlockers,
     };
-    restore(tapped).unwrap();
+    restore(forged).unwrap();
+    // The damage step with attackers has dealt its damage when anyone has
+    // priority in it (CR 510.3): this state has not.
+    let mut forged = reached.state.clone();
+    forged.core.position = TurnPosition::Combat {
+        step: mtgml_state::CombatStep::CombatDamage,
+    };
+    assert!(restore(forged).is_err());
 
     // An attack against its own controller is not one the game makes.
     let mut forged = reached.state.clone();

@@ -67,6 +67,9 @@ pub enum SyntheticAssemblyStageV1 {
 pub enum DecisionPurposeV4 {
     PriorityAction,
     AttackerDeclaration,
+    /// CR 509.1a: the defending player chooses, for one untapped creature they
+    /// control, which attacker it blocks, or none.
+    BlockerDeclaration,
     /// CR 514.1: the active player discards down to maximum hand size.
     HandSizeDiscard,
     SbaGraveyardOrder,
@@ -122,6 +125,7 @@ impl DecisionPurposeV4 {
                     | Self::ManaPayment
                     | Self::OptionalCostPayment { .. }
                     | Self::AbilityAction
+                    | Self::BlockerDeclaration
                     | Self::StartingPlayer
                     | Self::MulliganDeclaration,
                 DecisionDomainV2::ChooseOne
@@ -203,6 +207,10 @@ impl DecisionPurposeV4 {
                 )
                 | (Self::ManaPayment, CandidateIntent::SelectManaPayment { .. })
                 | (
+                    Self::BlockerDeclaration,
+                    CandidateIntent::DeclareBlock { .. }
+                )
+                | (
                     Self::OptionalCostPayment { .. },
                     CandidateIntent::ChooseBoolean { .. }
                 )
@@ -222,6 +230,7 @@ impl DecisionPurposeV4 {
     fn visibility_is_valid(&self, visibility: DecisionVisibility) -> bool {
         match self {
             Self::AttackerDeclaration
+            | Self::BlockerDeclaration
             | Self::HandSizeDiscard
             | Self::CastCostRoute
             | Self::SbaGraveyardOrder
@@ -869,6 +878,12 @@ pub enum CandidateIntent {
     SelectTrigger {
         trigger: SafeTriggerDescriptorV1,
     },
+    /// CR 509.1a: `blocker` blocks `attacker`, or blocks nothing (`None`).
+    DeclareBlock {
+        blocker: OpaqueObjectId,
+        #[serde(deserialize_with = "deserialize_required_option")]
+        attacker: Option<OpaqueObjectId>,
+    },
 }
 
 impl CandidateIntent {
@@ -889,6 +904,7 @@ impl CandidateIntent {
             Self::FinalizeManaProduction => 12,
             Self::SelectManaPayment { .. } => 13,
             Self::SelectTrigger { .. } => 14,
+            Self::DeclareBlock { .. } => 15,
         }
     }
 
@@ -945,6 +961,20 @@ impl CandidateIntent {
                 (Self::SelectTrigger { trigger: a }, Self::SelectTrigger { trigger: b }) => {
                     a.compare(b)
                 }
+                // The blocker, then the attacker it blocks; "no block" (None)
+                // comes before every attacker.
+                (
+                    Self::DeclareBlock {
+                        blocker: a_blocker,
+                        attacker: a_attacker,
+                    },
+                    Self::DeclareBlock {
+                        blocker: b_blocker,
+                        attacker: b_attacker,
+                    },
+                ) => a_blocker
+                    .cmp(b_blocker)
+                    .then_with(|| a_attacker.cmp(b_attacker)),
                 _ => Ordering::Equal,
             })
     }
@@ -1007,6 +1037,10 @@ pub enum EngineCandidateBinding {
     SelectTrigger {
         trigger: TriggerInstanceId,
     },
+    DeclareBlock {
+        blocker: GameObjectId,
+        attacker: Option<GameObjectId>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1062,6 +1096,10 @@ impl EngineCandidateBinding {
                 | (
                     Self::SelectTrigger { .. },
                     CandidateIntent::SelectTrigger { .. }
+                )
+                | (
+                    Self::DeclareBlock { .. },
+                    CandidateIntent::DeclareBlock { .. }
                 )
         )
     }
@@ -1214,6 +1252,7 @@ impl DecisionPurposeV4 {
             self,
             Self::PriorityAction
                 | Self::AttackerDeclaration
+                | Self::BlockerDeclaration
                 | Self::HandSizeDiscard
                 | Self::CastCostRoute
                 | Self::ModeSelection { .. }
@@ -1725,6 +1764,16 @@ mod tests {
                 },
                 CandidateIntent::SelectTrigger { trigger },
             ),
+            (
+                EngineCandidateBinding::DeclareBlock {
+                    blocker: GameObjectId(5),
+                    attacker: Some(GameObjectId(3)),
+                },
+                CandidateIntent::DeclareBlock {
+                    blocker: OpaqueObjectId(7),
+                    attacker: Some(OpaqueObjectId(8)),
+                },
+            ),
         ];
         for (binding, intent) in cases {
             assert!(binding.same_variant_as(&intent));
@@ -1945,6 +1994,10 @@ mod tests {
                 spent_buckets: [0; 12],
             },
             CandidateIntent::SelectTrigger { trigger },
+            CandidateIntent::DeclareBlock {
+                blocker: OpaqueObjectId(5),
+                attacker: None,
+            },
         ];
         let candidates = intents
             .into_iter()
@@ -1981,6 +2034,74 @@ mod hand_size_discard_tests {
     );
     const MULLIGAN_BOTTOM: &str =
         include_str!("../../../schemas/examples/player-decision-request-v4-mulligan-bottom.json");
+    const BLOCKER_DECLARATION: &str = include_str!(
+        "../../../schemas/examples/player-decision-request-v4-blocker-declaration.json"
+    );
+
+    #[test]
+    fn blocker_declaration_requires_one_answer_a_block_intent_and_its_actor_only() {
+        let request: PlayerDecisionRequestV4 = serde_json::from_str(BLOCKER_DECLARATION).unwrap();
+        request.validate().unwrap();
+        assert_eq!(request.purpose, DecisionPurposeV4::BlockerDeclaration);
+        assert!(request.purpose.is_profile_dependent());
+        let blocker = OpaqueObjectId(7);
+        assert_eq!(
+            request
+                .candidates
+                .iter()
+                .map(|candidate| candidate.intent.clone())
+                .collect::<Vec<_>>(),
+            vec![
+                CandidateIntent::DeclareBlock {
+                    blocker,
+                    attacker: None
+                },
+                CandidateIntent::DeclareBlock {
+                    blocker,
+                    attacker: Some(OpaqueObjectId(3))
+                },
+                CandidateIntent::DeclareBlock {
+                    blocker,
+                    attacker: Some(OpaqueObjectId(9))
+                },
+            ]
+        );
+        let rejects = |edit: &dyn Fn(&mut PlayerDecisionRequestV4)| {
+            let mut edited = request.clone();
+            edit(&mut edited);
+            assert!(edited.validate().is_err());
+        };
+        rejects(&|request| request.visibility = DecisionVisibility::Public);
+        rejects(&|request| request.candidates[0].intent = CandidateIntent::PassPriority);
+        rejects(&|request| {
+            request.decision_domain_v2 = DecisionDomainV2::ChooseMany {
+                minimum: 1,
+                maximum: 1,
+            }
+        });
+        // "No block" comes before every attacker, and the blocker is the first key.
+        rejects(&|request| request.candidates.swap(0, 1));
+        rejects(&|request| {
+            request.candidates[0].intent = CandidateIntent::DeclareBlock {
+                blocker: OpaqueObjectId(8),
+                attacker: None,
+            }
+        });
+        // A block intent belongs to no other purpose.
+        let mut other = request.clone();
+        other.purpose = DecisionPurposeV4::PriorityAction;
+        assert!(other.validate().is_err());
+        // The attacker is part of the wire form, absent or not.
+        let json = BLOCKER_DECLARATION.replace("\"attacker\": null,", "");
+        assert!(serde_json::from_str::<serde_json::Value>(&json).is_ok());
+        assert!(serde_json::from_str::<PlayerDecisionRequestV4>(&json).is_err());
+        assert_eq!(
+            serde_json::from_str::<PlayerDecisionRequestV4>(BLOCKER_DECLARATION)
+                .map(|request| serde_json::to_value(&request).unwrap())
+                .unwrap(),
+            serde_json::from_str::<serde_json::Value>(BLOCKER_DECLARATION).unwrap()
+        );
+    }
 
     #[test]
     fn game_start_purposes_require_their_domain_intent_and_visibility() {

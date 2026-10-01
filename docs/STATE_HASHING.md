@@ -566,6 +566,22 @@ number is 0) is:
 `stage` is `["choosing_starting_player", null]`, `["declaring", player]` or
 `["bottoming", player]`. The player sets are ascending by `PlayerId`.
 
+The block-declaration continuation payload (CR 509.1a; it exists while the
+defending player is asked about their untapped creatures one at a time) is:
+
+```text
+[
+  "block_declaration",
+  defender,
+  pending_blockers[game_object_id],
+  declared[[blocker, attacker_or_null]]
+]
+```
+
+`pending_blockers` keeps the order the creatures are asked in, which is the
+order of the defender's opaque identities, so it is not sorted. `declared` is
+ascending by blocker `GameObjectId`; an answer of no block is `null`.
+
 ## `random_v1`
 
 ```text

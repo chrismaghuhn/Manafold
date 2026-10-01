@@ -98,6 +98,39 @@ class PlayerDecisionRequestV4Tests(unittest.TestCase):
             with self.assertRaises(WireError):
                 PlayerDecisionRequestV4.from_wire(edited)
 
+    def test_blocker_declaration_offers_each_attacker_and_no_block_to_its_actor_only(self) -> None:
+        path = ROOT / "schemas/examples/player-decision-request-v4-blocker-declaration.json"
+        value = json.loads(path.read_text(encoding="utf-8"))
+        request = PlayerDecisionRequestV4.from_wire(value)
+        self.assertEqual(request.purpose.kind, "blocker_declaration")
+        self.assertEqual(request.to_wire(), value)
+        # "No block" comes first, then each attacker in ascending order.
+        self.assertEqual(
+            [(item.intent.blocker_id, item.intent.attacker_id) for item in request.candidates],
+            [(7, None), (7, 3), (7, 9)],
+        )
+
+        def swap_attackers(item: dict[str, object]) -> None:
+            first, second = item["candidates"][1]["intent"], item["candidates"][2]["intent"]  # type: ignore[index]
+            first["attacker"], second["attacker"] = second["attacker"], first["attacker"]
+
+        for edit in (
+            lambda item: item.update(visibility="public"),
+            lambda item: item["candidates"][0].update(intent={"kind": "pass_priority"}),
+            lambda item: item["candidates"][0]["intent"].pop("attacker"),
+            lambda item: item["candidates"][0]["intent"].update(blocker=None),
+            lambda item: item["candidates"][0]["intent"].update(attacker="03"),
+            lambda item: item["candidates"][1]["intent"].update(attacker=None),
+            lambda item: item.update(
+                decision_domain_v2={"kind": "choose_many", "minimum": 1, "maximum": 1}
+            ),
+            swap_attackers,
+        ):
+            edited = copy.deepcopy(value)
+            edit(edited)
+            with self.assertRaises(WireError):
+                PlayerDecisionRequestV4.from_wire(edited)
+
     def test_cost_route_request_must_be_actor_only(self) -> None:
         raw = json.loads(
             (ROOT / "schemas/examples/player-decision-request-v4-cost-route.json").read_text(

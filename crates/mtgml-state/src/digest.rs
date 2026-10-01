@@ -524,6 +524,21 @@ fn continuation_value(value: &ContinuationRecord) -> Result<Value, crate::StateD
         ContinuationPayload::TriggerPlacement(value) => trigger_placement_value(value),
         ContinuationPayload::StackResolution(value) => stack_resolution_value(value),
         ContinuationPayload::GameStart(value) => game_start_value(value),
+        ContinuationPayload::BlockDeclaration {
+            defender,
+            pending_blockers,
+            declared,
+        } => array([
+            text("block_declaration"),
+            u(defender.0),
+            array(pending_blockers.iter().map(|blocker| u(blocker.0))),
+            array(declared.iter().map(|(blocker, attacker)| {
+                array([
+                    u(blocker.0),
+                    optional(attacker.map(|attacker| u(attacker.0))),
+                ])
+            })),
+        ]),
     };
     Ok(array([
         u(value.id.0),
@@ -781,6 +796,7 @@ fn decision_purpose_value(value: &DecisionPurposeV4) -> Value {
     match value {
         DecisionPurposeV4::PriorityAction => array([text("priority_action")]),
         DecisionPurposeV4::AttackerDeclaration => array([text("attacker_declaration")]),
+        DecisionPurposeV4::BlockerDeclaration => array([text("blocker_declaration")]),
         DecisionPurposeV4::HandSizeDiscard => array([text("hand_size_discard")]),
         DecisionPurposeV4::SbaGraveyardOrder => array([text("sba_graveyard_order")]),
         DecisionPurposeV4::CastCostRoute => array([text("cast_cost_route")]),
@@ -896,6 +912,11 @@ fn candidate_intent_value(value: &CandidateIntent) -> Value {
             text("select_trigger"),
             safe_trigger_descriptor_value(trigger),
         ]),
+        CandidateIntent::DeclareBlock { blocker, attacker } => array([
+            text("declare_block"),
+            u(blocker.0),
+            optional(attacker.map(|attacker| u(attacker.0))),
+        ]),
     }
 }
 
@@ -962,6 +983,11 @@ fn candidate_binding_value(value: &EngineCandidateBinding) -> Value {
         EngineCandidateBinding::SelectTrigger { trigger } => {
             array([text("select_trigger"), u(trigger.0)])
         }
+        EngineCandidateBinding::DeclareBlock { blocker, attacker } => array([
+            text("declare_block"),
+            u(blocker.0),
+            optional(attacker.map(|attacker| u(attacker.0))),
+        ]),
     }
 }
 
@@ -1563,5 +1589,77 @@ mod decision_purpose_codec_tests {
     fn hand_size_discard_purpose_round_trips_through_the_persisted_codec() {
         let value = decision_purpose_value(&DecisionPurposeV4::HandSizeDiscard);
         assert_eq!(value, array([text("hand_size_discard")]));
+    }
+}
+
+#[cfg(test)]
+mod block_declaration_codec_tests {
+    use super::*;
+    use mtgml_model::{GameObjectId, OpaqueObjectId, StateRevision};
+
+    fn declaration(defender: u64, pending: &[u64], declared: &[(u64, Option<u64>)]) -> Value {
+        continuation_value(&ContinuationRecord {
+            id: mtgml_model::ContinuationId(1),
+            created_at_revision: StateRevision(0),
+            payload: ContinuationPayload::BlockDeclaration {
+                defender: mtgml_model::PlayerId(defender),
+                pending_blockers: pending.iter().copied().map(GameObjectId).collect(),
+                declared: declared
+                    .iter()
+                    .map(|(blocker, attacker)| (GameObjectId(*blocker), attacker.map(GameObjectId)))
+                    .collect(),
+            },
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn the_block_declaration_digest_binds_every_field() {
+        let variants = [
+            declaration(2, &[5, 6], &[]),
+            declaration(1, &[5, 6], &[]),
+            declaration(2, &[6, 5], &[]),
+            declaration(2, &[5], &[]),
+            declaration(2, &[6], &[(5, None)]),
+            declaration(2, &[6], &[(5, Some(3))]),
+            declaration(2, &[6], &[(5, Some(4))]),
+            declaration(2, &[5], &[(6, None)]),
+            declaration(2, &[], &[(5, None), (6, None)]),
+            declaration(2, &[], &[(5, Some(3)), (6, None)]),
+            declaration(2, &[], &[(5, None), (6, Some(3))]),
+        ];
+        for (index, variant) in variants.iter().enumerate() {
+            for (other, other_variant) in variants.iter().enumerate().skip(index + 1) {
+                assert_ne!(variant, other_variant, "{index} / {other}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_block_has_its_own_purpose_and_candidate_forms() {
+        assert_eq!(
+            decision_purpose_value(&DecisionPurposeV4::BlockerDeclaration),
+            array([text("blocker_declaration")])
+        );
+        let intent = |attacker: Option<u64>| {
+            candidate_intent_value(&CandidateIntent::DeclareBlock {
+                blocker: OpaqueObjectId(7),
+                attacker: attacker.map(OpaqueObjectId),
+            })
+        };
+        let binding = |attacker: Option<u64>| {
+            candidate_binding_value(&EngineCandidateBinding::DeclareBlock {
+                blocker: GameObjectId(5),
+                attacker: attacker.map(GameObjectId),
+            })
+        };
+        assert_eq!(intent(Some(8)), array([text("declare_block"), u(7), u(8)]));
+        assert_eq!(
+            intent(None),
+            array([text("declare_block"), u(7), Value::Null])
+        );
+        assert_ne!(intent(None), intent(Some(0)));
+        assert_ne!(binding(None), binding(Some(0)));
+        assert_eq!(binding(Some(3)), array([text("declare_block"), u(5), u(3)]));
     }
 }
