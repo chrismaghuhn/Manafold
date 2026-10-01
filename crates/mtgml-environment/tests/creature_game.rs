@@ -459,8 +459,12 @@ fn casting_is_offered_only_at_sorcery_speed_with_an_exact_payment() {
     assert_eq!(game.state().card_rules.mana.pools[&P1].unrestricted[0], 1);
     assert!(game.casts().is_empty());
 
-    // The player is not active: during P1's turn 3 upkeep, P2 holds {W} and
-    // Savannah Lions. P2 played its Plains on turn 2.
+    // The non-active player has no priority window to cast in outside a main
+    // phase either: during P1's turn 3 upkeep, P2 holds {W} and Savannah
+    // Lions (P2 played its Plains on turn 2). The phase rules the cast out
+    // here, so this case does not show the active-player condition; that one
+    // is shown in a main phase, in
+    // `the_opponent_can_only_pass_or_make_mana_while_a_spell_is_on_the_stack`.
     game.run_until(|state| {
         state.core.turn_number == 3
             && state.core.priority
@@ -575,6 +579,29 @@ fn the_opponent_can_only_pass_or_make_mana_while_a_spell_is_on_the_stack() {
     game.only_object(P1, lions, ZoneKind::Battlefield);
     assert_eq!(state.card_rules.mana.pools[&P2].unrestricted[0], 1);
     assert_eq!(game.pending().0, P1);
+
+    // CR 302.1, 117.1a: only the active player casts a creature at sorcery
+    // speed. P1 passes, so P2 holds priority in P1's precombat main phase.
+    // Everything but the active-player condition allows the cast: it is a
+    // main phase, the stack is empty, P2 has priority, {W} in its pool and
+    // Savannah Lions in hand.
+    game.answer(pass, pass);
+    let state = game.state();
+    assert_eq!(state.core.turn_number, 3);
+    assert_eq!(state.core.active_player, P1);
+    assert_eq!(state.core.position, TurnPosition::PrecombatMain);
+    assert!(state.zones.stack_order.is_empty());
+    assert_eq!(
+        state.core.priority,
+        PriorityState::HeldBy {
+            player: P2,
+            consecutive_passes: 1
+        }
+    );
+    assert_eq!(state.card_rules.mana.pools[&P2].unrestricted[0], 1);
+    assert_eq!(game.zones_of(P2, &[lions]), vec![ZoneKind::Hand]);
+    assert_eq!(game.pending().0, P2);
+    assert!(game.casts().is_empty(), "{:?}", game.offered());
 }
 
 #[test]
