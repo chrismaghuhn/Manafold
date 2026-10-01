@@ -42,7 +42,7 @@
       ],
       "implementation_paths": [
         "crates/mtgml-rules/src/turn_progression.rs",
-        "crates/mtgml-rules/src/basic_land_v4.rs"
+        "crates/mtgml-rules/src/basic_land.rs"
       ],
       "information_risk": "medium",
       "key": "rules/basic-priority",

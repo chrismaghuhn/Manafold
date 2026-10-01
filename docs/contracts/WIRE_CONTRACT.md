@@ -76,12 +76,11 @@ It must not contain internal `DecisionId`, `ContinuationId`, authoritative candi
 ## Versioning
 
 The current wire family is Decision request V4 / response V3,
-ObservationEnvelopeV2, PlayerInformationStateV3 / InformationStateDigestV3,
+`ObservationEnvelope` (`observation-envelope.v2`), `PlayerInformationState` /
+`InformationStateDigest` (`information-state-envelope.v3`),
 ObservedEventEnvelopeV4, PlayerStepV4, `magic-shared-execution-observation.v1`
-and `magic-basic-land-observation.v1`. FullStateDigestV7 / CheckpointDigestV8 /
-Replay V8 bind these identities. `ObservationEnvelopeV1` and
-`PlayerInformationStateV2` remain as the inner layers the V3 information state
-is produced through. Replay V8 carries the content child as lowercase
+and `magic-basic-land-observation.v1`. `FullStateDigest` / CheckpointDigestV8 /
+Replay V8 bind these identities. Replay V8 carries the content child as lowercase
 ContentContractIdV1 plus the canonical ContentContractManifestV1 CBOR payload in
 bounded, canonical padded standard Base64; no JSON/Serde representation of the
 manifest is introduced.
@@ -92,14 +91,15 @@ contracts.
 
 ## M2 digest and persistence ownership
 
-`mtgml-observation` owns the semantic `InformationStateDigestInputV2` view and
-player-information DTOs. It does not encode canonical JSON or calculate the
-digest. `mtgml-wire` is the single owner of the canonical JSON bytes and
-`InformationStateDigestV2` calculation; `mtgml-environment` projects the
+`mtgml-observation` owns the semantic `InformationStateDigestInput` view
+(`information-state-digest-input.v3`) and player-information DTOs. It does not
+encode canonical JSON or calculate the digest. `mtgml-wire` is the single owner
+of the canonical JSON bytes and the `InformationStateDigest` calculation
+(`compute_information_state_digest`); `mtgml-environment` projects the
 semantic input, requests that calculation, verifies the result, and only then
 exposes or commits the player information state.
 
-Because `InformationStateDigestV2` is the canonical identity of the
+Because `InformationStateDigest` is the canonical identity of the
 player-safe semantic payload, canonical decoders verify it: Rust
 `decode_canonical` and the Python `from_wire()`/`validate()` path recompute
 the digest over the decoded payload and reject forged digest values as closed

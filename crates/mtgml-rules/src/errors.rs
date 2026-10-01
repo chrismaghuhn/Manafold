@@ -25,10 +25,6 @@ pub enum ZoneIncarnationError {
     ObjectIdCollision,
     #[error("selected object is referenced by combat state")]
     CombatReference,
-    #[error("selected object is referenced by a stack source record")]
-    StackSourceReference,
-    #[error("selected object is referenced by a pending trusted decision")]
-    PendingDecisionReference,
     #[error("non-owner has a live identity mapping for a hidden Library source")]
     NonOwnerTracksHiddenSource,
     #[error("perspective identity/knowledge state cannot represent the selected move")]
@@ -37,8 +33,6 @@ pub enum ZoneIncarnationError {
 
 #[derive(Debug, Error)]
 pub enum KernelExecutionError {
-    #[error("rule event identity would overflow")]
-    RuleEventIdOverflow,
     #[error("transition contract failed: {0}")]
     TransitionContract(TransitionViolation),
     #[error("identity allocator failed: {0}")]

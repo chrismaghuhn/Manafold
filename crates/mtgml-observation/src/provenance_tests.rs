@@ -3,20 +3,37 @@
 //! unchanged.
 
 use super::*;
-use crate::{PlayerKnowledgeCauseV1, PlayerKnowledgeChannelV1, OBSERVATION_SCHEMA};
+use crate::{
+    PlayerKnowledgeCauseV1, PlayerKnowledgeChannelV1, PlayerKnowledgeInvalidationReasonV1,
+    PlayerKnowledgeInvalidationV1, MAGIC_SHARED_EXECUTION_OBSERVATION_SCHEMA_V1,
+    OBSERVATION_SCHEMA_V2,
+};
 use mtgml_model::{
-    InformationStateDigestV2, ObservationDigest, OpaqueObjectId, PlayerId, StateRevision,
-    VisibleSequence,
+    InformationStateDigest, ObservationDigest, OpaqueObjectId, PlayerId, VisibleSequence,
 };
 
-fn observation() -> ObservationEnvelope {
+fn observation(view_sequence: VisibleSequence) -> ObservationEnvelope {
     ObservationEnvelope {
-        schema_version: OBSERVATION_SCHEMA.into(),
+        schema_version: OBSERVATION_SCHEMA_V2.into(),
         perspective: PlayerId(1),
-        state_revision: StateRevision(0),
-        payload_codec: "synthetic-m2-observation.v1".into(),
+        view_sequence,
+        payload_codec: MAGIC_SHARED_EXECUTION_OBSERVATION_SCHEMA_V1.into(),
         payload_base64: "e30=".into(),
         digest: ObservationDigest::from_canonical_bytes(b"{}"),
+    }
+}
+
+fn state_with_knowledge(
+    next_visible_sequence: VisibleSequence,
+    retained_knowledge: Vec<PlayerKnownObjectV1>,
+) -> PlayerInformationState {
+    PlayerInformationState {
+        schema_version: INFORMATION_STATE_SCHEMA_V3.into(),
+        perspective: PlayerId(1),
+        current_observation: observation(next_visible_sequence),
+        next_visible_sequence,
+        retained_knowledge,
+        digest: InformationStateDigest::from_canonical_bytes(b"placeholder"),
     }
 }
 
@@ -35,22 +52,17 @@ fn observed(
 fn state_with(
     next_visible_sequence: VisibleSequence,
     acquisition: PlayerKnowledgeProvenanceV1,
-) -> PlayerInformationStateV2 {
-    PlayerInformationStateV2 {
-        schema_version: INFORMATION_STATE_SCHEMA_V2.into(),
-        perspective: PlayerId(1),
-        state_revision: StateRevision(0),
-        current_observation: observation(),
+) -> PlayerInformationState {
+    state_with_knowledge(
         next_visible_sequence,
-        retained_knowledge: vec![PlayerKnownObjectV1::Active {
+        vec![PlayerKnownObjectV1::Active {
             opaque_object_id: OpaqueObjectId(1),
             known_definition: None,
             current_known_location_fact: None,
             historical_locations: Vec::new(),
             acquisition,
         }],
-        digest: InformationStateDigestV2::from_canonical_bytes(b"placeholder"),
-    }
+    )
 }
 
 #[test]
@@ -145,4 +157,41 @@ fn every_accepted_cause_is_validated_in_context() {
         };
         assert!(result.is_ok(), "accepted combination must validate");
     }
+}
+
+#[test]
+fn invalidation_cannot_come_from_the_initial_configuration() {
+    let retired = |provenance| {
+        state_with_knowledge(
+            VisibleSequence(5),
+            vec![PlayerKnownObjectV1::Retired {
+                opaque_object_id: OpaqueObjectId(1),
+                known_definition: None,
+                last_known_location_fact: None,
+                historical_locations: Vec::new(),
+                acquisition: observed(
+                    PlayerKnowledgeChannelV1::Public,
+                    2,
+                    PlayerKnowledgeCauseV1::PublicEvent,
+                ),
+                invalidation: PlayerKnowledgeInvalidationV1 {
+                    provenance,
+                    reason: PlayerKnowledgeInvalidationReasonV1::Shuffle,
+                },
+            }],
+        )
+    };
+    assert_eq!(
+        retired(observed(
+            PlayerKnowledgeChannelV1::Public,
+            3,
+            PlayerKnowledgeCauseV1::PublicEvent
+        ))
+        .validate(),
+        Ok(())
+    );
+    assert_eq!(
+        retired(PlayerKnowledgeProvenanceV1::InitialConfiguration).validate(),
+        Err(ObservationValidationError::VisibleSequence)
+    );
 }

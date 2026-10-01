@@ -4,7 +4,6 @@ import base64
 import binascii
 from dataclasses import dataclass
 
-from ._replay_v5 import SemanticContractMaterialV5
 from .canonical import (
     require_digest,
     require_exact_keys,
@@ -21,6 +20,18 @@ MAX_CONTENT_MANIFEST_BASE64_CHARS = 89_478_488
 
 
 MAX_CONTENT_MANIFEST_BYTES = 64 * 1024 * 1024
+
+
+def _require_contract_manifest(value: object) -> dict[str, object]:
+    if not isinstance(value, dict):
+        raise WireError("decode.invalid_json", "semantic contract manifest must be an object")
+    return dict(value)
+
+
+def _require_rules_manifest(value: object) -> dict[str, object]:
+    if not isinstance(value, dict):
+        raise WireError("decode.invalid_json", "rules contract manifest must be an object")
+    return dict(value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,20 +85,15 @@ class SemanticContractMaterialV7:
         obj = require_exact_keys(
             value, {"semantic_contract_id", "manifest", "rules_manifest", "content_contract"}
         )
-        # Reuse the frozen V5 identity-field parser; V7 adds only the verified child.
-        parent = SemanticContractMaterialV5.from_wire(
-            {
-                "semantic_contract_id": obj["semantic_contract_id"],
-                "manifest": obj["manifest"],
-                "rules_manifest": obj["rules_manifest"],
-            }
-        )
+        manifest = _require_contract_manifest(obj["manifest"])
+        rules_manifest = _require_rules_manifest(obj["rules_manifest"])
+        semantic_contract_id = require_digest(obj["semantic_contract_id"])
         child = (
             None
             if obj["content_contract"] is None
             else ContentContractMaterialV1.from_wire(obj["content_contract"])
         )
-        result = cls(parent.semantic_contract_id, parent.manifest, parent.rules_manifest, child)
+        result = cls(semantic_contract_id, manifest, rules_manifest, child)
         result.validate()
         return result
 

@@ -2,28 +2,6 @@
 // every identity remains tests::<name>.
 
 #[test]
-fn global_decision_allocator_must_exceed_every_issued_identity() {
-    let build = |next: u64| {
-        let mut state = synthetic_state();
-        state.allocators.next_decision_id = DecisionId(next);
-        state
-    };
-    // next == issued must fail closed.
-    assert_eq!(
-        validate_engine_state(&build(1)),
-        Err(EngineStateViolation::AllocatorBehind)
-    );
-    // next < issued must fail closed.
-    assert_eq!(
-        validate_engine_state(&build(0)),
-        Err(EngineStateViolation::AllocatorBehind)
-    );
-    // A strictly greater cursor is accepted.
-    validate_engine_state(&build(2)).unwrap();
-    assert!(build(2).digest().is_ok());
-}
-
-#[test]
 fn global_ability_allocator_must_exceed_every_issued_identity() {
     let issue = |state: &mut EngineState| {
         let identity = state

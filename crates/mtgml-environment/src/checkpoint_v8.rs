@@ -10,10 +10,10 @@ use mtgml_card_ir::{
 };
 use mtgml_model::{
     CheckpointCodecIdentity, CheckpointDigestV8, EnvironmentLimitCounters, EpisodeStatus,
-    ExecutionIdentityV1, ExecutionProgramV1, FullStateDigestV7, PlayerId, RulesContractManifestV1,
+    ExecutionIdentityV1, FullStateDigest, PlayerId, RulesContractManifestV1,
     SemanticContractManifestV1,
 };
-use mtgml_state::{EngineStatePartsV3, StackItemPayload};
+use mtgml_state::{EngineState, StackItemPayload};
 use thiserror::Error;
 
 pub const ENVIRONMENT_CHECKPOINT_SCHEMA_V8: &str = "environment-checkpoint.v8";
@@ -23,8 +23,8 @@ pub const CHECKPOINT_CODEC_SEMANTIC_VERSION_V8: &str = "8";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EnvironmentCheckpointV8 {
     pub schema_version: String,
-    pub state: EngineStatePartsV3,
-    pub state_digest: FullStateDigestV7,
+    pub state: EngineState,
+    pub state_digest: FullStateDigest,
     pub status: EpisodeStatus,
     pub limit_counters: EnvironmentLimitCounters,
     pub codec: CheckpointCodecIdentity,
@@ -34,7 +34,7 @@ pub struct EnvironmentCheckpointV8 {
 
 impl EnvironmentCheckpointV8 {
     pub fn new(
-        state: EngineStatePartsV3,
+        state: EngineState,
         status: EpisodeStatus,
         limit_counters: EnvironmentLimitCounters,
         execution_identity: ExecutionIdentityV1,
@@ -49,7 +49,7 @@ impl EnvironmentCheckpointV8 {
     /// profile-dependent request.
     pub fn new_for_basic_land_profile(
         admission: &ExecutableProfileAdmissionV1,
-        state: EngineStatePartsV3,
+        state: EngineState,
         status: EpisodeStatus,
         limit_counters: EnvironmentLimitCounters,
         execution_identity: ExecutionIdentityV1,
@@ -57,13 +57,13 @@ impl EnvironmentCheckpointV8 {
         if &execution_identity != admission.execution_identity() {
             return Err(CheckpointV8Error::ContractBinding);
         }
-        mtgml_rules::validate_magic_pending_request_v4(admission, &state, &status)
+        mtgml_rules::validate_magic_pending_request(admission, &state, &status)
             .map_err(|_| CheckpointV8Error::State)?;
         Self::build(state, status, limit_counters, execution_identity, true)
     }
 
     fn build(
-        state: EngineStatePartsV3,
+        state: EngineState,
         status: EpisodeStatus,
         limit_counters: EnvironmentLimitCounters,
         execution_identity: ExecutionIdentityV1,
@@ -75,9 +75,9 @@ impl EnvironmentCheckpointV8 {
                 .map_err(|_| CheckpointV8Error::State)?;
         }
         let state_digest = if structurally_validated_by_rules {
-            mtgml_state::calculate_full_state_digest_v7_structural_only(&state)
+            mtgml_state::calculate_full_state_digest_structural_only(&state)
         } else {
-            mtgml_state::calculate_full_state_digest_v7(&state)
+            mtgml_state::calculate_full_state_digest(&state)
         }
         .map_err(|_| CheckpointV8Error::StateDigest)?;
         let codec = CheckpointCodecIdentity {
@@ -123,7 +123,7 @@ impl EnvironmentCheckpointV8 {
         if &self.execution_identity != admission.execution_identity() {
             return Err(CheckpointV8Error::ContractBinding);
         }
-        mtgml_rules::validate_magic_pending_request_v4(admission, &self.state, &self.status)
+        mtgml_rules::validate_magic_pending_request(admission, &self.state, &self.status)
             .map_err(|_| CheckpointV8Error::State)?;
         self.validate_inner(true)
     }
@@ -168,9 +168,9 @@ impl EnvironmentCheckpointV8 {
             .map_err(|_| CheckpointV8Error::LimitCounters)?;
         if recompute_digests {
             let actual_state = if structurally_validated_by_rules {
-                mtgml_state::calculate_full_state_digest_v7_structural_only(&self.state)
+                mtgml_state::calculate_full_state_digest_structural_only(&self.state)
             } else {
-                mtgml_state::calculate_full_state_digest_v7(&self.state)
+                mtgml_state::calculate_full_state_digest(&self.state)
             }
             .map_err(|_| CheckpointV8Error::StateDigest)?;
             if actual_state != self.state_digest {
@@ -188,7 +188,7 @@ impl EnvironmentCheckpointV8 {
             }
         }
         if !matches!(self.status, EpisodeStatus::Running)
-            && self.state.execution_v4.pending_decision.is_some()
+            && self.state.execution.pending_decision.is_some()
         {
             return Err(CheckpointV8Error::CompletedWithDecision);
         }
@@ -198,7 +198,7 @@ impl EnvironmentCheckpointV8 {
     pub fn restore_detached_for_basic_land_profile(
         &self,
         admission: &ExecutableProfileAdmissionV1,
-    ) -> Result<EngineStatePartsV3, CheckpointV8Error> {
+    ) -> Result<EngineState, CheckpointV8Error> {
         self.validate_for_basic_land_profile(admission)?;
         Ok(self.state.clone())
     }
@@ -209,7 +209,7 @@ impl EnvironmentCheckpointV8 {
         semantic_manifest: &SemanticContractManifestV1,
         rules_manifest: &RulesContractManifestV1,
         content_catalog: Option<&VerifiedContentCatalogV1>,
-    ) -> Result<EngineStatePartsV3, CheckpointV8Error> {
+    ) -> Result<EngineState, CheckpointV8Error> {
         self.validate_for_basic_land_profile(admission)?;
         if admission.execution_identity() != &self.execution_identity
             || admission.semantic_contract_manifest() != semantic_manifest
@@ -232,7 +232,7 @@ impl EnvironmentCheckpointV8 {
         semantic_manifest: &SemanticContractManifestV1,
         rules_manifest: &RulesContractManifestV1,
         content_catalog: Option<&VerifiedContentCatalogV1>,
-    ) -> Result<EngineStatePartsV3, CheckpointV8Error> {
+    ) -> Result<EngineState, CheckpointV8Error> {
         self.validate_structural_only()?;
         rules_manifest
             .validate()
@@ -261,12 +261,8 @@ impl EnvironmentCheckpointV8 {
             _ => false,
         };
         if !content_matches
-            || !mtgml_model::execution_program_matches_rules_authority(
-                self.execution_identity.program_kind,
-                &rules_manifest.rules_authority,
-            )
-            || (self.execution_identity.program_kind == ExecutionProgramV1::MagicRules
-                && (semantic_manifest.content_contract_id.is_none() || content_catalog.is_none()))
+            || semantic_manifest.content_contract_id.is_none()
+            || content_catalog.is_none()
         {
             return Err(CheckpointV8Error::ContractBinding);
         }
@@ -286,7 +282,7 @@ impl EnvironmentCheckpointV8 {
 }
 
 fn calculate_checkpoint_digest_v8(
-    digest: &FullStateDigestV7,
+    digest: &FullStateDigest,
     status: &EpisodeStatus,
     counters: &EnvironmentLimitCounters,
     codec: &CheckpointCodecIdentity,
@@ -304,7 +300,7 @@ fn calculate_checkpoint_digest_v8(
 
 fn validate_status_players(
     status: &EpisodeStatus,
-    state: &EngineStatePartsV3,
+    state: &EngineState,
 ) -> Result<(), CheckpointV8Error> {
     let outcomes = match status {
         EpisodeStatus::Running => return Ok(()),
@@ -318,7 +314,7 @@ fn validate_status_players(
     {
         return Err(CheckpointV8Error::StatusOrder);
     }
-    let expected: BTreeSet<PlayerId> = state.predecessor_v5.core.players.keys().copied().collect();
+    let expected: BTreeSet<PlayerId> = state.core.players.keys().copied().collect();
     if outcomes
         .iter()
         .map(|outcome| outcome.player)
@@ -331,21 +327,21 @@ fn validate_status_players(
 }
 
 fn validate_catalog_state(
-    state: &EngineStatePartsV3,
+    state: &EngineState,
     catalog: &VerifiedContentCatalogV1,
 ) -> Result<(), CheckpointV8Error> {
     let content_id = catalog.content_contract_id();
-    if !state.card_rules_state.attachments.by_source.is_empty()
-        || state.card_rules_state.faces.faces.len() != state.predecessor_v5.zones.objects.len()
+    if !state.card_rules.attachments.by_source.is_empty()
+        || state.card_rules.faces.faces.len() != state.zones.objects.len()
     {
         return Err(CheckpointV8Error::ContractBinding);
     }
-    for object in state.predecessor_v5.zones.objects.values() {
+    for object in state.zones.objects.values() {
         let definition = catalog
             .get(content_id, object.card_definition)
             .map_err(|_| CheckpointV8Error::ContractBinding)?;
         let face = state
-            .card_rules_state
+            .card_rules
             .faces
             .faces
             .get(&object.id)
@@ -358,9 +354,8 @@ fn validate_catalog_state(
             return Err(CheckpointV8Error::ContractBinding);
         }
     }
-    for ability in state.card_rules_state.abilities.by_instance.values() {
+    for ability in state.card_rules.abilities.by_instance.values() {
         let source = state
-            .predecessor_v5
             .zones
             .objects
             .get(&ability.source)
@@ -369,7 +364,7 @@ fn validate_catalog_state(
             .get(content_id, source.card_definition)
             .map_err(|_| CheckpointV8Error::ContractBinding)?;
         let face = state
-            .card_rules_state
+            .card_rules
             .faces
             .faces
             .get(&ability.source)
@@ -382,7 +377,7 @@ fn validate_catalog_state(
             return Err(CheckpointV8Error::ContractBinding);
         }
     }
-    for record in state.predecessor_v5.zones.stack_records.values() {
+    for record in state.zones.stack_records.values() {
         if let Some(StackItemPayload::Spell {
             stack_card_object,
             card_definition_id,
@@ -392,13 +387,12 @@ fn validate_catalog_state(
         }) = record.payload.as_ref()
         {
             let object = state
-                .predecessor_v5
                 .zones
                 .objects
                 .get(stack_card_object)
                 .ok_or(CheckpointV8Error::ContractBinding)?;
             if object.card_definition != *card_definition_id
-                || state.card_rules_state.faces.faces.get(stack_card_object) != Some(&face_key.0)
+                || state.card_rules.faces.faces.get(stack_card_object) != Some(&face_key.0)
             {
                 return Err(CheckpointV8Error::ContractBinding);
             }
@@ -443,7 +437,7 @@ pub enum CheckpointV8Error {
 mod tests {
     use super::*;
 
-    use mtgml_state::EngineStatePartsV3;
+    use mtgml_state::EngineState;
 
     fn admission() -> ExecutableProfileAdmissionV1 {
         crate::basic_land_runtime_v8::fixtures::game_admission()
@@ -451,7 +445,7 @@ mod tests {
 
     fn checkpoint(admission: &ExecutableProfileAdmissionV1) -> EnvironmentCheckpointV8 {
         let mut state = crate::basic_land_runtime_v8::fixtures::state_with_two_lands();
-        mtgml_rules::install_basic_land_request_v4(
+        mtgml_rules::install_basic_land_request(
             admission,
             &mut state,
             PlayerId(1),
@@ -497,7 +491,7 @@ mod tests {
             .unwrap();
         assert_eq!(restored, checkpoint.state);
         assert_eq!(
-            mtgml_state::calculate_full_state_digest_v7_structural_only(&checkpoint.state).unwrap(),
+            mtgml_state::calculate_full_state_digest_structural_only(&checkpoint.state).unwrap(),
             checkpoint.state_digest
         );
     }
@@ -507,7 +501,7 @@ mod tests {
         let admission = admission();
         let baseline = checkpoint(&admission);
         let mut state = baseline.clone();
-        state.state_digest = mtgml_model::FullStateDigestV7::from_digest_bytes([0; 32]);
+        state.state_digest = mtgml_model::FullStateDigest::from_digest_bytes([0; 32]);
         assert_eq!(
             state.restore_detached_for_basic_land_profile(&admission),
             Err(CheckpointV8Error::StateDigest)
@@ -538,7 +532,6 @@ mod tests {
         let mut edited = baseline;
         edited
             .state
-            .predecessor_v5
             .core
             .players
             .get_mut(&PlayerId(1))
@@ -550,7 +543,7 @@ mod tests {
     #[test]
     fn restore_rejects_attachment_without_admitted_profile_semantics() {
         let admission = crate::basic_land_runtime_v8::fixtures::game_admission();
-        let restore = |state: EngineStatePartsV3| {
+        let restore = |state: EngineState| {
             EnvironmentCheckpointV8::new_for_basic_land_profile(
                 &admission,
                 state,
@@ -566,7 +559,7 @@ mod tests {
             )
         };
         let mut state = crate::basic_land_runtime_v8::fixtures::state_with_two_lands();
-        mtgml_rules::install_basic_land_request_v4(
+        mtgml_rules::install_basic_land_request(
             &admission,
             &mut state,
             mtgml_model::PlayerId(1),
@@ -577,19 +570,18 @@ mod tests {
 
         let mut attached = state;
         let source = *attached
-            .predecessor_v5
             .zones
             .locations
             .iter()
             .find(|(_, location)| location.zone == mtgml_model::ZoneKind::Battlefield)
             .map(|(object, _)| object)
             .expect("fixture has a battlefield object");
-        attached.card_rules_state.attachments.by_source.insert(
+        attached.card_rules.attachments.by_source.insert(
             source,
             mtgml_state::AttachmentV1 {
                 target: source,
                 timestamp: mtgml_state::AttachmentTimestampV1 {
-                    revision: attached.predecessor_v5.revision,
+                    revision: attached.revision,
                     operation_ordinal: 0,
                 },
             },

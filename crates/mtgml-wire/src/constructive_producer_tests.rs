@@ -1,20 +1,18 @@
 use mtgml_model::{
-    CardDefinitionId, EpisodeStatus, InformationStateDigestV2, ObservationDigest, OpaqueObjectId,
-    PlayerId, PlayerOutcome, PlayerResult, StateRevision, TerminalReason, VisibleSequence,
-    ZoneKind,
+    CardDefinitionId, EpisodeStatus, InformationStateDigest, ObservationDigest, OpaqueObjectId,
+    PlayerId, PlayerOutcome, PlayerResult, TerminalReason, VisibleSequence, ZoneKind,
 };
 use mtgml_observation::{
-    ObservationEnvelope, PlayerInformationStateV2, PlayerKnowledgeCauseV1,
-    PlayerKnowledgeChannelV1, PlayerKnowledgeInvalidationReasonV1, PlayerKnowledgeInvalidationV1,
+    ObservationEnvelope, PlayerInformationState, PlayerKnowledgeCauseV1, PlayerKnowledgeChannelV1,
+    PlayerKnowledgeInvalidationReasonV1, PlayerKnowledgeInvalidationV1,
     PlayerKnowledgeProvenanceV1, PlayerKnownLocationFactV1, PlayerKnownLocationV1,
-    PlayerKnownObjectV1, INFORMATION_STATE_SCHEMA_V2, OBSERVATION_SCHEMA,
+    PlayerKnownObjectV1, INFORMATION_STATE_SCHEMA_V3, MAGIC_SHARED_EXECUTION_OBSERVATION_SCHEMA_V1,
+    OBSERVATION_SCHEMA_V2,
 };
 
-use crate::encode_canonical;
+use crate::{compute_information_state_digest, decode_canonical, encode_canonical};
 
 const OBSERVATION_DIGEST: &str = "90845308617867fd703c6c4f37ede7908da24420053821f89190ad36236dfca3";
-const GOLDEN_INFORMATION_STATE_DIGEST_V2: &str =
-    "3ca09ef084ebca02f6350db80423db3d8eeddb1d42fe7b2868acf2dbb752ebfd";
 
 fn golden_fixture(name: &str) -> Vec<u8> {
     std::fs::read(
@@ -37,19 +35,24 @@ fn observed_provenance(
     }
 }
 
-fn constructed_information_state_v2() -> PlayerInformationStateV2 {
-    PlayerInformationStateV2 {
-        schema_version: INFORMATION_STATE_SCHEMA_V2.to_owned(),
+fn observation_envelope_v2() -> ObservationEnvelope {
+    ObservationEnvelope {
+        schema_version: OBSERVATION_SCHEMA_V2.to_owned(),
         perspective: PlayerId(1),
-        state_revision: StateRevision(0),
-        current_observation: ObservationEnvelope {
-            schema_version: OBSERVATION_SCHEMA.to_owned(),
-            perspective: PlayerId(1),
-            state_revision: StateRevision(0),
-            payload_codec: "synthetic-m2-observation.v1".to_owned(),
-            payload_base64: "e30=".to_owned(),
-            digest: ObservationDigest::parse(OBSERVATION_DIGEST).expect("observation digest"),
-        },
+        view_sequence: VisibleSequence(5),
+        payload_codec: MAGIC_SHARED_EXECUTION_OBSERVATION_SCHEMA_V1.to_owned(),
+        payload_base64: "e30=".to_owned(),
+        digest: ObservationDigest::parse(OBSERVATION_DIGEST).expect("observation digest"),
+    }
+}
+
+/// Retained knowledge with all four observed causes, active and retired: the
+/// richest information state, which no wire golden carries.
+fn rich_information_state_v3() -> PlayerInformationState {
+    let mut state = PlayerInformationState {
+        schema_version: INFORMATION_STATE_SCHEMA_V3.to_owned(),
+        perspective: PlayerId(1),
+        current_observation: observation_envelope_v2(),
         next_visible_sequence: VisibleSequence(5),
         retained_knowledge: vec![
             PlayerKnownObjectV1::Active {
@@ -109,32 +112,29 @@ fn constructed_information_state_v2() -> PlayerInformationStateV2 {
                 },
             },
         ],
-        digest: InformationStateDigestV2::parse(GOLDEN_INFORMATION_STATE_DIGEST_V2)
-            .expect("golden information-state digest"),
-    }
-}
-
-#[test]
-fn information_state_envelope_v2_constructs_the_golden_bytes() {
-    assert_eq!(
-        encode_canonical(&constructed_information_state_v2()).unwrap(),
-        golden_fixture("information-state-envelope.v2.json")
-    );
-}
-
-#[test]
-fn observation_envelope_v1_constructs_the_golden_bytes() {
-    let value = ObservationEnvelope {
-        schema_version: OBSERVATION_SCHEMA.to_owned(),
-        perspective: PlayerId(1),
-        state_revision: StateRevision(0),
-        payload_codec: "synthetic-json.v1".to_owned(),
-        payload_base64: "e30=".to_owned(),
-        digest: ObservationDigest::parse(OBSERVATION_DIGEST).expect("observation digest"),
+        digest: InformationStateDigest::from_canonical_bytes(b"placeholder"),
     };
+    let (_, digest) = compute_information_state_digest(&state.digest_input()).unwrap();
+    state.digest = digest;
+    state
+}
+
+#[test]
+fn information_state_v3_with_rich_retained_knowledge_round_trips() {
+    let state = rich_information_state_v3();
+    state.validate().unwrap();
+    let bytes = encode_canonical(&state).unwrap();
+    // The canonical decoder recomputes and checks the digest.
+    let decoded: PlayerInformationState = decode_canonical(&bytes).unwrap();
+    assert_eq!(decoded, state);
+    assert_eq!(encode_canonical(&decoded).unwrap(), bytes);
+}
+
+#[test]
+fn observation_envelope_v2_constructs_the_golden_bytes() {
     assert_eq!(
-        encode_canonical(&value).unwrap(),
-        golden_fixture("observation-envelope.v1.json")
+        encode_canonical(&observation_envelope_v2()).unwrap(),
+        golden_fixture("observation-envelope.v2.json")
     );
 }
 

@@ -4,8 +4,8 @@ use mtgml_model::{OpaqueObjectId, PlayerId, VisibleSequence, ZoneKind};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    error::ObservationValidationError, ManaPoolAfterV1, ObservedCounterKindV3, ObservedFaceV1,
-    PublicStackItemV1, PublicTemporaryEffectV1, OBSERVED_EVENT_SCHEMA_V4,
+    error::ObservationValidationError, PublicStackItemV1, PublicTemporaryEffectV1,
+    OBSERVED_EVENT_SCHEMA_V4,
 };
 
 fn deserialize_required_option<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
@@ -14,6 +14,28 @@ where
     T: Deserialize<'de>,
 {
     Option::deserialize(deserializer)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ObservedCounterKindV3 {
+    PlusOnePlusOne,
+    MinusOneMinusOne,
+    Lore,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ManaPoolAfterV1 {
+    pub unrestricted: [u32; 6],
+    pub creature_spell_only: [u32; 6],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ObservedFaceV1 {
+    Front,
+    Back,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

@@ -1,4 +1,3 @@
-use crate::common::CandidateIntent;
 use crate::error::DecisionValidationError;
 use mtgml_model::CandidateIdV1;
 use serde::{Deserialize, Serialize};
@@ -20,13 +19,6 @@ pub enum DecisionAnswerV2 {
     SelectMany { candidate_ids: Vec<CandidateIdV1> },
     ChooseNumber { value: i64 },
     Order { candidate_ids: Vec<CandidateIdV1> },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct VisibleCandidateV2 {
-    pub candidate_id: CandidateIdV1,
-    pub intent: CandidateIntent,
 }
 
 impl DecisionDomainV2 {

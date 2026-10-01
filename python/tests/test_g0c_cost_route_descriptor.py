@@ -4,7 +4,7 @@ import json
 import unittest
 from pathlib import Path
 
-from mtgml.decision_v4 import CandidateIntentV4, CostRouteDescriptorV1, PrintedManaSymbolsV1
+from mtgml.decision_v4 import CandidateIntent, CostRouteDescriptorV1, PrintedManaSymbolsV1
 from mtgml.errors import WireError
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -18,7 +18,7 @@ class CostRouteDescriptorV1Tests(unittest.TestCase):
             )
         )
         intents = [
-            CandidateIntentV4.from_wire(candidate["intent"]) for candidate in request["candidates"]
+            CandidateIntent.from_wire(candidate["intent"]) for candidate in request["candidates"]
         ]
         self.assertEqual(
             [intent.to_wire() for intent in intents],

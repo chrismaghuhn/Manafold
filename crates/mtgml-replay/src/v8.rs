@@ -4,17 +4,16 @@ use std::collections::BTreeSet;
 
 use mtgml_decision::DecisionResponseV3;
 use mtgml_model::{
-    execution_program_matches_rules_authority, CheckpointCodecIdentity, CheckpointDigestV8,
-    EnvironmentLimitCounters, EpisodeStatus, ExecutionIdentityV1, FullStateDigestV7, PlayerId,
-    RulesAuthorityV1, StateRevision,
+    CheckpointCodecIdentity, CheckpointDigestV8, EnvironmentLimitCounters, EpisodeStatus,
+    ExecutionIdentityV1, FullStateDigest, PlayerId, RulesAuthorityV1, StateRevision,
 };
 use mtgml_random::types::validate_seed_hex;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    contract_material::SemanticContractMaterialV7,
     identity::{DeckIdentityV1, KernelIdentityV1},
-    v2::RandomnessIdentityV2,
-    v7::SemanticContractMaterialV7,
+    randomness::RandomnessIdentityV2,
     validation::ReplayValidationError,
 };
 
@@ -59,7 +58,7 @@ impl ReplaySchemaVersionsV8 {
 #[serde(deny_unknown_fields)]
 pub struct InitialEnvironmentIdentityV8 {
     pub state_revision: StateRevision,
-    pub full_state_digest: FullStateDigestV7,
+    pub full_state_digest: FullStateDigest,
     pub episode_status: EpisodeStatus,
     pub environment_limit_counters: EnvironmentLimitCounters,
     pub checkpoint_codec_identity: CheckpointCodecIdentity,
@@ -120,12 +119,6 @@ impl ReplayManifestV8 {
             return Err(ReplayValidationError::SchemaVersion);
         }
         self.semantic_contract.validate()?;
-        if !execution_program_matches_rules_authority(
-            self.execution_identity.program_kind,
-            &self.semantic_contract.rules_manifest.rules_authority,
-        ) {
-            return Err(ReplayValidationError::SemanticContractMismatch);
-        }
         let required = [
             self.engine_build.as_str(),
             self.kernel.implementation_id.as_str(),
@@ -199,7 +192,7 @@ pub struct ReplayStepV8 {
     pub response: DecisionResponseV3,
     pub accepted: bool,
     pub state_revision_after: StateRevision,
-    pub full_state_digest_after: FullStateDigestV7,
+    pub full_state_digest_after: FullStateDigest,
     pub episode_status_after: EpisodeStatus,
     pub environment_limit_counters_after: EnvironmentLimitCounters,
     pub checkpoint_digest_after: CheckpointDigestV8,
@@ -488,7 +481,7 @@ mod tests {
         let mut counters = before.environment_limit_counters.clone();
         counters.decisions_submitted = 1;
         counters.accepted_transitions = 1;
-        let after_digest = FullStateDigestV7::from_digest_bytes([0x79; 32]);
+        let after_digest = FullStateDigest::from_digest_bytes([0x79; 32]);
         let checkpoint_digest =
             mtgml_persistence::checkpoint_digest::calculate_checkpoint_digest_v8(
                 &after_digest.as_digest_reference(),
@@ -540,7 +533,7 @@ mod tests {
         let mut counters = before.environment_limit_counters.clone();
         counters.decisions_submitted += 1;
         counters.accepted_transitions += 1;
-        let after_digest = FullStateDigestV7::from_digest_bytes([0x4a; 32]);
+        let after_digest = FullStateDigest::from_digest_bytes([0x4a; 32]);
         let terminal_checkpoint_digest =
             mtgml_persistence::checkpoint_digest::calculate_checkpoint_digest_v8(
                 &after_digest.as_digest_reference(),

@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from itertools import pairwise
 
-from ._replay_common import DeckIdentityV1, KernelIdentityV1
-from ._replay_v2 import RandomnessIdentityV2
-from ._replay_v4 import CheckpointCodecIdentityV4, EnvironmentLimitCountersV4
-from ._replay_v5 import ExecutionIdentityV1
-from ._replay_v6 import _validate_status_for_players
-from ._replay_v7 import SemanticContractMaterialV7
+from ._contract_material import SemanticContractMaterialV7
+from ._replay_common import (
+    CheckpointCodecIdentityV4,
+    DeckIdentityV1,
+    EnvironmentLimitCountersV4,
+    ExecutionIdentityV1,
+    KernelIdentityV1,
+    RandomnessIdentityV2,
+)
 from .canonical import (
     parse_u64_number,
     parse_uint,
@@ -29,6 +33,19 @@ REPLAY_STEP_SCHEMA_V8 = "replay-step.v8"
 CHECKPOINT_CODEC_ID_V8 = "in-memory-reference"
 CHECKPOINT_CODEC_VERSION_V8 = "8"
 SHARED_OBSERVATION_CODEC_V1 = "magic-shared-execution-observation.v1"
+
+
+def _validate_status_for_players(status: EpisodeStatus, players: set[int]) -> None:
+    if status.kind == "running":
+        return
+    ordered = [outcome.player for outcome in status.players]
+    if any(left >= right for left, right in pairwise(ordered)):
+        raise WireError("semantic.replay_manifest", "status players are not in canonical order")
+    actual = {outcome.player for outcome in status.players}
+    if actual != players:
+        raise WireError(
+            "semantic.replay_manifest", "status does not cover the manifest player universe"
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -245,18 +262,10 @@ class ReplayManifestV8:
             raise WireError("semantic.replay_manifest", "execution identity differs")
         if self.initial_identity.execution_identity != self.execution_identity:
             raise WireError("semantic.replay_manifest", "initial execution identity differs")
-        authority = self.semantic_contract.rules_manifest.get("rules_authority")
-        if not isinstance(authority, dict):
-            raise WireError("semantic.replay_manifest", "rules authority is malformed")
-        program_authority = {"magic_rules": "comprehensive_rules"}
-        if program_authority.get(self.execution_identity.program_kind) != authority.get("variant"):
-            raise WireError(
-                "semantic.replay_manifest", "execution program and rules authority do not match"
-            )
-        if (
-            authority.get("variant") == "comprehensive_rules"
-            and authority.get("snapshot_id") != self.rules_snapshot
-        ):
+        self.execution_identity.validate()
+        # The semantic contract already admits only the comprehensive_rules authority.
+        authority = self.semantic_contract.rules_manifest["rules_authority"]
+        if not isinstance(authority, dict) or authority.get("snapshot_id") != self.rules_snapshot:
             raise WireError("semantic.replay_manifest", "rules snapshot does not match")
         players: list[int] = []
         for deck in self.decks:

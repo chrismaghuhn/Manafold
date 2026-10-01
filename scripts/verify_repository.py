@@ -322,7 +322,7 @@ def main() -> None:
     state_rust = "\n".join(p.read_text(encoding="utf-8") for p in production_files)
     for token in (
         "validate_engine_state",
-        "EngineStateParts",
+        "pub struct EngineState",
         "pub replacement:",
         "PerspectiveIdentityState",
     ):
@@ -330,9 +330,9 @@ def main() -> None:
             fail(f"state contract lacks {token}")
 
     for token in (
-        "FullStateDigestInputV5",
+        "full-state-digest-input.v7",
         "magic_sba_graveyard_order_v1",
-        "canonical_digest_bytes",
+        "canonical_state_bytes",
         "KnowledgeInvalidationReason",
         "KnowledgeAcquisitionReason",
     ):

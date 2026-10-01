@@ -1,7 +1,7 @@
 use super::{cbor, checkpoint_digest, envelope, PersistenceDecodeErrorV1};
 use mtgml_model::{
     CheckpointCodecIdentity, EnvironmentLimitCounters, EpisodeStatus, ExecutionIdentityV1,
-    ExecutionProgramV1, FullStateDigestV6, FullStateDigestV7, SemanticContractIdV1,
+    ExecutionProgramV1, FullStateDigest, SemanticContractIdV1,
 };
 
 #[test]
@@ -384,7 +384,7 @@ fn valid_full_state_reference() -> mtgml_model::DigestReferenceV1 {
     mtgml_model::DigestReferenceV1 {
         envelope_version: envelope::DIGEST_ENVELOPE_ID.to_owned(),
         algorithm_id: envelope::SHA256_ID.to_owned(),
-        semantic_domain: FullStateDigestV7::DOMAIN.to_owned(),
+        semantic_domain: FullStateDigest::DOMAIN.to_owned(),
         payload_codec_id: envelope::CANONICAL_CBOR_ID.to_owned(),
         input_schema_id: "full-state-digest-input.v7".to_owned(),
         digest_bytes: [7; 32],
@@ -668,7 +668,7 @@ fn checkpoint_digest_v8_g0_known_answer() {
     ))
     .unwrap();
     let state_digest =
-        FullStateDigestV7::parse(fixture["full_state_digest_v7"].as_str().unwrap()).unwrap();
+        FullStateDigest::parse(fixture["full_state_digest_v7"].as_str().unwrap()).unwrap();
     let identity = ExecutionIdentityV1 {
         program_kind: ExecutionProgramV1::MagicRules,
         semantic_contract_id: SemanticContractIdV1::parse(
@@ -696,9 +696,14 @@ fn checkpoint_digest_v8_g0_known_answer() {
         digest.to_string(),
         "1454acca17c4a4cb655d4b3201e4b5d10db3cb0a42513a33efb6f7d8eaa26025"
     );
-    let predecessor = FullStateDigestV6::from_digest_bytes(state_digest.raw_bytes());
+    // A reference to a predecessor full-state domain is rejected.
+    let predecessor = mtgml_model::DigestReferenceV1 {
+        semantic_domain: "mtgml.full-state-digest.v6".to_owned(),
+        input_schema_id: "full-state-digest-input.v6".to_owned(),
+        ..state_digest.as_digest_reference()
+    };
     assert!(checkpoint_digest::calculate_checkpoint_digest_v8(
-        &predecessor.as_digest_reference(),
+        &predecessor,
         &EpisodeStatus::Running,
         &EnvironmentLimitCounters::default(),
         &codec,

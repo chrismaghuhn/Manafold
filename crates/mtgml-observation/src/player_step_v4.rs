@@ -8,7 +8,7 @@ use crate::{
     error::ObservationValidationError,
     observed_event_v4::ObservedEventEnvelopeV4,
     player_step::{PlayerStepSubmissionV1, PlayerSubmissionCodeV1},
-    PlayerInformationStateV3, PLAYER_STEP_SCHEMA_V4,
+    PlayerInformationState, PLAYER_STEP_SCHEMA_V4,
 };
 
 fn deserialize_required_option<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
@@ -23,7 +23,7 @@ where
 #[serde(deny_unknown_fields)]
 pub struct PlayerStepV4 {
     pub schema_version: String,
-    pub information_state: PlayerInformationStateV3,
+    pub information_state: PlayerInformationState,
     pub observed_events: Vec<ObservedEventEnvelopeV4>,
     #[serde(deserialize_with = "deserialize_required_option")]
     pub next_decision: Option<PlayerDecisionRequestV4>,

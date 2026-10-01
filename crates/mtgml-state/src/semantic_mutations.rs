@@ -654,7 +654,7 @@ impl AttachmentStateV1 {
         Ok(())
     }
 
-    pub(crate) fn attach(
+    pub fn attach(
         &mut self,
         source: GameObjectId,
         target: GameObjectId,
@@ -713,7 +713,7 @@ impl AttachmentStateV1 {
     /// Applies an ordered relation-change batch for exactly one successor
     /// revision. The helper derives every timestamp from that revision and the
     /// operation ordinal; callers cannot provide a free-standing timestamp.
-    pub(crate) fn apply_changes(
+    pub fn apply_changes(
         &mut self,
         expected_revision: StateRevision,
         resulting_revision: StateRevision,
@@ -1619,70 +1619,5 @@ mod tests {
             attachments.validate_semantics(),
             Err(StateFamilyMutationError::DuplicateTimestamp)
         );
-    }
-
-    #[test]
-    fn engine_parts_registers_authorities_with_existing_allocator_atomically() {
-        use crate::{
-            construct_synthetic_engine_state, CardRulesAuthoritativeStateV1, EngineStatePartsV2,
-            FaceStateV1, ManaPoolV1, ManaStateV1, PlayerTurnHistoryV1, SyntheticResetInputs,
-            SyntheticV4Setup, TurnHistoryStateV1,
-        };
-        use mtgml_random::RootSeed256;
-
-        let engine = construct_synthetic_engine_state(SyntheticResetInputs {
-            players: [PlayerId(1), PlayerId(2)],
-            root_seed: RootSeed256::from_lower_hex(&"39".repeat(32)).unwrap(),
-            setup: SyntheticV4Setup::synthetic_compatibility(),
-        })
-        .unwrap();
-        let mut mana = ManaStateV1::default();
-        let mut players = BTreeMap::new();
-        for player in engine.core.players.keys().copied() {
-            mana.pools.insert(player, ManaPoolV1::default());
-            players.insert(player, PlayerTurnHistoryV1::default());
-        }
-        let mut parts = EngineStatePartsV2::from_state(
-            &engine,
-            CardRulesAuthoritativeStateV1 {
-                mana,
-                turn_history: TurnHistoryStateV1 {
-                    turn_number: engine.core.turn_number,
-                    players,
-                    ..TurnHistoryStateV1::default()
-                },
-                ..CardRulesAuthoritativeStateV1::default()
-            },
-        );
-        let live: BTreeSet<_> = engine.zones.objects.keys().copied().collect();
-        parts.card_rules_state.faces = FaceStateV1::for_objects(&live, 0);
-        let source = *engine
-            .zones
-            .objects
-            .keys()
-            .next()
-            .expect("fixture has object");
-        let ids = parts
-            .register_ability_authorities([(source, 1), (source, 0)])
-            .unwrap();
-        assert_eq!(ids, [AbilityInstanceId(1), AbilityInstanceId(2)]);
-        assert_eq!(
-            parts.predecessor_v5.allocators.next_ability_id,
-            AbilityInstanceId(3)
-        );
-        assert_eq!(
-            parts.card_rules_state.abilities.by_instance[&ids[0]].ability_key,
-            0
-        );
-        assert_eq!(
-            parts.card_rules_state.abilities.by_instance[&ids[1]].ability_key,
-            1
-        );
-
-        let before = parts.clone();
-        assert!(parts
-            .register_ability_authorities([(GameObjectId(u64::MAX), 2)])
-            .is_err());
-        assert_eq!(parts, before);
     }
 }

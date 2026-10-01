@@ -19,9 +19,8 @@ use mtgml_replay::{
     SemanticContractMaterialV7,
 };
 use mtgml_state::{
-    CardRulesAuthoritativeStateV1, EngineStatePartsV3, GameObject, KnowledgeAcquisitionReason,
-    KnowledgeRecordV2, KnownLocationFactV2, PlayerTurnHistoryV1, PriorityState, TurnPosition,
-    VisibilityPartition, ZoneLocation, ZonePosition,
+    EngineState, GameObject, KnowledgeAcquisitionReason, KnowledgeRecordV2, KnownLocationFactV2,
+    PriorityState, TurnPosition, VisibilityPartition, ZoneLocation, ZonePosition,
 };
 
 pub const P1: PlayerId = PlayerId(1);
@@ -175,7 +174,7 @@ pub fn try_land_game(
     let admission = game_admission();
     let mut state = land_game_state(libraries, hands, seed);
     let status = mtgml_model::EpisodeStatus::Running;
-    mtgml_rules::install_basic_land_request_v4(&admission, &mut state, P1, &status).unwrap();
+    mtgml_rules::install_basic_land_request(&admission, &mut state, P1, &status).unwrap();
     let checkpoint = EnvironmentCheckpointV8::new_for_basic_land_profile(
         &admission,
         state.clone(),
@@ -197,7 +196,7 @@ fn land_game_state(
     libraries: &[Vec<CardDefinitionId>; 2],
     hands: &[Vec<CardDefinitionId>; 2],
     seed: u64,
-) -> EngineStatePartsV3 {
+) -> EngineState {
     let mut setup = mtgml_state::SyntheticV4Setup::synthetic_compatibility();
     setup.position = TurnPosition::PrecombatMain;
     setup.priority = PriorityState::HeldBy {
@@ -206,14 +205,15 @@ fn land_game_state(
     };
     let mut root_seed = [0_u8; 32];
     root_seed[..8].copy_from_slice(&seed.to_le_bytes());
-    let engine = mtgml_state::construct_synthetic_engine_state(mtgml_state::SyntheticResetInputs {
-        players: [P1, P2],
-        root_seed: mtgml_random::RootSeed256(root_seed),
-        setup,
-    })
-    .unwrap();
-    let mut parts = engine.parts();
-    parts.execution = Default::default();
+    // The builder's state has one empty mana pool and turn history per
+    // player and no pending request.
+    let mut parts =
+        mtgml_state::construct_synthetic_engine_state(mtgml_state::SyntheticResetInputs {
+            players: [P1, P2],
+            root_seed: mtgml_random::RootSeed256(root_seed),
+            setup,
+        })
+        .unwrap();
     // The synthetic reset seeds a public battlefield object and a face-down
     // library object; a real game starts without either.
     for object in [GameObjectId(1), GameObjectId(2)] {
@@ -239,16 +239,7 @@ fn land_game_state(
         .zones
         .ordered_zones
         .retain(|_, members| !members.is_empty());
-    let mut cards = CardRulesAuthoritativeStateV1::default();
-    for player in [P1, P2] {
-        cards.mana.pools.insert(player, Default::default());
-        cards
-            .turn_history
-            .players
-            .insert(player, PlayerTurnHistoryV1::default());
-    }
-    cards.turn_history.turn_number = parts.core.turn_number;
-    let mut state = EngineStatePartsV3::new(parts, Default::default(), cards).unwrap();
+    let mut state = parts;
     for (player, library) in [P1, P2].into_iter().zip(libraries) {
         for definition in library {
             add_card(&mut state, player, *definition, ZoneKind::Library);
@@ -266,12 +257,12 @@ fn land_game_state(
 /// A library card is hidden from everyone; a hand card is known to its
 /// owner only.
 fn add_card(
-    state: &mut EngineStatePartsV3,
+    state: &mut EngineState,
     owner: PlayerId,
     definition: CardDefinitionId,
     zone: ZoneKind,
 ) {
-    let parts = &mut state.predecessor_v5;
+    let parts = &mut *state;
     let id = parts.allocators.next_object_id;
     parts.allocators.next_object_id = GameObjectId(id.0 + 1);
     let physical_card = Some(PhysicalCardId(1_000 + id.0));
@@ -344,12 +335,12 @@ fn add_card(
         location
     };
     parts.zones.locations.insert(id, location);
-    state.card_rules_state.faces.faces.insert(id, 0);
+    state.card_rules.faces.faces.insert(id, 0);
 }
 
 pub fn checkpoint_identity(checkpoint: &EnvironmentCheckpointV8) -> InitialEnvironmentIdentityV8 {
     InitialEnvironmentIdentityV8 {
-        state_revision: checkpoint.state.predecessor_v5.revision,
+        state_revision: checkpoint.state.revision,
         full_state_digest: checkpoint.state_digest.clone(),
         episode_status: checkpoint.status.clone(),
         environment_limit_counters: checkpoint.limit_counters.clone(),
@@ -383,12 +374,7 @@ pub fn replay_manifest(
     manifest.decks.push(second_deck);
     manifest.rules_snapshot = RULES_SNAPSHOT.to_owned();
     manifest.card_bundle = admission.content_contract_id().to_string();
-    manifest.randomness.root_seed_hex = checkpoint
-        .state
-        .predecessor_v5
-        .random
-        .root_seed
-        .to_lower_hex();
+    manifest.randomness.root_seed_hex = checkpoint.state.random.root_seed.to_lower_hex();
     manifest.initial_identity = checkpoint_identity(checkpoint);
     manifest
 }

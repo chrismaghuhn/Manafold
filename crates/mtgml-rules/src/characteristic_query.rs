@@ -9,8 +9,8 @@ use mtgml_card_ir::{
     FaceDefinitionV1, FaceKey, ManaColorV1, PrintedManaSymbolV1, VerifiedContentCatalogV1,
     BASIC_LAND_PROFILE_ID_V1,
 };
-use mtgml_model::{CardDefinitionId, ExecutionIdentityV1, GameObjectId, PlayerId, ZoneKind};
-use mtgml_state::{EngineStatePartsV3, EngineStatePartsV3Error, GameObject, ZoneLocation};
+use mtgml_model::{CardDefinitionId, GameObjectId, PlayerId, ZoneKind};
+use mtgml_state::{EngineState, EngineStateError, GameObject, ZoneLocation};
 use std::collections::BTreeSet;
 use thiserror::Error;
 
@@ -46,8 +46,7 @@ pub(crate) struct S1BaseCharacteristicsV1 {
 /// construction.
 #[derive(Debug)]
 pub(crate) struct S1QueryAuthority<'a> {
-    admission: &'a ExecutableProfileAdmissionV1,
-    _state: &'a EngineStatePartsV3,
+    _state: &'a EngineState,
     queried: QueriedObjectV1,
     _object: &'a GameObject,
     _location: &'a ZoneLocation,
@@ -62,7 +61,7 @@ impl<'a> S1QueryAuthority<'a> {
     #[allow(dead_code)]
     pub(crate) fn for_object(
         admission: &'a ExecutableProfileAdmissionV1,
-        state: &'a EngineStatePartsV3,
+        state: &'a EngineState,
         object_id: GameObjectId,
     ) -> Result<Self, S1QueryError> {
         validate_admission_binding(admission)?;
@@ -75,7 +74,7 @@ impl<'a> S1QueryAuthority<'a> {
     /// in order and stopping at the first error.
     pub(crate) fn for_objects(
         admission: &'a ExecutableProfileAdmissionV1,
-        state: &'a EngineStatePartsV3,
+        state: &'a EngineState,
         objects: &[GameObjectId],
     ) -> Result<Vec<Self>, S1QueryError> {
         let Some(first) = objects.first() else {
@@ -91,22 +90,20 @@ impl<'a> S1QueryAuthority<'a> {
 
     fn in_validated_state(
         admission: &'a ExecutableProfileAdmissionV1,
-        state: &'a EngineStatePartsV3,
+        state: &'a EngineState,
         object_id: GameObjectId,
     ) -> Result<Self, S1QueryError> {
         let object = state
-            .predecessor_v5
             .zones
             .objects
             .get(&object_id)
             .ok_or_else(|| classify_absent_object(state, object_id))?;
         if object.id != object_id {
             return Err(S1QueryError::InconsistentState(
-                EngineStatePartsV3Error::PredecessorState,
+                EngineStateError::StateInvariant,
             ));
         }
         let location = state
-            .predecessor_v5
             .zones
             .locations
             .get(&object_id)
@@ -128,7 +125,7 @@ impl<'a> S1QueryAuthority<'a> {
             })?;
 
         let current_face = state
-            .card_rules_state
+            .card_rules
             .faces
             .faces
             .get(&object_id)
@@ -148,7 +145,6 @@ impl<'a> S1QueryAuthority<'a> {
         }
 
         Ok(Self {
-            admission,
             _state: state,
             queried: QueriedObjectV1 {
                 object: object_id,
@@ -167,10 +163,6 @@ impl<'a> S1QueryAuthority<'a> {
 
     pub(crate) fn queried_object(&self) -> QueriedObjectV1 {
         self.queried
-    }
-
-    pub(crate) fn execution_identity(&self) -> &ExecutionIdentityV1 {
-        self.admission.execution_identity()
     }
 
     // The current admitted M4.2 Basic Land transition does not need to branch
@@ -236,24 +228,15 @@ fn derive_base_characteristics(
 
 /// Validates the state a query reads. An invalid state is reported through
 /// `object_id` where the object's own records explain it.
-fn validate_query_state(
-    state: &EngineStatePartsV3,
-    object_id: GameObjectId,
-) -> Result<(), S1QueryError> {
+fn validate_query_state(state: &EngineState, object_id: GameObjectId) -> Result<(), S1QueryError> {
     let Err(error) = state.validate_structure() else {
         return Ok(());
     };
-    let object_is_live = state.predecessor_v5.zones.objects.contains_key(&object_id);
-    if object_is_live
-        && !state
-            .predecessor_v5
-            .zones
-            .locations
-            .contains_key(&object_id)
-    {
+    let object_is_live = state.zones.objects.contains_key(&object_id);
+    if object_is_live && !state.zones.locations.contains_key(&object_id) {
         return Err(S1QueryError::MissingZoneLocation(object_id));
     }
-    if object_is_live && !state.card_rules_state.faces.faces.contains_key(&object_id) {
+    if object_is_live && !state.card_rules.faces.faces.contains_key(&object_id) {
         return Err(S1QueryError::FaceStateMissing(object_id));
     }
     Err(S1QueryError::InconsistentState(error))
@@ -280,11 +263,11 @@ fn is_admitted_basic_land_profile(definition: &mtgml_card_ir::CardDefinitionEnve
     )
 }
 
-fn classify_absent_object(state: &EngineStatePartsV3, object_id: GameObjectId) -> S1QueryError {
+fn classify_absent_object(state: &EngineState, object_id: GameObjectId) -> S1QueryError {
     // Object IDs start at one and the sole allocator advances by exactly one
     // for each allocation. In a structurally valid admitted state, an absent
     // ID below this high-water mark therefore names a departed incarnation.
-    let next_id = state.predecessor_v5.allocators.next_object_id;
+    let next_id = state.allocators.next_object_id;
     if object_id.0 != 0 && object_id.0 < next_id.0 {
         S1QueryError::StaleObjectIncarnation(object_id)
     } else {
@@ -327,7 +310,7 @@ pub(crate) enum S1QueryError {
     #[error("counter state for object {0:?} is invalid")]
     InvalidCounterState(GameObjectId),
     #[error("authoritative state is inconsistent: {0}")]
-    InconsistentState(EngineStatePartsV3Error),
+    InconsistentState(EngineStateError),
     #[error("characteristic arithmetic overflowed")]
     ArithmeticOverflow,
 }
@@ -362,7 +345,7 @@ mod s1_b_detached_tests {
     };
     use mtgml_model::{CardDefinitionId, GameObjectId};
     use mtgml_persistence::content_contract_digest::calculate_content_contract_id_v1;
-    use mtgml_state::EngineStatePartsV3;
+    use mtgml_state::EngineState;
     use std::collections::BTreeSet;
 
     struct DetachedFixture {
@@ -445,20 +428,18 @@ mod s1_b_detached_tests {
     // S1QueryAuthority or pass executable-profile admission.
     fn detached_result(
         catalog: &VerifiedContentCatalogV1,
-        state: &EngineStatePartsV3,
+        state: &EngineState,
         object_id: GameObjectId,
     ) -> Result<S1BaseCharacteristicsV1, S1QueryError> {
         state
             .validate_structure()
             .map_err(S1QueryError::InconsistentState)?;
         let object = state
-            .predecessor_v5
             .zones
             .objects
             .get(&object_id)
             .ok_or(S1QueryError::UnknownObject(object_id))?;
         let location = state
-            .predecessor_v5
             .zones
             .locations
             .get(&object_id)
@@ -470,7 +451,7 @@ mod s1_b_detached_tests {
             .get(catalog.content_contract_id(), object.card_definition)
             .map_err(|_| S1QueryError::MissingCardDefinition(object.card_definition))?;
         let face_key = state
-            .card_rules_state
+            .card_rules
             .faces
             .faces
             .get(&object_id)
@@ -498,34 +479,20 @@ mod s1_b_detached_tests {
         ))
     }
 
-    fn detached_state(
-        definition: CardDefinitionId,
-        face_key: u32,
-    ) -> (EngineStatePartsV3, GameObjectId) {
+    fn detached_state(definition: CardDefinitionId, face_key: u32) -> (EngineState, GameObjectId) {
         let state_v2 = crate::basic_land::s1_b_state_with_two_lands_fixture();
-        let mut state = EngineStatePartsV3::new(
-            state_v2.predecessor_v5,
-            Default::default(),
-            state_v2.card_rules_state,
-        )
-        .unwrap();
-        let object_id = *state.predecessor_v5.zones.objects.keys().next().unwrap();
+        let mut state = state_v2;
+        let object_id = *state.zones.objects.keys().next().unwrap();
         state
-            .predecessor_v5
             .zones
             .objects
             .get_mut(&object_id)
             .unwrap()
             .card_definition = definition;
-        state
-            .card_rules_state
-            .faces
-            .faces
-            .insert(object_id, face_key);
-        for (player, identity) in &state.predecessor_v5.perspective_identities.players {
+        state.card_rules.faces.faces.insert(object_id, face_key);
+        for (player, identity) in &state.perspective_identities.players {
             if let Some(opaque) = identity.object_to_opaque.get(&object_id) {
                 if let Some(record) = state
-                    .predecessor_v5
                     .knowledge
                     .players
                     .get_mut(player)

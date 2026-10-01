@@ -8,7 +8,7 @@
 ## Historical M4 successor cut (PR #248)
 
 The accepted M4 Semantic Spec allocates one coupled successor family:
-FullStateDigestV6 / input V6, StateDeltaV2, Checkpoint V7 / digest V7, Replay
+the V6 state digest / input V6, StateDeltaV2, Checkpoint V7 / digest V7, Replay
 V7, Decision request V3, ObservedEventEnvelopeV3, PlayerStepV3 and the named
 `magic-basic-land-observation.v1` payload. Their identities, canonical forms,
 cross-field rules, and predecessor dispositions are defined in the accepted
@@ -31,7 +31,12 @@ PlayerInformationStateV3 / InformationStateDigestV3, and
 `magic-shared-execution-observation.v1`. ADR 0056 owns the exact identities,
 historical dispositions, and no-migration policy. These contracts preserve
 only the accepted Mountain/Plains `basic-land@1.0.0` executable slice; they do
-not add spell casting, other cards, or broader playability.
+not add spell casting, other cards, or broader playability. The later cleanup
+(docs/superpowers/specs/2026-09-30-flatten-current-format-design.md) dropped
+the version suffixes from the current Rust and Python type names
+(`FullStateDigest`, `StateDelta`, `ObservationEnvelope`,
+`PlayerInformationState`, …); the wire and digest identities keep their
+versions.
 
 1. name the exact semantic surface and current version;
 2. add/modify reader and writer fixtures before producer code;

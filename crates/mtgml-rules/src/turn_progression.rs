@@ -3,7 +3,7 @@
 //! Passing priority and every turn-based action run directly on V3 state:
 //! step changes, untap, draw, the combat skeleton, cleanup and the turn
 //! change. One response is one transition (`StateRevision` +1, one
-//! `StateDeltaV3`). V3 validates turn-position, priority, active-player and
+//! `StateDelta`). V3 validates turn-position, priority, active-player and
 //! turn-number events against the transition's endpoints, so each changed
 //! aspect gets exactly one net event.
 //!
@@ -20,39 +20,38 @@
 
 use mtgml_card_ir::ExecutableProfileAdmissionV1;
 use mtgml_decision::{
-    AuthoritativeCandidateV4, AuthoritativeDecisionRequestV4, CandidateIntentV4, DecisionAnswerV2,
+    AuthoritativeCandidate, AuthoritativeDecisionRequest, CandidateIntent, DecisionAnswerV2,
     DecisionDomainV2, DecisionPurposeV4, DecisionResponseV3, DecisionVisibility,
-    EngineCandidateBindingV4,
+    EngineCandidateBinding,
 };
 use mtgml_model::{
     DecisionId, EpisodeStatus, GameObjectId, PlayerDecisionIdV1, PlayerId, PlayerOutcome,
     PlayerResult, RuleEventId, StateRevision, TerminalReason, ZoneKind,
 };
 use mtgml_state::{
-    BeginningStep, CombatState, CombatStep, EndingStep, EngineState, EngineStatePartsV3,
-    ManaPoolChangeCauseV1, PerspectiveLifecycleAuditV1, PriorityState, SbaSelectedActionV1,
-    SemanticDeltaOperationV3, StateDeltaV3, TurnHistoryStateV1, TurnPosition, VisibilityPartition,
-    ZoneKey, ZoneLocation, ZonePosition,
+    BeginningStep, CombatState, CombatStep, EndingStep, EngineState, ManaPoolChangeCauseV1,
+    PerspectiveLifecycleAuditV1, PriorityState, SbaSelectedActionV1, SemanticDeltaOperation,
+    StateDelta, TurnHistoryStateV1, TurnPosition, VisibilityPartition, ZoneKey, ZoneLocation,
+    ZonePosition,
 };
 
 use crate::{
-    AuthoritativeRuleEventKind, AuthoritativeRuleEventKindV3, AuthoritativeRuleEventV3,
-    BasicLandCandidateError, BasicLandTransitionError as Error, BasicLandTransitionProductV4,
-    SelectedSuccessorDecisionV1,
+    AuthoritativeRuleEvent, AuthoritativeRuleEventKind, BasicLandCandidateError,
+    BasicLandTransitionError as Error, BasicLandTransitionProduct, SelectedSuccessorDecisionV1,
 };
 
 /// Executes one V4 response. Land plays and mana abilities use the
 /// basic-land path; passing priority and declaring attackers run the turn
 /// progression.
-pub fn execute_magic_response_v4(
+pub fn execute_magic_response(
     admission: &ExecutableProfileAdmissionV1,
-    state: &EngineStatePartsV3,
+    state: &EngineState,
     actor: PlayerId,
     response: &DecisionResponseV3,
     status: &EpisodeStatus,
-) -> Result<BasicLandTransitionProductV4, Error> {
+) -> Result<BasicLandTransitionProduct, Error> {
     let request = state
-        .execution_v4
+        .execution
         .pending_decision
         .as_ref()
         .ok_or(Error::InvalidSelection)?;
@@ -62,11 +61,11 @@ pub fn execute_magic_response_v4(
     validate_slice(admission, state)?;
     let answer = match request.purpose {
         DecisionPurposeV4::PriorityAction => {
-            match crate::selected_basic_land_action_v4(admission, state, actor, response, status)
+            match crate::selected_basic_land_action(admission, state, actor, response, status)
                 .map_err(|_| Error::InvalidSelection)?
             {
                 SelectedSuccessorDecisionV1::MagicAction(_) => {
-                    return crate::execute_basic_land_response_v4(
+                    return crate::execute_basic_land_response(
                         admission, state, actor, response, status,
                     );
                 }
@@ -74,7 +73,7 @@ pub fn execute_magic_response_v4(
             }
         }
         DecisionPurposeV4::AttackerDeclaration => {
-            validate_magic_pending_request_v4(admission, state, status)
+            validate_magic_pending_request(admission, state, status)
                 .map_err(|_| Error::InvalidSelection)?;
             match &response.answer {
                 DecisionAnswerV2::SelectMany { candidate_ids } if candidate_ids.is_empty() => {
@@ -85,7 +84,7 @@ pub fn execute_magic_response_v4(
             }
         }
         DecisionPurposeV4::HandSizeDiscard => {
-            validate_magic_pending_request_v4(admission, state, status)
+            validate_magic_pending_request(admission, state, status)
                 .map_err(|_| Error::InvalidSelection)?;
             let DecisionAnswerV2::SelectMany { candidate_ids } = &response.answer else {
                 return Err(Error::InvalidSelection);
@@ -99,7 +98,7 @@ pub fn execute_magic_response_v4(
                 .find(|candidate| candidate.candidate_id == *chosen)
                 .map(|candidate| &candidate.trusted_binding)
             {
-                Some(EngineCandidateBindingV4::SelectObject { object }) => Answer::Discard(*object),
+                Some(EngineCandidateBinding::SelectObject { object }) => Answer::Discard(*object),
                 _ => return Err(Error::InvalidSelection),
             }
         }
@@ -114,26 +113,21 @@ pub fn execute_magic_response_v4(
 /// Validates the pending V4 request of a restored or committed state: priority
 /// windows through the basic-land candidate owner, the attacker declaration
 /// against the request this progression creates.
-pub fn validate_magic_pending_request_v4(
+pub fn validate_magic_pending_request(
     admission: &ExecutableProfileAdmissionV1,
-    state: &EngineStatePartsV3,
+    state: &EngineState,
     status: &EpisodeStatus,
 ) -> Result<(), BasicLandCandidateError> {
     if !hands_within_slice(state) {
         return Err(BasicLandCandidateError::InvalidState);
     }
-    let Some(request) = state
-        .execution_v4
-        .pending_decision
-        .as_ref()
-        .filter(|request| {
-            matches!(
-                request.purpose,
-                DecisionPurposeV4::AttackerDeclaration | DecisionPurposeV4::HandSizeDiscard
-            )
-        })
-    else {
-        return crate::validate_basic_land_pending_request_v4(admission, state, status);
+    let Some(request) = state.execution.pending_decision.as_ref().filter(|request| {
+        matches!(
+            request.purpose,
+            DecisionPurposeV4::AttackerDeclaration | DecisionPurposeV4::HandSizeDiscard
+        )
+    }) else {
+        return crate::validate_basic_land_pending_request(admission, state, status);
     };
     if request.purpose == DecisionPurposeV4::HandSizeDiscard {
         return validate_discard_request(admission, state, request, status);
@@ -145,7 +139,7 @@ pub fn validate_magic_pending_request_v4(
     // Only an admission with the rule that creates this request accepts it.
     admits(admission, "rules/declare-attackers")
         .map_err(|_| BasicLandCandidateError::PendingCandidateSetMismatch)?;
-    let parts = &state.predecessor_v5;
+    let parts = state;
     if !matches!(status, EpisodeStatus::Running)
         || parts.core.position
             != (TurnPosition::Combat {
@@ -189,7 +183,7 @@ struct Facts {
     attackers_declared: bool,
     combat_skipped: bool,
     combat_ended: bool,
-    zone_events: Vec<crate::AuthoritativeRuleEvent>,
+    zone_events: Vec<crate::zone_incarnation::ZoneMoveEvent>,
 }
 
 /// The land-only slice (D13): exactly two players, only admitted basic lands
@@ -197,13 +191,12 @@ struct Facts {
 /// evaluate. Under it no state-based action can apply.
 fn validate_slice(
     admission: &ExecutableProfileAdmissionV1,
-    state: &EngineStatePartsV3,
+    state: &EngineState,
 ) -> Result<(), Error> {
-    let parts = &state.predecessor_v5;
-    let execution = &state.execution_v4;
-    let cards = &state.card_rules_state;
+    let parts = state;
+    let execution = &state.execution;
+    let cards = &state.card_rules;
     if parts.core.players.len() != 2
-        || !parts.foundation_sources.is_empty()
         || cards.counters != Default::default()
         || cards.attachments != Default::default()
         || !execution.continuations.is_empty()
@@ -240,8 +233,8 @@ fn validate_slice(
 /// the active player at seven before their draw and eight after it. A larger
 /// hand could only reach a cleanup with several simultaneous discards, which
 /// need the owner's graveyard order that this slice does not offer.
-fn hands_within_slice(state: &EngineStatePartsV3) -> bool {
-    let core = &state.predecessor_v5.core;
+fn hands_within_slice(state: &EngineState) -> bool {
+    let core = &state.core;
     let before_draw = matches!(
         core.position,
         TurnPosition::Beginning {
@@ -250,7 +243,6 @@ fn hands_within_slice(state: &EngineStatePartsV3) -> bool {
     );
     core.players.keys().all(|player| {
         let hand = state
-            .predecessor_v5
             .zones
             .locations
             .values()
@@ -277,8 +269,8 @@ fn admits(admission: &ExecutableProfileAdmissionV1, key: &str) -> Result<(), Err
     }
 }
 
-fn other_player(state: &EngineStatePartsV3) -> Result<PlayerId, Error> {
-    let core = &state.predecessor_v5.core;
+fn other_player(state: &EngineState) -> Result<PlayerId, Error> {
+    let core = &state.core;
     core.players
         .keys()
         .copied()
@@ -288,34 +280,33 @@ fn other_player(state: &EngineStatePartsV3) -> Result<PlayerId, Error> {
 
 fn progress(
     admission: &ExecutableProfileAdmissionV1,
-    before: &EngineStatePartsV3,
-    request: &AuthoritativeDecisionRequestV4,
+    before: &EngineState,
+    request: &AuthoritativeDecisionRequest,
     answer: Answer,
-) -> Result<BasicLandTransitionProductV4, Error> {
+) -> Result<BasicLandTransitionProduct, Error> {
     let mut next = before.clone();
-    next.execution_v4.pending_decision = None;
-    next.predecessor_v5.revision = StateRevision(
+    next.execution.pending_decision = None;
+    next.revision = StateRevision(
         before
-            .predecessor_v5
             .revision
             .0
             .checked_add(1)
             .ok_or(Error::IdentityExhausted)?,
     );
-    let active = next.predecessor_v5.core.active_player;
+    let active = next.core.active_player;
     let other = other_player(&next)?;
     let mut facts = Facts::default();
     let next_decision = match answer {
         // CR 117.3d, 117.4: priority passes to the next player; when all
         // players pass in succession the step ends. An action resets the
         // succession (see the basic-land path).
-        Answer::Pass => match next.predecessor_v5.core.priority {
+        Answer::Pass => match next.core.priority {
             PriorityState::HeldBy {
                 player,
                 consecutive_passes: 0,
             } if player == request.actor => {
                 let receiver = if player == active { other } else { active };
-                next.predecessor_v5.core.priority = PriorityState::HeldBy {
+                next.core.priority = PriorityState::HeldBy {
                     player: receiver,
                     consecutive_passes: 1,
                 };
@@ -325,7 +316,7 @@ fn progress(
                 player,
                 consecutive_passes: 1,
             } if player == request.actor => {
-                next.predecessor_v5.core.priority = PriorityState::None;
+                next.core.priority = PriorityState::None;
                 advance(admission, &mut next, &mut facts)?
             }
             _ => return Err(Error::TurnProgressUnsupported),
@@ -333,7 +324,7 @@ fn progress(
         // CR 508.1, 508.2: no attackers are declared; the active player then
         // receives priority in the declare attackers step.
         Answer::NoAttackers => {
-            next.predecessor_v5.combat = Some(CombatState {
+            next.combat = Some(CombatState {
                 defending_player: other,
                 attackers: Vec::new(),
                 damage_step_completed: false,
@@ -341,7 +332,7 @@ fn progress(
                 blockers: Default::default(),
             });
             facts.attackers_declared = true;
-            next.predecessor_v5.core.priority = PriorityState::HeldBy {
+            next.core.priority = PriorityState::HeldBy {
                 player: active,
                 consecutive_passes: 0,
             };
@@ -372,18 +363,18 @@ fn progress(
 /// which a player must act (CR 500.2, 500.3).
 fn advance(
     admission: &ExecutableProfileAdmissionV1,
-    next: &mut EngineStatePartsV3,
+    next: &mut EngineState,
     facts: &mut Facts,
 ) -> Result<NextDecision, Error> {
     loop {
-        let from = next.predecessor_v5.core.position;
+        let from = next.core.position;
         if from
             == (TurnPosition::Combat {
                 step: CombatStep::EndOfCombat,
             })
         {
             // CR 511.3: creatures stop being attacking at end of combat.
-            next.predecessor_v5.combat = None;
+            next.combat = None;
             facts.combat_ended = true;
         }
         let mut to = crate::temporal_successor(from);
@@ -393,7 +384,6 @@ fn advance(
                 step: CombatStep::DeclareBlockers,
             })
             && next
-                .predecessor_v5
                 .combat
                 .as_ref()
                 .is_some_and(|combat| combat.attackers.is_empty())
@@ -403,8 +393,8 @@ fn advance(
             };
             facts.combat_skipped = true;
         }
-        next.predecessor_v5.core.position = to;
-        let active = next.predecessor_v5.core.active_player;
+        next.core.position = to;
+        let active = next.core.active_player;
         match to {
             // CR 502.2-502.4: a new turn begins; the active player untaps;
             // no player receives priority in the untap step.
@@ -424,14 +414,13 @@ fn advance(
             } => {
                 admits(admission, "rules/draw-card")?;
                 // CR 103.8a: the starting player skips the draw of turn 1.
-                if next.predecessor_v5.core.turn_number >= 2 {
+                if next.core.turn_number >= 2 {
                     if library_top(next, active).is_none() {
                         // CR 121.4, 704.5b: drawing from an empty library
                         // loses the game when state-based actions are next
                         // checked, before anyone receives priority (CR 117.5).
                         admits(admission, "rules/state-based-actions-empty-library")?;
-                        next.predecessor_v5
-                            .core
+                        next.core
                             .players
                             .get_mut(&active)
                             .ok_or(Error::InvalidResult)?
@@ -471,7 +460,6 @@ fn advance(
             } => {
                 admits(admission, "rules/cleanup-reset")?;
                 let hand = next
-                    .predecessor_v5
                     .zones
                     .locations
                     .values()
@@ -491,39 +479,36 @@ fn advance(
     }
 }
 
-fn open_priority(next: &mut EngineStatePartsV3) -> NextDecision {
-    let active = next.predecessor_v5.core.active_player;
-    next.predecessor_v5.core.priority = PriorityState::HeldBy {
+fn open_priority(next: &mut EngineState) -> NextDecision {
+    let active = next.core.active_player;
+    next.core.priority = PriorityState::HeldBy {
         player: active,
         consecutive_passes: 0,
     };
     NextDecision::Priority(active)
 }
 
-fn begin_turn(next: &mut EngineStatePartsV3, facts: &mut Facts) -> Result<(), Error> {
+fn begin_turn(next: &mut EngineState, facts: &mut Facts) -> Result<(), Error> {
     let new_active = other_player(next)?;
-    let core = &mut next.predecessor_v5.core;
+    let core = &mut next.core;
     core.active_player = new_active;
     core.turn_number = core
         .turn_number
         .checked_add(1)
         .ok_or(Error::IdentityExhausted)?;
     let turn_number = core.turn_number;
-    let engine: EngineState = next.predecessor_v5.clone().into();
-    let snapshots =
-        crate::snapshots::object_snapshots(&engine).map_err(|_| Error::InvalidResult)?;
+    let snapshots = crate::snapshots::object_snapshots(next).map_err(|_| Error::InvalidResult)?;
     let affected =
         crate::turn_structure::derive_ordinary_untap_affected_objects(&snapshots, new_active);
     for object in &affected {
-        next.predecessor_v5
-            .zones
+        next.zones
             .objects
             .get_mut(object)
             .ok_or(Error::InvalidResult)?
             .tapped = false;
     }
     facts.untapped = Some(affected);
-    let history = &mut next.card_rules_state.turn_history;
+    let history = &mut next.card_rules.turn_history;
     *history = TurnHistoryStateV1 {
         turn_number,
         players: history
@@ -536,7 +521,7 @@ fn begin_turn(next: &mut EngineStatePartsV3, facts: &mut Facts) -> Result<(), Er
     Ok(())
 }
 
-fn library_top(state: &EngineStatePartsV3, owner: PlayerId) -> Option<GameObjectId> {
+fn library_top(state: &EngineState, owner: PlayerId) -> Option<GameObjectId> {
     let library = ZoneLocation {
         zone: ZoneKind::Library,
         player: Some(owner),
@@ -546,7 +531,6 @@ fn library_top(state: &EngineStatePartsV3, owner: PlayerId) -> Option<GameObject
     };
     let key: ZoneKey = library.key();
     state
-        .predecessor_v5
         .zones
         .ordered_zones
         .get(&key)
@@ -556,7 +540,7 @@ fn library_top(state: &EngineStatePartsV3, owner: PlayerId) -> Option<GameObject
 
 /// CR 504.1: the active player draws the top card of their library. The
 /// caller handles an empty library.
-fn draw(next: &mut EngineStatePartsV3, owner: PlayerId, facts: &mut Facts) -> Result<(), Error> {
+fn draw(next: &mut EngineState, owner: PlayerId, facts: &mut Facts) -> Result<(), Error> {
     let top = library_top(next, owner).ok_or(Error::InvalidResult)?;
     move_card(
         next,
@@ -576,52 +560,45 @@ fn draw(next: &mut EngineStatePartsV3, owner: PlayerId, facts: &mut Facts) -> Re
 /// Moves one card through the shared zone-incarnation authority (new
 /// incarnation, knowledge and identity updates) and carries its face over.
 fn move_card(
-    next: &mut EngineStatePartsV3,
+    next: &mut EngineState,
     object: GameObjectId,
     kind: crate::zone_incarnation::SelectedZoneTransitionKind,
     claimed_to: ZoneLocation,
     facts: &mut Facts,
 ) -> Result<(), Error> {
     let claimed_from = next
-        .predecessor_v5
         .zones
         .locations
         .get(&object)
         .cloned()
         .ok_or(Error::InvalidResult)?;
-    let mut engine: EngineState = next.predecessor_v5.clone().into();
     let mut events = Vec::new();
     crate::zone_incarnation::apply_selected_zone_transition_in_workspace(
-        &mut engine,
+        next,
         &crate::zone_incarnation::SelectedZoneTransitionRequest {
             object,
             kind,
             claimed_from,
             claimed_to,
         },
-        // Placeholder origin: `finish` numbers every event of the transition.
-        RuleEventId(1),
         &mut events,
     )
     .map_err(|_| Error::TurnProgressUnsupported)?;
-    let mut parts = engine.parts();
-    parts.execution = Default::default();
     // The new incarnation shows the same face as the card it came from.
     for event in &events {
-        if let AuthoritativeRuleEventKind::ZoneTransition { transition } = &event.event {
+        if let crate::zone_incarnation::ZoneMoveEvent::Transition(transition) = event {
             let face = next
-                .card_rules_state
+                .card_rules
                 .faces
                 .faces
                 .remove(&transition.old_object)
                 .ok_or(Error::InvalidResult)?;
-            next.card_rules_state
+            next.card_rules
                 .faces
                 .faces
                 .insert(transition.new_object, face);
         }
     }
-    next.predecessor_v5 = parts;
     facts.zone_events.extend(events);
     Ok(())
 }
@@ -630,118 +607,110 @@ fn move_card(
 /// builds the validated V3 product.
 fn finish(
     admission: &ExecutableProfileAdmissionV1,
-    before: &EngineStatePartsV3,
-    answered: &AuthoritativeDecisionRequestV4,
-    mut next: EngineStatePartsV3,
+    before: &EngineState,
+    answered: &AuthoritativeDecisionRequest,
+    mut next: EngineState,
     facts: Facts,
     next_decision: NextDecision,
-) -> Result<BasicLandTransitionProductV4, Error> {
+) -> Result<BasicLandTransitionProduct, Error> {
     enum Pending {
-        Kind(Box<AuthoritativeRuleEventKindV3>),
+        Kind(Box<AuthoritativeRuleEventKind>),
         Occurrence {
             lifecycle: PerspectiveLifecycleAuditV1,
             source: usize,
         },
     }
-    let legacy = |event: AuthoritativeRuleEventKind| {
-        Pending::Kind(Box::new(AuthoritativeRuleEventKindV3::Existing {
-            event: Box::new(event),
-        }))
-    };
-    let old = &before.predecessor_v5.core;
-    let new = next.predecessor_v5.core.clone();
-    let mut pending = vec![legacy(AuthoritativeRuleEventKind::DecisionCleared {
+    let kind = |event: AuthoritativeRuleEventKind| Pending::Kind(Box::new(event));
+    let old = &before.core;
+    let new = next.core.clone();
+    let mut pending = vec![kind(AuthoritativeRuleEventKind::DecisionCleared {
         decision: answered.decision_id,
     })];
     if old.priority != new.priority {
-        pending.push(legacy(AuthoritativeRuleEventKind::PriorityChanged {
+        pending.push(kind(AuthoritativeRuleEventKind::PriorityChanged {
             from: old.priority,
             to: new.priority,
         }));
     }
     if old.position != new.position {
-        pending.push(legacy(AuthoritativeRuleEventKind::TurnPositionChanged {
+        pending.push(kind(AuthoritativeRuleEventKind::TurnPositionChanged {
             from: old.position,
             to: new.position,
         }));
     }
     if old.active_player != new.active_player {
-        pending.push(legacy(AuthoritativeRuleEventKind::ActivePlayerChanged {
+        pending.push(kind(AuthoritativeRuleEventKind::ActivePlayerChanged {
             from: old.active_player,
             to: new.active_player,
         }));
     }
     if old.turn_number != new.turn_number {
-        pending.push(legacy(AuthoritativeRuleEventKind::TurnNumberChanged {
+        pending.push(kind(AuthoritativeRuleEventKind::TurnNumberChanged {
             from: old.turn_number,
             to: new.turn_number,
         }));
     }
     if let Some(affected_objects) = facts.untapped {
-        pending.push(legacy(AuthoritativeRuleEventKind::UntapCompleted {
+        pending.push(kind(AuthoritativeRuleEventKind::UntapCompleted {
             affected_objects,
         }));
     }
     if facts.attackers_declared {
-        let combat = next
-            .predecessor_v5
-            .combat
-            .as_ref()
-            .ok_or(Error::InvalidResult)?;
-        pending.push(legacy(AuthoritativeRuleEventKind::AttackersDeclared {
+        let combat = next.combat.as_ref().ok_or(Error::InvalidResult)?;
+        pending.push(kind(AuthoritativeRuleEventKind::AttackersDeclared {
             defending_player: combat.defending_player,
             attackers: combat.attackers.clone(),
         }));
     }
     if facts.combat_skipped {
-        pending.push(legacy(AuthoritativeRuleEventKind::EmptyCombatStepsSkipped));
+        pending.push(kind(AuthoritativeRuleEventKind::EmptyCombatStepsSkipped));
     }
     if facts.combat_ended {
-        pending.push(legacy(AuthoritativeRuleEventKind::CombatEnded));
+        pending.push(kind(AuthoritativeRuleEventKind::CombatEnded));
     }
     let mut transition_index = None;
     for event in facts.zone_events {
-        match event.event {
-            AuthoritativeRuleEventKind::PerspectiveOccurrence { lifecycle, .. } => {
+        match event {
+            crate::zone_incarnation::ZoneMoveEvent::Occurrence(lifecycle) => {
                 pending.push(Pending::Occurrence {
                     lifecycle,
                     source: transition_index.ok_or(Error::InvalidResult)?,
                 });
             }
-            other => {
+            crate::zone_incarnation::ZoneMoveEvent::Transition(transition) => {
                 transition_index = Some(pending.len());
-                pending.push(legacy(other));
+                pending.push(kind(AuthoritativeRuleEventKind::ZoneTransition {
+                    transition,
+                }));
             }
         }
     }
     // CR 500.4: mana empties from each player's pool at the end of each
     // step. Pools are public: every player observes each change.
     if old.position != new.position {
-        let pools = next.card_rules_state.mana.pools.clone();
+        let pools = next.card_rules.mana.pools.clone();
         for (player, pool) in pools {
             if pool == Default::default() {
                 continue;
             }
-            next.card_rules_state
+            next.card_rules
                 .mana
                 .pools
                 .insert(player, Default::default());
             let source = pending.len();
             pending.push(Pending::Kind(Box::new(
-                AuthoritativeRuleEventKindV3::ManaPoolChanged {
+                AuthoritativeRuleEventKind::ManaPoolChanged {
                     player,
                     before: pool,
                     after: Default::default(),
                     cause: ManaPoolChangeCauseV1::Emptied,
                 },
             )));
-            let perspectives: Vec<PlayerId> =
-                next.predecessor_v5.core.players.keys().copied().collect();
+            let perspectives: Vec<PlayerId> = next.core.players.keys().copied().collect();
             for perspective in perspectives {
                 let lifecycle = PerspectiveLifecycleAuditV1 {
                     perspective,
                     sequence: next
-                        .predecessor_v5
                         .knowledge
                         .players
                         .get(&perspective)
@@ -749,12 +718,8 @@ fn finish(
                         .next_visible_sequence,
                     mutation: Default::default(),
                 };
-                let mut engine: EngineState = next.predecessor_v5.clone().into();
-                mtgml_state::apply_perspective_lifecycle(&mut engine, &lifecycle)
+                mtgml_state::apply_perspective_lifecycle(&mut next, &lifecycle)
                     .map_err(|_| Error::InvalidResult)?;
-                let mut parts = engine.parts();
-                parts.execution = Default::default();
-                next.predecessor_v5 = parts;
                 pending.push(Pending::Occurrence { lifecycle, source });
             }
         }
@@ -764,7 +729,7 @@ fn finish(
         NextDecision::Priority(actor) => (
             running.clone(),
             Some(
-                crate::install_basic_land_request_v4(admission, &mut next, actor, &running)
+                crate::install_basic_land_request(admission, &mut next, actor, &running)
                     .map_err(|_| Error::InvalidResult)?,
             ),
         ),
@@ -772,13 +737,10 @@ fn finish(
         NextDecision::Discard => (running, Some(install_discard_request(&mut next)?)),
         // CR 104.2a: in a two-player game the other player wins.
         NextDecision::GameOver { loser } => {
-            pending.push(legacy(
-                AuthoritativeRuleEventKind::StateBasedActionsApplied {
-                    actions: vec![SbaSelectedActionV1::PlayerLoses { player: loser }],
-                },
-            ));
+            pending.push(kind(AuthoritativeRuleEventKind::StateBasedActionsApplied {
+                actions: vec![SbaSelectedActionV1::PlayerLoses { player: loser }],
+            }));
             let players = next
-                .predecessor_v5
                 .core
                 .players
                 .keys()
@@ -799,13 +761,13 @@ fn finish(
         }
     };
     if let Some(request) = &request {
-        pending.push(legacy(AuthoritativeRuleEventKind::DecisionCreated {
+        pending.push(kind(AuthoritativeRuleEventKind::DecisionCreated {
             decision: request.decision_id,
         }));
     }
 
-    let revision = next.predecessor_v5.revision;
-    let first = before.predecessor_v5.allocators.next_rule_event_id;
+    let revision = next.revision;
+    let first = before.allocators.next_rule_event_id;
     let mut events = Vec::with_capacity(pending.len());
     for (index, item) in pending.into_iter().enumerate() {
         let event_id = RuleEventId(
@@ -817,39 +779,39 @@ fn finish(
         let event = match item {
             Pending::Kind(event) => *event,
             Pending::Occurrence { lifecycle, source } => {
-                AuthoritativeRuleEventKindV3::PerspectiveObservationOccurrence {
+                AuthoritativeRuleEventKind::PerspectiveObservationOccurrence {
                     lifecycle: Box::new(lifecycle),
                     source_event_id: RuleEventId(first.0 + source as u64),
                 }
             }
         };
-        events.push(AuthoritativeRuleEventV3 {
+        events.push(AuthoritativeRuleEvent {
             event_id,
             state_revision: revision,
             event,
         });
     }
-    next.predecessor_v5.allocators.next_rule_event_id = RuleEventId(
+    next.allocators.next_rule_event_id = RuleEventId(
         first
             .0
             .checked_add(events.len() as u64)
             .ok_or(Error::IdentityExhausted)?,
     );
-    let mut operations: Vec<SemanticDeltaOperationV3> = events
+    let mut operations: Vec<SemanticDeltaOperation> = events
         .iter()
         .flat_map(|event| event.event.semantic_operations())
         .collect();
-    operations.push(SemanticDeltaOperationV3::PendingRequestChanged {
+    operations.push(SemanticDeltaOperation::PendingRequestChanged {
         from: Some(Box::new(answered.clone())),
         to: request.clone().map(Box::new),
     });
     next.validate_structure()
         .map_err(|_| Error::InvalidResult)?;
-    let delta = StateDeltaV3::between_structural_only(before, &next, operations)
-        .map_err(|_| Error::Delta)?;
-    crate::events_v3::validate_events_for_built_delta_v3(before, &next, &events, &delta)
+    let delta =
+        StateDelta::between_structural_only(before, &next, operations).map_err(|_| Error::Delta)?;
+    crate::events::validate_events_for_built_delta_v3(before, &next, &events, &delta)
         .map_err(|_| Error::InvalidResult)?;
-    Ok(BasicLandTransitionProductV4 {
+    Ok(BasicLandTransitionProduct {
         accepted: true,
         next_state: next,
         delta,
@@ -861,8 +823,8 @@ fn finish(
 
 /// The discard request's candidates: every card in the active player's
 /// hand, in canonical order of the player's opaque identities.
-fn discard_candidates(state: &EngineStatePartsV3) -> Result<Vec<AuthoritativeCandidateV4>, Error> {
-    let parts = &state.predecessor_v5;
+fn discard_candidates(state: &EngineState) -> Result<Vec<AuthoritativeCandidate>, Error> {
+    let parts = state;
     let actor = parts.core.active_player;
     let identity = parts
         .perspective_identities
@@ -886,18 +848,16 @@ fn discard_candidates(state: &EngineStatePartsV3) -> Result<Vec<AuthoritativeCan
     Ok(cards
         .into_iter()
         .enumerate()
-        .map(|(index, (opaque, object))| AuthoritativeCandidateV4 {
+        .map(|(index, (opaque, object))| AuthoritativeCandidate {
             candidate_id: mtgml_model::CandidateIdV1(index as u32),
-            visible_intent: CandidateIntentV4::SelectObject { object: opaque },
-            trusted_binding: EngineCandidateBindingV4::SelectObject { object },
+            visible_intent: CandidateIntent::SelectObject { object: opaque },
+            trusted_binding: EngineCandidateBinding::SelectObject { object },
         })
         .collect())
 }
 
 /// CR 514.1: the active player chooses the card to discard.
-fn install_discard_request(
-    next: &mut EngineStatePartsV3,
-) -> Result<AuthoritativeDecisionRequestV4, Error> {
+fn install_discard_request(next: &mut EngineState) -> Result<AuthoritativeDecisionRequest, Error> {
     let candidates = discard_candidates(next)?;
     install_actor_only_request(
         next,
@@ -912,8 +872,8 @@ fn install_discard_request(
 
 fn validate_discard_request(
     admission: &ExecutableProfileAdmissionV1,
-    state: &EngineStatePartsV3,
-    request: &AuthoritativeDecisionRequestV4,
+    state: &EngineState,
+    request: &AuthoritativeDecisionRequest,
     status: &EpisodeStatus,
 ) -> Result<(), BasicLandCandidateError> {
     state
@@ -923,7 +883,7 @@ fn validate_discard_request(
     // Only an admission with the rule that creates this request accepts it.
     admits(admission, "rules/cleanup-reset")
         .map_err(|_| BasicLandCandidateError::PendingCandidateSetMismatch)?;
-    let parts = &state.predecessor_v5;
+    let parts = state;
     let hand = parts
         .zones
         .locations
@@ -954,11 +914,8 @@ fn validate_discard_request(
 }
 
 /// Identity, sequence and visibility fields every actor-only request shares.
-fn actor_only_request_matches(
-    state: &EngineStatePartsV3,
-    request: &AuthoritativeDecisionRequestV4,
-) -> bool {
-    let parts = &state.predecessor_v5;
+fn actor_only_request_matches(state: &EngineState, request: &AuthoritativeDecisionRequest) -> bool {
+    let parts = state;
     let Some(knowledge) = parts.knowledge.players.get(&request.actor) else {
         return false;
     };
@@ -978,9 +935,7 @@ fn actor_only_request_matches(
 
 /// CR 508.1: the active player declares attackers. The land-only slice has
 /// no creatures, so the request offers no candidates.
-fn install_attacker_request(
-    next: &mut EngineStatePartsV3,
-) -> Result<AuthoritativeDecisionRequestV4, Error> {
+fn install_attacker_request(next: &mut EngineState) -> Result<AuthoritativeDecisionRequest, Error> {
     install_actor_only_request(
         next,
         DecisionPurposeV4::AttackerDeclaration,
@@ -994,12 +949,12 @@ fn install_attacker_request(
 
 /// Allocates the next decision identity (D5) for an active-player request.
 fn install_actor_only_request(
-    next: &mut EngineStatePartsV3,
+    next: &mut EngineState,
     purpose: DecisionPurposeV4,
     decision_domain_v2: DecisionDomainV2,
-    candidates: Vec<AuthoritativeCandidateV4>,
-) -> Result<AuthoritativeDecisionRequestV4, Error> {
-    let parts = &mut next.predecessor_v5;
+    candidates: Vec<AuthoritativeCandidate>,
+) -> Result<AuthoritativeDecisionRequest, Error> {
+    let parts = &mut *next;
     let actor = parts.core.active_player;
     let view_sequence = parts
         .knowledge
@@ -1026,7 +981,7 @@ fn install_actor_only_request(
             .checked_add(1)
             .ok_or(Error::IdentityExhausted)?,
     );
-    let request = AuthoritativeDecisionRequestV4 {
+    let request = AuthoritativeDecisionRequest {
         decision_id,
         player_decision_id,
         state_revision: parts.revision,
@@ -1043,7 +998,7 @@ fn install_actor_only_request(
     request
         .project_player_request()
         .map_err(|_| Error::TurnProgressUnsupported)?;
-    next.execution_v4.pending_decision = Some(request.clone());
+    next.execution.pending_decision = Some(request.clone());
     Ok(request)
 }
 
@@ -1052,12 +1007,12 @@ mod tests {
     use super::*;
     use mtgml_card_ir::ExecutableProfileAdmissionV1;
     use mtgml_decision::{
-        AuthoritativeDecisionRequestV4, DecisionAnswerV2, DecisionDomainV2, DecisionPurposeV4,
-        DecisionResponseV3, EngineCandidateBindingV4, DECISION_RESPONSE_V3_SCHEMA,
+        AuthoritativeDecisionRequest, DecisionAnswerV2, DecisionDomainV2, DecisionPurposeV4,
+        DecisionResponseV3, EngineCandidateBinding, DECISION_RESPONSE_V3_SCHEMA,
     };
     use mtgml_model::{EpisodeStatus, GameObjectId, PhysicalCardId, PlayerId, ZoneKind};
     use mtgml_state::{
-        BeginningStep, CombatStep, EndingStep, EngineStatePartsV3, GameObject, PriorityState,
+        BeginningStep, CombatStep, EndingStep, EngineState, GameObject, PriorityState,
         TurnPosition, VisibilityPartition, ZoneLocation, ZonePosition,
     };
 
@@ -1066,9 +1021,8 @@ mod tests {
 
     /// The synthetic reset puts a face-down (morph-like) card on top of P2's
     /// library; the draw profile admits only ordinary face-up cards.
-    pub(super) fn make_synthetic_library_card_ordinary(state: &mut EngineStatePartsV3) {
+    pub(super) fn make_synthetic_library_card_ordinary(state: &mut EngineState) {
         state
-            .predecessor_v5
             .zones
             .objects
             .get_mut(&GameObjectId(2))
@@ -1076,9 +1030,8 @@ mod tests {
             .face_down = false;
     }
 
-    pub(super) fn add_library_cards(state: &mut EngineStatePartsV3, owner: PlayerId, count: u64) {
+    pub(super) fn add_library_cards(state: &mut EngineState, owner: PlayerId, count: u64) {
         let definition = crate::basic_land::s1_b_state_with_two_lands_fixture()
-            .predecessor_v5
             .zones
             .objects
             .values()
@@ -1086,8 +1039,8 @@ mod tests {
             .unwrap()
             .card_definition;
         for _ in 0..count {
-            let id = state.predecessor_v5.allocators.next_object_id;
-            state.predecessor_v5.allocators.next_object_id = GameObjectId(id.0 + 1);
+            let id = state.allocators.next_object_id;
+            state.allocators.next_object_id = GameObjectId(id.0 + 1);
             let base = ZoneLocation {
                 zone: ZoneKind::Library,
                 player: Some(owner),
@@ -1095,12 +1048,7 @@ mod tests {
                 visibility: VisibilityPartition::FaceDown,
                 partition: None,
             };
-            let order = state
-                .predecessor_v5
-                .zones
-                .ordered_zones
-                .entry(base.key())
-                .or_default();
+            let order = state.zones.ordered_zones.entry(base.key()).or_default();
             let location = ZoneLocation {
                 position: ZonePosition::Top {
                     offset: order.len() as u32,
@@ -1108,7 +1056,7 @@ mod tests {
                 ..base
             };
             order.push(id);
-            state.predecessor_v5.zones.objects.insert(
+            state.zones.objects.insert(
                 id,
                 GameObject {
                     id,
@@ -1120,17 +1068,17 @@ mod tests {
                     face_down: false,
                 },
             );
-            state.predecessor_v5.zones.locations.insert(id, location);
-            state.card_rules_state.faces.faces.insert(id, 0);
+            state.zones.locations.insert(id, location);
+            state.card_rules.faces.faces.insert(id, 0);
         }
     }
 
     /// Adds cards to `owner`'s hand that only the owner tracks, with the
     /// owner's knowledge record, as a real game's opening hand has.
-    pub(super) fn add_hand_cards(state: &mut EngineStatePartsV3, owner: PlayerId, count: u64) {
-        let definition = state.predecessor_v5.zones.objects[&GameObjectId(2)].card_definition;
+    pub(super) fn add_hand_cards(state: &mut EngineState, owner: PlayerId, count: u64) {
+        let definition = state.zones.objects[&GameObjectId(2)].card_definition;
         for _ in 0..count {
-            let parts = &mut state.predecessor_v5;
+            let parts = &mut *state;
             let id = parts.allocators.next_object_id;
             parts.allocators.next_object_id = GameObjectId(id.0 + 1);
             let location = ZoneLocation {
@@ -1184,7 +1132,7 @@ mod tests {
                         historical_locations: Vec::new(),
                     },
                 );
-            state.card_rules_state.faces.faces.insert(id, 0);
+            state.card_rules.faces.faces.insert(id, 0);
         }
     }
 
@@ -1194,7 +1142,7 @@ mod tests {
     fn game_with(
         admission: ExecutableProfileAdmissionV1,
         library: u64,
-    ) -> (ExecutableProfileAdmissionV1, EngineStatePartsV3) {
+    ) -> (ExecutableProfileAdmissionV1, EngineState) {
         game_with_hands(admission, library, 0, 0)
     }
 
@@ -1204,32 +1152,30 @@ mod tests {
         library: u64,
         p1_extra: u64,
         p2_extra: u64,
-    ) -> (ExecutableProfileAdmissionV1, EngineStatePartsV3) {
+    ) -> (ExecutableProfileAdmissionV1, EngineState) {
         let v2 = crate::basic_land::s1_b_state_with_two_lands_fixture();
-        let mut state =
-            EngineStatePartsV3::new(v2.predecessor_v5, Default::default(), v2.card_rules_state)
-                .unwrap();
+        let mut state = v2;
         make_synthetic_library_card_ordinary(&mut state);
         add_library_cards(&mut state, P1, library);
         add_library_cards(&mut state, P2, library);
         add_hand_cards(&mut state, P1, p1_extra);
         add_hand_cards(&mut state, P2, p2_extra);
-        crate::install_basic_land_request_v4(&admission, &mut state, P1, &EpisodeStatus::Running)
+        crate::install_basic_land_request(&admission, &mut state, P1, &EpisodeStatus::Running)
             .unwrap();
         (admission, state)
     }
 
-    fn game(library: u64) -> (ExecutableProfileAdmissionV1, EngineStatePartsV3) {
+    fn game(library: u64) -> (ExecutableProfileAdmissionV1, EngineState) {
         game_with(crate::basic_land::basic_land_admission_fixture(), library)
     }
 
-    pub(super) fn pending(state: &EngineStatePartsV3) -> &AuthoritativeDecisionRequestV4 {
-        state.execution_v4.pending_decision.as_ref().unwrap()
+    pub(super) fn pending(state: &EngineState) -> &AuthoritativeDecisionRequest {
+        state.execution.pending_decision.as_ref().unwrap()
     }
 
     fn candidate(
-        request: &AuthoritativeDecisionRequestV4,
-        pick: impl Fn(&EngineCandidateBindingV4) -> bool,
+        request: &AuthoritativeDecisionRequest,
+        pick: impl Fn(&EngineCandidateBinding) -> bool,
     ) -> Option<mtgml_model::CandidateIdV1> {
         request
             .candidates
@@ -1240,9 +1186,9 @@ mod tests {
 
     pub(super) fn submit(
         admission: &ExecutableProfileAdmissionV1,
-        state: &EngineStatePartsV3,
+        state: &EngineState,
         answer: DecisionAnswerV2,
-    ) -> Result<crate::BasicLandTransitionProductV4, crate::BasicLandTransitionError> {
+    ) -> Result<crate::BasicLandTransitionProduct, crate::BasicLandTransitionError> {
         let request = pending(state);
         let response = DecisionResponseV3 {
             schema_version: DECISION_RESPONSE_V3_SCHEMA.to_owned(),
@@ -1250,7 +1196,7 @@ mod tests {
             view_sequence: request.view_sequence,
             answer,
         };
-        execute_magic_response_v4(
+        execute_magic_response(
             admission,
             state,
             request.actor,
@@ -1261,15 +1207,12 @@ mod tests {
 
     /// Checks a product is a complete, valid V3 step and returns its state.
     pub(super) fn apply(
-        before: &EngineStatePartsV3,
-        product: &crate::BasicLandTransitionProductV4,
-    ) -> EngineStatePartsV3 {
+        before: &EngineState,
+        product: &crate::BasicLandTransitionProduct,
+    ) -> EngineState {
         assert!(product.accepted);
-        assert_eq!(
-            product.next_state.predecessor_v5.revision.0,
-            before.predecessor_v5.revision.0 + 1
-        );
-        crate::events_v3::validate_events_for_built_delta_v3(
+        assert_eq!(product.next_state.revision.0, before.revision.0 + 1);
+        crate::events::validate_events_for_built_delta_v3(
             before,
             &product.next_state,
             &product.events,
@@ -1281,13 +1224,13 @@ mod tests {
             product.next_state
         );
         assert_eq!(
-            product.next_state.execution_v4.pending_decision,
+            product.next_state.execution.pending_decision,
             product.next_decision
         );
         product.next_state.clone()
     }
 
-    pub(super) fn pass_answer(request: &AuthoritativeDecisionRequestV4) -> DecisionAnswerV2 {
+    pub(super) fn pass_answer(request: &AuthoritativeDecisionRequest) -> DecisionAnswerV2 {
         if request.purpose == DecisionPurposeV4::AttackerDeclaration {
             DecisionAnswerV2::SelectMany {
                 candidate_ids: Vec::new(),
@@ -1299,7 +1242,7 @@ mod tests {
         } else {
             DecisionAnswerV2::SelectOne {
                 candidate_id: candidate(request, |binding| {
-                    matches!(binding, EngineCandidateBindingV4::PassPriority)
+                    matches!(binding, EngineCandidateBinding::PassPriority)
                 })
                 .unwrap(),
             }
@@ -1308,17 +1251,17 @@ mod tests {
 
     pub(super) fn pass(
         admission: &ExecutableProfileAdmissionV1,
-        state: &EngineStatePartsV3,
-    ) -> (EngineStatePartsV3, crate::BasicLandTransitionProductV4) {
+        state: &EngineState,
+    ) -> (EngineState, crate::BasicLandTransitionProduct) {
         let product = submit(admission, state, pass_answer(pending(state))).unwrap();
         (apply(state, &product), product)
     }
 
     fn take_action(
         admission: &ExecutableProfileAdmissionV1,
-        state: &EngineStatePartsV3,
-        pick: impl Fn(&EngineCandidateBindingV4) -> bool,
-    ) -> EngineStatePartsV3 {
+        state: &EngineState,
+        pick: impl Fn(&EngineCandidateBinding) -> bool,
+    ) -> EngineState {
         let id = candidate(pending(state), pick).unwrap();
         let product = submit(
             admission,
@@ -1331,28 +1274,28 @@ mod tests {
 
     fn play_first_land(
         admission: &ExecutableProfileAdmissionV1,
-        state: &EngineStatePartsV3,
-    ) -> EngineStatePartsV3 {
+        state: &EngineState,
+    ) -> EngineState {
         take_action(admission, state, |binding| {
-            matches!(binding, EngineCandidateBindingV4::PlayLand { .. })
+            matches!(binding, EngineCandidateBinding::PlayLand { .. })
         })
     }
 
     fn tap_first_mana_source(
         admission: &ExecutableProfileAdmissionV1,
-        state: &EngineStatePartsV3,
-    ) -> EngineStatePartsV3 {
+        state: &EngineState,
+    ) -> EngineState {
         take_action(admission, state, |binding| {
-            matches!(binding, EngineCandidateBindingV4::ActivateAbility { .. })
+            matches!(binding, EngineCandidateBinding::ActivateAbility { .. })
         })
     }
 
     /// Passes (and declares no attackers) until `until` holds.
     pub(super) fn pass_until(
         admission: &ExecutableProfileAdmissionV1,
-        mut state: EngineStatePartsV3,
-        until: impl Fn(&EngineStatePartsV3) -> bool,
-    ) -> EngineStatePartsV3 {
+        mut state: EngineState,
+        until: impl Fn(&EngineState) -> bool,
+    ) -> EngineState {
         for _ in 0..200 {
             if until(&state) {
                 return state;
@@ -1362,16 +1305,16 @@ mod tests {
         panic!("condition not reached within 200 responses");
     }
 
-    pub(super) fn at(position: TurnPosition, turn: u64) -> impl Fn(&EngineStatePartsV3) -> bool {
+    pub(super) fn at(position: TurnPosition, turn: u64) -> impl Fn(&EngineState) -> bool {
         move |state| {
-            state.predecessor_v5.core.position == position
-                && state.predecessor_v5.core.turn_number == turn
+            state.core.position == position
+                && state.core.turn_number == turn
                 && state
-                    .execution_v4
+                    .execution
                     .pending_decision
                     .as_ref()
                     .is_some_and(|request| {
-                        request.actor == state.predecessor_v5.core.active_player
+                        request.actor == state.core.active_player
                             && request.purpose == DecisionPurposeV4::PriorityAction
                     })
         }
@@ -1390,9 +1333,8 @@ mod tests {
         step: EndingStep::EndStep,
     };
 
-    pub(super) fn zone_count(state: &EngineStatePartsV3, owner: PlayerId, zone: ZoneKind) -> usize {
+    pub(super) fn zone_count(state: &EngineState, owner: PlayerId, zone: ZoneKind) -> usize {
         state
-            .predecessor_v5
             .zones
             .locations
             .values()
@@ -1400,24 +1342,22 @@ mod tests {
             .count()
     }
 
-    fn battlefield_tapped(state: &EngineStatePartsV3, controller: PlayerId) -> Vec<bool> {
+    fn battlefield_tapped(state: &EngineState, controller: PlayerId) -> Vec<bool> {
         state
-            .predecessor_v5
             .zones
             .objects
             .values()
             .filter(|object| {
                 object.controller == controller
-                    && state.predecessor_v5.zones.locations[&object.id].zone
-                        == ZoneKind::Battlefield
+                    && state.zones.locations[&object.id].zone == ZoneKind::Battlefield
             })
             .map(|object| object.tapped)
             .collect()
     }
 
-    fn mana_source(state: &EngineStatePartsV3) -> GameObjectId {
+    fn mana_source(state: &EngineState) -> GameObjectId {
         state
-            .card_rules_state
+            .card_rules
             .abilities
             .by_instance
             .values()
@@ -1426,9 +1366,9 @@ mod tests {
             .source
     }
 
-    fn has_play_land(state: &EngineStatePartsV3) -> bool {
+    fn has_play_land(state: &EngineState) -> bool {
         candidate(pending(state), |binding| {
-            matches!(binding, EngineCandidateBindingV4::PlayLand { .. })
+            matches!(binding, EngineCandidateBinding::PlayLand { .. })
         })
         .is_some()
     }
@@ -1438,10 +1378,7 @@ mod tests {
         let (admission, state) = game(3);
         let after = pass(&admission, &state).0;
 
-        assert_eq!(
-            after.predecessor_v5.core.position,
-            TurnPosition::PrecombatMain
-        );
+        assert_eq!(after.core.position, TurnPosition::PrecombatMain);
         let request = pending(&after);
         assert_eq!(request.actor, P2);
         assert_eq!(request.purpose, DecisionPurposeV4::PriorityAction);
@@ -1452,7 +1389,7 @@ mod tests {
     fn built_delta_check_rejects_another_after_state() {
         let (admission, state) = game(3);
         let product = submit(&admission, &state, pass_answer(pending(&state))).unwrap();
-        crate::events_v3::validate_events_for_built_delta_v3(
+        crate::events::validate_events_for_built_delta_v3(
             &state,
             &product.next_state,
             &product.events,
@@ -1460,8 +1397,8 @@ mod tests {
         )
         .unwrap();
         let mut other = product.next_state.clone();
-        other.predecessor_v5.core.turn_number += 1;
-        assert!(crate::events_v3::validate_events_for_built_delta_v3(
+        other.core.turn_number += 1;
+        assert!(crate::events::validate_events_for_built_delta_v3(
             &state,
             &other,
             &product.events,
@@ -1476,7 +1413,7 @@ mod tests {
         let state = pass(&admission, &state).0;
         let after = pass(&admission, &state).0;
 
-        assert_eq!(after.predecessor_v5.core.position, BEGIN_COMBAT);
+        assert_eq!(after.core.position, BEGIN_COMBAT);
         assert_eq!(pending(&after).actor, P1);
         assert_eq!(pending(&after).purpose, DecisionPurposeV4::PriorityAction);
     }
@@ -1485,15 +1422,15 @@ mod tests {
     fn mana_pools_empty_when_the_step_changes() {
         let (admission, state) = game(3);
         let state = tap_first_mana_source(&admission, &state);
-        assert_ne!(state.card_rules_state.mana.pools[&P1], Default::default());
+        assert_ne!(state.card_rules.mana.pools[&P1], Default::default());
         let state = pass(&admission, &state).0;
         let (after, product) = pass(&admission, &state);
 
-        assert_eq!(after.predecessor_v5.core.position, BEGIN_COMBAT);
-        assert_eq!(after.card_rules_state.mana.pools[&P1], Default::default());
+        assert_eq!(after.core.position, BEGIN_COMBAT);
+        assert_eq!(after.card_rules.mana.pools[&P1], Default::default());
         assert!(product.events.iter().any(|event| matches!(
             event.event,
-            crate::AuthoritativeRuleEventKindV3::ManaPoolChanged {
+            crate::AuthoritativeRuleEventKind::ManaPoolChanged {
                 player: P1,
                 cause: mtgml_state::ManaPoolChangeCauseV1::Emptied,
                 ..
@@ -1515,20 +1452,17 @@ mod tests {
         assert_eq!(pending(&state).actor, P1);
 
         let state = tap_first_mana_source(&admission, &state);
-        assert_eq!(state.predecessor_v5.core.priority, held(P1));
+        assert_eq!(state.core.priority, held(P1));
         let state = pass(&admission, &state).0;
-        assert_eq!(
-            state.predecessor_v5.core.position,
-            TurnPosition::PrecombatMain
-        );
+        assert_eq!(state.core.position, TurnPosition::PrecombatMain);
         assert_eq!(pending(&state).actor, P2);
 
         let state = play_first_land(&admission, &state);
-        assert_eq!(state.predecessor_v5.core.priority, held(P2));
+        assert_eq!(state.core.priority, held(P2));
         let state = pass(&admission, &state).0;
         assert_eq!(pending(&state).actor, P1);
         let after = pass(&admission, &state).0;
-        assert_eq!(after.predecessor_v5.core.position, BEGIN_COMBAT);
+        assert_eq!(after.core.position, BEGIN_COMBAT);
         assert_eq!(pending(&after).actor, P2);
     }
 
@@ -1557,7 +1491,7 @@ mod tests {
         let (admission, state) = game(3);
         let state = pass_until(&admission, state, |state| {
             state
-                .execution_v4
+                .execution
                 .pending_decision
                 .as_ref()
                 .is_some_and(|request| request.purpose == DecisionPurposeV4::AttackerDeclaration)
@@ -1566,12 +1500,11 @@ mod tests {
         // Priority in declare attackers with an empty combat, then
         // end of combat (blockers and damage skipped), then postcombat main.
         assert!(after
-            .predecessor_v5
             .combat
             .as_ref()
             .is_some_and(|combat| combat.attackers.is_empty()));
         assert_eq!(
-            after.predecessor_v5.core.priority,
+            after.core.priority,
             PriorityState::HeldBy {
                 player: P1,
                 consecutive_passes: 0
@@ -1580,18 +1513,15 @@ mod tests {
         let state = pass(&admission, &after).0;
         let end_of_combat = pass(&admission, &state).0;
         assert_eq!(
-            end_of_combat.predecessor_v5.core.position,
+            end_of_combat.core.position,
             TurnPosition::Combat {
                 step: CombatStep::EndOfCombat
             }
         );
         let state = pass(&admission, &end_of_combat).0;
         let postcombat = pass(&admission, &state).0;
-        assert_eq!(
-            postcombat.predecessor_v5.core.position,
-            TurnPosition::PostcombatMain
-        );
-        assert!(postcombat.predecessor_v5.combat.is_none());
+        assert_eq!(postcombat.core.position, TurnPosition::PostcombatMain);
+        assert!(postcombat.combat.is_none());
     }
 
     #[test]
@@ -1603,7 +1533,7 @@ mod tests {
         let state = pass(&admission, &state).0;
         let after = pass(&admission, &state).0;
 
-        let core = &after.predecessor_v5.core;
+        let core = &after.core;
         assert_eq!(core.turn_number, 2);
         assert_eq!(core.active_player, P2);
         assert_eq!(core.position, UPKEEP);
@@ -1616,10 +1546,10 @@ mod tests {
         );
         assert_eq!(pending(&after).actor, P2);
         assert!(
-            after.predecessor_v5.zones.objects[&mountain].tapped,
+            after.zones.objects[&mountain].tapped,
             "only the active player's permanents untap"
         );
-        assert_eq!(after.card_rules_state.turn_history.turn_number, 2);
+        assert_eq!(after.card_rules.turn_history.turn_number, 2);
     }
 
     #[test]
@@ -1631,7 +1561,7 @@ mod tests {
         let state = pass(&admission, &state).0;
         let after = pass(&admission, &state).0;
 
-        assert_eq!(after.predecessor_v5.core.position, DRAW);
+        assert_eq!(after.core.position, DRAW);
         assert_eq!(zone_count(&after, P2, ZoneKind::Hand), hand_before + 1);
         assert_eq!(
             zone_count(&after, P2, ZoneKind::Library),
@@ -1650,7 +1580,7 @@ mod tests {
 
         assert!(has_play_land(&state));
         assert!(battlefield_tapped(&state, P1).iter().all(|tapped| !tapped));
-        assert_eq!(state.card_rules_state.turn_history.turn_number, 3);
+        assert_eq!(state.card_rules.turn_history.turn_number, 3);
     }
 
     #[test]
@@ -1680,47 +1610,39 @@ mod tests {
                 ],
             }
         );
-        let core = &after.predecessor_v5.core;
+        let core = &after.core;
         assert!(core.players[&P1].has_lost && !core.players[&P2].has_lost);
         assert_eq!(core.position, DRAW);
         assert_eq!(core.priority, PriorityState::None);
         assert_eq!(product.next_decision, None);
         assert!(product.events.iter().any(|event| matches!(
             &event.event,
-            crate::AuthoritativeRuleEventKindV3::Existing { event }
-                if **event == AuthoritativeRuleEventKind::StateBasedActionsApplied {
-                    actions: vec![mtgml_state::SbaSelectedActionV1::PlayerLoses { player: P1 }],
-                }
+            event if *event == AuthoritativeRuleEventKind::StateBasedActionsApplied {
+                actions: vec![mtgml_state::SbaSelectedActionV1::PlayerLoses { player: P1 }],
+            }
         )));
         assert_eq!(
             zone_count(&after, P1, ZoneKind::Hand),
             zone_count(&state, P1, ZoneKind::Hand)
         );
-        validate_magic_pending_request_v4(&admission, &after, &product.status).unwrap();
+        validate_magic_pending_request(&admission, &after, &product.status).unwrap();
     }
 
     #[test]
     fn unsupported_state_fails_closed() {
         let (admission, mut state) = game(3);
         let land = *state
-            .card_rules_state
+            .card_rules
             .abilities
             .by_instance
             .values()
             .next()
             .map(|authority| &authority.source)
             .unwrap();
-        state.predecessor_v5.foundation_sources.insert(
+        // A counter is state the land-only slice cannot evaluate.
+        state.card_rules.counters.counters.insert(
             land,
-            mtgml_state::FoundationCreatureSource {
-                source_kind: mtgml_state::FoundationSourceKind::Creature,
-                base_characteristics: mtgml_state::BaseCharacteristics::Simple {
-                    power: 1,
-                    toughness: 1,
-                },
-                marked_damage: 0,
-                control_history: mtgml_state::ControlHistory::BeforeTurnStart { turn_number: 1 },
-            },
+            std::collections::BTreeMap::from([(mtgml_state::CounterKindV1::PlusOnePlusOne, 1)]),
         );
 
         assert_eq!(
@@ -1735,13 +1657,13 @@ mod tests {
         let state = play_first_land(&admission, &state);
         // `pass` validates every product's delta, events and replacement.
         let state = pass_until(&admission, state, at(UPKEEP, 3));
-        assert_eq!(state.predecessor_v5.core.active_player, P1);
+        assert_eq!(state.core.active_player, P1);
     }
 
     fn discard_request(
         admission: &ExecutableProfileAdmissionV1,
-        state: EngineStatePartsV3,
-    ) -> EngineStatePartsV3 {
+        state: EngineState,
+    ) -> EngineState {
         let state = pass_until(admission, state, at(END_STEP, 1));
         let state = pass(admission, &state).0;
         pass(admission, &state).0
@@ -1749,9 +1671,9 @@ mod tests {
 
     fn discard(
         admission: &ExecutableProfileAdmissionV1,
-        state: &EngineStatePartsV3,
+        state: &EngineState,
         candidate_ids: Vec<mtgml_model::CandidateIdV1>,
-    ) -> Result<crate::BasicLandTransitionProductV4, crate::BasicLandTransitionError> {
+    ) -> Result<crate::BasicLandTransitionProduct, crate::BasicLandTransitionError> {
         submit(
             admission,
             state,
@@ -1759,7 +1681,7 @@ mod tests {
         )
     }
 
-    fn last_candidate(state: &EngineStatePartsV3) -> mtgml_model::CandidateIdV1 {
+    fn last_candidate(state: &EngineState) -> mtgml_model::CandidateIdV1 {
         pending(state).candidates.last().unwrap().candidate_id
     }
 
@@ -1782,12 +1704,12 @@ mod tests {
         assert_eq!(request.candidates.len(), 8);
         assert_eq!(request.actor, P1);
         assert_eq!(
-            state.predecessor_v5.core.position,
+            state.core.position,
             TurnPosition::Ending {
                 step: EndingStep::Cleanup
             }
         );
-        assert_eq!(state.predecessor_v5.core.turn_number, 1);
+        assert_eq!(state.core.turn_number, 1);
     }
 
     #[test]
@@ -1804,7 +1726,7 @@ mod tests {
                 zone_count(&state, P1, ZoneKind::Hand) == 9
                     || zone_count(&state, P2, ZoneKind::Hand) == 8
             );
-            assert!(validate_magic_pending_request_v4(&admission, &state, &status).is_err());
+            assert!(validate_magic_pending_request(&admission, &state, &status).is_err());
             assert_eq!(
                 submit(&admission, &state, pass_answer(pending(&state))),
                 Err(crate::BasicLandTransitionError::TurnProgressUnsupported)
@@ -1814,7 +1736,7 @@ mod tests {
         let (_, state) = game_with_hands(admission.clone(), 3, 6, 7);
         assert_eq!(zone_count(&state, P1, ZoneKind::Hand), 8);
         assert_eq!(zone_count(&state, P2, ZoneKind::Hand), 7);
-        validate_magic_pending_request_v4(&admission, &state, &status).unwrap();
+        validate_magic_pending_request(&admission, &state, &status).unwrap();
     }
 
     #[test]
@@ -1833,7 +1755,7 @@ mod tests {
             (discard, DecisionPurposeV4::HandSizeDiscard),
         ] {
             assert_eq!(pending(&state).purpose, purpose);
-            validate_magic_pending_request_v4(&admission, &state, &status).unwrap();
+            validate_magic_pending_request(&admission, &state, &status).unwrap();
         }
     }
 
@@ -1846,19 +1768,19 @@ mod tests {
             .candidates
             .last()
             .map(|candidate| match candidate.trusted_binding {
-                EngineCandidateBindingV4::SelectObject { object } => object,
+                EngineCandidateBinding::SelectObject { object } => object,
                 _ => unreachable!(),
             })
             .unwrap();
         let product = discard(&admission, &state, vec![last_candidate(&state)]).unwrap();
         let after = apply(&state, &product);
 
-        assert!(!after.predecessor_v5.zones.objects.contains_key(&chosen));
+        assert!(!after.zones.objects.contains_key(&chosen));
         assert_eq!(zone_count(&after, P1, ZoneKind::Graveyard), 1);
         assert_eq!(zone_count(&after, P1, ZoneKind::Hand), 7);
-        assert_eq!(after.predecessor_v5.core.turn_number, 2);
-        assert_eq!(after.predecessor_v5.core.active_player, P2);
-        assert_eq!(after.predecessor_v5.core.position, UPKEEP);
+        assert_eq!(after.core.turn_number, 2);
+        assert_eq!(after.core.active_player, P2);
+        assert_eq!(after.core.position, UPKEEP);
         assert_eq!(pending(&after).actor, P2);
     }
 
@@ -1894,6 +1816,6 @@ mod tests {
         let after = pass(&admission, &state).0;
 
         assert_eq!(zone_count(&after, P1, ZoneKind::Graveyard), 2);
-        assert_eq!(after.predecessor_v5.core.turn_number, 4);
+        assert_eq!(after.core.turn_number, 4);
     }
 }

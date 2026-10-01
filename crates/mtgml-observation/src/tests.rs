@@ -3,14 +3,14 @@
 
 use super::*;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use mtgml_model::{ObservationDigest, PlayerId, StateRevision, VisibleSequence};
+use mtgml_model::{ObservationDigest, PlayerId, VisibleSequence};
 
 fn observation(payload: &[u8], digest_payload: &[u8]) -> ObservationEnvelope {
     ObservationEnvelope {
-        schema_version: OBSERVATION_SCHEMA.into(),
+        schema_version: OBSERVATION_SCHEMA_V2.into(),
         perspective: PlayerId(1),
-        state_revision: StateRevision(0),
-        payload_codec: "synthetic-m2-observation.v1".into(),
+        view_sequence: VisibleSequence(0),
+        payload_codec: MAGIC_SHARED_EXECUTION_OBSERVATION_SCHEMA_V1.into(),
         payload_base64: STANDARD.encode(payload),
         digest: ObservationDigest::from_canonical_bytes(digest_payload),
     }
@@ -56,10 +56,9 @@ fn basic_land_observation_v1_rejects_duplicated_candidate_authority() {
 #[test]
 fn information_state_input_excludes_trusted_fields() {
     let observation = observation(b"{}", b"{}");
-    let input = InformationStateDigestInputV2 {
-        schema_version: "information-state-digest-input.v2".into(),
+    let input = InformationStateDigestInput {
+        schema_version: INFORMATION_STATE_DIGEST_INPUT_SCHEMA_V3.into(),
         perspective: PlayerId(1),
-        state_revision: StateRevision(0),
         current_observation: observation,
         next_visible_sequence: VisibleSequence(0),
         retained_knowledge: vec![],
@@ -80,7 +79,8 @@ fn information_state_input_excludes_trusted_fields() {
     }
     let object = serde_json::to_value(&input).unwrap();
     assert!(object.get("digest").is_none());
-    assert_eq!(input.schema_version, "information-state-digest-input.v2");
+    assert!(object.get("state_revision").is_none());
+    assert_eq!(input.schema_version, "information-state-digest-input.v3");
 }
 
 #[test]
@@ -89,6 +89,12 @@ fn observation_digest_binding_accepts_matching_payload_and_rejects_mismatch() {
     assert_eq!(
         observation(b"{}", br#"{"x":1}"#).validate(),
         Err(ObservationValidationError::DigestMismatch)
+    );
+    let mut invalid_base64 = observation(b"{}", b"{}");
+    invalid_base64.payload_base64 = "***".into();
+    assert_eq!(
+        invalid_base64.validate(),
+        Err(ObservationValidationError::Base64)
     );
 }
 

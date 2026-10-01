@@ -1,6 +1,4 @@
-use mtgml_model::{
-    AbilityInstanceId, GameObjectId, PhysicalCardId, PlayerId, StackObjectId, ZoneKind,
-};
+use mtgml_model::{GameObjectId, PhysicalCardId, PlayerId, StackObjectId, ZoneKind};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -103,71 +101,12 @@ pub struct ZoneTransition {
 pub struct StackRecord {
     pub id: StackObjectId,
     pub controller: PlayerId,
-    pub source_object: Option<GameObjectId>,
-    pub source_ability: Option<AbilityInstanceId>,
-    /// Present only in the detached G0 successor state. Historical V5/V6
-    /// writers reject records with this payload so it cannot escape digest
-    /// identity `zones_v1` without the successor activation boundary.
+    /// The typed stack item. Every valid state has one; `None` only exists
+    /// transiently and is rejected by validation.
     pub payload: Option<crate::StackItemPayload>,
 }
 
-impl Serialize for StackRecord {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        use serde::ser::SerializeStruct;
-
-        if self.payload.is_some() {
-            return Err(serde::ser::Error::custom(
-                "typed stack payload requires the zones_v2 canonical writer",
-            ));
-        }
-        let field_count = 2
-            + usize::from(self.source_object.is_some())
-            + usize::from(self.source_ability.is_some());
-        let mut record = serializer.serialize_struct("StackRecord", field_count)?;
-        record.serialize_field("id", &self.id)?;
-        record.serialize_field("controller", &self.controller)?;
-        if let Some(source_object) = self.source_object {
-            record.serialize_field("source_object", &source_object)?;
-        }
-        if let Some(source_ability) = self.source_ability {
-            record.serialize_field("source_ability", &source_ability)?;
-        }
-        record.end()
-    }
-}
-
-impl<'de> Deserialize<'de> for StackRecord {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        #[serde(deny_unknown_fields)]
-        struct LegacyStackRecord {
-            id: StackObjectId,
-            controller: PlayerId,
-            #[serde(default)]
-            source_object: Option<GameObjectId>,
-            #[serde(default)]
-            source_ability: Option<AbilityInstanceId>,
-        }
-
-        let legacy = LegacyStackRecord::deserialize(deserializer)?;
-        Ok(Self {
-            id: legacy.id,
-            controller: legacy.controller,
-            source_object: legacy.source_object,
-            source_ability: legacy.source_ability,
-            payload: None,
-        })
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ZoneState {
     pub objects: BTreeMap<GameObjectId, GameObject>,
     pub locations: BTreeMap<GameObjectId, ZoneLocation>,

@@ -100,11 +100,7 @@ pub(super) fn validate_zone_structure(state: &EngineState) -> Result<(), EngineS
         return Err(EngineStateViolation::StackMismatch);
     }
     if state.zones.stack_records.iter().any(|(id, record)| {
-        id != &record.id
-            || !state.core.players.contains_key(&record.controller)
-            || record
-                .source_object
-                .is_some_and(|object| !state.zones.objects.contains_key(&object))
+        id != &record.id || !state.core.players.contains_key(&record.controller)
     }) {
         return Err(EngineStateViolation::StackMismatch);
     }

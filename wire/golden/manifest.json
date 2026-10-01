@@ -13,14 +13,6 @@
       "path": "episode-status-truncated-external-stop.v1.json"
     },
     {
-      "contract": "information-state-envelope.v2",
-      "path": "information-state-envelope.v2.json"
-    },
-    {
-      "contract": "observation-envelope.v1",
-      "path": "observation-envelope.v1.json"
-    },
-    {
       "contract": "observation-envelope.v2",
       "path": "observation-envelope.v2.json"
     },

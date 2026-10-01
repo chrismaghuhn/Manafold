@@ -177,7 +177,7 @@ pub struct StackResolutionContinuation {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ContinuationPayloadV3 {
+pub enum ContinuationPayload {
     SyntheticAssembly {
         actor: PlayerId,
         stage: AssemblyStageV2,
@@ -199,10 +199,10 @@ pub enum ContinuationPayloadV3 {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ContinuationRecordV3 {
+pub struct ContinuationRecord {
     pub id: ContinuationId,
     pub created_at_revision: mtgml_model::StateRevision,
-    pub payload: ContinuationPayloadV3,
+    pub payload: ContinuationPayload,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

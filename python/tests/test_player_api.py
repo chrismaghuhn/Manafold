@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import inspect
-import json
 import sys
 import unittest
 from pathlib import Path
@@ -13,11 +12,14 @@ sys.path.insert(0, str(ROOT / "python" / "src"))
 from mtgml.decision import DecisionResponseV3
 from mtgml.decision_v4 import PlayerDecisionRequestV4
 from mtgml.observation import (
-    ObservationEnvelopeV2,
-    PlayerInformationStateV2,
-    PlayerInformationStateV3,
+    MAGIC_SHARED_EXECUTION_OBSERVATION_SCHEMA_V1,
+    OBSERVATION_SCHEMA_V2,
+    InformationStateDigestInput,
+    ObservationEnvelope,
+    PlayerInformationState,
     PlayerKnownObjectV1,
     PlayerStepV4,
+    compute_information_state_digest,
 )
 from mtgml.player_client import PlayerClient
 
@@ -38,9 +40,9 @@ class PlayerApiTests(unittest.TestCase):
             get_type_hints(PlayerClient.visible_decision)["return"],
             PlayerDecisionRequestV4 | None,
         )
-        self.assertIs(get_type_hints(PlayerClient.observation)["return"], ObservationEnvelopeV2)
+        self.assertIs(get_type_hints(PlayerClient.observation)["return"], ObservationEnvelope)
         self.assertIs(
-            get_type_hints(PlayerClient.information_state)["return"], PlayerInformationStateV3
+            get_type_hints(PlayerClient.information_state)["return"], PlayerInformationState
         )
         self.assertEqual(get_type_hints(PlayerClient.submit)["response"], DecisionResponseV3)
 
@@ -93,19 +95,111 @@ class PlayerStepSubmissionContractTests(unittest.TestCase):
         )
 
 
+OBSERVATION_DIGEST_OF_EMPTY_OBJECT = (
+    "90845308617867fd703c6c4f37ede7908da24420053821f89190ad36236dfca3"
+)
+
+# Active and retired records carrying all four observed causes.
+RICH_RETAINED_KNOWLEDGE: list[dict] = [
+    {
+        "acquisition": {
+            "cause": "private_look",
+            "channel": "private",
+            "kind": "observed",
+            "sequence": "1",
+        },
+        "current_known_location_fact": {
+            "location": {"player": "2", "zone": "exile"},
+            "provenance": {
+                "cause": "explicit_reveal",
+                "channel": "public",
+                "kind": "observed",
+                "sequence": "4",
+            },
+        },
+        "historical_locations": [
+            {
+                "location": {"player": None, "zone": "hand"},
+                "provenance": {
+                    "cause": "own_private_identity",
+                    "channel": "private",
+                    "kind": "observed",
+                    "sequence": "3",
+                },
+            }
+        ],
+        "kind": "active",
+        "known_definition": "42",
+        "opaque_object_id": "3",
+    },
+    {
+        "acquisition": {
+            "cause": "public_event",
+            "channel": "public",
+            "kind": "observed",
+            "sequence": "2",
+        },
+        "historical_locations": [],
+        "invalidation": {
+            "provenance": {
+                "cause": "explicit_reveal",
+                "channel": "public",
+                "kind": "observed",
+                "sequence": "4",
+            },
+            "reason": "shuffle",
+        },
+        "kind": "retired",
+        "known_definition": None,
+        "last_known_location_fact": {
+            "location": {"player": None, "zone": "battlefield"},
+            "provenance": {"kind": "initial_configuration"},
+        },
+        "opaque_object_id": "7",
+    },
+]
+
+
+def _information_v3(next_visible_sequence: int, records: list[dict]) -> PlayerInformationState:
+    """A V3 information state with a correct digest. Computing the digest
+    validates the retained knowledge, so invalid knowledge raises here."""
+    observation = ObservationEnvelope(
+        OBSERVATION_SCHEMA_V2,
+        1,
+        next_visible_sequence,
+        MAGIC_SHARED_EXECUTION_OBSERVATION_SCHEMA_V1,
+        "e30=",
+        OBSERVATION_DIGEST_OF_EMPTY_OBJECT,
+    )
+    retained = tuple(PlayerKnownObjectV1.from_wire(record) for record in records)
+    input_value = InformationStateDigestInput(
+        "information-state-digest-input.v3", 1, observation, next_visible_sequence, retained
+    )
+    _, digest = compute_information_state_digest(input_value)
+    return PlayerInformationState(
+        "information-state-envelope.v3", 1, observation, next_visible_sequence, retained, digest
+    )
+
+
+def _active(acquisition: dict) -> dict:
+    return {
+        "kind": "active",
+        "opaque_object_id": "1",
+        "known_definition": None,
+        "current_known_location_fact": None,
+        "historical_locations": [],
+        "acquisition": acquisition,
+    }
+
+
+def _observed(channel: str, sequence: int, cause: str) -> dict:
+    return {"kind": "observed", "channel": channel, "sequence": str(sequence), "cause": cause}
+
+
 class InformationProvenanceParityTests(unittest.TestCase):
-    GOLDEN = ROOT / "wire" / "golden" / "information-state-envelope.v2.json"
-
-    def _decode(self) -> PlayerInformationStateV2:
-        from mtgml.wire import decode_canonical
-
-        payload = self.GOLDEN.read_bytes()
-        decoded = decode_canonical("information-state-envelope.v2", payload)
-        assert isinstance(decoded, PlayerInformationStateV2)
-        return decoded
-
     def test_all_four_observed_causes_survive_the_public_roundtrip(self) -> None:
-        information = self._decode()
+        from mtgml.canonical import canonical_json_bytes
+        from mtgml.wire import decode_canonical
 
         def causes(value: object) -> set[str]:
             found: set[str] = set()
@@ -119,57 +213,50 @@ class InformationProvenanceParityTests(unittest.TestCase):
                     found |= causes(item)
             return found
 
-        wire = json.loads(self.GOLDEN.read_text(encoding="utf-8"))
-        expected = causes(wire["retained_knowledge"])
+        expected = causes(RICH_RETAINED_KNOWLEDGE)
         self.assertEqual(
             expected,
             {"public_event", "private_look", "explicit_reveal", "own_private_identity"},
         )
-        self.assertEqual(causes(information.to_wire()), expected)
+        information = _information_v3(5, RICH_RETAINED_KNOWLEDGE)
+        decoded = decode_canonical(
+            "information-state-envelope.v3", canonical_json_bytes(information.to_wire())
+        )
+        assert isinstance(decoded, PlayerInformationState)
+        self.assertEqual(decoded, information)
+        self.assertEqual(causes(decoded.to_wire()), expected)
         self.assertEqual(
-            [record.opaque_object_id for record in information.retained_knowledge],
+            [record.opaque_object_id for record in decoded.retained_knowledge],
             [3, 7],
         )
 
     def test_future_provenance_sequence_is_rejected(self) -> None:
         from mtgml.errors import WireError
 
-        information = self._decode()
-        corrupt = PlayerInformationStateV2(
-            schema_version=information.schema_version,
-            perspective=information.perspective,
-            state_revision=information.state_revision,
-            current_observation=information.current_observation,
-            next_visible_sequence=information.next_visible_sequence,
-            retained_knowledge=information.retained_knowledge,
-            digest=information.digest,
-        )
-        active = corrupt.retained_knowledge[0]
-        fact = active.current_known_location_fact
-        assert fact is not None and fact.provenance.sequence is not None
-        forged = PlayerKnownObjectV1(
-            kind="active",
-            opaque_object_id=active.opaque_object_id,
-            known_definition=active.known_definition,
-            current_known_location_fact=fact,
-            historical_locations=active.historical_locations,
-            acquisition=active.acquisition,
-        )
-        with_self_sequence = PlayerInformationStateV2(
-            schema_version=corrupt.schema_version,
-            perspective=corrupt.perspective,
-            state_revision=corrupt.state_revision,
-            current_observation=corrupt.current_observation,
-            next_visible_sequence=fact.provenance.sequence,
-            retained_knowledge=(forged,),
-            digest=corrupt.digest,
-        )
-        with self.assertRaises(WireError):
-            with_self_sequence.validate()
+        # The current location was observed at sequence 4, so a cursor of 4
+        # makes that observation lie in the future.
+        with self.assertRaises(WireError) as caught:
+            _information_v3(4, RICH_RETAINED_KNOWLEDGE[:1])
+        self.assertEqual(caught.exception.code, "semantic.information_state")
 
+    def test_invalid_cause_channel_combination_is_rejected(self) -> None:
+        from mtgml.errors import WireError
 
-if __name__ == "__main__":
-    unittest.main()
+        with self.assertRaises(WireError) as caught:
+            _information_v3(5, [_active(_observed("public", 1, "private_look"))])
+        self.assertEqual(caught.exception.code, "semantic.information_state")
+
+    def test_invalidation_cannot_come_from_the_initial_configuration(self) -> None:
+        from mtgml.errors import WireError
+
+        retired = dict(RICH_RETAINED_KNOWLEDGE[1])
+        retired["invalidation"] = {
+            "provenance": {"kind": "initial_configuration"},
+            "reason": "shuffle",
+        }
+        with self.assertRaises(WireError) as caught:
+            _information_v3(5, [retired])
+        self.assertEqual(caught.exception.code, "semantic.information_state")
 
 
 class InitialConfigurationCursorParityTests(unittest.TestCase):
@@ -177,66 +264,16 @@ class InitialConfigurationCursorParityTests(unittest.TestCase):
     sequence and is valid even at cursor zero, while observed facts are bound
     by the cursor."""
 
-    @staticmethod
-    def _information(next_visible_sequence: int, acquisition: dict) -> PlayerInformationStateV2:
-        import sys
-
-        sys.path.insert(0, str(ROOT / "python" / "src"))
-        from mtgml.observation import InformationStateDigestInputV2, ObservationEnvelope
-        from mtgml.wire import compute_information_state_digest_v2
-
-        observation = ObservationEnvelope(
-            schema_version="observation-envelope.v1",
-            perspective=1,
-            state_revision=0,
-            payload_codec="synthetic-m2-observation.v1",
-            payload_base64="e30=",
-            digest="90845308617867fd703c6c4f37ede7908da24420053821f89190ad36236dfca3",
-        )
-        record = {
-            "kind": "active",
-            "opaque_object_id": "1",
-            "known_definition": None,
-            "current_known_location_fact": None,
-            "historical_locations": [],
-            "acquisition": acquisition,
-        }
-        input_value = InformationStateDigestInputV2.from_wire(
-            {
-                "schema_version": "information-state-digest-input.v2",
-                "perspective": "1",
-                "state_revision": "0",
-                "current_observation": observation.to_wire(),
-                "next_visible_sequence": str(next_visible_sequence),
-                "retained_knowledge": [record],
-            }
-        )
-        _, digest = compute_information_state_digest_v2(input_value)
-        return PlayerInformationStateV2(
-            schema_version="information-state-envelope.v2",
-            perspective=1,
-            state_revision=0,
-            current_observation=observation,
-            next_visible_sequence=next_visible_sequence,
-            retained_knowledge=(PlayerKnownObjectV1.from_wire(record),),
-            digest=digest,
-        )
-
     def test_initial_configuration_is_valid_at_cursor_zero(self) -> None:
-        information = self._information(0, {"kind": "initial_configuration"})
-        information.validate()
+        _information_v3(0, [_active({"kind": "initial_configuration"})]).validate()
 
     def test_observed_sequence_zero_is_invalid_at_cursor_zero(self) -> None:
         from mtgml.errors import WireError
 
-        information = self._information(
-            0,
-            {
-                "kind": "observed",
-                "channel": "public",
-                "sequence": "0",
-                "cause": "public_event",
-            },
-        )
-        with self.assertRaises(WireError):
-            information.validate()
+        with self.assertRaises(WireError) as caught:
+            _information_v3(0, [_active(_observed("public", 0, "public_event"))])
+        self.assertEqual(caught.exception.code, "semantic.information_state")
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,21 +1,13 @@
 use crate::canonical_json::encode_canonical;
 use crate::contract::WireContract;
 use crate::error::WireError;
-use mtgml_model::InformationStateDigestV3;
+use mtgml_model::InformationStateDigest;
 use mtgml_observation::{
-    InformationStateDigestInputV2, InformationStateDigestInputV3, MagicBasicLandObservationV1,
-    MagicSharedExecutionObservationV1, ObservationEnvelope, ObservationEnvelopeV2,
-    ObservedEventEnvelopeV4, PlayerInformationStateV2, PlayerInformationStateV3, PlayerStepV4,
+    InformationStateDigestInput, MagicBasicLandObservationV1, MagicSharedExecutionObservationV1,
+    ObservationEnvelope, ObservedEventEnvelopeV4, PlayerInformationState, PlayerStepV4,
 };
 
 impl WireContract for ObservationEnvelope {
-    fn validate_wire(&self) -> Result<(), WireError> {
-        self.validate()
-            .map_err(|error| WireError::new("semantic.observation", error.to_string()))
-    }
-}
-
-impl WireContract for ObservationEnvelopeV2 {
     fn validate_wire(&self) -> Result<(), WireError> {
         self.validate()
             .map_err(|error| WireError::new("semantic.observation", error.to_string()))
@@ -40,79 +32,31 @@ impl WireContract for MagicSharedExecutionObservationV1 {
     }
 }
 
-impl WireContract for InformationStateDigestInputV2 {
-    fn validate_wire(&self) -> Result<(), WireError> {
-        if self.schema_version != "information-state-digest-input.v2" {
-            return Err(WireError::new(
-                "semantic.information_state",
-                "unsupported information-state digest input schema",
-            ));
-        }
-        self.current_observation
-            .validate()
-            .map_err(|error| WireError::new("semantic.information_state", error.to_string()))?;
-        let public = PlayerInformationStateV2 {
-            schema_version: "information-state-envelope.v2".into(),
-            perspective: self.perspective,
-            state_revision: self.state_revision,
-            current_observation: self.current_observation.clone(),
-            next_visible_sequence: self.next_visible_sequence,
-            retained_knowledge: self.retained_knowledge.clone(),
-            digest: mtgml_model::InformationStateDigestV2::from_canonical_bytes(b"wire-validation"),
-        };
-        public
-            .validate()
-            .map_err(|error| WireError::new("semantic.information_state", error.to_string()))
-    }
-}
-
-impl WireContract for InformationStateDigestInputV3 {
+impl WireContract for InformationStateDigestInput {
     fn validate_wire(&self) -> Result<(), WireError> {
         self.validate()
             .map_err(|error| WireError::new("semantic.information_state", error.to_string()))
     }
 }
 
-impl WireContract for PlayerInformationStateV2 {
+impl WireContract for PlayerInformationState {
     fn validate_wire(&self) -> Result<(), WireError> {
         self.validate()
             .map_err(|error| WireError::new("semantic.information_state", error.to_string()))?;
-        verify_information_state_digest_v2(self)
+        verify_information_state_digest(self)
     }
 }
 
-impl WireContract for PlayerInformationStateV3 {
-    fn validate_wire(&self) -> Result<(), WireError> {
-        self.validate()
-            .map_err(|error| WireError::new("semantic.information_state", error.to_string()))?;
-        verify_information_state_digest_v3(self)
-    }
-}
-
-pub fn compute_information_state_digest_v3(
-    input: &InformationStateDigestInputV3,
-) -> Result<(Vec<u8>, InformationStateDigestV3), WireError> {
+pub fn compute_information_state_digest(
+    input: &InformationStateDigestInput,
+) -> Result<(Vec<u8>, InformationStateDigest), WireError> {
     let payload = encode_canonical(input)?;
-    let digest = InformationStateDigestV3::from_canonical_bytes(&payload);
+    let digest = InformationStateDigest::from_canonical_bytes(&payload);
     Ok((payload, digest))
 }
 
-fn verify_information_state_digest_v3(state: &PlayerInformationStateV3) -> Result<(), WireError> {
-    let (_, expected) = compute_information_state_digest_v3(&state.digest_input())?;
-    if expected == state.digest {
-        Ok(())
-    } else {
-        Err(WireError::new(
-            "semantic.information_state",
-            "information-state digest does not match its semantic payload",
-        ))
-    }
-}
-
-/// The persisted `InformationStateDigestV2` is the canonical identity of the
-/// player-safe semantic payload; forged digest values must never validate.
-fn verify_information_state_digest_v2(state: &PlayerInformationStateV2) -> Result<(), WireError> {
-    let (_, expected) = compute_information_state_digest_v2(&state.digest_input())?;
+fn verify_information_state_digest(state: &PlayerInformationState) -> Result<(), WireError> {
+    let (_, expected) = compute_information_state_digest(&state.digest_input())?;
     if expected == state.digest {
         Ok(())
     } else {
@@ -134,14 +78,6 @@ impl WireContract for PlayerStepV4 {
     fn validate_wire(&self) -> Result<(), WireError> {
         self.validate()
             .map_err(|error| WireError::new("semantic.player_step", error.to_string()))?;
-        verify_information_state_digest_v3(&self.information_state)
+        verify_information_state_digest(&self.information_state)
     }
-}
-
-pub fn compute_information_state_digest_v2(
-    input: &InformationStateDigestInputV2,
-) -> Result<(Vec<u8>, mtgml_model::InformationStateDigestV2), WireError> {
-    let bytes = encode_canonical(input)?;
-    let digest = mtgml_model::InformationStateDigestV2::from_canonical_bytes(&bytes);
-    Ok((bytes, digest))
 }

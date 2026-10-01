@@ -4,8 +4,7 @@ use mtgml_decision::{DecisionResponseV3, PlayerDecisionRequestV4};
 use mtgml_model::EpisodeStatus;
 use mtgml_observation::{
     MagicBasicLandObservationV1, MagicSharedExecutionObservationV1, ObservationEnvelope,
-    ObservationEnvelopeV2, ObservedEventEnvelopeV4, PlayerInformationStateV2,
-    PlayerInformationStateV3, PlayerStepV4,
+    ObservedEventEnvelopeV4, PlayerInformationState, PlayerStepV4,
 };
 use mtgml_replay::{AuthoritativeReplayV8, ReplayManifestV8, ReplayStepV8};
 use serde::Deserialize;
@@ -93,13 +92,9 @@ fn decode_named(contract: &str, bytes: &[u8]) -> Result<(), WireError> {
             decode_canonical::<PlayerDecisionRequestV4>(bytes).map(drop)
         }
         "decision-response.v3" => decode_canonical::<DecisionResponseV3>(bytes).map(drop),
-        "observation-envelope.v1" => decode_canonical::<ObservationEnvelope>(bytes).map(drop),
-        "observation-envelope.v2" => decode_canonical::<ObservationEnvelopeV2>(bytes).map(drop),
-        "information-state-envelope.v2" => {
-            decode_canonical::<PlayerInformationStateV2>(bytes).map(drop)
-        }
+        "observation-envelope.v2" => decode_canonical::<ObservationEnvelope>(bytes).map(drop),
         "information-state-envelope.v3" => {
-            decode_canonical::<PlayerInformationStateV3>(bytes).map(drop)
+            decode_canonical::<PlayerInformationState>(bytes).map(drop)
         }
         "observed-event-envelope.v4" => {
             decode_canonical::<ObservedEventEnvelopeV4>(bytes).map(drop)

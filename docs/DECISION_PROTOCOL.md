@@ -7,22 +7,23 @@ Every player-influenced choice uses one closed request/response protocol. No cal
 
 ## Authoritative and player forms
 
-`AuthoritativeDecisionRequestV2` is authoritative state. It owns:
+`AuthoritativeDecisionRequest` is authoritative state. It owns:
 
 - trusted `DecisionId`;
 - perspective-local `PlayerDecisionIdV1`;
 - actor;
-- state revision;
+- state revision and the actor's expected visible sequence;
 - visibility policy;
-- closed decision domain;
-- ordered authoritative candidate records;
-- optional trusted `ContinuationId`.
+- closed decision domain (`DecisionDomainV2`) and decision purpose (`DecisionPurposeV4`);
+- optional parent player-decision ID;
+- optional trusted `ContinuationId`;
+- ordered authoritative candidate records.
 
-Each authoritative candidate co-locates:
+Each authoritative candidate (`AuthoritativeCandidate`) co-locates:
 
 - request-local `CandidateIdV1`;
-- the exact visible intent/payload;
-- the exact trusted binding.
+- the exact visible intent (`CandidateIntent`);
+- the exact trusted binding (`EngineCandidateBinding`).
 
 The endpoint bound to the actor projects a `PlayerDecisionRequestV4`. It contains no internal `DecisionId`, `ContinuationId`, authoritative binding, allocation history, hidden context, or mandatory semantic action key. Other endpoints receive no private request.
 
@@ -93,32 +94,42 @@ There is no optional ordinal field.
 
 ## Candidate ordering and bindings
 
-Production candidate generation is authoritative Rust rules behavior. M2 freezes one exact ordering policy, `CandidateOrderingV1`. It is a semantic comparator, not Rust enum declaration order and not lexicographic JSON/text ordering.
+Production candidate generation is authoritative Rust rules behavior. `CandidateOrdering` (`crates/mtgml-decision/src/ordering.rs`) is the one exact ordering policy. It is a semantic comparator, not Rust enum declaration order and not lexicographic JSON/text ordering.
 
 The visible-intent variant rank is exactly:
 
 ```text
-0 pass_priority
-1 cast_spell
-2 activate_ability
-3 select_object
-4 select_player
-5 select_mode
-6 choose_boolean
-7 declare_number
-8 confirm
+ 0 pass_priority
+ 1 play_land
+ 2 cast_spell
+ 3 activate_ability
+ 4 select_object
+ 5 select_player
+ 6 select_mode
+ 7 choose_boolean
+ 8 declare_number
+ 9 confirm
+10 select_cost_route
+11 select_mana_source
+12 finalize_mana_production
+13 select_mana_payment
+14 select_trigger
 ```
 
 Within one variant, compare the authorized payload as follows:
 
 ```text
-pass_priority / confirm   no payload
-cast_spell / select_object  OpaqueObjectId underlying u64, numeric ascending
-activate_ability            OpaqueAbilityId underlying u64, numeric ascending
-select_player               PlayerId underlying u64, numeric ascending
-select_mode                 u32 numeric ascending
-choose_boolean              false < true
-declare_number              signed i64 numeric ascending
+pass_priority / confirm / finalize_mana_production   no payload
+play_land / cast_spell / select_object   OpaqueObjectId underlying u64, numeric ascending
+activate_ability                         OpaqueAbilityId underlying u64, numeric ascending
+select_player                            PlayerId underlying u64, numeric ascending
+select_mode                              u32 numeric ascending
+choose_boolean                           false < true
+declare_number                           signed i64 numeric ascending
+select_cost_route                        the route descriptor's ordering key
+select_mana_source                       (source, ability, produced buckets), lexicographic
+select_mana_payment                      spent buckets, lexicographic
+select_trigger                           the safe trigger descriptor's comparator
 ```
 
 The complete ordering key is the lexicographic semantic tuple `(variant_rank, payload_value)`. Implementations MUST NOT obtain this order by serializing the payload to JSON/Base64/text, by using Rust enum order, or by comparing trusted bindings. Thus `OpaqueObjectId(2) < OpaqueObjectId(10)` numerically regardless of their textual wire rendering.
@@ -131,7 +142,7 @@ assignment and public candidate validation use one checked capacity rule
 before enumeration; a count above that boundary fails with a typed
 deterministic error and cannot produce partial or wrapped IDs.
 
-M2 permits **no duplicate public ordering key**. If two generated candidate records have the same `(variant_rank, payload_value)`, generation fails closed even when trusted code believes the bindings are semantically equivalent. M2 does not collapse duplicates and never uses a trusted/hidden tiebreaker. A future equivalence/canonicalization policy requires its own explicitly versioned ordering contract.
+**No duplicate public ordering key** is permitted. If two generated candidate records have the same `(variant_rank, payload_value)`, generation fails closed even when trusted code believes the bindings are semantically equivalent. Duplicates are never collapsed and no trusted/hidden tiebreaker is used. A future equivalence/canonicalization policy changes this ordering contract in place.
 
 Ordering must not use trusted object IDs, physical IDs, hidden definitions, candidate bindings, allocator history, insertion/hash-map order, RNG state, or continuation internals.
 
@@ -140,20 +151,18 @@ Exact binding validation compares visible values and perspective mappings, not m
 The ownership boundary is explicit:
 
 ```text
-AuthoritativeDecisionRequestV2::validate()
-    = local structural request validity
+AuthoritativeDecisionRequest::project_player_request()
+    = local candidate shape plus validation of the projected
+      PlayerDecisionRequestV4 (purpose, domain, dense IDs, CandidateOrdering)
 
-validate_pending_authoritative_request()
+EngineState execution-record validation
     = authoritative exact visible-to-trusted candidate binding,
-      including scalar payload equality and perspective resolver equality
-
-project_player_request()
-    = projection of a request after that authoritative state boundary has
-      passed; it is not a second binding authority
+      including scalar payload equality and perspective resolver equality,
+      plus revision, identity, visible-cursor and continuation consistency
 ```
 
-The player projection never exposes the trusted binding and does not perform a
-second resolver check.
+The player projection never exposes the trusted binding and is not a binding
+authority.
 
 ## Validation order
 
@@ -225,9 +234,9 @@ Wire-decode failure is earlier than this semantic rejection contract.
 
 ## Current decision family
 
-The bounded current endpoint uses AuthoritativeDecisionRequestV4 /
-PlayerDecisionRequestV4, CandidateIntentV4, EngineCandidateBindingV4,
-CandidateOrderingV3, and DecisionResponseV3. It reuses DecisionDomainV2,
+The bounded current endpoint uses `AuthoritativeDecisionRequest` /
+PlayerDecisionRequestV4, `CandidateIntent`, `EngineCandidateBinding`,
+`CandidateOrdering`, and DecisionResponseV3. It reuses DecisionDomainV2,
 DecisionAnswerV2, PlayerDecisionIdV1, and CandidateIdV1 unchanged. The V4
 Basic-Land PriorityAction domain is admitted only after the verified
 `basic-land@1.0.0` RulesKernel rederives the exact pass, legal PlayLand, and

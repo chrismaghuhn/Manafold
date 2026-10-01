@@ -21,6 +21,9 @@ use mtgml_observation::PlayerStepSubmissionV1;
 
 const FIRST_SEED: u64 = 0x4D41_4E41;
 const LAST_TURN: u64 = 30;
+const SHORT_LAST_TURN: u64 = 3;
+const SHORT_FINGERPRINT: &str = "33305aa1493b7ba146215eeb35b209862b329f68b6f051fbdd13eb9547b5f03c";
+const LONG_FINGERPRINT: &str = "f981625ec8757c0b2e653ab637aa197ad08eb84bd0cacfd30e972fa55dd68642";
 const MAX_DECISIONS: usize = 5_000;
 
 fn game_count() -> u64 {
@@ -67,7 +70,7 @@ fn random_answer(request: &PlayerDecisionRequestV4, rng: &mut SplitMix64) -> Dec
     }
 }
 
-fn play(seed: u64) -> (Vec<Entry>, TrustedEnvironmentController) {
+fn play(seed: u64, last_turn: u64) -> (Vec<Entry>, TrustedEnvironmentController) {
     let controller = two_player_land_game(20, 7, seed);
     let players: [PlayerEndpointHandle; 2] = [
         controller.bind_player(P1).unwrap(),
@@ -77,7 +80,7 @@ fn play(seed: u64) -> (Vec<Entry>, TrustedEnvironmentController) {
     let mut trajectory = Vec::new();
     loop {
         let checkpoint = controller.checkpoint().unwrap();
-        if checkpoint.state.predecessor_v5.core.turn_number > LAST_TURN
+        if checkpoint.state.core.turn_number > last_turn
             || !matches!(checkpoint.status, EpisodeStatus::Running)
         {
             return (trajectory, controller);
@@ -118,9 +121,43 @@ fn play(seed: u64) -> (Vec<Entry>, TrustedEnvironmentController) {
                 mtgml_wire::encode_canonical(&players[0].information_state().unwrap()).unwrap(),
                 mtgml_wire::encode_canonical(&players[1].information_state().unwrap()).unwrap(),
             ],
-            checkpoint_digest: format!("{:?}", controller.checkpoint().unwrap().checkpoint_digest),
+            checkpoint_digest: controller
+                .checkpoint()
+                .unwrap()
+                .checkpoint_digest
+                .as_str()
+                .to_owned(),
         });
     }
+}
+
+/// SHA-256 over every entry, each field length-prefixed so entry
+/// boundaries are unambiguous. Pinned below: any change to what the
+/// players see, send or know, or to the checkpoint identity, changes it.
+fn fingerprint(trajectory: &[Entry]) -> String {
+    let mut buffer = Vec::new();
+    for entry in trajectory {
+        buffer.extend_from_slice(&entry.actor.0.to_le_bytes());
+        for field in [
+            entry.response.as_slice(),
+            entry.step.as_slice(),
+            entry.knowledge[0].as_slice(),
+            entry.knowledge[1].as_slice(),
+            entry.checkpoint_digest.as_bytes(),
+        ] {
+            buffer.extend_from_slice(&(field.len() as u64).to_le_bytes());
+            buffer.extend_from_slice(field);
+        }
+    }
+    mtgml_model::Digest::from_bytes(&buffer).as_str().to_owned()
+}
+
+#[test]
+fn short_game_matches_its_pinned_fingerprint() {
+    assert_eq!(
+        fingerprint(&play(FIRST_SEED, SHORT_LAST_TURN).0),
+        SHORT_FINGERPRINT
+    );
 }
 
 #[test]
@@ -128,19 +165,18 @@ fn play(seed: u64) -> (Vec<Entry>, TrustedEnvironmentController) {
 fn random_games_run_thirty_turns_deterministically_and_replay() {
     for game in 0..game_count() {
         let seed = FIRST_SEED + game;
-        let (trajectory, controller) = play(seed);
+        let (trajectory, controller) = play(seed, LAST_TURN);
         let last = controller.checkpoint().unwrap();
-        assert_eq!(
-            last.state.predecessor_v5.core.turn_number,
-            LAST_TURN + 1,
-            "seed {seed:#x}"
-        );
+        assert_eq!(last.state.core.turn_number, LAST_TURN + 1, "seed {seed:#x}");
 
-        let (again, _) = play(seed);
+        let (again, _) = play(seed, LAST_TURN);
         assert_eq!(
             trajectory, again,
             "seed {seed:#x}: same seed, different trajectory"
         );
+        if game == 0 {
+            assert_eq!(fingerprint(&trajectory), LONG_FINGERPRINT, "seed {seed:#x}");
+        }
 
         let report = controller
             .execute_replay(controller.export_replay().unwrap())
@@ -155,7 +191,7 @@ fn random_games_run_thirty_turns_deterministically_and_replay() {
 #[test]
 #[cfg_attr(debug_assertions, ignore = "needs a release build; see module docs")]
 fn different_seeds_give_different_trajectories() {
-    let (first, _) = play(FIRST_SEED);
-    let (second, _) = play(FIRST_SEED + 1);
+    let (first, _) = play(FIRST_SEED, LAST_TURN);
+    let (second, _) = play(FIRST_SEED + 1, LAST_TURN);
     assert_ne!(first, second);
 }

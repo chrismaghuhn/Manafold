@@ -13,9 +13,7 @@ WIRE_MAPPING = {
     "player-decision-request.v4": "player-decision-request.v4.schema.json",
     "decision-response.v3": "decision-response.v3.schema.json",
     "episode-status.v1": "episode-status.v1.schema.json",
-    "observation-envelope.v1": "observation-envelope.v1.schema.json",
     "observation-envelope.v2": "observation-envelope.v2.schema.json",
-    "information-state-envelope.v2": "information-state-envelope.v2.schema.json",
     "information-state-envelope.v3": "information-state-envelope.v3.schema.json",
     "observed-event-envelope.v4": "observed-event-envelope.v4.schema.json",
     "player-step.v4": "player-step.v4.schema.json",
@@ -185,35 +183,35 @@ SCHEMA_NEGATIVE_CASES = [
     ),
     (
         "replay-manifest.v8.schema.json#content-contract-child",
-        "schemas/negative/replay-v7-content-child-unknown-field.json",
+        "schemas/negative/content-contract-child-unknown-field.json",
     ),
     (
         "replay-manifest.v8.schema.json#content-contract-child",
-        "schemas/negative/replay-v7-content-child-invalid-base64.json",
+        "schemas/negative/content-contract-child-invalid-base64.json",
     ),
     (
         "replay-manifest.v8.schema.json#content-presence-rule",
-        "schemas/negative/replay-v7-content-presence-mismatch.json",
+        "schemas/negative/content-contract-presence-mismatch.json",
     ),
     (
         "replay-manifest.v8.schema.json#content-presence-rule",
-        "schemas/negative/replay-v7-content-id-without-child.json",
+        "schemas/negative/content-contract-id-without-child.json",
     ),
     (
         "replay-manifest.v8.schema.json#content-contract-child",
-        "schemas/negative/replay-v7-content-child-uppercase-id.json",
+        "schemas/negative/content-contract-child-uppercase-id.json",
     ),
     (
         "replay-manifest.v8.schema.json#content-contract-child",
-        "schemas/negative/replay-v7-content-child-extra-padding.json",
+        "schemas/negative/content-contract-child-extra-padding.json",
     ),
     (
         "replay-manifest.v8.schema.json#content-contract-child",
-        "schemas/negative/replay-v7-content-child-whitespace.json",
+        "schemas/negative/content-contract-child-whitespace.json",
     ),
     (
         "replay-manifest.v8.schema.json#content-contract-child",
-        "schemas/negative/replay-v7-content-child-missing-padding.json",
+        "schemas/negative/content-contract-child-missing-padding.json",
     ),
 ]
 SCHEMA_POSITIVE_CASES = [

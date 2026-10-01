@@ -12,9 +12,7 @@ pub use generated_contract_vocab::{
 
 mod execution_identity;
 mod semantic_contract;
-pub use execution_identity::{
-    execution_program_matches_rules_authority, ExecutionIdentityV1, ExecutionProgramV1,
-};
+pub use execution_identity::{ExecutionIdentityV1, ExecutionProgramV1};
 pub use semantic_contract::{
     CapabilityRequirementV1, RulesAuthorityV1, RulesContractManifestV1,
     RulesContractManifestValidationError, SemanticContractManifestV1,
@@ -228,14 +226,7 @@ domain_digest!(ContentDigest, "mtgml.content-digest.v1");
 domain_digest!(ReplayDigest, "mtgml.replay-digest.v1");
 
 // === V2 digest domains ===
-domain_digest!(
-    InformationStateDigestV2,
-    "mtgml.information-state-digest.v2"
-);
-domain_digest!(
-    InformationStateDigestV3,
-    "mtgml.information-state-digest.v3"
-);
+domain_digest!(InformationStateDigest, "mtgml.information-state-digest.v3");
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
@@ -332,9 +323,7 @@ macro_rules! raw_digest {
     };
 }
 
-raw_digest!(FullStateDigestV5, "mtgml.full-state-digest.v5");
-raw_digest!(FullStateDigestV6, "mtgml.full-state-digest.v6");
-raw_digest!(FullStateDigestV7, "mtgml.full-state-digest.v7");
+raw_digest!(FullStateDigest, "mtgml.full-state-digest.v7");
 
 // === V5 contract identity and digest domains (spec §5) ===
 raw_digest!(RulesContractIdV1, "mtgml.rules-contract.v1");
@@ -406,33 +395,7 @@ macro_rules! reserved_digest {
 reserved_digest!(FormatContractIdV1, "mtgml.format-contract.v1");
 reserved_digest!(ContentContractIdV1, "mtgml.content-contract.v1");
 
-impl FullStateDigestV5 {
-    pub fn as_digest_reference(&self) -> DigestReferenceV1 {
-        DigestReferenceV1 {
-            envelope_version: "mtgml.digest-envelope.v1".to_owned(),
-            algorithm_id: "sha-256".to_owned(),
-            semantic_domain: Self::DOMAIN.to_owned(),
-            payload_codec_id: "mtgml.canonical-cbor.v1".to_owned(),
-            input_schema_id: "full-state-digest-input.v5".to_owned(),
-            digest_bytes: self.raw_bytes(),
-        }
-    }
-}
-
-impl FullStateDigestV6 {
-    pub fn as_digest_reference(&self) -> DigestReferenceV1 {
-        DigestReferenceV1 {
-            envelope_version: "mtgml.digest-envelope.v1".to_owned(),
-            algorithm_id: "sha-256".to_owned(),
-            semantic_domain: Self::DOMAIN.to_owned(),
-            payload_codec_id: "mtgml.canonical-cbor.v1".to_owned(),
-            input_schema_id: "full-state-digest-input.v6".to_owned(),
-            digest_bytes: self.raw_bytes(),
-        }
-    }
-}
-
-impl FullStateDigestV7 {
+impl FullStateDigest {
     pub fn as_digest_reference(&self) -> DigestReferenceV1 {
         DigestReferenceV1 {
             envelope_version: "mtgml.digest-envelope.v1".to_owned(),
@@ -600,7 +563,7 @@ mod tests {
             "93e08ec06c09ef5c53e0cc350c045176cc654c31cbef6afc08ad227fa9d413c8"
         );
         assert_eq!(
-            InformationStateDigestV3::from_canonical_bytes(bytes).as_str(),
+            InformationStateDigest::from_canonical_bytes(bytes).as_str(),
             "334e1a727bd9db7f920f6cf9c4e1a31e0c389fddc1b15e113d10bccd7bc626db"
         );
     }
@@ -617,18 +580,8 @@ mod tests {
     }
 
     #[test]
-    fn full_state_digest_v6_has_distinct_typed_reference_identity() {
-        let digest = FullStateDigestV6::from_digest_bytes([0x6a; 32]);
-        let reference = digest.as_digest_reference();
-        assert_eq!(FullStateDigestV6::DOMAIN, "mtgml.full-state-digest.v6");
-        assert_eq!(reference.semantic_domain, FullStateDigestV6::DOMAIN);
-        assert_eq!(reference.input_schema_id, "full-state-digest-input.v6");
-        assert_eq!(reference.digest_bytes, [0x6a; 32]);
-    }
-
-    #[test]
     fn g0_digest_values_bind_the_allocated_v7_and_v8_domains() {
-        let full = FullStateDigestV7::from_digest_bytes([0x71; 32]);
+        let full = FullStateDigest::from_digest_bytes([0x71; 32]);
         let checkpoint = CheckpointDigestV8::from_digest_bytes([0x82; 32]);
         let full_reference = full.as_digest_reference();
         let checkpoint_reference = checkpoint.as_digest_reference();
@@ -656,7 +609,7 @@ mod tests {
         );
         assert_eq!(serde_json::to_string(&VisibleSequence(7)).unwrap(), "\"7\"");
         assert_eq!(
-            FullStateDigestV7::from_digest_bytes([0xabu8; 32]).raw_bytes(),
+            FullStateDigest::from_digest_bytes([0xabu8; 32]).raw_bytes(),
             [0xabu8; 32]
         );
         assert!(serde_json::from_str::<CandidateIdV1>("4294967296").is_err());

@@ -4,7 +4,7 @@ mod common;
 
 use common::{land_definitions, land_game, two_player_land_game, P1, P2};
 use mtgml_decision::{
-    CandidateIntentV4, DecisionAnswerV2, DecisionPurposeV4, DecisionResponseV3,
+    CandidateIntent, DecisionAnswerV2, DecisionPurposeV4, DecisionResponseV3,
     PlayerDecisionRequestV4, DECISION_RESPONSE_V3_SCHEMA,
 };
 use mtgml_environment::{
@@ -36,12 +36,7 @@ impl Game {
     }
 
     fn core(&self) -> mtgml_state::CoreRulesState {
-        self.controller
-            .checkpoint()
-            .unwrap()
-            .state
-            .predecessor_v5
-            .core
+        self.controller.checkpoint().unwrap().state.core
     }
 
     fn at(&self, position: TurnPosition, turn: u64) -> bool {
@@ -86,7 +81,7 @@ impl Game {
     /// Cards in `player`'s `zone`; battlefield locations carry no player, so
     /// permanents count by controller.
     fn zone_count(&self, player: PlayerId, zone: ZoneKind) -> usize {
-        let state = self.controller.checkpoint().unwrap().state.predecessor_v5;
+        let state = self.controller.checkpoint().unwrap().state;
         state
             .zones
             .objects
@@ -113,7 +108,7 @@ fn scripted_answer(request: &PlayerDecisionRequestV4, play_lands: bool) -> Decis
             candidate_ids: vec![request.candidates[0].candidate_id],
         },
         _ => {
-            let pick = |wanted: fn(&CandidateIntentV4) -> bool| {
+            let pick = |wanted: fn(&CandidateIntent) -> bool| {
                 request
                     .candidates
                     .iter()
@@ -121,13 +116,13 @@ fn scripted_answer(request: &PlayerDecisionRequestV4, play_lands: bool) -> Decis
                     .map(|candidate| candidate.candidate_id)
             };
             let land = if play_lands {
-                pick(|intent| matches!(intent, CandidateIntentV4::PlayLand { .. }))
+                pick(|intent| matches!(intent, CandidateIntent::PlayLand { .. }))
             } else {
                 None
             };
             DecisionAnswerV2::SelectOne {
                 candidate_id: land
-                    .or_else(|| pick(|intent| matches!(intent, CandidateIntentV4::PassPriority)))
+                    .or_else(|| pick(|intent| matches!(intent, CandidateIntent::PassPriority)))
                     .unwrap(),
             }
         }
@@ -271,7 +266,7 @@ fn checkpoints_stay_bound_to_their_state_digest() {
         let checkpoint = game.controller.checkpoint().unwrap();
         assert_eq!(
             checkpoint.state_digest,
-            mtgml_state::calculate_full_state_digest_v7_structural_only(&checkpoint.state).unwrap()
+            mtgml_state::calculate_full_state_digest_structural_only(&checkpoint.state).unwrap()
         );
         assert!(checkpoint
             .validate_for_basic_land_profile(&admission)
@@ -290,14 +285,8 @@ fn restored_runtime_continues_from_the_restored_checkpoint() {
     assert_eq!(game.controller.checkpoint().unwrap(), saved);
     game.respond(true).unwrap();
     assert_eq!(
-        game.controller
-            .checkpoint()
-            .unwrap()
-            .state
-            .predecessor_v5
-            .revision
-            .0,
-        saved.state.predecessor_v5.revision.0 + 1
+        game.controller.checkpoint().unwrap().state.revision.0,
+        saved.state.revision.0 + 1
     );
 }
 

@@ -7,7 +7,7 @@
 
 ### Replay V8
 
-Replay V8 binds `FullStateDigestV7`, `CheckpointDigestV8`,
+Replay V8 binds `FullStateDigest`, `CheckpointDigestV8`,
 `InitialEnvironmentIdentityV8`, request V4, `DecisionResponseV3`,
 ObservedEvent V4, PlayerStep V4, and
 `magic-shared-execution-observation.v1`. It re-executes response records through

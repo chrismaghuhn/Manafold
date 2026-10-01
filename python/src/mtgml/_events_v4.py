@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ._events_v3 import EVENT_KINDS_V3, ObservedEventV3, _pool, _u32
-from .canonical import parse_uint, require_exact_keys, uint_wire
+from ._generated_contract_vocab import ZONE_KINDS
+from .canonical import parse_u64_number, parse_uint, require_exact_keys, uint_wire
 from .errors import WireError
 from .magic_shared_execution_observation_v1 import (
     PublicTemporaryEffectV1,
@@ -13,6 +13,46 @@ from .magic_shared_execution_observation_v1 import (
 )
 
 OBSERVED_EVENT_SCHEMA_V4 = "observed-event-envelope.v4"
+EVENT_KINDS_V3 = frozenset(
+    {
+        "object_moved",
+        "object_ceased_to_exist",
+        "life_changed",
+        "object_tapped",
+        "decision_available",
+        "random_outcome_visible",
+        "public_outcome",
+        "mana_pool_changed",
+        "counters_changed",
+        "attachment_changed",
+        "object_face_changed",
+    }
+)
+
+
+COUNTER_KINDS_V3 = ("plus_one_plus_one", "minus_one_minus_one", "lore")
+
+
+FACE_VALUES_V1 = ("front", "back")
+
+
+def _u32(value: object, label: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 2**32 - 1:
+        raise WireError("decode.invalid_json", f"{label} must be u32")
+    return value
+
+
+def _pool(value: object) -> dict[str, list[int]]:
+    obj = require_exact_keys(value, {"unrestricted", "creature_spell_only"})
+    result: dict[str, list[int]] = {}
+    for key in ("unrestricted", "creature_spell_only"):
+        bucket = obj[key]
+        if not isinstance(bucket, list) or len(bucket) != 6:
+            raise WireError("decode.invalid_json", "mana bucket must have six entries")
+        result[key] = [_u32(item, "mana count") for item in bucket]
+    return result
+
+
 NEW_EVENT_KINDS_V1 = frozenset(
     {
         "stack_item_added",
@@ -22,6 +62,18 @@ NEW_EVENT_KINDS_V1 = frozenset(
     }
 )
 EVENT_KINDS_V4 = EVENT_KINDS_V3 | NEW_EVENT_KINDS_V1
+_UINT_FIELDS = frozenset(
+    {
+        "object",
+        "old_object",
+        "new_object",
+        "player",
+        "actor",
+        "source",
+        "old_target",
+        "new_target",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,10 +90,96 @@ class ObservedEventV4:
         ):
             raise WireError("decode.invalid_json", "unknown observed event V4 kind")
         kind = value["kind"]
-        if kind in EVENT_KINDS_V3 and kind != "mana_pool_changed":
-            old = ObservedEventV3.from_wire(value)
-            return cls(old.kind, old.fields)
-        if kind == "mana_pool_changed":
+        fields: dict[str, object]
+        if kind == "object_moved":
+            obj = require_exact_keys(
+                value,
+                {"kind", "old_object", "new_object", "from", "to", "entering_face", "tapped"},
+            )
+            if obj["from"] not in ZONE_KINDS or obj["to"] not in ZONE_KINDS:
+                raise WireError("decode.invalid_json", "unknown zone kind")
+            old = None if obj["old_object"] is None else parse_uint(obj["old_object"])
+            new = None if obj["new_object"] is None else parse_uint(obj["new_object"])
+            if old is None and new is None:
+                raise WireError("semantic.observed_event", "object_moved needs a visible identity")
+            face = obj["entering_face"]
+            if face is not None and face not in FACE_VALUES_V1:
+                raise WireError("decode.invalid_json", "unknown entering face")
+            tapped = obj["tapped"]
+            if tapped is not None and not isinstance(tapped, bool):
+                raise WireError("decode.invalid_json", "tapped must be boolean or null")
+            if (face is not None or tapped is not None) and (
+                obj["to"] != "battlefield" or new is None
+            ):
+                raise WireError(
+                    "semantic.observed_event", "entry facts require a visible battlefield entrant"
+                )
+            fields = {
+                "old_object": old,
+                "new_object": new,
+                "from": obj["from"],
+                "to": obj["to"],
+                "entering_face": face,
+                "tapped": tapped,
+            }
+        elif kind == "object_ceased_to_exist":
+            obj = require_exact_keys(value, {"kind", "object"})
+            fields = {"object": parse_uint(obj["object"])}
+        elif kind == "life_changed":
+            obj = require_exact_keys(value, {"kind", "player", "from", "to"})
+            fields = {"player": parse_uint(obj["player"])}
+            for key in ("from", "to"):
+                raw = obj[key]
+                if isinstance(raw, bool) or not isinstance(raw, int) or not -(2**63) <= raw < 2**63:
+                    raise WireError("decode.invalid_json", "life value is outside i64")
+                fields[key] = raw
+        elif kind == "object_tapped":
+            obj = require_exact_keys(value, {"kind", "object", "tapped"})
+            if not isinstance(obj["tapped"], bool):
+                raise WireError("decode.invalid_json", "tapped must be boolean")
+            fields = {"object": parse_uint(obj["object"]), "tapped": obj["tapped"]}
+        elif kind == "decision_available":
+            obj = require_exact_keys(value, {"kind", "actor"})
+            fields = {"actor": parse_uint(obj["actor"])}
+        elif kind == "random_outcome_visible":
+            obj = require_exact_keys(value, {"kind", "label", "exclusive_upper_bound", "value"})
+            label = obj["label"]
+            upper = parse_u64_number(obj["exclusive_upper_bound"])
+            outcome = parse_u64_number(obj["value"])
+            if not isinstance(label, str) or not label or upper == 0 or outcome >= upper:
+                raise WireError("semantic.observed_event", "invalid random outcome")
+            fields = {"label": label, "exclusive_upper_bound": upper, "value": outcome}
+        elif kind == "public_outcome":
+            obj = require_exact_keys(value, {"kind", "code"})
+            if not isinstance(obj["code"], str) or not obj["code"]:
+                raise WireError("semantic.observed_event", "empty public outcome")
+            fields = {"code": obj["code"]}
+        elif kind == "counters_changed":
+            obj = require_exact_keys(value, {"kind", "object", "counter_kind", "from", "to"})
+            if obj["counter_kind"] not in COUNTER_KINDS_V3:
+                raise WireError("decode.invalid_json", "unknown counter kind")
+            before, after = _u32(obj["from"], "counter before"), _u32(obj["to"], "counter after")
+            if before == after:
+                raise WireError("semantic.observed_event", "unchanged counter has no event")
+            fields = {
+                "object": parse_uint(obj["object"]),
+                "counter_kind": obj["counter_kind"],
+                "from": before,
+                "to": after,
+            }
+        elif kind == "attachment_changed":
+            obj = require_exact_keys(value, {"kind", "source", "old_target", "new_target"})
+            old = None if obj["old_target"] is None else parse_uint(obj["old_target"])
+            new = None if obj["new_target"] is None else parse_uint(obj["new_target"])
+            if old == new:
+                raise WireError("semantic.observed_event", "unchanged attachment has no event")
+            fields = {"source": parse_uint(obj["source"]), "old_target": old, "new_target": new}
+        elif kind == "object_face_changed":
+            obj = require_exact_keys(value, {"kind", "object", "face"})
+            if obj["face"] not in FACE_VALUES_V1:
+                raise WireError("decode.invalid_json", "unknown face")
+            fields = {"object": parse_uint(obj["object"]), "face": obj["face"]}
+        elif kind == "mana_pool_changed":
             obj = require_exact_keys(value, {"kind", "player", "pool_after", "cause"})
             if not isinstance(obj["cause"], str) or obj["cause"] not in {
                 "produced",
@@ -83,11 +221,11 @@ class ObservedEventV4:
 
     def to_wire(self) -> dict[str, object]:
         result: dict[str, object] = {"kind": self.kind}
-        result.update(self.fields)
-        if "player" in result:
-            result["player"] = uint_wire(result["player"])  # type: ignore[arg-type]
-        if self.kind in EVENT_KINDS_V3 and self.kind != "mana_pool_changed":
-            return ObservedEventV3(self.kind, self.fields).to_wire()
+        for key, value in self.fields:
+            if key in _UINT_FIELDS:
+                result[key] = None if value is None else uint_wire(value)  # type: ignore[arg-type]
+            else:
+                result[key] = value
         ObservedEventV4.from_wire(result)
         return result
 

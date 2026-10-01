@@ -23,11 +23,11 @@ pub trait EnvironmentBackend: Send {
     fn player_observation(
         &self,
         perspective: PlayerId,
-    ) -> Result<mtgml_observation::ObservationEnvelopeV2, PlayerEndpointError>;
+    ) -> Result<mtgml_observation::ObservationEnvelope, PlayerEndpointError>;
     fn player_information_state(
         &self,
         perspective: PlayerId,
-    ) -> Result<mtgml_observation::PlayerInformationStateV3, PlayerEndpointError>;
+    ) -> Result<mtgml_observation::PlayerInformationState, PlayerEndpointError>;
     fn player_visible_decision(
         &self,
         perspective: PlayerId,
@@ -75,7 +75,7 @@ impl EnvironmentBackend for BasicLandEnvironmentRuntimeV8 {
     fn player_observation(
         &self,
         perspective: PlayerId,
-    ) -> Result<mtgml_observation::ObservationEnvelopeV2, PlayerEndpointError> {
+    ) -> Result<mtgml_observation::ObservationEnvelope, PlayerEndpointError> {
         BasicLandEnvironmentRuntimeV8::information_state(self, perspective)
             .map(|state| state.current_observation)
     }
@@ -83,7 +83,7 @@ impl EnvironmentBackend for BasicLandEnvironmentRuntimeV8 {
     fn player_information_state(
         &self,
         perspective: PlayerId,
-    ) -> Result<mtgml_observation::PlayerInformationStateV3, PlayerEndpointError> {
+    ) -> Result<mtgml_observation::PlayerInformationState, PlayerEndpointError> {
         BasicLandEnvironmentRuntimeV8::information_state(self, perspective)
     }
 

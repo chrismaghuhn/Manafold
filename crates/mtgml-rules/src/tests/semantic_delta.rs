@@ -46,8 +46,8 @@ fn event_untap_completed(objects: Vec<GameObjectId>) -> AuthoritativeRuleEvent {
 fn turn_number_changed_maps_to_turn_number_changed_delta() {
     let event = event_turn_number_changed(1, 2);
     assert!(matches!(
-        event.event.semantic_delta(),
-        SemanticDeltaOperation::TurnNumberChanged { from: 1, to: 2 }
+        event.event.semantic_operations().as_slice(),
+        [mtgml_state::SemanticDeltaOperation::TurnNumberChanged { from: 1, to: 2 }]
     ));
 }
 
@@ -57,9 +57,9 @@ fn turn_position_changed_maps_to_turn_position_changed_delta() {
     let to = TurnPosition::PrecombatMain;
     let event = event_turn_position_changed(from, to);
     assert!(matches!(
-        event.event.semantic_delta(),
-        SemanticDeltaOperation::TurnPositionChanged { from: f, to: t }
-        if f == from && t == to
+        event.event.semantic_operations().as_slice(),
+        [mtgml_state::SemanticDeltaOperation::TurnPositionChanged { from: f, to: t }]
+        if *f == from && *t == to
     ));
 }
 
@@ -67,9 +67,9 @@ fn turn_position_changed_maps_to_turn_position_changed_delta() {
 fn active_player_changed_maps_to_active_player_changed_delta() {
     let event = event_active_player_changed(PlayerId(1), PlayerId(2));
     assert!(matches!(
-        event.event.semantic_delta(),
-        SemanticDeltaOperation::ActivePlayerChanged { from: p1, to: p2 }
-        if p1 == PlayerId(1) && p2 == PlayerId(2)
+        event.event.semantic_operations().as_slice(),
+        [mtgml_state::SemanticDeltaOperation::ActivePlayerChanged { from: p1, to: p2 }]
+        if *p1 == PlayerId(1) && *p2 == PlayerId(2)
     ));
 }
 
@@ -78,8 +78,8 @@ fn untap_completed_maps_to_untap_completed_delta() {
     let objects = vec![GameObjectId(1), GameObjectId(2)];
     let event = event_untap_completed(objects.clone());
     assert!(matches!(
-        event.event.semantic_delta(),
-        SemanticDeltaOperation::UntapCompleted { affected_objects: a }
-        if a == objects
+        event.event.semantic_operations().as_slice(),
+        [mtgml_state::SemanticDeltaOperation::UntapCompleted { affected_objects: a }]
+        if *a == objects
     ));
 }

@@ -42,11 +42,12 @@
 - **Bounded executable real-card support:** Mountain + Plains under `basic-land@1.0.0`; no broader card/deck support is claimed.
 
 **Current resumable execution contract after the G0j activation cut:** V8.
-The production runtime uses `EngineStatePartsV3`, `StateDeltaV3`,
-`FullStateDigestV7`, `EnvironmentCheckpointV8` / `CheckpointDigestV8`, Replay V8,
-Decision request V4 / response V3, ObservedEvent V4, PlayerStep V4,
-ObservationEnvelope V2, PlayerInformationState V3 / InformationStateDigest
-V3, and `magic-shared-execution-observation.v1`. Its executable admission
+The production runtime uses the flat `EngineState`, `StateDelta`,
+`FullStateDigest` (`mtgml.full-state-digest.v7`), `EnvironmentCheckpointV8` /
+`CheckpointDigestV8`, Replay V8, Decision request V4 / response V3, ObservedEvent
+V4, PlayerStep V4, `ObservationEnvelope` (`observation-envelope.v2`),
+`PlayerInformationState` / `InformationStateDigest`
+(`information-state-envelope.v3`), and `magic-shared-execution-observation.v1`. Its executable admission
 remains bounded to Mountain and Plains under `basic-land@1.0.0`; G0j preserves
 that M4.2 slice and adds no spell or deck support. It is the only runtime,
 and each format has only its current version; older versions were removed. M4.2 is

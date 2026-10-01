@@ -54,7 +54,7 @@ Python client and ML orchestration
 `mtgml-persistence` is a rules-neutral lower layer consumed by state,
 environment, and replay semantic producers. It does not depend on or own any
 of those runtime layers. `mtgml-wire` remains the sole canonical public JSON
-and InformationStateDigestV2 byte/digest owner; it is separate from the
+and `InformationStateDigest` byte/digest owner; it is separate from the
 persisted CBOR codec.
 
 Lower layers cannot depend on environment, Python, or model-training concerns. Cycles require an ADR and should normally be resolved by moving a small neutral type downward.
