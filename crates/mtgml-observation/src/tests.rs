@@ -163,35 +163,36 @@ fn basic_land_observation_v1_shows_life_card_counts_and_tapped_permanents() {
 }
 
 #[test]
-fn basic_land_observation_v1_shows_creatures_and_attackers() {
+fn basic_land_observation_v1_shows_every_permanent_with_its_controller_and_the_attackers() {
     let example: serde_json::Value = serde_json::from_str(include_str!(
         "../../../schemas/examples/magic-basic-land-observation-v1.json"
     ))
     .unwrap();
     let observation: MagicBasicLandObservationV1 = serde_json::from_value(example.clone()).unwrap();
     observation.validate().unwrap();
+    let row = |object, controller, controlled_since_turn, power_toughness: Option<(i64, i64)>| {
+        PermanentObservationV1 {
+            object: mtgml_model::OpaqueObjectId(object),
+            controller: PlayerId(controller),
+            controlled_since_turn,
+            power: power_toughness.map(|(power, _)| power),
+            toughness: power_toughness.map(|(_, toughness)| toughness),
+        }
+    };
+    // Two creatures and a non-creature, each with its controller.
     assert_eq!(
-        observation.creatures,
+        observation.permanents,
         vec![
-            CreatureObservationV1 {
-                object: mtgml_model::OpaqueObjectId(3),
-                controller: PlayerId(1),
-                power: 3,
-                toughness: 3,
-                controlled_since_turn: 1,
-            },
-            CreatureObservationV1 {
-                object: mtgml_model::OpaqueObjectId(7),
-                controller: PlayerId(0),
-                power: 2,
-                toughness: 1,
-                controlled_since_turn: 1,
-            },
+            row(6, 1, 2, Some((3, 3))),
+            row(7, 0, 1, Some((2, 2))),
+            row(8, 0, 3, None),
         ]
     );
     assert_eq!(observation.attacking, vec![mtgml_model::OpaqueObjectId(7)]);
-    // The arrival turn travels as a decimal string, as `turn_number` does.
+    // The arrival turn travels as a decimal string, as `turn_number` does,
+    // and a non-creature's power and toughness as null.
     assert_eq!(serde_json::to_value(&observation).unwrap(), example);
+    assert!(example["permanents"][2]["power"].is_null());
 
     let broken = |edit: &dyn Fn(&mut serde_json::Value)| {
         let mut value = example.clone();
@@ -200,29 +201,45 @@ fn basic_land_observation_v1_shows_creatures_and_attackers() {
             .map_err(|_| ())
             .and_then(|observation| observation.validate().map_err(|_| ()))
     };
-    // Creatures are listed once each, in ascending order.
-    assert!(broken(&|value| value["creatures"].as_array_mut().unwrap().reverse()).is_err());
+    // Permanents are listed once each, in ascending order.
+    assert!(broken(&|value| value["permanents"].as_array_mut().unwrap().reverse()).is_err());
     assert!(broken(&|value| {
-        let second = value["creatures"][1].clone();
-        value["creatures"][0] = second;
+        let second = value["permanents"][1].clone();
+        value["permanents"][0] = second;
     })
     .is_err());
-    // Attackers are listed once each, in ascending order, and are creatures.
-    assert!(broken(&|value| value["attacking"] = serde_json::json!(["3", "7"])).is_ok());
-    assert!(broken(&|value| value["attacking"] = serde_json::json!(["7", "3"])).is_err());
+    // Power and toughness are both present or both null.
+    assert!(
+        broken(&|value| value["permanents"][1]["toughness"] = serde_json::Value::Null).is_err()
+    );
+    assert!(broken(&|value| value["permanents"][2]["power"] = serde_json::json!(1)).is_err());
+    assert!(broken(&|value| {
+        value["permanents"][1]
+            .as_object_mut()
+            .unwrap()
+            .remove("power");
+    })
+    .is_err());
+    // Attackers are listed once each, in ascending order, and are the
+    // creatures among the permanents: a non-creature or an unlisted object is
+    // not one.
+    assert!(broken(&|value| value["attacking"] = serde_json::json!([])).is_ok());
+    assert!(broken(&|value| value["attacking"] = serde_json::json!(["6", "7"])).is_ok());
+    assert!(broken(&|value| value["attacking"] = serde_json::json!(["7", "6"])).is_err());
     assert!(broken(&|value| value["attacking"] = serde_json::json!(["7", "7"])).is_err());
     assert!(broken(&|value| value["attacking"] = serde_json::json!(["8"])).is_err());
-    assert!(broken(&|value| value["attacking"] = serde_json::json!(["3", "8"])).is_err());
+    assert!(broken(&|value| value["attacking"] = serde_json::json!(["7", "8"])).is_err());
+    assert!(broken(&|value| value["attacking"] = serde_json::json!(["9"])).is_err());
     // Numbers are numbers, not strings; every field and list is required.
-    assert!(broken(&|value| value["creatures"][0]["power"] = serde_json::json!("3")).is_err());
-    assert!(broken(&|value| value["creatures"][0]["toughness"] = serde_json::json!("3")).is_err());
+    assert!(broken(&|value| value["permanents"][0]["power"] = serde_json::json!("3")).is_err());
+    assert!(broken(&|value| value["permanents"][0]["toughness"] = serde_json::json!("3")).is_err());
     // The arrival turn is a canonical decimal string of a u64: a JSON number,
     // a sign, leading zeros, other characters and an out-of-range value are
     // refused.
     for turn in ["0", "1", "18446744073709551615"] {
         assert!(
             broken(&|value| {
-                value["creatures"][0]["controlled_since_turn"] = serde_json::json!(turn);
+                value["permanents"][0]["controlled_since_turn"] = serde_json::json!(turn);
             })
             .is_ok(),
             "{turn}"
@@ -242,24 +259,27 @@ fn basic_land_observation_v1_shows_creatures_and_attackers() {
         serde_json::json!("18446744073709551616"),
     ] {
         assert!(
-            broken(&|value| value["creatures"][0]["controlled_since_turn"] = turn.clone()).is_err(),
+            broken(&|value| value["permanents"][0]["controlled_since_turn"] = turn.clone())
+                .is_err(),
             "{turn}"
         );
     }
-    assert!(broken(&|value| value["creatures"][0]["extra"] = serde_json::json!(0)).is_err());
+    assert!(broken(&|value| value["permanents"][0]["extra"] = serde_json::json!(0)).is_err());
     assert!(broken(&|value| {
-        value["creatures"][0]
+        value["permanents"][0]
             .as_object_mut()
             .unwrap()
             .remove("controller");
     })
     .is_err());
     assert!(broken(&|value| {
-        value.as_object_mut().unwrap().remove("creatures");
+        value.as_object_mut().unwrap().remove("permanents");
     })
     .is_err());
     assert!(broken(&|value| {
         value.as_object_mut().unwrap().remove("attacking");
     })
     .is_err());
+    // The creature-only rows of the first design are gone.
+    assert!(broken(&|value| value["creatures"] = serde_json::json!([])).is_err());
 }

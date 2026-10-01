@@ -173,6 +173,18 @@
       "expected_error_code": "semantic.magic_basic_land_observation_v1",
       "expected_reject_layer": "rust-python-semantic-or-decode",
       "path": "magic-basic-land-observation-v1-active-player-missing.json"
+    },
+    {
+      "contract": "magic-basic-land-observation.v1",
+      "expected_error_code": "semantic.magic_basic_land_observation_v1",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "magic-basic-land-observation-v1-attacker-not-a-creature.json"
+    },
+    {
+      "contract": "magic-basic-land-observation.v1",
+      "expected_error_code": "semantic.magic_basic_land_observation_v1",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "magic-basic-land-observation-v1-power-without-toughness.json"
     }
   ]
 }

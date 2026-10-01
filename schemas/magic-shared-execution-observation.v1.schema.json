@@ -447,44 +447,6 @@
       },
       "type": "array"
     },
-    "creatures": {
-      "items": {
-        "additionalProperties": false,
-        "properties": {
-          "controlled_since_turn": {
-            "pattern": "^(0|[1-9][0-9]*)$",
-            "type": "string"
-          },
-          "controller": {
-            "pattern": "^(0|[1-9][0-9]*)$",
-            "type": "string"
-          },
-          "object": {
-            "pattern": "^(0|[1-9][0-9]*)$",
-            "type": "string"
-          },
-          "power": {
-            "maximum": 9223372036854775807,
-            "minimum": -9223372036854775808,
-            "type": "integer"
-          },
-          "toughness": {
-            "maximum": 9223372036854775807,
-            "minimum": -9223372036854775808,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "object",
-          "controller",
-          "power",
-          "toughness",
-          "controlled_since_turn"
-        ],
-        "type": "object"
-      },
-      "type": "array"
-    },
     "faces": {
       "items": {
         "additionalProperties": false,
@@ -591,6 +553,90 @@
           "type": "object"
         }
       ]
+    },
+    "permanents": {
+      "items": {
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "power": {
+                  "type": "null"
+                }
+              },
+              "required": [
+                "power"
+              ]
+            },
+            "then": {
+              "properties": {
+                "toughness": {
+                  "type": "null"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "toughness": {
+                  "type": "null"
+                }
+              },
+              "required": [
+                "toughness"
+              ]
+            },
+            "then": {
+              "properties": {
+                "power": {
+                  "type": "null"
+                }
+              }
+            }
+          }
+        ],
+        "properties": {
+          "controlled_since_turn": {
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string"
+          },
+          "controller": {
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string"
+          },
+          "object": {
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string"
+          },
+          "power": {
+            "maximum": 9223372036854775807,
+            "minimum": -9223372036854775808,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "toughness": {
+            "maximum": 9223372036854775807,
+            "minimum": -9223372036854775808,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "object",
+          "controller",
+          "controlled_since_turn",
+          "power",
+          "toughness"
+        ],
+        "type": "object"
+      },
+      "type": "array"
     },
     "players": {
       "items": {
@@ -790,7 +836,7 @@
     "attachments",
     "faces",
     "tapped",
-    "creatures",
+    "permanents",
     "attacking",
     "stack",
     "temporary_effects"

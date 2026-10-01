@@ -345,7 +345,7 @@ class MagicSharedExecutionObservationV1:
             "attachments",
             "faces",
             "tapped",
-            "creatures",
+            "permanents",
             "attacking",
         }
         obj = require_exact_keys(value, base_fields | {"stack", "temporary_effects"})

@@ -26,22 +26,6 @@
       "object": "7"
     }
   ],
-  "creatures": [
-    {
-      "controlled_since_turn": "1",
-      "controller": "1",
-      "object": "3",
-      "power": 3,
-      "toughness": 3
-    },
-    {
-      "controlled_since_turn": "1",
-      "controller": "0",
-      "object": "7",
-      "power": 2,
-      "toughness": 1
-    }
-  ],
   "faces": [
     {
       "face": "front",
@@ -93,6 +77,36 @@
     }
   ],
   "pending_sba_ordering": null,
+  "permanents": [
+    {
+      "controlled_since_turn": "1",
+      "controller": "0",
+      "object": "3",
+      "power": null,
+      "toughness": null
+    },
+    {
+      "controlled_since_turn": "1",
+      "controller": "1",
+      "object": "4",
+      "power": null,
+      "toughness": null
+    },
+    {
+      "controlled_since_turn": "1",
+      "controller": "0",
+      "object": "7",
+      "power": null,
+      "toughness": null
+    },
+    {
+      "controlled_since_turn": "1",
+      "controller": "1",
+      "object": "8",
+      "power": null,
+      "toughness": null
+    }
+  ],
   "players": [
     {
       "hand_count": 6,

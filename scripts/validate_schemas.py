@@ -131,7 +131,11 @@ SCHEMA_NEGATIVE_CASES = [
     ),
     (
         "magic-basic-land-observation.v1.schema.json",
-        "schemas/negative/magic-basic-land-observation-v1-creatures-missing.json",
+        "schemas/negative/magic-basic-land-observation-v1-power-without-toughness.json",
+    ),
+    (
+        "magic-basic-land-observation.v1.schema.json",
+        "schemas/negative/magic-basic-land-observation-v1-permanents-missing.json",
     ),
     (
         "magic-shared-execution-observation.v1.schema.json",

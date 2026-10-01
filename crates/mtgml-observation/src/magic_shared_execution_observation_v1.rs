@@ -6,9 +6,9 @@ use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 
 use crate::{
-    AttachmentObservationV1, CounterObservationV1, CreatureObservationV1, FaceObservationV1,
-    MagicBasicLandObservationV1, MagicPendingSbaOrdering, ManaPoolObservationV1,
-    ObservationValidationError, PlayerObservationV1, SyntheticPriority, SyntheticTurnPosition,
+    AttachmentObservationV1, CounterObservationV1, FaceObservationV1, MagicBasicLandObservationV1,
+    MagicPendingSbaOrdering, ManaPoolObservationV1, ObservationValidationError,
+    PermanentObservationV1, PlayerObservationV1, SyntheticPriority, SyntheticTurnPosition,
     MAGIC_BASIC_LAND_OBSERVATION_SCHEMA_V1,
 };
 
@@ -244,7 +244,7 @@ pub struct MagicSharedExecutionObservationV1 {
     pub attachments: Vec<AttachmentObservationV1>,
     pub faces: Vec<FaceObservationV1>,
     pub tapped: Vec<OpaqueObjectId>,
-    pub creatures: Vec<CreatureObservationV1>,
+    pub permanents: Vec<PermanentObservationV1>,
     pub attacking: Vec<OpaqueObjectId>,
     pub stack: Vec<PublicStackItemV1>,
     pub temporary_effects: Vec<PublicTemporaryEffectV1>,
@@ -268,7 +268,7 @@ impl MagicSharedExecutionObservationV1 {
             attachments: self.attachments.clone(),
             faces: self.faces.clone(),
             tapped: self.tapped.clone(),
-            creatures: self.creatures.clone(),
+            permanents: self.permanents.clone(),
             attacking: self.attacking.clone(),
         };
         base.validate()?;

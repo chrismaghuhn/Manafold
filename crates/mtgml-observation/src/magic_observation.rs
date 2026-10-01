@@ -62,18 +62,30 @@ pub struct PlayerObservationV1 {
     pub library_count: u32,
 }
 
-/// A creature on the battlefield: who controls it, its printed power and
-/// toughness (CR 208.1) and the turn since which that player has controlled it
-/// (CR 302.6). Counters on it are listed in `counters`, not added here.
+/// A permanent on the battlefield: who controls it and the turn since which
+/// that player has controlled it (CR 302.6) and, for a creature, its power
+/// and toughness (CR 208.1); both are null for any other permanent.
+///
+/// A creature's power and toughness are its printed ones, which are also its
+/// current ones: the projection is not made for a creature that an effect or a
+/// +1/+1 or -1/-1 counter could change.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct CreatureObservationV1 {
+pub struct PermanentObservationV1 {
     pub object: OpaqueObjectId,
     pub controller: PlayerId,
-    pub power: i64,
-    pub toughness: i64,
     #[serde(with = "canonical_u64_string")]
     pub controlled_since_turn: u64,
+    #[serde(deserialize_with = "deserialize_required_option")]
+    pub power: Option<i64>,
+    #[serde(deserialize_with = "deserialize_required_option")]
+    pub toughness: Option<i64>,
+}
+
+impl PermanentObservationV1 {
+    fn is_creature(&self) -> bool {
+        self.power.is_some()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -115,10 +127,11 @@ pub struct MagicBasicLandObservationV1 {
     pub faces: Vec<FaceObservationV1>,
     /// Tapped permanents on the battlefield (CR 110.5), by opaque id.
     pub tapped: Vec<OpaqueObjectId>,
-    /// The creatures on the battlefield, ascending by opaque id.
-    pub creatures: Vec<CreatureObservationV1>,
+    /// Every permanent on the battlefield, lands included, ascending by
+    /// opaque id.
+    pub permanents: Vec<PermanentObservationV1>,
     /// The creatures that are attacking (CR 508.1k), ascending by opaque id.
-    /// Each is one of `creatures`.
+    /// Each is a creature among `permanents`.
     pub attacking: Vec<OpaqueObjectId>,
 }
 
@@ -139,14 +152,19 @@ impl MagicBasicLandObservationV1 {
                 .any(|entry| entry.player == self.active_player)
             || self.tapped.windows(2).any(|pair| pair[0] >= pair[1])
             || self
-                .creatures
+                .permanents
                 .windows(2)
                 .any(|pair| pair[0].object >= pair[1].object)
+            || self
+                .permanents
+                .iter()
+                .any(|permanent| permanent.power.is_some() != permanent.toughness.is_some())
             || self.attacking.windows(2).any(|pair| pair[0] >= pair[1])
             || self.attacking.iter().any(|attacker| {
-                self.creatures
-                    .binary_search_by_key(attacker, |creature| creature.object)
-                    .is_err()
+                !self
+                    .permanents
+                    .binary_search_by_key(attacker, |permanent| permanent.object)
+                    .is_ok_and(|index| self.permanents[index].is_creature())
             })
             || self
                 .mana_pools
@@ -198,6 +216,14 @@ pub struct MagicCompletedOrder {
 pub struct MagicPendingSbaOrdering {
     pub completed_orders: Vec<MagicCompletedOrder>,
     pub next_order_owner: PlayerId,
+}
+
+fn deserialize_required_option<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::deserialize(deserializer)
 }
 
 fn deserialize_required_pending_ordering<'de, D>(

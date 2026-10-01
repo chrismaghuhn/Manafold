@@ -277,16 +277,22 @@ temporary effects, the payload carries the public player state:
   401.3). Both perspectives see the same rows.
 - `tapped`: the perspective's opaque ids of the tapped permanents on the
   battlefield (CR 110.5).
-- `creatures`: one row per creature on the battlefield, ascending by the
-  perspective's opaque id: its controller, its printed power and toughness
-  (CR 208.1), and `controlled_since_turn`, the turn since which that player
-  has controlled it (CR 302.6), a decimal string like `turn_number`. Counters on it are listed in `counters`. The
-  row states the raw fact, not whether the creature can attack. The
-  projection does not apply effects: it fails closed (no observation) rather
-  than show printed values while a creature is on the battlefield and a
-  temporary effect exists, and for a face-down permanent.
+- `permanents`: one row per permanent on the battlefield, lands included,
+  ascending by the perspective's opaque id. A row has the permanent's
+  controller, and `controlled_since_turn`, the turn since which that player
+  has controlled it (CR 302.6), a decimal string like `turn_number`. It
+  states that raw fact, not whether a creature can attack. For a creature the
+  row also has `power` and `toughness` (CR 208.1); for any other permanent
+  both are null.
 - `attacking`: the perspective's opaque ids of the attacking creatures
-  (CR 508.1k), ascending, each one of `creatures`; empty outside combat.
+  (CR 508.1k), ascending, each a creature among `permanents`; empty outside
+  combat.
+
+A creature's `power` and `toughness` are its printed ones, which are also its
+current ones because the projection applies neither effects nor counters: it
+fails closed (no observation is made) while a creature is on the battlefield
+and a temporary effect exists, for a creature with a +1/+1 or -1/-1 counter,
+and for a face-down permanent.
 
 None of these values depends on library order, hidden card identity or
 trusted ids.

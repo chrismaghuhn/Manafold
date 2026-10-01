@@ -1,9 +1,10 @@
 {
   "schema_version": "magic-basic-land-observation.v1",
   "active_player": "0",
-  "turn_number": "1",
+  "turn_number": "3",
   "turn_position": {
-    "kind": "precombat_main"
+    "kind": "combat",
+    "step": "declare_attackers"
   },
   "priority": {
     "kind": "held_by",
@@ -47,7 +48,7 @@
   ],
   "counters": [
     {
-      "object": "7",
+      "object": "8",
       "counter_kind": "plus_one_plus_one",
       "count": 1
     }
@@ -67,20 +68,27 @@
   "tapped": [
     "7"
   ],
-  "creatures": [
+  "permanents": [
     {
-      "object": "3",
+      "object": "6",
       "controller": "1",
+      "controlled_since_turn": "2",
       "power": "3",
-      "toughness": 3,
-      "controlled_since_turn": "1"
+      "toughness": 3
     },
     {
       "object": "7",
       "controller": "0",
+      "controlled_since_turn": "1",
       "power": 2,
-      "toughness": 1,
-      "controlled_since_turn": "1"
+      "toughness": 2
+    },
+    {
+      "object": "8",
+      "controller": "0",
+      "controlled_since_turn": "3",
+      "power": null,
+      "toughness": null
     }
   ],
   "attacking": [

@@ -30,10 +30,10 @@ from ._magic_basic_land_observation_v1 import (
     MAGIC_BASIC_LAND_OBSERVATION_SCHEMA_V1,
     AttachmentObservationV1,
     CounterObservationV1,
-    CreatureObservationV1,
     FaceObservationV1,
     MagicBasicLandObservationV1,
     ManaPoolObservationV1,
+    PermanentObservationV1,
     PlayerObservationV1,
 )
 from ._magic_observation import (
@@ -97,7 +97,6 @@ __all__ = [
     "ActivatedAbilityStackItemV1",
     "AttachmentObservationV1",
     "CounterObservationV1",
-    "CreatureObservationV1",
     "EpisodeStatus",
     "FaceObservationV1",
     "GrantKeywordV1",
@@ -110,6 +109,7 @@ __all__ = [
     "ObservationEnvelope",
     "ObservedEventEnvelopeV4",
     "ObservedEventV4",
+    "PermanentObservationV1",
     "PlayerInformationState",
     "PlayerKnowledgeInvalidationV1",
     "PlayerKnowledgeProvenanceV1",

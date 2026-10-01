@@ -337,9 +337,49 @@
       "type": "array",
       "uniqueItems": true
     },
-    "creatures": {
+    "permanents": {
       "items": {
         "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "power": {
+                  "type": "null"
+                }
+              },
+              "required": [
+                "power"
+              ]
+            },
+            "then": {
+              "properties": {
+                "toughness": {
+                  "type": "null"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "toughness": {
+                  "type": "null"
+                }
+              },
+              "required": [
+                "toughness"
+              ]
+            },
+            "then": {
+              "properties": {
+                "power": {
+                  "type": "null"
+                }
+              }
+            }
+          }
+        ],
         "properties": {
           "object": {
             "pattern": "^(0|[1-9][0-9]*)$",
@@ -349,27 +389,33 @@
             "pattern": "^(0|[1-9][0-9]*)$",
             "type": "string"
           },
+          "controlled_since_turn": {
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string"
+          },
           "power": {
             "maximum": 9223372036854775807,
             "minimum": -9223372036854775808,
-            "type": "integer"
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "toughness": {
             "maximum": 9223372036854775807,
             "minimum": -9223372036854775808,
-            "type": "integer"
-          },
-          "controlled_since_turn": {
-            "pattern": "^(0|[1-9][0-9]*)$",
-            "type": "string"
+            "type": [
+              "integer",
+              "null"
+            ]
           }
         },
         "required": [
           "object",
           "controller",
+          "controlled_since_turn",
           "power",
-          "toughness",
-          "controlled_since_turn"
+          "toughness"
         ],
         "type": "object"
       },
@@ -397,7 +443,7 @@
     "attachments",
     "faces",
     "tapped",
-    "creatures",
+    "permanents",
     "attacking"
   ],
   "title": "Magic Basic Land Observation V1",

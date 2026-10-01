@@ -23,8 +23,8 @@ use mtgml_observation::PlayerStepSubmissionV1;
 const FIRST_SEED: u64 = 0x4D41_4E41;
 const LAST_TURN: u64 = 30;
 const SHORT_LAST_TURN: u64 = 3;
-const SHORT_FINGERPRINT: &str = "d7104a712b7aa30adf8ec89bfc0f308d7ebee36acc09214b9a2582383ddb8e7b";
-const LONG_FINGERPRINT: &str = "ed5afcb3cd339628a8407c4177e99c7f242261569ab7d92d53a27b75eba07c9a";
+const SHORT_FINGERPRINT: &str = "2de310efe91b4b83c1e5980ef9c1099cf967523733aabe5b64857a64b73eea96";
+const LONG_FINGERPRINT: &str = "41afc73cee22da14c029f97b29c27927dd4bd120ce4d6d880591dfd85011719f";
 const MAX_DECISIONS: usize = 5_000;
 
 fn game_count() -> u64 {

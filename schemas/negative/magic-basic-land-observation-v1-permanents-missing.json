@@ -68,29 +68,6 @@
   "tapped": [
     "7"
   ],
-  "permanents": [
-    {
-      "object": "6",
-      "controller": "1",
-      "controlled_since_turn": "2",
-      "power": 3,
-      "toughness": 3
-    },
-    {
-      "object": "7",
-      "controller": "0",
-      "controlled_since_turn": "1",
-      "power": 2,
-      "toughness": 2
-    },
-    {
-      "object": "8",
-      "controller": "0",
-      "controlled_since_turn": "3",
-      "power": null,
-      "toughness": null
-    }
-  ],
   "attacking": [
     "7"
   ]
