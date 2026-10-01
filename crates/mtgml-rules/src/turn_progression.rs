@@ -734,6 +734,12 @@ fn advance(
                 step: EndingStep::Cleanup,
             } => {
                 admits(admission, "rules/cleanup-reset")?;
+                // CR 514.2: all damage marked on permanents is removed in the
+                // cleanup step. That is not supported yet, so a game does not
+                // enter it with any marked, with or without the discard.
+                if crate::combat::damage_is_marked(next) {
+                    return Err(Error::TurnProgressUnsupported);
+                }
                 let hand = next
                     .zones
                     .locations
@@ -764,6 +770,11 @@ pub(crate) fn open_priority(next: &mut EngineState) -> NextDecision {
 }
 
 fn begin_turn(next: &mut EngineState, facts: &mut Facts) -> Result<(), Error> {
+    // CR 514.2: the damage marked on permanents is gone by the end of the
+    // turn, which is not supported yet: no turn ends with any marked.
+    if crate::combat::damage_is_marked(next) {
+        return Err(Error::TurnProgressUnsupported);
+    }
     let new_active = other_player(next)?;
     let core = &mut next.core;
     core.active_player = new_active;
@@ -3438,11 +3449,20 @@ mod tests {
     fn game_with_creature_cards(
         cards: &[(PlayerId, mtgml_model::CardDefinitionId)],
     ) -> (ExecutableProfileAdmissionV1, EngineState, Vec<GameObjectId>) {
+        game_with_creature_cards_and_hand(cards, 0)
+    }
+
+    /// As `game_with_creature_cards`, with `p1_extra` more cards in P1's hand.
+    fn game_with_creature_cards_and_hand(
+        cards: &[(PlayerId, mtgml_model::CardDefinitionId)],
+        p1_extra: u64,
+    ) -> (ExecutableProfileAdmissionV1, EngineState, Vec<GameObjectId>) {
         let admission = crate::basic_land::vanilla_creature_admission_fixture();
         let mut state = crate::basic_land::s1_b_state_with_two_lands_fixture();
         make_synthetic_library_card_ordinary(&mut state);
         add_library_cards(&mut state, P1, 3);
         add_library_cards(&mut state, P2, 3);
+        add_hand_cards(&mut state, P1, p1_extra);
         let creatures = cards
             .iter()
             .map(|(controller, definition)| {
@@ -3854,16 +3874,76 @@ mod tests {
     }
 
     /// The states of a game on turn 3 that a checkpoint is restored in, of the
-    /// two kinds validation reaches in different ways: a priority window and
-    /// the attacker declaration.
+    /// kinds validation reaches in different ways (priority windows and the
+    /// attacker declaration), before and after the combat damage step. P1
+    /// attacks with a creature and P2 has none, so the damage is dealt to the
+    /// player and no damage is marked.
+    struct RestorePoints {
+        /// From the upkeep to the declare blockers step.
+        before_damage: Vec<EngineState>,
+        /// From the combat damage step to the end step.
+        after_damage: Vec<EngineState>,
+    }
+
     fn restore_points(
         admission: &ExecutableProfileAdmissionV1,
         state: EngineState,
-    ) -> Vec<EngineState> {
-        vec![
-            pass_until(admission, state.clone(), at(TurnPosition::PrecombatMain, 3)),
-            pass_until(admission, state, at_attackers(3)),
-        ]
+    ) -> RestorePoints {
+        let combat = |step| TurnPosition::Combat { step };
+        let to =
+            |from: &EngineState, position| pass_until(admission, from.clone(), at(position, 3));
+        let declared = after_declaring_an_attacker(admission, state.clone());
+        let points = RestorePoints {
+            before_damage: vec![
+                to(&state, UPKEEP),
+                to(&state, TurnPosition::PrecombatMain),
+                to(&state, BEGIN_COMBAT),
+                pass_until(admission, state, at_attackers(3)),
+                declared.clone(),
+                to(&declared, combat(CombatStep::DeclareBlockers)),
+            ],
+            after_damage: vec![
+                to(&declared, combat(CombatStep::CombatDamage)),
+                to(&declared, combat(CombatStep::EndOfCombat)),
+                to(&declared, TurnPosition::PostcombatMain),
+                to(&declared, END_STEP),
+            ],
+        };
+        let running = EpisodeStatus::Running;
+        for state in points.before_damage.iter().chain(&points.after_damage) {
+            validate_magic_pending_request(admission, state, &running)
+                .unwrap_or_else(|error| panic!("{:?}: {error:?}", state.core.position));
+        }
+        assert!(points.before_damage.iter().all(|state| !state
+            .combat
+            .as_ref()
+            .is_some_and(|c| c.damage_step_completed)));
+        assert!(points.after_damage.iter().all(|state| state
+            .combat
+            .as_ref()
+            .is_none_or(|c| c.damage_step_completed)));
+        points
+    }
+
+    /// `state` with `damage` marked on `object`.
+    fn with_marked(state: &EngineState, object: GameObjectId, damage: u64) -> EngineState {
+        let mut marked = state.clone();
+        marked
+            .card_rules
+            .permanents
+            .permanents
+            .get_mut(&object)
+            .unwrap()
+            .marked_damage = damage;
+        marked
+    }
+
+    /// Whether a restored `state` is refused: it does not validate, and
+    /// answering its request fails closed.
+    fn refused_everywhere(admission: &ExecutableProfileAdmissionV1, state: &EngineState) -> bool {
+        validate_magic_pending_request(admission, state, &EpisodeStatus::Running).is_err()
+            && submit(admission, state, pass_answer(pending(state)))
+                == Err(crate::BasicLandTransitionError::TurnProgressUnsupported)
     }
 
     #[test]
@@ -3871,48 +3951,54 @@ mod tests {
         // CR 704.5g: a creature with damage marked at least equal to its
         // toughness is destroyed before any player has priority, so no game
         // rests there. Hill Giant (3/3), Gray Ogre (2/2), Savannah Lions (2/1).
+        // Damage is marked by combat damage and stays marked until cleanup
+        // removes it (CR 120.6, 514.2): damage that is not lethal is accepted
+        // from the combat damage step to the end step, and nowhere else.
         let (admission, state, creatures) =
             game_with_creature_cards(&[(P1, HILL_GIANT), (P1, GRAY_OGRE), (P1, SAVANNAH_LIONS)]);
         let running = EpisodeStatus::Running;
-        for mut state in restore_points(&admission, state) {
-            for (creature, lethal) in creatures.iter().zip([3, 2, 1]) {
-                let mark = |state: &mut EngineState, damage| {
-                    state
-                        .card_rules
-                        .permanents
-                        .permanents
-                        .get_mut(creature)
-                        .unwrap()
-                        .marked_damage = damage;
-                };
+        let points = restore_points(&admission, state);
+        for (creature, lethal) in creatures.iter().zip([3, 2, 1]) {
+            for state in &points.after_damage {
                 for damage in 0..lethal {
-                    mark(&mut state, damage);
-                    validate_magic_pending_request(&admission, &state, &running)
-                        .unwrap_or_else(|error| panic!("{creature:?} {damage}: {error:?}"));
+                    validate_magic_pending_request(
+                        &admission,
+                        &with_marked(state, *creature, damage),
+                        &running,
+                    )
+                    .unwrap_or_else(|error| {
+                        panic!(
+                            "{creature:?} {damage} at {:?}: {error:?}",
+                            state.core.position
+                        )
+                    });
                 }
-                mark(&mut state, lethal);
                 assert!(
-                    validate_magic_pending_request(&admission, &state, &running).is_err(),
+                    refused_everywhere(&admission, &with_marked(state, *creature, lethal)),
                     "{creature:?} {lethal} at {:?}",
-                    pending(&state).purpose
+                    state.core.position
                 );
-                assert_eq!(
-                    submit(&admission, &state, pass_answer(pending(&state))),
-                    Err(crate::BasicLandTransitionError::TurnProgressUnsupported),
-                    "{creature:?} {lethal} at {:?}",
-                    pending(&state).purpose
-                );
-                mark(&mut state, 0);
+            }
+            // Before the damage step no damage is marked, lethal or not.
+            for state in &points.before_damage {
+                for damage in 1..=lethal {
+                    assert!(
+                        refused_everywhere(&admission, &with_marked(state, *creature, damage)),
+                        "{creature:?} {damage} at {:?} {:?}",
+                        state.core.position,
+                        pending(state).purpose
+                    );
+                }
             }
         }
     }
 
     #[test]
     fn a_restored_land_with_marked_damage_is_refused() {
-        // Damage is marked on creatures (CR 120.3e): a land has none.
+        // Damage is marked on creatures (CR 120.3e): a land has none, whenever.
         let (admission, state, _) = game_with_creature_cards(&[(P1, HILL_GIANT)]);
-        let running = EpisodeStatus::Running;
-        for state in restore_points(&admission, state) {
+        let points = restore_points(&admission, state);
+        for state in points.before_damage.iter().chain(&points.after_damage) {
             let land = state
                 .card_rules
                 .permanents
@@ -3921,27 +4007,141 @@ mod tests {
                 .copied()
                 .find(|object| state.zones.objects[object].card_definition != HILL_GIANT)
                 .unwrap();
-            validate_magic_pending_request(&admission, &state, &running).unwrap();
-            let mut damaged = state.clone();
-            damaged
-                .card_rules
-                .permanents
-                .permanents
-                .get_mut(&land)
-                .unwrap()
-                .marked_damage = 1;
             assert!(
-                validate_magic_pending_request(&admission, &damaged, &running).is_err(),
-                "{:?}",
-                pending(&damaged).purpose
-            );
-            assert_eq!(
-                submit(&admission, &damaged, pass_answer(pending(&damaged))),
-                Err(crate::BasicLandTransitionError::TurnProgressUnsupported),
-                "{:?}",
-                pending(&damaged).purpose
+                refused_everywhere(&admission, &with_marked(state, land, 1)),
+                "{:?} {:?}",
+                state.core.position,
+                pending(state).purpose
             );
         }
+    }
+
+    #[test]
+    fn a_restored_combat_that_dealt_no_damage_has_no_marked_damage() {
+        // CR 508.8: with no attackers the damage step is skipped. Nothing is
+        // dealt, so nothing is marked, in the end of combat step or in the
+        // combat damage step of such a combat.
+        let (admission, state, creatures) = game_with_creature_cards(&[(P1, HILL_GIANT)]);
+        let state = pass_until(&admission, state, at_attackers(3));
+        let declared = apply(&state, &declare(&admission, &state, 0).unwrap());
+        let end_of_combat = pass_until(
+            &admission,
+            declared,
+            at(
+                TurnPosition::Combat {
+                    step: CombatStep::EndOfCombat,
+                },
+                3,
+            ),
+        );
+        let combat = end_of_combat.combat.as_ref().unwrap();
+        assert!(combat.attackers.is_empty() && !combat.damage_step_completed);
+        let mut damage_step = end_of_combat.clone();
+        damage_step.core.position = TurnPosition::Combat {
+            step: CombatStep::CombatDamage,
+        };
+        for state in [&end_of_combat, &damage_step] {
+            validate_magic_pending_request(&admission, state, &EpisodeStatus::Running).unwrap();
+            assert!(
+                refused_everywhere(&admission, &with_marked(state, creatures[0], 1)),
+                "{:?}",
+                state.core.position
+            );
+        }
+    }
+
+    /// The end step of turn 3 of a game in which P1's Hill Giant attacked and
+    /// was dealt 2 damage (which is not lethal), and P1 has `p1_extra` cards
+    /// more than usual in hand (6 makes it 8 at this point, so that cleanup
+    /// asks for a discard). Returns the Giant, the state without the damage
+    /// and the state with it.
+    fn end_step_with_damage_and_hand(
+        p1_extra: u64,
+    ) -> (
+        ExecutableProfileAdmissionV1,
+        GameObjectId,
+        EngineState,
+        EngineState,
+    ) {
+        let (admission, state, creatures) =
+            game_with_creature_cards_and_hand(&[(P1, HILL_GIANT)], p1_extra);
+        let unmarked = restore_points(&admission, state)
+            .after_damage
+            .pop()
+            .unwrap();
+        assert_eq!(unmarked.core.position, END_STEP);
+        assert_eq!(
+            zone_count(&unmarked, P1, ZoneKind::Hand),
+            if p1_extra == 0 { 3 } else { 8 }
+        );
+        let marked = with_marked(&unmarked, creatures[0], 2);
+        for state in [&unmarked, &marked] {
+            validate_magic_pending_request(&admission, state, &EpisodeStatus::Running).unwrap();
+        }
+        (admission, creatures[0], unmarked, marked)
+    }
+
+    #[test]
+    fn entering_cleanup_with_marked_damage_fails_closed() {
+        // CR 514.2: all damage marked on permanents is removed in the cleanup
+        // step, which is not supported yet. Neither cleanup exit may go on with
+        // damage marked: not the one without a discard, and not the discard
+        // that CR 514.1 asks for first.
+        for (p1_extra, discards) in [(0, false), (6, true)] {
+            let (admission, _, unmarked, marked) = end_step_with_damage_and_hand(p1_extra);
+            // P1 passes, and P2's pass ends the step: cleanup begins.
+            let from = |state: &EngineState| {
+                let p2 = pass(&admission, state).0;
+                assert_eq!(pending(&p2).actor, P2);
+                (submit(&admission, &p2, pass_answer(pending(&p2))), p2)
+            };
+            let (outcome, p2) = from(&unmarked);
+            let next = apply(&p2, &outcome.unwrap());
+            assert_eq!(
+                pending(&next).purpose == DecisionPurposeV4::HandSizeDiscard,
+                discards
+            );
+            assert_eq!(next.core.turn_number, if discards { 3 } else { 4 });
+
+            assert_eq!(
+                from(&marked).0,
+                Err(crate::BasicLandTransitionError::TurnProgressUnsupported),
+                "discards: {discards}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_restored_cleanup_with_marked_damage_is_refused() {
+        // The discard of CR 514.1 is asked in the cleanup step, where no
+        // damage is marked: a state there with some is not one the game
+        // reaches, and answering it must not end the turn.
+        let (admission, giant, unmarked, _) = end_step_with_damage_and_hand(6);
+        let p2 = pass(&admission, &unmarked).0;
+        let cleanup = pass(&admission, &p2).0;
+        assert_eq!(
+            pending(&cleanup).purpose,
+            DecisionPurposeV4::HandSizeDiscard
+        );
+        validate_magic_pending_request(&admission, &cleanup, &EpisodeStatus::Running).unwrap();
+
+        let damaged = with_marked(&cleanup, giant, 2);
+        assert!(refused_everywhere(&admission, &damaged));
+    }
+
+    #[test]
+    fn a_turn_never_begins_with_damage_marked() {
+        // The turn change is where damage marked must be gone (CR 514.2).
+        let (_, _, unmarked, marked) = end_step_with_damage_and_hand(0);
+        let mut facts = Facts::default();
+        let mut next = marked.clone();
+        assert_eq!(
+            begin_turn(&mut next, &mut facts),
+            Err(crate::BasicLandTransitionError::TurnProgressUnsupported)
+        );
+        let mut next = unmarked.clone();
+        begin_turn(&mut next, &mut facts).unwrap();
+        assert_eq!(next.core.turn_number, unmarked.core.turn_number + 1);
     }
 
     #[test]

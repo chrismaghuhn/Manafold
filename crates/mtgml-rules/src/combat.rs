@@ -19,7 +19,7 @@ use mtgml_decision::{
 use mtgml_model::{CandidateIdV1, ContinuationId, GameObjectId, PlayerId};
 use mtgml_state::{
     CombatBlockerAssignmentV1, CombatState, CombatStep, ContinuationPayload, ContinuationRecord,
-    DamageAssignmentV1, DamageRecipientV1, EngineState, PriorityState, TurnPosition,
+    DamageAssignmentV1, DamageRecipientV1, EndingStep, EngineState, PriorityState, TurnPosition,
 };
 
 use crate::turn_progression::{
@@ -689,7 +689,41 @@ pub(crate) fn deal_combat_damage(
     Ok(())
 }
 
+/// Whether damage is marked on any permanent.
+pub(crate) fn damage_is_marked(state: &EngineState) -> bool {
+    state
+        .card_rules
+        .permanents
+        .permanents
+        .values()
+        .any(|permanent| permanent.marked_damage != 0)
+}
+
+/// CR 120.6, 514.2: damage is marked by combat damage and stays marked until
+/// the cleanup step removes it, so some can exist from the combat damage step,
+/// once its damage is dealt, through the end of combat, the postcombat main
+/// phase and the end step. Removing it at cleanup is not supported yet: no
+/// game enters the cleanup step with any marked.
+fn marked_damage_may_exist(state: &EngineState) -> bool {
+    match state.core.position {
+        TurnPosition::Combat {
+            step: CombatStep::CombatDamage | CombatStep::EndOfCombat,
+        } => state
+            .combat
+            .as_ref()
+            .is_some_and(|combat| combat.damage_step_completed),
+        TurnPosition::PostcombatMain
+        | TurnPosition::Ending {
+            step: EndingStep::EndStep,
+        } => true,
+        _ => false,
+    }
+}
+
 /// The damage marked on the permanents is damage this slice can have made:
+/// - it is marked only in the window of `marked_damage_may_exist`: none in the
+///   beginning phase, the precombat main phase, the combat steps before the
+///   damage is dealt, or the cleanup step;
 /// - only a creature has any (CR 120.3e);
 /// - no creature has been dealt lethal damage: marked damage at least equal to
 ///   its toughness (CR 704.5g; with toughness 0 or less it is destroyed as
@@ -700,6 +734,9 @@ pub(crate) fn validate_marked_damage(
     admission: &ExecutableProfileAdmissionV1,
     state: &EngineState,
 ) -> Result<(), Error> {
+    if damage_is_marked(state) && !marked_damage_may_exist(state) {
+        return Err(Error::TurnProgressUnsupported);
+    }
     let creatures = battlefield_creatures(admission, state)?;
     let permanents = &state.card_rules.permanents.permanents;
     if permanents.iter().any(|(object, permanent)| {
