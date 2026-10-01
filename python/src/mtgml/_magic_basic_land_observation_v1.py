@@ -5,7 +5,7 @@ from itertools import pairwise
 
 from ._magic_observation import MagicPendingSbaOrdering
 from ._synthetic_observation import SyntheticPriority, SyntheticTurnPosition
-from .canonical import parse_u64_number, parse_uint, require_exact_keys, uint_wire
+from .canonical import parse_uint, require_exact_keys, uint_wire
 from .errors import WireError
 
 JsonValue = object
@@ -104,7 +104,7 @@ class CreatureObservationV1:
             parse_uint(obj["controller"]),
             _i64(obj["power"], "power"),
             _i64(obj["toughness"], "toughness"),
-            parse_u64_number(obj["controlled_since_turn"]),
+            parse_uint(obj["controlled_since_turn"]),
         )
 
     def to_wire(self) -> dict[str, object]:
@@ -113,7 +113,7 @@ class CreatureObservationV1:
             "controller": uint_wire(self.controller),
             "power": _i64(self.power, "power"),
             "toughness": _i64(self.toughness, "toughness"),
-            "controlled_since_turn": parse_u64_number(self.controlled_since_turn),
+            "controlled_since_turn": uint_wire(self.controlled_since_turn),
         }
 
 

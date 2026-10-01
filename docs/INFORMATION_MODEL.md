@@ -280,7 +280,7 @@ temporary effects, the payload carries the public player state:
 - `creatures`: one row per creature on the battlefield, ascending by the
   perspective's opaque id: its controller, its printed power and toughness
   (CR 208.1), and `controlled_since_turn`, the turn since which that player
-  has controlled it (CR 302.6). Counters on it are listed in `counters`. The
+  has controlled it (CR 302.6), a decimal string like `turn_number`. Counters on it are listed in `counters`. The
   row states the raw fact, not whether the creature can attack. The
   projection does not apply effects: it fails closed (no observation) rather
   than show printed values while a creature is on the battlefield and a

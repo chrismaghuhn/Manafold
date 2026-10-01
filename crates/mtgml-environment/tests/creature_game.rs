@@ -197,13 +197,17 @@ impl Game {
     }
 
     fn observation(&self, player: PlayerId) -> MagicSharedExecutionObservationV1 {
+        mtgml_wire::decode_canonical(&self.observation_payload(player)).unwrap()
+    }
+
+    /// The bytes of the observation `player` receives.
+    fn observation_payload(&self, player: PlayerId) -> Vec<u8> {
         let information = self.endpoint(player).information_state().unwrap();
-        let payload = base64::Engine::decode(
+        base64::Engine::decode(
             &base64::engine::general_purpose::STANDARD,
             &information.current_observation.payload_base64,
         )
-        .unwrap();
-        mtgml_wire::decode_canonical(&payload).unwrap()
+        .unwrap()
     }
 
     /// The only object of `owner` made from `definition` that is in `zone`.
@@ -2037,6 +2041,11 @@ fn both_players_see_the_creature_with_its_power_toughness_and_arrival_turn() {
             vec![creature_row(&state, player, first, (2, 1), 1)],
             "{player:?}"
         );
+        // On the wire the arrival turn is a decimal string, as `turn_number`.
+        let wire: serde_json::Value =
+            serde_json::from_slice(&game.observation_payload(player)).unwrap();
+        assert_eq!(wire["turn_number"], "1");
+        assert_eq!(wire["creatures"][0]["controlled_since_turn"], "1");
     }
 
     // P2's arrives on turn 2: the rows are one per creature, whoever controls

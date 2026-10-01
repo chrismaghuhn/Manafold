@@ -27,14 +27,14 @@
   ],
   "creatures": [
     {
-      "controlled_since_turn": 1,
+      "controlled_since_turn": "1",
       "controller": "1",
       "object": "3",
       "power": 3,
       "toughness": 3
     },
     {
-      "controlled_since_turn": 1,
+      "controlled_since_turn": "1",
       "controller": "0",
       "object": "7",
       "power": 2,

@@ -3,6 +3,28 @@
 use mtgml_model::{parse_canonical_u64, OpaqueObjectId, PlayerId};
 use serde::{Deserialize, Serialize};
 
+/// A `u64` on the wire as a canonical decimal string, as `turn_number` is: no
+/// sign, no leading zeros, and a JSON number is refused.
+mod canonical_u64_string {
+    use mtgml_model::parse_canonical_u64;
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S>(value: &u64, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&value.to_string())
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<u64, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let text = String::deserialize(deserializer)?;
+        parse_canonical_u64(&text).map_err(serde::de::Error::custom)
+    }
+}
+
 use crate::MAGIC_BASIC_LAND_OBSERVATION_SCHEMA_V1;
 use crate::{ObservationValidationError, SyntheticPriority, SyntheticTurnPosition};
 
@@ -50,6 +72,7 @@ pub struct CreatureObservationV1 {
     pub controller: PlayerId,
     pub power: i64,
     pub toughness: i64,
+    #[serde(with = "canonical_u64_string")]
     pub controlled_since_turn: u64,
 }
 

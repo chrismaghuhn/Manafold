@@ -452,9 +452,8 @@
         "additionalProperties": false,
         "properties": {
           "controlled_since_turn": {
-            "maximum": 18446744073709551615,
-            "minimum": 0,
-            "type": "integer"
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string"
           },
           "controller": {
             "pattern": "^(0|[1-9][0-9]*)$",

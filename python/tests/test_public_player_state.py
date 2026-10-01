@@ -132,8 +132,11 @@ class CreatureObservationTests(unittest.TestCase):
         no_creatures = copy.deepcopy(value)
         del no_creatures["creatures"]
         no_controller = creatures(lambda rows: rows[0].pop("controller"))
-        # Attackers that are creatures, in order, are accepted.
+        # Attackers that are creatures, in order, are accepted, and so are the
+        # ends of the arrival turn's range.
         MagicBasicLandObservationV1.from_wire(field("attacking", ["3", "7"]))
+        for turn in ("0", str(2**64 - 1)):
+            MagicBasicLandObservationV1.from_wire(entry("controlled_since_turn", turn))
         # Each case is wrong in exactly one way, and says so.
         for broken, reason in (
             (creatures(lambda rows: rows.reverse()), "creature rows are not ordered"),
@@ -149,10 +152,17 @@ class CreatureObservationTests(unittest.TestCase):
             (entry("power", True), "power is outside its i64 range"),
             (entry("power", 2**63), "power is outside its i64 range"),
             (entry("toughness", "3"), "toughness is outside its i64 range"),
-            (entry("controlled_since_turn", "1"), "expected unsigned 64-bit JSON integer"),
-            (entry("controlled_since_turn", -1), "expected unsigned 64-bit JSON integer"),
-            (entry("controlled_since_turn", 2**64), "expected unsigned 64-bit JSON integer"),
-            (entry("controlled_since_turn", True), "expected unsigned 64-bit JSON integer"),
+            (entry("controlled_since_turn", 1), "expected canonical unsigned decimal string"),
+            (entry("controlled_since_turn", -1), "expected canonical unsigned decimal string"),
+            (entry("controlled_since_turn", True), "expected canonical unsigned decimal string"),
+            (entry("controlled_since_turn", None), "expected canonical unsigned decimal string"),
+            (entry("controlled_since_turn", "01"), "expected canonical unsigned decimal string"),
+            (entry("controlled_since_turn", "+1"), "expected canonical unsigned decimal string"),
+            (entry("controlled_since_turn", "-1"), "expected canonical unsigned decimal string"),
+            (entry("controlled_since_turn", "1a"), "expected canonical unsigned decimal string"),
+            (entry("controlled_since_turn", " 1"), "expected canonical unsigned decimal string"),
+            (entry("controlled_since_turn", ""), "expected canonical unsigned decimal string"),
+            (entry("controlled_since_turn", str(2**64)), "unsigned integer is out of range"),
             (entry("controller", 1), "expected canonical unsigned decimal string"),
             (entry("extra", 0), "closed contract"),
             (no_controller, "closed contract"),

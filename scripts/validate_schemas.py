@@ -127,6 +127,10 @@ SCHEMA_NEGATIVE_CASES = [
     ),
     (
         "magic-basic-land-observation.v1.schema.json",
+        "schemas/negative/magic-basic-land-observation-v1-arrival-turn-as-number.json",
+    ),
+    (
+        "magic-basic-land-observation.v1.schema.json",
         "schemas/negative/magic-basic-land-observation-v1-creatures-missing.json",
     ),
     (

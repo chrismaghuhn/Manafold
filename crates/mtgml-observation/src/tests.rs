@@ -190,6 +190,8 @@ fn basic_land_observation_v1_shows_creatures_and_attackers() {
         ]
     );
     assert_eq!(observation.attacking, vec![mtgml_model::OpaqueObjectId(7)]);
+    // The arrival turn travels as a decimal string, as `turn_number` does.
+    assert_eq!(serde_json::to_value(&observation).unwrap(), example);
 
     let broken = |edit: &dyn Fn(&mut serde_json::Value)| {
         let mut value = example.clone();
@@ -214,14 +216,36 @@ fn basic_land_observation_v1_shows_creatures_and_attackers() {
     // Numbers are numbers, not strings; every field and list is required.
     assert!(broken(&|value| value["creatures"][0]["power"] = serde_json::json!("3")).is_err());
     assert!(broken(&|value| value["creatures"][0]["toughness"] = serde_json::json!("3")).is_err());
-    assert!(broken(&|value| {
-        value["creatures"][0]["controlled_since_turn"] = serde_json::json!("1");
-    })
-    .is_err());
-    assert!(broken(&|value| {
-        value["creatures"][0]["controlled_since_turn"] = serde_json::json!(-1);
-    })
-    .is_err());
+    // The arrival turn is a canonical decimal string of a u64: a JSON number,
+    // a sign, leading zeros, other characters and an out-of-range value are
+    // refused.
+    for turn in ["0", "1", "18446744073709551615"] {
+        assert!(
+            broken(&|value| {
+                value["creatures"][0]["controlled_since_turn"] = serde_json::json!(turn);
+            })
+            .is_ok(),
+            "{turn}"
+        );
+    }
+    for turn in [
+        serde_json::json!(1),
+        serde_json::json!(-1),
+        serde_json::json!(1.5),
+        serde_json::json!(null),
+        serde_json::json!("01"),
+        serde_json::json!("+1"),
+        serde_json::json!("-1"),
+        serde_json::json!("1a"),
+        serde_json::json!(" 1"),
+        serde_json::json!(""),
+        serde_json::json!("18446744073709551616"),
+    ] {
+        assert!(
+            broken(&|value| value["creatures"][0]["controlled_since_turn"] = turn.clone()).is_err(),
+            "{turn}"
+        );
+    }
     assert!(broken(&|value| value["creatures"][0]["extra"] = serde_json::json!(0)).is_err());
     assert!(broken(&|value| {
         value["creatures"][0]
