@@ -1384,6 +1384,72 @@ fn the_opponent_can_only_pass_or_make_mana_while_a_spell_is_on_the_stack() {
 }
 
 #[test]
+fn the_active_player_cannot_play_a_land_while_a_spell_is_on_the_stack() {
+    let (mountain, plains) = land_definitions();
+    let [lions, _, _] = creature_definitions();
+    // P1 plays a Plains on turn 1. On turn 3 it holds a Plains and a drawn
+    // Mountain, has played no land yet, and taps the first Plains for {W}.
+    let game = Game::with_hands([vec![plains, plains, lions], vec![mountain]]);
+    game.answer(play_land, pass);
+    game.run_until(start_of_main_phase(3));
+    game.answer(tap_for_mana, pass);
+    let before_the_cast = game.state();
+    assert_eq!(before_the_cast.core.active_player, P1);
+    assert_eq!(before_the_cast.core.position, TurnPosition::PrecombatMain);
+    assert!(before_the_cast.zones.stack_order.is_empty());
+    assert_eq!(
+        before_the_cast.card_rules.turn_history.players[&P1].land_plays_used,
+        0
+    );
+    assert_eq!(
+        game.zones_of(P1, &[plains, mountain])
+            .iter()
+            .filter(|zone| **zone == ZoneKind::Hand)
+            .count(),
+        2,
+        "P1 holds a Plains and the Mountain it drew"
+    );
+    // With the stack empty, P1 may play either land (CR 305.1) and may cast.
+    assert_eq!(game.offered().iter().filter(|i| play_land(i)).count(), 2);
+    assert_eq!(game.casts().len(), 1);
+
+    // CR 305.1, 305.2: with Savannah Lions on the stack, the same player with
+    // the same lands in hand and no land played has no land to play. Only the
+    // stack differs.
+    game.answer(cast_spell, pass);
+    let state = game.state();
+    assert_eq!(state.zones.stack_order.len(), 1);
+    assert_eq!(state.core.active_player, P1);
+    assert_eq!(state.core.position, TurnPosition::PrecombatMain);
+    assert_eq!(
+        state.core.priority,
+        PriorityState::HeldBy {
+            player: P1,
+            consecutive_passes: 0
+        }
+    );
+    assert_eq!(
+        state.card_rules.turn_history.players[&P1].land_plays_used,
+        0
+    );
+    assert_eq!(game.pending().0, P1);
+    let offered = game.offered();
+    assert!(
+        !offered.iter().any(play_land),
+        "a land is offered with a spell on the stack: {offered:?}"
+    );
+    assert_eq!(offered, vec![CandidateIntent::PassPriority]);
+
+    // Once the spell has resolved, the stack is empty again, and so is the
+    // land play that P1 never used.
+    game.answer(pass, pass);
+    game.answer(pass, pass);
+    assert!(game.state().zones.stack_order.is_empty());
+    assert_eq!(game.pending().0, P1);
+    assert_eq!(game.offered().iter().filter(|i| play_land(i)).count(), 2);
+}
+
+#[test]
 fn the_opponent_learns_the_card_only_when_it_goes_on_the_stack() {
     let (mountain, plains) = land_definitions();
     let [lions, ogre, giant] = creature_definitions();
