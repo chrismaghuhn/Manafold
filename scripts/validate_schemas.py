@@ -114,6 +114,18 @@ SCHEMA_NEGATIVE_CASES = [
         "schemas/negative/magic-basic-land-observation-v1-candidates.json",
     ),
     (
+        "magic-basic-land-observation.v1.schema.json",
+        "schemas/negative/magic-basic-land-observation-v1-life-as-string.json",
+    ),
+    (
+        "magic-basic-land-observation.v1.schema.json",
+        "schemas/negative/magic-basic-land-observation-v1-players-missing.json",
+    ),
+    (
+        "magic-shared-execution-observation.v1.schema.json",
+        "schemas/negative/magic-shared-execution-observation-v1-tapped-repeated.json",
+    ),
+    (
         "magic-shared-execution-observation.v1.schema.json",
         "schemas/negative/magic-shared-execution-observation-v1-global-state-revision.json",
     ),

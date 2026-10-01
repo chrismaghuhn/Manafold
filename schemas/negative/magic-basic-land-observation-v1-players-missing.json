@@ -9,20 +9,6 @@
     "kind": "held_by",
     "player": "0"
   },
-  "players": [
-    {
-      "player": "0",
-      "life": 20,
-      "hand_count": 6,
-      "library_count": 33
-    },
-    {
-      "player": "1",
-      "life": -2,
-      "hand_count": 7,
-      "library_count": 33
-    }
-  ],
   "pending_sba_ordering": null,
   "mana_pools": [
     {

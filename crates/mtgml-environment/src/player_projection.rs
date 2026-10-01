@@ -138,12 +138,38 @@ fn project_magic_basic_land_observation_from_verified_faces(
             .copied()
             .ok_or(PlayerEndpointError::ServiceUnavailable)
     };
+    // CR 402.3, 401.3: hand and library sizes are public.
+    let cards_in = |zone: mtgml_model::ZoneKind, player: PlayerId| {
+        u32::try_from(
+            state
+                .zones
+                .locations
+                .values()
+                .filter(|location| location.zone == zone && location.player == Some(player))
+                .count(),
+        )
+        .map_err(|_| PlayerEndpointError::ServiceUnavailable)
+    };
+    let players = state
+        .core
+        .players
+        .iter()
+        .map(|(player, entry)| {
+            Ok(mtgml_observation::PlayerObservationV1 {
+                player: *player,
+                life: entry.life,
+                hand_count: cards_in(mtgml_model::ZoneKind::Hand, *player)?,
+                library_count: cards_in(mtgml_model::ZoneKind::Library, *player)?,
+            })
+        })
+        .collect::<Result<Vec<_>, PlayerEndpointError>>()?;
     let mut value = MagicBasicLandObservationV1 {
         schema_version: mtgml_observation::MAGIC_BASIC_LAND_OBSERVATION_SCHEMA_V1.into(),
         active_player: state.core.active_player,
         turn_number: state.core.turn_number.to_string(),
         turn_position: public_turn_position(state.core.position),
         priority: public_priority(state.core.priority),
+        players,
         // The shared observation carries the pending ordering from the
         // current execution; the basic value never owns it.
         pending_sba_ordering: None,
@@ -161,6 +187,7 @@ fn project_magic_basic_land_observation_from_verified_faces(
         counters: Vec::new(),
         attachments: Vec::new(),
         faces: Vec::new(),
+        tapped: Vec::new(),
     };
     for (object, counters) in &parts.card_rules.counters.counters {
         if !public_battlefield(*object) {
@@ -180,6 +207,12 @@ fn project_magic_basic_land_observation_from_verified_faces(
                 },
                 count: *count,
             });
+        }
+    }
+    // CR 110.5: a permanent's tapped status is public.
+    for (object, card) in &state.zones.objects {
+        if card.tapped && public_battlefield(*object) {
+            value.tapped.push(opaque(*object)?);
         }
     }
     for (source, edge) in &parts.card_rules.attachments.by_source {
@@ -213,6 +246,7 @@ fn project_magic_basic_land_observation_from_verified_faces(
         .sort_by_key(|entry| (entry.object, entry.counter_kind));
     value.attachments.sort_by_key(|entry| entry.source);
     value.faces.sort_by_key(|entry| entry.object);
+    value.tapped.sort();
     value
         .validate()
         .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
@@ -452,11 +486,13 @@ fn project_shared_execution_observation(
         turn_number: basic.turn_number,
         turn_position: basic.turn_position,
         priority: basic.priority,
+        players: basic.players,
         pending_sba_ordering: project_sba_ordering_v4(parts, perspective)?,
         mana_pools: basic.mana_pools,
         counters: basic.counters,
         attachments: basic.attachments,
         faces: basic.faces,
+        tapped: basic.tapped,
         stack,
         temporary_effects,
     })

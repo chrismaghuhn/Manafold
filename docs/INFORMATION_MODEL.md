@@ -271,6 +271,16 @@ VisibleSequence. The current public payload is
 `magic-shared-execution-observation.v1`; it remains scoped to the admitted
 Mountain/Plains `basic-land@1.0.0` execution.
 
+Besides turn, priority, mana pools, counters, attachments, faces, stack and
+temporary effects, the payload carries the public player state:
+- `players`: each player's life, hand size and library size (CR 119, 402.3,
+  401.3). Both perspectives see the same rows.
+- `tapped`: the perspective's opaque ids of the tapped permanents on the
+  battlefield (CR 110.5).
+
+None of these values depends on library order, hidden card identity or
+trusted ids.
+
 ## Noninterference
 
 For perspective `P`, two valid authoritative states that differ only in unauthorized information must produce byte-identical:

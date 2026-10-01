@@ -338,11 +338,13 @@ class MagicSharedExecutionObservationV1:
             "turn_number",
             "turn_position",
             "priority",
+            "players",
             "pending_sba_ordering",
             "mana_pools",
             "counters",
             "attachments",
             "faces",
+            "tapped",
         }
         obj = require_exact_keys(value, base_fields | {"stack", "temporary_effects"})
         if obj["schema_version"] != MAGIC_SHARED_EXECUTION_OBSERVATION_SCHEMA_V1:

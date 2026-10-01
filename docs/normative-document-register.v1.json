@@ -1164,6 +1164,13 @@
     {
       "change_process": "process-pr",
       "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-10-01-public-player-state-design.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
       "path": "docs/superpowers/specs/2026-09-30-old-formats-cleanup-design.md",
       "role": "process",
       "stability": "provisional"

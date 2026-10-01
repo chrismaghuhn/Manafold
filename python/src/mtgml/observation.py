@@ -33,6 +33,7 @@ from ._magic_basic_land_observation_v1 import (
     FaceObservationV1,
     MagicBasicLandObservationV1,
     ManaPoolObservationV1,
+    PlayerObservationV1,
 )
 from ._magic_observation import (
     MagicCompletedOrder,
@@ -113,6 +114,7 @@ __all__ = [
     "PlayerKnownLocationFactV1",
     "PlayerKnownLocationV1",
     "PlayerKnownObjectV1",
+    "PlayerObservationV1",
     "PlayerStepSubmissionV1",
     "PlayerStepV4",
     "PowerToughnessDeltaV1",

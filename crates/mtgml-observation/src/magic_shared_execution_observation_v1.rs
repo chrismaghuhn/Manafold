@@ -7,8 +7,9 @@ use std::cmp::Ordering;
 
 use crate::{
     AttachmentObservationV1, CounterObservationV1, FaceObservationV1, MagicBasicLandObservationV1,
-    MagicPendingSbaOrdering, ManaPoolObservationV1, ObservationValidationError, SyntheticPriority,
-    SyntheticTurnPosition, MAGIC_BASIC_LAND_OBSERVATION_SCHEMA_V1,
+    MagicPendingSbaOrdering, ManaPoolObservationV1, ObservationValidationError,
+    PlayerObservationV1, SyntheticPriority, SyntheticTurnPosition,
+    MAGIC_BASIC_LAND_OBSERVATION_SCHEMA_V1,
 };
 
 pub const MAGIC_SHARED_EXECUTION_OBSERVATION_SCHEMA_V1: &str =
@@ -235,12 +236,14 @@ pub struct MagicSharedExecutionObservationV1 {
     pub turn_number: String,
     pub turn_position: SyntheticTurnPosition,
     pub priority: SyntheticPriority,
+    pub players: Vec<PlayerObservationV1>,
     #[serde(deserialize_with = "deserialize_required_option")]
     pub pending_sba_ordering: Option<MagicPendingSbaOrdering>,
     pub mana_pools: Vec<ManaPoolObservationV1>,
     pub counters: Vec<CounterObservationV1>,
     pub attachments: Vec<AttachmentObservationV1>,
     pub faces: Vec<FaceObservationV1>,
+    pub tapped: Vec<OpaqueObjectId>,
     pub stack: Vec<PublicStackItemV1>,
     pub temporary_effects: Vec<PublicTemporaryEffectV1>,
 }
@@ -256,11 +259,13 @@ impl MagicSharedExecutionObservationV1 {
             turn_number: self.turn_number.clone(),
             turn_position: self.turn_position,
             priority: self.priority,
+            players: self.players.clone(),
             pending_sba_ordering: self.pending_sba_ordering.clone(),
             mana_pools: self.mana_pools.clone(),
             counters: self.counters.clone(),
             attachments: self.attachments.clone(),
             faces: self.faces.clone(),
+            tapped: self.tapped.clone(),
         };
         base.validate()?;
         for item in &self.stack {

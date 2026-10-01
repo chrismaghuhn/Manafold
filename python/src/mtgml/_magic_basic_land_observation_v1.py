@@ -21,6 +21,40 @@ def _u32(value: object, label: str, *, minimum: int = 0) -> int:
     return value
 
 
+def _i64(value: object, label: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or not -(2**63) <= value <= 2**63 - 1:
+        raise WireError("decode.invalid_json", f"{label} is outside its i64 range")
+    return value
+
+
+@dataclass(frozen=True, slots=True)
+class PlayerObservationV1:
+    """A player's public totals: life, hand size and library size."""
+
+    player: int
+    life: int
+    hand_count: int
+    library_count: int
+
+    @classmethod
+    def from_wire(cls, value: object) -> PlayerObservationV1:
+        obj = require_exact_keys(value, {"player", "life", "hand_count", "library_count"})
+        return cls(
+            parse_uint(obj["player"]),
+            _i64(obj["life"], "life"),
+            _u32(obj["hand_count"], "hand count"),
+            _u32(obj["library_count"], "library count"),
+        )
+
+    def to_wire(self) -> dict[str, object]:
+        return {
+            "player": uint_wire(self.player),
+            "life": _i64(self.life, "life"),
+            "hand_count": _u32(self.hand_count, "hand count"),
+            "library_count": _u32(self.library_count, "library count"),
+        }
+
+
 @dataclass(frozen=True, slots=True)
 class ManaPoolObservationV1:
     player: int
@@ -111,11 +145,13 @@ class MagicBasicLandObservationV1:
     turn_number: str
     turn_position: SyntheticTurnPosition
     priority: SyntheticPriority
+    players: tuple[PlayerObservationV1, ...]
     pending_sba_ordering: MagicPendingSbaOrdering | None
     mana_pools: tuple[ManaPoolObservationV1, ...]
     counters: tuple[CounterObservationV1, ...]
     attachments: tuple[AttachmentObservationV1, ...]
     faces: tuple[FaceObservationV1, ...]
+    tapped: tuple[int, ...]
 
     @classmethod
     def from_wire(cls, value: object) -> MagicBasicLandObservationV1:
@@ -127,18 +163,20 @@ class MagicBasicLandObservationV1:
                 "turn_number",
                 "turn_position",
                 "priority",
+                "players",
                 "pending_sba_ordering",
                 "mana_pools",
                 "counters",
                 "attachments",
                 "faces",
+                "tapped",
             },
         )
         if obj["schema_version"] != MAGIC_BASIC_LAND_OBSERVATION_SCHEMA_V1:
             raise WireError("decode.invalid_json", "unsupported basic-land observation")
         if not isinstance(obj["turn_number"], str):
             raise WireError("decode.invalid_json", "turn number must be a string")
-        for key in ("mana_pools", "counters", "attachments", "faces"):
+        for key in ("players", "mana_pools", "counters", "attachments", "faces", "tapped"):
             if not isinstance(obj[key], list):
                 raise WireError("decode.invalid_json", f"{key} must be an array")
         pending = obj["pending_sba_ordering"]
@@ -148,11 +186,13 @@ class MagicBasicLandObservationV1:
             obj["turn_number"],
             SyntheticTurnPosition.from_wire(obj["turn_position"]),
             SyntheticPriority.from_wire(obj["priority"]),
+            tuple(PlayerObservationV1.from_wire(item) for item in obj["players"]),
             None if pending is None else MagicPendingSbaOrdering.from_wire(pending),
             tuple(ManaPoolObservationV1.from_wire(item) for item in obj["mana_pools"]),
             tuple(CounterObservationV1.from_wire(item) for item in obj["counters"]),
             tuple(AttachmentObservationV1.from_wire(item) for item in obj["attachments"]),
             tuple(FaceObservationV1.from_wire(item) for item in obj["faces"]),
+            tuple(parse_uint(item) for item in obj["tapped"]),
         )
         result.to_wire()
         return result
@@ -169,6 +209,14 @@ class MagicBasicLandObservationV1:
         if self.schema_version != MAGIC_BASIC_LAND_OBSERVATION_SCHEMA_V1:
             raise WireError(
                 "semantic.magic_basic_land_observation_v1", "unsupported payload schema"
+            )
+        if any(a.player >= b.player for a, b in pairwise(self.players)):
+            raise WireError("semantic.magic_basic_land_observation_v1", "players are not ordered")
+        if all(item.player != self.active_player for item in self.players):
+            raise WireError("semantic.magic_basic_land_observation_v1", "active player not listed")
+        if any(a >= b for a, b in pairwise(self.tapped)):
+            raise WireError(
+                "semantic.magic_basic_land_observation_v1", "tapped permanents are not ordered"
             )
         if any(a.player >= b.player for a, b in pairwise(self.mana_pools)):
             raise WireError("semantic.magic_basic_land_observation_v1", "mana rows are not ordered")
@@ -200,8 +248,10 @@ class MagicBasicLandObservationV1:
             "pending_sba_ordering": None
             if self.pending_sba_ordering is None
             else self.pending_sba_ordering.to_wire(),
+            "players": [item.to_wire() for item in self.players],
             "priority": self.priority.to_wire(),
             "schema_version": MAGIC_BASIC_LAND_OBSERVATION_SCHEMA_V1,
+            "tapped": [uint_wire(item) for item in self.tapped],
             "turn_number": self.turn_number,
             "turn_position": self.turn_position.to_wire(),
         }
