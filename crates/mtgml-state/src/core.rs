@@ -66,14 +66,18 @@ pub struct CombatState {
     /// Attackers which became blocked during blocker declaration. This fact
     /// survives removal of every live blocker (CR 509.1h).
     pub blocked_attackers: BTreeSet<mtgml_model::GameObjectId>,
-    pub blockers: BTreeMap<mtgml_model::GameObjectId, Option<mtgml_model::GameObjectId>>,
+    /// Each blocking creature and the attacker it blocks (CR 509.1a, 509.1g).
+    /// An attacker may have any number of blockers (CR 509.1h, 510.1c), so the
+    /// map goes from blocker to attacker: a list of blockers per attacker would
+    /// carry an order that means nothing and give one rules state two digests.
+    pub blockers: BTreeMap<mtgml_model::GameObjectId, mtgml_model::GameObjectId>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CombatBlockerAssignmentV1 {
+    pub blocker: mtgml_model::GameObjectId,
     pub attacker: mtgml_model::GameObjectId,
-    pub blocker: Option<mtgml_model::GameObjectId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -102,14 +106,14 @@ mod blocked_history_characterization {
             attackers: vec![GameObjectId(10)],
             damage_step_completed: false,
             blocked_attackers: BTreeSet::new(),
-            blockers: BTreeMap::from([(GameObjectId(10), None)]),
+            blockers: BTreeMap::new(),
         };
         let was_blocked_then_blocker_left = CombatState {
             defending_player: PlayerId(2),
             attackers: vec![GameObjectId(10)],
             damage_step_completed: false,
             blocked_attackers: BTreeSet::from([GameObjectId(10)]),
-            blockers: BTreeMap::from([(GameObjectId(10), None)]),
+            blockers: BTreeMap::new(),
         };
 
         assert_ne!(never_blocked, was_blocked_then_blocker_left);

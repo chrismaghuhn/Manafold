@@ -48,12 +48,7 @@ fn validate_old_references(
     owner: mtgml_model::PlayerId,
 ) -> Result<(), KernelExecutionError> {
     if state.combat.as_ref().is_some_and(|combat| {
-        combat.attackers.contains(&object)
-            || combat.blockers.contains_key(&object)
-            || combat
-                .blockers
-                .values()
-                .any(|blocker| *blocker == Some(object))
+        combat.attackers.contains(&object) || combat.blockers.contains_key(&object)
     }) {
         return Err(KernelExecutionError::ZoneIncarnation(
             ZoneIncarnationError::CombatReference,

@@ -127,10 +127,12 @@ Each state format has one current version and is changed in place (AGENTS.md
 
 ## Combat state facts
 
-`CombatState` records the attackers that became blocked, independently of live
-blocker references, and a flag recording that the combat-damage turn-based
-action completed. A blocked attacker remains blocked when its live blocker
-reference is absent.
+`CombatState` records the attackers, each blocking creature with the attacker it
+blocks, the attackers that became blocked independently of live blocker
+references, and a flag recording that the combat-damage turn-based action
+completed. The blockers are a map from blocker to attacker, so an attacker may
+have any number of blockers and the state carries no order among them. A blocked
+attacker remains blocked when its last blocker has left (CR 509.1h).
 
 ## Card-rules state families
 

@@ -1895,7 +1895,7 @@ fn attackers_tap_and_both_players_see_the_attack() {
     let combat = state.combat.as_ref().unwrap();
     assert_eq!(combat.defending_player, P2);
     assert_eq!(combat.attackers, vec![creature]);
-    assert_eq!(combat.blockers, BTreeMap::from([(creature, None)]));
+    assert!(combat.blockers.is_empty());
     assert!(combat.blocked_attackers.is_empty());
     for player in [P1, P2] {
         assert!(game

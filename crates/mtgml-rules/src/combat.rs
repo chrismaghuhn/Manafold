@@ -146,10 +146,10 @@ pub(crate) fn declare_attackers(
     }
     next.combat = Some(CombatState {
         defending_player,
-        blockers: attackers.iter().map(|object| (*object, None)).collect(),
         attackers: attackers.clone(),
         damage_step_completed: false,
         blocked_attackers: Default::default(),
+        blockers: Default::default(),
     });
     observe_public(
         next,
@@ -198,6 +198,12 @@ fn could_block(state: &EngineState, creatures: &[Creature]) -> Result<bool, Erro
 ///   controls (CR 508.1a), and they attack the other player (CR 506.2);
 /// - each attacker is tapped (CR 508.1f) and has been under its controller's
 ///   control since the turn began (CR 302.6, 508.1a);
+/// - the damage step with attackers has dealt its damage (CR 510.1, 510.3):
+///   the turn-based action runs on entering the step, so no game rests there
+///   before it;
+/// - no attacker is blocked while attackers are still being declared
+///   (CR 509.1, 508.2), and every blocker is a creature the defending player
+///   controls (CR 509.1a);
 /// - from the declare blockers step on, with attackers, the defending player
 ///   controls no untapped creature (CR 509.1a): the game stops before that step
 ///   when one could block, because blocks are not supported yet.
@@ -243,6 +249,24 @@ pub(crate) fn validate_reachable_combat(
             return Err(Error::TurnProgressUnsupported);
         }
     }
+    if step == CombatStep::CombatDamage
+        && !combat.attackers.is_empty()
+        && !combat.damage_step_completed
+    {
+        return Err(Error::TurnProgressUnsupported);
+    }
+    if step == CombatStep::DeclareAttackers
+        && (!combat.blockers.is_empty() || !combat.blocked_attackers.is_empty())
+    {
+        return Err(Error::TurnProgressUnsupported);
+    }
+    if combat.blockers.keys().any(|blocker| {
+        !creatures.iter().any(|creature| {
+            creature.object == *blocker && creature.controller == combat.defending_player
+        })
+    }) {
+        return Err(Error::TurnProgressUnsupported);
+    }
     let blocking_step = matches!(
         step,
         CombatStep::DeclareBlockers | CombatStep::CombatDamage | CombatStep::EndOfCombat
@@ -265,7 +289,7 @@ pub(crate) fn deal_unblocked_combat_damage(
     let combat = next.combat.clone().ok_or(Error::InvalidResult)?;
     if combat.damage_step_completed
         || !combat.blocked_attackers.is_empty()
-        || combat.blockers.values().any(Option::is_some)
+        || !combat.blockers.is_empty()
     {
         return Err(Error::TurnProgressUnsupported);
     }

@@ -40,7 +40,7 @@ fn p0_combat_facts_are_typed_state_values() {
         attackers: vec![GameObjectId(1)],
         damage_step_completed: false,
         blocked_attackers: std::collections::BTreeSet::from([GameObjectId(1)]),
-        blockers: BTreeMap::from([(GameObjectId(1), None)]),
+        blockers: BTreeMap::new(),
     };
 
     assert_eq!(combat.attackers, vec![GameObjectId(1)]);
@@ -75,7 +75,7 @@ fn dangling_attacker(state: &mut mtgml_state::EngineState) {
         attackers: vec![GameObjectId(99)],
         damage_step_completed: false,
         blocked_attackers: std::collections::BTreeSet::new(),
-        blockers: BTreeMap::from([(GameObjectId(99), None)]),
+        blockers: BTreeMap::new(),
     });
 }
 
@@ -84,8 +84,8 @@ fn dangling_blocker(state: &mut mtgml_state::EngineState) {
         defending_player: PlayerId(2),
         attackers: vec![GameObjectId(1)],
         damage_step_completed: false,
-        blocked_attackers: std::collections::BTreeSet::new(),
-        blockers: BTreeMap::from([(GameObjectId(1), Some(GameObjectId(99)))]),
+        blocked_attackers: std::collections::BTreeSet::from([GameObjectId(1)]),
+        blockers: BTreeMap::from([(GameObjectId(99), GameObjectId(1))]),
     });
 }
 
@@ -95,7 +95,7 @@ fn duplicate_attackers(state: &mut mtgml_state::EngineState) {
         attackers: vec![GameObjectId(1), GameObjectId(1)],
         damage_step_completed: false,
         blocked_attackers: std::collections::BTreeSet::new(),
-        blockers: BTreeMap::from([(GameObjectId(1), None)]),
+        blockers: BTreeMap::new(),
     });
 }
 
@@ -105,7 +105,7 @@ fn noncanonical_attackers(state: &mut mtgml_state::EngineState) {
         attackers: vec![GameObjectId(2), GameObjectId(1)],
         damage_step_completed: false,
         blocked_attackers: std::collections::BTreeSet::new(),
-        blockers: BTreeMap::from([(GameObjectId(1), None), (GameObjectId(2), None)]),
+        blockers: BTreeMap::new(),
     });
 }
 

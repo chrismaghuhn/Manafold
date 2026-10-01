@@ -47,7 +47,7 @@ The preimage is a fixed 14-element array:
 | 7 | random | [`random_v1`](#random_v1) |
 | 8 | knowledge | [`knowledge_v2`](#knowledge_v2) |
 | 9 | perspective identities | [`perspective_identities_v2`](#perspective_identities_v2) |
-| 10 | combat | [`combat`](#combat): `null`, or the 3- or 5-element form |
+| 10 | combat | [`combat`](#combat): `null`, or the five-element form |
 | 11 | foundation sources | always the empty array `[]` |
 | 12 | format | [`format_v1`](#format_v1) |
 | 13 | card-rules record | [card-rules record](#card-rules-record), tagged `"card-rules-authoritative-state.v1"` |
@@ -742,16 +742,8 @@ The presence of this historical structural field does not claim executable Comma
 
 ## `combat`
 
-`null` when no combat is in progress. Otherwise the three-element form
-
-```text
-[defending_player, attackers[], blockers[]]
-```
-
-is used whenever `damage_step_completed` is false and `blocked_attackers`
-exactly equals the attacker keys with a live blocker. In every other case the
-five-element form binds CR 509.1h blocked history and whether the mandatory
-damage action has already run:
+`null` when no combat is in progress. Otherwise one form, whatever the combat
+holds:
 
 ```text
 [
@@ -763,8 +755,14 @@ damage action has already run:
 ]
 ```
 
-`blocked_attackers` is sorted by `GameObjectId` and duplicate-free;
-`damage_step_completed` is a CBOR boolean.
+`attackers` is ascending by `GameObjectId` and duplicate-free. `blockers` lists
+`[blocker, attacker]` pairs, one for each blocking creature (CR 509.1a), sorted
+by blocker and duplicate-free: the map goes from blocker to attacker, so
+several blockers of one attacker have no order of their own that two digests
+could disagree on. `blocked_attackers` is sorted by `GameObjectId` and
+duplicate-free; it binds CR 509.1h blocked history, so an attacker whose
+blockers have all left is still listed. `damage_step_completed` is a CBOR
+boolean recording whether the mandatory combat damage action has already run.
 
 ## Card-rules record
 

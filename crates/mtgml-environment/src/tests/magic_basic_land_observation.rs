@@ -1142,7 +1142,7 @@ fn magic_basic_land_projection_lists_each_permanent_and_shows_a_creatures_printe
         attackers: vec![permanent],
         damage_step_completed: false,
         blocked_attackers: Default::default(),
-        blockers: BTreeMap::from([(permanent, None)]),
+        blockers: BTreeMap::new(),
     });
     assert_eq!(
         project_with_a_creature_definition(&attacking)

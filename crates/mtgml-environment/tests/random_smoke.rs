@@ -31,8 +31,8 @@ use mtgml_observation::PlayerStepSubmissionV1;
 const FIRST_SEED: u64 = 0x4D41_4E41;
 const LAST_TURN: u64 = 30;
 const SHORT_LAST_TURN: u64 = 3;
-const SHORT_FINGERPRINT: &str = "2de310efe91b4b83c1e5980ef9c1099cf967523733aabe5b64857a64b73eea96";
-const LONG_FINGERPRINT: &str = "41afc73cee22da14c029f97b29c27927dd4bd120ce4d6d880591dfd85011719f";
+const SHORT_FINGERPRINT: &str = "f85bac2c6e6cecfdcf9ace9758b3ec64f8869e68f700c472e493a16a26e99b29";
+const LONG_FINGERPRINT: &str = "a6dd50962341727975d376dfce5f6bea1af3333e0ac48eb26649bfa29e300fbc";
 /// The first asymmetric seed whose game casts a creature before turn 6
 /// begins, so that the short pin covers the creature rules and not only land
 /// play (`FIRST_SEED` through `FIRST_SEED + 5` cast nothing that early).
@@ -40,7 +40,7 @@ const ASYMMETRIC_SHORT_SEED: u64 = FIRST_SEED + 6;
 /// Until turn 6 begins.
 const ASYMMETRIC_SHORT_LAST_TURN: u64 = 5;
 const ASYMMETRIC_SHORT_FINGERPRINT: &str =
-    "a07d4d47012acc524c48862a21455e379c80e21db57fe354afc81a8135b0031d";
+    "3976d6f484345a7d61d3154ff2f1a7a86546608c008cdba56ead50312e8e9b46";
 const ASYMMETRIC_GAMES: u64 = 10;
 const ASYMMETRIC_LANDS: usize = 17;
 const ASYMMETRIC_CREATURES: usize = 10;

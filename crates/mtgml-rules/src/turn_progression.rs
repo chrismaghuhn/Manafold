@@ -309,7 +309,7 @@ fn validate_slice(
         || !execution.delayed_effects.is_empty()
         || !crate::casting::stack_within_profile(admission, state)
         || parts.combat.as_ref().is_some_and(|combat| {
-            !combat.blocked_attackers.is_empty() || combat.blockers.values().any(Option::is_some)
+            !combat.blocked_attackers.is_empty() || !combat.blockers.is_empty()
         })
         || state_based_action_pending(state)
     {
@@ -2202,10 +2202,7 @@ mod tests {
         let combat = after.combat.as_ref().unwrap();
         assert_eq!(combat.defending_player, P2);
         assert_eq!(combat.attackers, vec![creature]);
-        assert_eq!(
-            combat.blockers,
-            std::collections::BTreeMap::from([(creature, None)])
-        );
+        assert!(combat.blockers.is_empty());
         assert!(combat.blocked_attackers.is_empty() && !combat.damage_step_completed);
         // CR 508.2: the active player receives priority.
         assert_eq!(pending(&after).actor, P1);
@@ -2456,8 +2453,8 @@ mod tests {
     fn in_combat_step(state: &EngineState, step: CombatStep) -> EngineState {
         let mut moved = state.clone();
         moved.core.position = TurnPosition::Combat { step };
-        if step == CombatStep::EndOfCombat {
-            // An attack that reached the end of combat has dealt its damage.
+        if matches!(step, CombatStep::CombatDamage | CombatStep::EndOfCombat) {
+            // An attack that reached the damage step has dealt its damage.
             moved.combat.as_mut().unwrap().damage_step_completed = true;
         }
         moved
@@ -2506,6 +2503,105 @@ mod tests {
             validate_magic_pending_request(&admission, &restored, &EpisodeStatus::Running)
                 .unwrap_or_else(|error| panic!("{step:?}: {error:?}"));
         }
+    }
+
+    #[test]
+    fn a_restored_damage_step_has_dealt_its_damage() {
+        // CR 510.1, 510.3: the combat damage turn-based action happens on
+        // entering the step, before any player has priority. The game never
+        // rests in the step with attackers and the damage undealt.
+        let (admission, state) = game_with_creature(3, P1);
+        let declared = after_declaring_an_attacker(&admission, state);
+        let dealt = in_combat_step(&declared, CombatStep::CombatDamage);
+        assert!(dealt.combat.as_ref().unwrap().damage_step_completed);
+        validate_magic_pending_request(&admission, &dealt, &EpisodeStatus::Running).unwrap();
+
+        let mut undealt = dealt.clone();
+        undealt.combat.as_mut().unwrap().damage_step_completed = false;
+        assert!(is_refused(&admission, &undealt));
+    }
+
+    /// `declared` with P2's creature blocking P1's attacker, in `step`.
+    fn with_the_attacker_blocked(declared: &EngineState, step: CombatStep) -> EngineState {
+        let mut blocked = in_combat_step(declared, step);
+        let blocker = *battlefield_creatures(declared)
+            .iter()
+            .find(|creature| declared.zones.objects[creature].controller == P2)
+            .unwrap();
+        let combat = blocked.combat.as_mut().unwrap();
+        let attacker = combat.attackers[0];
+        combat.blockers.insert(blocker, attacker);
+        combat.blocked_attackers.insert(attacker);
+        blocked
+    }
+
+    #[test]
+    fn a_restored_combat_has_no_blocks_before_the_declare_blockers_step() {
+        // CR 509.1: blockers are declared in the declare blockers step, which
+        // comes after the attackers are declared (CR 508.2): there is no
+        // block, and no blocked attacker, while priority is in the declare
+        // attackers step.
+        let (admission, state) = game_with_creatures(3, &[P1, P2]);
+        let declared = after_declaring_an_attacker(&admission, state);
+        let blocked = with_the_attacker_blocked(&declared, CombatStep::DeclareAttackers);
+        // The state itself is well formed; only its timing is not.
+        mtgml_state::validate_engine_state(&blocked).unwrap();
+        assert_eq!(
+            crate::combat::validate_reachable_combat(&admission, &blocked),
+            Err(crate::BasicLandTransitionError::TurnProgressUnsupported)
+        );
+        // An attacker that is blocked without a blocker is as unreachable
+        // (CR 509.1h: it becomes blocked in the declaration).
+        let mut history = declared.clone();
+        let combat = history.combat.as_mut().unwrap();
+        combat.blocked_attackers.insert(combat.attackers[0]);
+        mtgml_state::validate_engine_state(&history).unwrap();
+        assert_eq!(
+            crate::combat::validate_reachable_combat(&admission, &history),
+            Err(crate::BasicLandTransitionError::TurnProgressUnsupported)
+        );
+        assert_eq!(
+            crate::combat::validate_reachable_combat(&admission, &declared),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn a_restored_blocker_is_a_creature_the_defending_player_controls() {
+        // CR 509.1a: only creatures block. P2's creature is tapped here, so
+        // it is no possible blocker (CR 509.1a) and the step is reachable
+        // without any block.
+        let (admission, state) = game_with_creatures(3, &[P1, P2]);
+        let declared = after_declaring_an_attacker(&admission, state);
+        let creature = *battlefield_creatures(&declared)
+            .iter()
+            .find(|creature| declared.zones.objects[creature].controller == P2)
+            .unwrap();
+        // A land under P2's control (the fixture's lands are P1's).
+        let land = declared
+            .zones
+            .objects
+            .values()
+            .find(|object| {
+                declared.zones.locations[&object.id].zone == ZoneKind::Battlefield
+                    && object.id != creature
+                    && battlefield_creatures(&declared)
+                        .iter()
+                        .all(|creature| *creature != object.id)
+            })
+            .unwrap()
+            .id;
+        let mut tapped = declared.clone();
+        tapped.zones.objects.get_mut(&creature).unwrap().tapped = true;
+        tapped.zones.objects.get_mut(&land).unwrap().controller = P2;
+        let mut land_blocks = with_the_attacker_blocked(&tapped, CombatStep::DeclareBlockers);
+        let combat = land_blocks.combat.as_mut().unwrap();
+        combat.blockers = std::collections::BTreeMap::from([(land, combat.attackers[0])]);
+        mtgml_state::validate_engine_state(&land_blocks).unwrap();
+        assert_eq!(
+            crate::combat::validate_reachable_combat(&admission, &land_blocks),
+            Err(crate::BasicLandTransitionError::TurnProgressUnsupported)
+        );
     }
 
     #[test]
@@ -2569,7 +2665,6 @@ mod tests {
         let mut not_a_creature = declared.clone();
         let combat = not_a_creature.combat.as_mut().unwrap();
         combat.attackers = vec![land];
-        combat.blockers = std::collections::BTreeMap::from([(land, None)]);
         // An attacker that is not on the battlefield.
         let in_the_library = *declared
             .zones
@@ -2581,7 +2676,6 @@ mod tests {
         let mut not_on_the_battlefield = declared.clone();
         let combat = not_on_the_battlefield.combat.as_mut().unwrap();
         combat.attackers = vec![in_the_library];
-        combat.blockers = std::collections::BTreeMap::from([(in_the_library, None)]);
 
         for (name, forged) in [
             ("controlled by the other player", other_players),

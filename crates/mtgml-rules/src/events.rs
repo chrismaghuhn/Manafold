@@ -1478,9 +1478,32 @@ fn validate_event_projection_v3(
                     }
             })
         }
-        // Blocked-state state projection remains closed until its exact
-        // legal relation is characterized and accepted.
-        AuthoritativeRuleEventKind::BlockersDeclared { .. } => false,
+        // CR 509.1, 509.1g, 509.1h: the defending player declares every
+        // blocker at once, listed by blocker. Each blocker blocks one attacker
+        // and each of those attackers becomes blocked; nothing else of the
+        // combat changes.
+        AuthoritativeRuleEventKind::BlockersDeclared { assignments } => {
+            let blockers: std::collections::BTreeMap<_, _> = assignments
+                .iter()
+                .map(|assignment| (assignment.blocker, assignment.attacker))
+                .collect();
+            let blocked: std::collections::BTreeSet<_> = blockers.values().copied().collect();
+            assignments
+                .windows(2)
+                .all(|pair| pair[0].blocker < pair[1].blocker)
+                && match (before.combat.as_ref(), after.combat.as_ref()) {
+                    (Some(before), Some(after)) => {
+                        before.blockers.is_empty()
+                            && before.blocked_attackers.is_empty()
+                            && after.blockers == blockers
+                            && after.blocked_attackers == blocked
+                            && after.defending_player == before.defending_player
+                            && after.attackers == before.attackers
+                            && after.damage_step_completed == before.damage_step_completed
+                    }
+                    _ => false,
+                }
+        }
         AuthoritativeRuleEventKind::PerspectiveObservationOccurrence { .. } => true,
         AuthoritativeRuleEventKind::DamageApplied { .. } => true,
         AuthoritativeRuleEventKind::StackItemAdded {
@@ -3189,7 +3212,7 @@ mod tests {
             attackers: vec![GameObjectId(1)],
             damage_step_completed: false,
             blocked_attackers: Default::default(),
-            blockers: std::collections::BTreeMap::from([(GameObjectId(1), None)]),
+            blockers: std::collections::BTreeMap::new(),
         });
         before.validate().unwrap();
         let mut after = before.clone();
@@ -3302,6 +3325,128 @@ mod tests {
                 },
                 3
             )]),
+            Err(EventDeltaError::Mismatch)
+        );
+    }
+
+    /// P1's creatures 3 and 4 attack P2, who controls the creatures 5 and
+    /// 6, in the declare blockers step: `(before, after)` of a declaration
+    /// in which each of P2's creatures blocks one of them.
+    fn block_declaration_states() -> (EngineState, EngineState) {
+        let mut before = state();
+        for (id, controller) in [(3, 1), (4, 1), (5, 2), (6, 2)] {
+            let id = GameObjectId(id);
+            before.zones.objects.insert(
+                id,
+                mtgml_state::GameObject {
+                    id,
+                    physical_card: Some(mtgml_model::PhysicalCardId(id.0)),
+                    card_definition: mtgml_model::CardDefinitionId(1),
+                    owner: PlayerId(controller),
+                    controller: PlayerId(controller),
+                    tapped: false,
+                    face_down: false,
+                },
+            );
+            before.zones.locations.insert(
+                id,
+                ZoneLocation {
+                    zone: mtgml_model::ZoneKind::Battlefield,
+                    player: None,
+                    position: ZonePosition::Unordered,
+                    visibility: VisibilityPartition::Public,
+                    partition: None,
+                },
+            );
+        }
+        before.allocators.next_object_id = GameObjectId(7);
+        before.core.position = TurnPosition::Combat {
+            step: mtgml_state::CombatStep::DeclareBlockers,
+        };
+        before.combat = Some(mtgml_state::CombatState {
+            defending_player: PlayerId(2),
+            attackers: vec![GameObjectId(3), GameObjectId(4)],
+            damage_step_completed: false,
+            blocked_attackers: Default::default(),
+            blockers: Default::default(),
+        });
+        before.validate().unwrap();
+        let mut after = before.clone();
+        after.revision = StateRevision(before.revision.0 + 1);
+        let combat = after.combat.as_mut().unwrap();
+        combat.blockers = std::collections::BTreeMap::from([
+            (GameObjectId(5), GameObjectId(3)),
+            (GameObjectId(6), GameObjectId(3)),
+        ]);
+        combat.blocked_attackers = std::collections::BTreeSet::from([GameObjectId(3)]);
+        after.validate().unwrap();
+        (before, after)
+    }
+
+    fn blocks(pairs: &[(u64, u64)]) -> AuthoritativeRuleEventKind {
+        AuthoritativeRuleEventKind::BlockersDeclared {
+            assignments: pairs
+                .iter()
+                .map(
+                    |(blocker, attacker)| mtgml_state::CombatBlockerAssignmentV1 {
+                        blocker: GameObjectId(*blocker),
+                        attacker: GameObjectId(*attacker),
+                    },
+                )
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn declared_blockers_must_match_the_blocks_in_the_combat() {
+        let (before, after) = block_declaration_states();
+        let valid = |event: &AuthoritativeRuleEventKind| {
+            validate_event_projection_v3(&before, &after, event)
+        };
+        // Two creatures block one attacker (CR 509.1h): it is blocked once.
+        assert_eq!(valid(&blocks(&[(5, 3), (6, 3)])), Ok(()));
+        // The assignments are the blocks of the after state, listed by
+        // blocker: no other attacker, a missing or extra blocker, or another
+        // order.
+        for wrong in [
+            blocks(&[(5, 4), (6, 3)]),
+            blocks(&[(5, 3)]),
+            blocks(&[(5, 3), (6, 3), (6, 4)]),
+            blocks(&[(6, 3), (5, 3)]),
+            blocks(&[(5, 3), (5, 3)]),
+            blocks(&[]),
+        ] {
+            assert_eq!(valid(&wrong), Err(EventDeltaError::Mismatch), "{wrong:?}");
+        }
+        // Blocks are declared once, and into a combat.
+        let declaration = blocks(&[(5, 3), (6, 3)]);
+        assert_eq!(
+            validate_event_projection_v3(&after, &after, &declaration),
+            Err(EventDeltaError::Mismatch)
+        );
+        let mut ended = after.clone();
+        ended.combat = None;
+        assert_eq!(
+            validate_event_projection_v3(&before, &ended, &declaration),
+            Err(EventDeltaError::Mismatch)
+        );
+        // The declaration changes nothing else of the combat.
+        let mut damaged = after.clone();
+        damaged.combat.as_mut().unwrap().damage_step_completed = true;
+        assert_eq!(
+            validate_event_projection_v3(&before, &damaged, &declaration),
+            Err(EventDeltaError::Mismatch)
+        );
+        // An attacker the blockers leave stays unblocked.
+        let mut blocked_too_many = after.clone();
+        blocked_too_many
+            .combat
+            .as_mut()
+            .unwrap()
+            .blocked_attackers
+            .insert(GameObjectId(4));
+        assert_eq!(
+            validate_event_projection_v3(&before, &blocked_too_many, &declaration),
             Err(EventDeltaError::Mismatch)
         );
     }

@@ -1246,31 +1246,18 @@ pub(crate) fn combat_value(state: &EngineState) -> Value {
     let Some(combat) = &state.combat else {
         return Value::Null;
     };
-    let blockers = combat
-        .blockers
-        .iter()
-        .map(|(attacker, blocker)| array([u(attacker.0), optional(blocker.map(|id| u(id.0)))]));
-    let live_blocked: std::collections::BTreeSet<_> = combat
-        .blockers
-        .iter()
-        .filter_map(|(attacker, blocker)| blocker.map(|_| *attacker))
-        .collect();
-    let attackers = array(combat.attackers.iter().map(|object| u(object.0)));
-    let blockers = array(blockers);
-    if !combat.damage_step_completed && combat.blocked_attackers == live_blocked {
-        // The 3-element form keeps the bytes of every CombatState that the
-        // original three fields can represent. The extended form below is emitted only
-        // when blocked history or completed-damage state adds information.
-        array([u(combat.defending_player.0), attackers, blockers])
-    } else {
-        array([
-            u(combat.defending_player.0),
-            attackers,
-            blockers,
-            array(combat.blocked_attackers.iter().map(|object| u(object.0))),
-            Value::Bool(combat.damage_step_completed),
-        ])
-    }
+    array([
+        u(combat.defending_player.0),
+        array(combat.attackers.iter().map(|object| u(object.0))),
+        array(
+            combat
+                .blockers
+                .iter()
+                .map(|(blocker, attacker)| array([u(blocker.0), u(attacker.0)])),
+        ),
+        array(combat.blocked_attackers.iter().map(|object| u(object.0))),
+        Value::Bool(combat.damage_step_completed),
+    ])
 }
 
 /// Objects, locations and ordered zones: the first three `zones_v2` elements.
