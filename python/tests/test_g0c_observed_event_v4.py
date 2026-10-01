@@ -55,10 +55,6 @@ class GameStartObservedEventTests(unittest.TestCase):
                 ObservedEventV4.from_wire(value)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 def _attackers_declared(**changes: object) -> dict[str, object]:
     value: dict[str, object] = {
         "kind": "attackers_declared",
@@ -114,3 +110,7 @@ class AttackersDeclaredObservedEventTests(unittest.TestCase):
         with self.assertRaises(WireError) as raised:
             ObservedEventV4.from_wire(negative["event"])
         self.assertEqual(raised.exception.code, "semantic.observed_event")
+
+
+if __name__ == "__main__":
+    unittest.main()

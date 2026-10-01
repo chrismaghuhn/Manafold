@@ -82,10 +82,12 @@
         "a_cast_continuation_paying_mana_has_no_source_activation",
         "a_cast_continuation_names_a_spell_on_the_stack",
         "a_cast_that_pays_for_a_spell_on_the_stack_needs_the_continuation_that_staged_it",
-        "the_opponent_learns_the_card_only_when_it_is_cast",
+        "the_opponent_learns_the_card_only_when_it_goes_on_the_stack",
+        "the_card_is_public_while_its_payment_is_pending",
         "a_restored_checkpoint_with_a_spell_on_the_stack_continues_identically",
         "a_game_with_a_cast_replays_to_the_same_checkpoint",
-        "a_closed_episode_may_hold_a_creature_spell_on_the_stack"
+        "a_closed_episode_may_hold_a_creature_spell_on_the_stack",
+        "asymmetric_games_cast_attack_and_end_at_zero_life"
       ],
       "dependencies": [
         "rules/basic-priority",
@@ -161,7 +163,8 @@
         "a_restored_combat_needs_attackers_the_active_player_controls",
         "a_restored_combat_is_in_a_combat_step_it_could_be_in",
         "every_boundary_of_an_attack_validates",
-        "a_restored_combat_the_game_could_not_reach_is_refused"
+        "a_restored_combat_the_game_could_not_reach_is_refused",
+        "asymmetric_games_cast_attack_and_end_at_zero_life"
       ],
       "dependencies": [
         "rules/declare-blockers",
@@ -188,6 +191,7 @@
       "authority_refs": [
         "docs/adr/0054-m3-pre-t0-hardening.md",
         "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
+        "docs/superpowers/specs/2026-10-01-vanilla-creatures-design.md",
         "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f",
         "wotc-cr-2026-09-25-txt-20260925-sha256-8d860e451f20f38865b725b42d82feb714c725373dd8f3b32b8652b3eeb070ca"
       ],
@@ -211,7 +215,7 @@
       "owners": [
         "combat"
       ],
-      "spec_path": "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
+      "spec_path": "docs/superpowers/specs/2026-10-01-vanilla-creatures-design.md",
       "summary": "Combat phase context and step progression.",
       "version": "0.1.0"
     },
@@ -229,7 +233,8 @@
         "unblocked_attackers_deal_combat_damage_to_the_defending_player",
         "combat_damage_to_a_player_must_match_the_life_change",
         "an_unblocked_attack_lowers_the_defenders_life",
-        "overkill_damage_shows_negative_life_and_ends_the_game"
+        "overkill_damage_shows_negative_life_and_ends_the_game",
+        "asymmetric_games_cast_attack_and_end_at_zero_life"
       ],
       "dependencies": [],
       "implementation_paths": [
@@ -264,7 +269,8 @@
         "an_empty_declaration_is_public_too",
         "nine_attackers_are_a_valid_combat",
         "attackers_tap_and_both_players_see_the_attack",
-        "an_empty_attack_declaration_is_public"
+        "an_empty_attack_declaration_is_public",
+        "asymmetric_games_cast_attack_and_end_at_zero_life"
       ],
       "dependencies": [
         "rules/combat-phase"
@@ -279,7 +285,7 @@
       "owners": [
         "combat"
       ],
-      "spec_path": "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
+      "spec_path": "docs/superpowers/specs/2026-10-01-vanilla-creatures-design.md",
       "summary": "Attacker declaration: any subset of the creatures that can attack, or none.",
       "version": "0.1.0"
     },
@@ -449,7 +455,8 @@
         "a_restored_checkpoint_with_a_spell_on_the_stack_continues_identically",
         "a_game_with_a_cast_replays_to_the_same_checkpoint",
         "a_closed_episode_may_hold_a_creature_spell_on_the_stack",
-        "delta_accepts_an_entry_made_by_a_zone_transition_into_the_battlefield"
+        "delta_accepts_an_entry_made_by_a_zone_transition_into_the_battlefield",
+        "asymmetric_games_cast_attack_and_end_at_zero_life"
       ],
       "dependencies": [
         "rules/basic-priority",
@@ -485,7 +492,8 @@
         "lethal_combat_damage_ends_the_game_before_anyone_receives_priority",
         "a_decision_state_with_a_player_at_zero_life_who_has_not_lost_is_rejected",
         "zero_life_ends_the_game",
-        "overkill_damage_shows_negative_life_and_ends_the_game"
+        "overkill_damage_shows_negative_life_and_ends_the_game",
+        "asymmetric_games_cast_attack_and_end_at_zero_life"
       ],
       "dependencies": [
         "rules/zone-incarnation"
@@ -546,7 +554,8 @@
         "a_tapped_creature_is_not_offered_as_an_attacker",
         "a_creature_is_offered_only_to_its_controller_on_their_own_turn",
         "a_wrong_candidate_set_for_the_declaration_is_refused",
-        "a_creature_cannot_attack_the_turn_it_arrives_but_can_on_its_controllers_next_turn"
+        "a_creature_cannot_attack_the_turn_it_arrives_but_can_on_its_controllers_next_turn",
+        "asymmetric_games_cast_attack_and_end_at_zero_life"
       ],
       "dependencies": [
         "rules/declare-attackers",

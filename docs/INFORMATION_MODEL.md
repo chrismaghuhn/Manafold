@@ -268,8 +268,9 @@ digest binds the current observation envelope, the next visible sequence and
 the retained knowledge. Player products
 omit global StateRevision and use the existing perspective-local
 VisibleSequence. The current public payload is
-`magic-shared-execution-observation.v1`; it remains scoped to the admitted
-Mountain/Plains `basic-land@1.0.0` execution.
+`magic-shared-execution-observation.v1`; it covers the admitted executions of
+`basic-land@1.0.0` (Mountain, Plains) and `vanilla-creature@1.0.0` (Savannah
+Lions, Gray Ogre, Hill Giant).
 
 Besides turn, priority, mana pools, counters, attachments, faces, stack and
 temporary effects, the payload carries the public player state:

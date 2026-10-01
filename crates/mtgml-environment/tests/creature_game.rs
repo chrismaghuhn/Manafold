@@ -86,6 +86,24 @@ impl Game {
         first
     }
 
+    /// Whether `player` knows which card `definition` an object is.
+    fn knows(&self, player: PlayerId, definition: CardDefinitionId) -> bool {
+        self.endpoint(player)
+            .information_state()
+            .unwrap()
+            .retained_knowledge
+            .iter()
+            .any(|known| {
+                matches!(
+                    known,
+                    mtgml_observation::PlayerKnownObjectV1::Active {
+                        known_definition: Some(known_definition),
+                        ..
+                    } if *known_definition == definition
+                )
+            })
+    }
+
     /// What the deciding player is offered.
     fn offered(&self) -> Vec<CandidateIntent> {
         self.pending()
@@ -1252,7 +1270,7 @@ fn the_opponent_can_only_pass_or_make_mana_while_a_spell_is_on_the_stack() {
 }
 
 #[test]
-fn the_opponent_learns_the_card_only_when_it_is_cast() {
+fn the_opponent_learns_the_card_only_when_it_goes_on_the_stack() {
     let (mountain, plains) = land_definitions();
     let [lions, ogre, giant] = creature_definitions();
     // Two games that differ only in the caster's other hand card.
@@ -1276,34 +1294,31 @@ fn the_opponent_learns_the_card_only_when_it_is_cast() {
                     .unwrap(),
             );
         };
-        let p2_knows_the_lions = || {
-            game.endpoint(P2)
-                .information_state()
-                .unwrap()
-                .retained_knowledge
-                .iter()
-                .any(|known| {
-                    matches!(
-                        known,
-                        mtgml_observation::PlayerKnownObjectV1::Active {
-                            known_definition: Some(definition),
-                            ..
-                        } if *definition == lions
-                    )
-                })
-        };
+        let p2_knows_the_lions = || game.knows(P2, lions);
         record(None);
         record(Some(game.answer(play_land, pass)));
         record(Some(game.answer(tap_for_mana, pass)));
         assert!(!p2_knows_the_lions());
         record(Some(game.answer(cast_spell, pass)));
-        assert!(p2_knows_the_lions(), "the cast shows the card");
+        assert!(p2_knows_the_lions(), "the stack shows the card");
         record(Some(game.answer(pass, pass)));
         record(Some(game.answer(pass, pass)));
     }
     assert_eq!(p2_views[0], p2_views[1]);
     // The games do differ: P1 holds different cards.
     assert_ne!(p1_views[0], p1_views[1]);
+}
+
+#[test]
+fn the_card_is_public_while_its_payment_is_pending() {
+    let [_, ogre, _] = creature_definitions();
+    let game = ogre_with_red_red_red_and_white();
+    assert!(!game.knows(P2, ogre));
+    game.answer(cast_spell, pass);
+    // CR 601.2a: the card is public as soon as it is on the stack, before
+    // the payment the caster is asked for.
+    assert_eq!(game.pending().1.purpose, DecisionPurposeV4::ManaPayment);
+    assert!(game.knows(P2, ogre));
 }
 
 #[test]

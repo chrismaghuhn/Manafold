@@ -70,3 +70,7 @@ priority. If a pass is followed by an action, the pass succession starts over.
 - The delta check accepts a permanent's record when the object enters the
   battlefield by a zone transition
   (`delta_accepts_an_entry_made_by_a_zone_transition_into_the_battlefield`).
+- Random smoke games in `crates/mtgml-environment/tests/random_smoke.rs`:
+  `asymmetric_games_cast_attack_and_end_at_zero_life` plays ten seeded games of a
+  creature deck against a land deck, in which the creature spells that are cast
+  resolve; every game repeats and replays to the same checkpoint.

@@ -16,7 +16,9 @@ M4.1 defines immutable content, identity, structural validation, definition
 reference closure, requirement derivation, and `ContentValidationOnly`
 preflight. M4.1 does not execute a definition. Every attempt to construct
 gameplay is rejected with `NoExecutableProfileAdmitted`. Executable semantic
-profiles and the first real selected content begin in M4.2.
+profiles and the first real selected content begin in M4.2; the two profiles
+admitted since are described under "Executable profiles and pinned records
+(current)".
 
 CardDefinition is not runtime `GameState`, an object, spell, ability instance,
 continuation, or RulesKernel program. The definition cannot represent
@@ -37,7 +39,7 @@ These identities are distinct and must not substitute for one another:
 | `FaceKey` | u32 ordinal local to one definition. |
 | `AbilityKey` | u32 identity shell local to one definition; not an ability instance. |
 | `CardDefinitionEnvelopeVersion` | Outer structural/wire version. |
-| `CardSemanticProfileId` | Identity of a separately reviewed closed semantic vocabulary and meaning. M4.1 registers none. |
+| `CardSemanticProfileId` | Identity of a separately reviewed closed semantic vocabulary and meaning. M4.1 registered none; `basic-land@1.0.0` and `vanilla-creature@1.0.0` are registered since (see "Executable profiles and pinned records (current)"). |
 | `CapabilityKey@version` | Typed requirement node resolved by the existing Capability Registry. |
 | `SupportProfileId` | A later support/admission policy identity; M4.1 defines no catalog or policy. |
 | Runtime and visible IDs | `PhysicalCardId`, `GameObjectId`, `DecisionId`, `CandidateId`, and perspective-visible opaque IDs retain their existing contracts. |
@@ -102,12 +104,11 @@ with the sole face's type line and derives, rather than stores, the basic
 land's intrinsic mana ability under CR 305.6. The body is requirement-derived
 and admits no optional fields, map, extension, opcode, or string dispatcher.
 
-This is an additive successor content-validation contract. The profiled
-content prerequisite admits this body for strict typed validation and
-`ContentContractIdV1` identity only. It does not change historical M4.1
-`UnprofiledV1` bytes or identity. The profile is not executable; executable
-admission remains at the unified state cut's sole activation boundary. No
-other profile is admitted by this addition.
+This is an additive successor content-validation contract. It admits this body
+for strict typed validation and `ContentContractIdV1` identity, and does not
+change historical M4.1 `UnprofiledV1` bytes or identity. Executable admission
+is a separate step, described under "Executable profiles and pinned records
+(current)", which also adds the second profile.
 
 Definitions in a manifest are unique and sorted by numeric ID. Repeating an
 ID is invalid even if the values are byte-identical. The invariant is:
@@ -124,11 +125,11 @@ must never fall back to another catalog, a process-global registry, or the
 first matching definition. Conflicting definitions never use load order to
 select a winner.
 
-The prerequisite codec/identity slice for this accepted M4.2 body is
-implemented on the non-current integration branch. It extends the typed
-content-validation and `ContentContractIdV1` path only; it does not admit an
-executable semantic profile or change the historical M4.1 `UnprofiledV1`
-bytes or identity.
+The codec and identity slice for this accepted M4.2 body is on `master`. It
+extends the typed content-validation and `ContentContractIdV1` path; it does
+not change the historical M4.1 `UnprofiledV1` bytes or identity. Executable
+admission of the profile is described under "Executable profiles and pinned
+records (current)".
 
 ## Executable profiles and pinned records (current)
 
@@ -187,9 +188,12 @@ Plains. `cards/definitions/basic-land-and-vanilla-creature-v1/` holds those two
 and the three creatures. Both are checked against known-answer files in
 `persistence/golden/`.
 
-Admission is not a support claim. The creature capabilities are `specified`
-and nothing implements them yet; the Capability Registry stays the only
-authority for lifecycle.
+Admission is not a support claim. The Capability Registry stays the only
+authority for lifecycle: it lists the creature capabilities
+(`rules/cast-creature-spell`, `rules/stack-resolution`,
+`rules/summoning-sickness`, `rules/combat-damage`, `rules/damage-and-life` and
+`rules/state-based-actions-combat`) as `covered` for the bounded scope their
+documents state, and none is certified.
 
 ## Provenance
 

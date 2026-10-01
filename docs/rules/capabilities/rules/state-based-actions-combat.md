@@ -62,3 +62,8 @@ player at 0 or less life and ends the episode.
 - Production-endpoint cases in `crates/mtgml-environment/tests/creature_game.rs`:
   `zero_life_ends_the_game` (status, `EpisodeClosed`, replay equality) and
   `overkill_damage_shows_negative_life_and_ends_the_game`.
+- Random smoke games in `crates/mtgml-environment/tests/random_smoke.rs`:
+  `asymmetric_games_cast_attack_and_end_at_zero_life` asserts that, among ten
+  seeded games of a creature deck against a land deck, at least one ends in a
+  rules loss with the land player at 0 life or less, and that it replays to the
+  same checkpoint.

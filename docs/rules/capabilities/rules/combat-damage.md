@@ -98,3 +98,8 @@ for priority requests too.
   `an_unblocked_attack_lowers_the_defenders_life`,
   `a_defender_with_an_untapped_creature_fails_closed`,
   `a_restored_combat_the_game_could_not_reach_is_refused`.
+- Random smoke games in `crates/mtgml-environment/tests/random_smoke.rs`:
+  `asymmetric_games_cast_attack_and_end_at_zero_life` plays ten seeded games of a
+  creature deck against a land deck, in which creatures attack and unblocked
+  combat damage is dealt; every game repeats and replays to the same
+  checkpoint.

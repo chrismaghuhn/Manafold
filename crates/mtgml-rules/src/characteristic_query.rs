@@ -55,9 +55,8 @@ pub(crate) struct S1QueryAuthority<'a> {
 }
 
 impl<'a> S1QueryAuthority<'a> {
-    // Current production callers query batches (`for_objects`); keep the
-    // single-object form for rules that ask about one object and for the
-    // unit witnesses, as with `derive_base_characteristics` below.
+    // Production callers query batches (`for_objects`); the single-object
+    // form serves the unit witnesses and rules that ask about one object.
     #[allow(dead_code)]
     pub(crate) fn for_object(
         admission: &'a ExecutableProfileAdmissionV1,
@@ -165,11 +164,8 @@ impl<'a> S1QueryAuthority<'a> {
         self.queried
     }
 
-    // The current admitted M4.2 Basic Land transition does not need to branch
-    // on these base facts. Keep this internal RulesKernel query available for
-    // the Shared consumers that follow S1-B; the real admission path and unit
-    // witnesses exercise it without adding a second public endpoint.
-    #[allow(dead_code)]
+    /// The queried object's base characteristics, derived from its face
+    /// (combat reads a creature's types and power from them).
     pub(crate) fn derive_base_characteristics(&self) -> S1BaseCharacteristicsV1 {
         derive_base_characteristics(self.queried, &self._face.base_characteristics)
     }

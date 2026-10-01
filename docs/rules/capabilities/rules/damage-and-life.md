@@ -59,3 +59,7 @@ state-based actions are checked in the same transition.
   `an_unblocked_attack_lowers_the_defenders_life` (both players observe
   `life_changed` and the new totals) and
   `overkill_damage_shows_negative_life_and_ends_the_game`.
+- Random smoke games in `crates/mtgml-environment/tests/random_smoke.rs`:
+  `asymmetric_games_cast_attack_and_end_at_zero_life` plays ten seeded games of a
+  creature deck against a land deck, in which unblocked attackers lower the
+  land player's life.

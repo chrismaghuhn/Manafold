@@ -86,7 +86,9 @@ pub(crate) enum ZoneMoveEvent {
     Occurrence(PerspectiveLifecycleAuditV1),
     /// One library was shuffled (CR 701.24); the trusted audit of the draw.
     Shuffle(Box<LibraryShuffleAudit>),
-    /// A public rule event; every player's occurrence follows it.
+    /// A rule event of the transition. Events every player observes are
+    /// followed by each player's occurrence of it; one that no player
+    /// observes (see `record_unobserved`) has none.
     Public(Box<crate::AuthoritativeRuleEventKind>),
 }
 

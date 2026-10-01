@@ -1,5 +1,8 @@
-//! The admitted, typed basic-land profile: its priority candidates, its
-//! pending request, and the land-play and mana-ability transitions.
+//! The admitted, typed basic-land and vanilla-creature profiles: the priority
+//! candidates (passing, playing a land, a mana ability, casting a creature
+//! spell), the pending request, and the land-play and mana-ability
+//! transitions. Casting, paying and attacking are executed by the turn
+//! progression (`casting`, `combat`).
 //!
 //! This module consumes the same immutable admission token used to construct
 //! the Magic kernel. It never dispatches on card names. Candidate intent
@@ -691,10 +694,12 @@ fn candidate_state(
     Ok(state)
 }
 
-/// Derive the complete bounded PlayLand and intrinsic basic-land mana
-/// ability candidate surface for `actor`. This performs no state mutation,
-/// response selection, or execution. Hidden or unmapped identities fail
-/// closed rather than receiving placeholder public IDs.
+/// Derive the complete bounded priority candidate surface for `actor`: pass
+/// priority, PlayLand, the intrinsic basic-land mana abilities, and CastSpell
+/// for each creature card in hand that the mana pool pays for at sorcery
+/// speed. This performs no state mutation, response selection, or execution.
+/// Hidden or unmapped identities fail closed rather than receiving
+/// placeholder public IDs.
 pub fn derive_basic_land_candidates(
     admission: &ExecutableProfileAdmissionV1,
     state: &EngineState,

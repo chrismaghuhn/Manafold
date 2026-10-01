@@ -24,7 +24,9 @@ their hand:
 Casting is offered only when the mana pool already pays the cost. A player
 produces mana first, with the basic-land mana abilities, while holding
 priority. Every end state that CR 601.2g can reach is reachable this way, so
-this is not a limit of the card pool.
+this is not a limit of the card pool. Mana restricted to creature spells (the
+pool's creature-spell-only buckets) pays like any other mana, because every
+spell of this slice is a creature spell. No admitted card produces it.
 
 When exactly one spend vector pays the cost, the cast is one transition. When
 two or more do (Gray Ogre `{2}{R}` with `{R}{R}{R}{W}` is paid `{R}{R}{R}`,
@@ -38,8 +40,8 @@ the cost and casts the spell. Nothing is paid on the player's behalf.
 The following are not supported and fail closed:
 - instants, flash and every noncreature spell;
 - targets, modes, X costs and additional costs;
-- cost changes (CR 601.2f), convoke, delve and restricted mana, which would
-  make the total cost known only in the middle of the cast;
+- cost changes (CR 601.2f), convoke and delve, which would make the total
+  cost known only in the middle of the cast;
 - hybrid mana symbols in a printed cost;
 - casting while another object is on the stack.
 
@@ -100,7 +102,9 @@ Requests and candidates are ordered by the actor's opaque ids, never by
 `PriorityAction` requests name hidden hand cards, so they are for the acting
 player only. A perspective that tracked the card follows it to the stack; the
 other perspective sees it appear. The opponent does not track hidden hand
-cards, so casting reveals nothing beyond the cast itself.
+cards, but the card is public from the moment it is on the stack (CR 601.2a),
+before any payment: when the caster is asked how to pay, the opponent already
+knows which card it is. Nothing else about the caster's hand is revealed.
 
 ## Transition/continuation behavior
 
@@ -120,9 +124,17 @@ for either request, changes nothing.
   to pay, a payment with one way is not asked, the spell is cast only when the
   payment completes, a rejected payment answer changes nothing, a payment
   request that the pending cast does not call for is refused, the opponent
-  learns the card only when it is cast, a restored checkpoint with a spell on
-  the stack or with the payment pending continues identically, and a game with
-  a cast replays to the same checkpoint.
+  learns the card only when it goes on the stack, before any payment, a
+  restored checkpoint with a spell on the stack or with the payment pending
+  continues identically, and a game with a cast replays to the same
+  checkpoint.
+- Random smoke games in `crates/mtgml-environment/tests/random_smoke.rs`:
+  `asymmetric_games_cast_attack_and_end_at_zero_life` plays ten seeded games
+  of a creature deck against a land deck to turn 31 or the end of the game,
+  and asserts that creature spells are cast, a payment is decided, and each
+  game repeats and replays to the same checkpoint;
+  `asymmetric_short_game_matches_its_pinned_fingerprint` pins the first of
+  them up to turn 6.
 - State, event and delta cases for the Cast continuation and the cast timing in
   `crates/mtgml-state/tests/g0d_state_authority.rs`,
   `crates/mtgml-rules/src/events.rs` and `creature_game.rs`.
