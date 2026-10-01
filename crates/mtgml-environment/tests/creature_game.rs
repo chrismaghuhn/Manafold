@@ -1240,6 +1240,78 @@ fn ending_a_payment_must_cast_the_spell() {
 }
 
 #[test]
+fn a_payment_cannot_end_in_the_transition_that_takes_its_spell_off_the_stack() {
+    let cast = ogre_cast();
+    // CR 601.2i: the real game. P1 and P2 pass with the cast spell on the
+    // stack, and it resolves.
+    let passed = respond(&cast.complete.next_state, pass);
+    let resolution = respond(&passed.next_state, pass);
+    assert!(resolution.next_state.zones.stack_order.is_empty());
+    StateDelta::between_structural_only(
+        &passed.next_state,
+        &resolution.next_state,
+        resolution.delta.operations.clone(),
+    )
+    .unwrap();
+
+    // The same resolution, but from a state in which the payment of the spell
+    // is still pending, so that the transition also ends it. Its operations
+    // name the resolution and the end of the continuation, and none of them
+    // is a `SpellCast`: the spell would resolve without ever being cast.
+    // Casting is not undone in this slice (CR 601.2 would rewind an illegal
+    // one), so no transition may end a payment and take the spell off the
+    // stack.
+    let mut paying = passed.next_state.clone();
+    paying.execution.continuations = cast.begin.next_state.execution.continuations.clone();
+    // The pending request of that payment, as of this revision.
+    let mut asking = cast
+        .begin
+        .next_state
+        .execution
+        .pending_decision
+        .clone()
+        .unwrap();
+    assert_eq!(asking.purpose, DecisionPurposeV4::ManaPayment);
+    asking.state_revision = paying.revision;
+    asking.view_sequence = paying.knowledge.players[&P1].next_visible_sequence;
+    paying.execution.pending_decision = Some(asking.clone());
+    let continuations: Vec<_> = paying.execution.continuations.iter().collect();
+    let [(continuation, record)] = continuations.as_slice() else {
+        panic!("{continuations:?}")
+    };
+    let mut operations = resolution.delta.operations.clone();
+    operations.retain(|operation| {
+        !matches!(
+            operation,
+            SemanticDeltaOperation::PendingRequestChanged { .. }
+        )
+    });
+    operations.push(SemanticDeltaOperation::PendingRequestChanged {
+        from: Some(Box::new(asking)),
+        to: resolution
+            .next_state
+            .execution
+            .pending_decision
+            .clone()
+            .map(Box::new),
+    });
+    operations.push(SemanticDeltaOperation::ContinuationChanged {
+        continuation: **continuation,
+        from: Some(Box::new(record.payload.clone())),
+        to: None,
+    });
+    assert!(!operations
+        .iter()
+        .any(|operation| matches!(operation, SemanticDeltaOperation::SpellCast { .. })));
+    let outcome = StateDelta::between_structural_only(&paying, &resolution.next_state, operations);
+    assert!(
+        matches!(outcome, Err(DeltaApplicationError::UncoveredMutation)),
+        "a spell that was never cast left the stack: {:?}",
+        outcome.map(|delta| delta.operations.len())
+    );
+}
+
+#[test]
 fn the_opponent_can_only_pass_or_make_mana_while_a_spell_is_on_the_stack() {
     let (mountain, plains) = land_definitions();
     let [lions, _, _] = creature_definitions();

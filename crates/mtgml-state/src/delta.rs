@@ -686,7 +686,11 @@ fn validate_delta_operation_coverage(
 
     // CR 601.2i: the transition that ends the payment of a spell that stays on
     // the stack is the one that casts it, exactly once. `spell_becomes_cast`
-    // limits where a cast may appear; this makes sure it appears.
+    // limits where a cast may appear; this makes sure it appears. A payment
+    // that ends with its spell gone from the stack was not completed: an
+    // illegal cast would rewind the game (CR 601.2), which is not modelled, so
+    // no transition may end a payment and take its spell off the stack, or the
+    // spell could resolve without ever being cast.
     for record in before.execution.continuations.values() {
         let ContinuationPayload::Cast(cast) = &record.payload else {
             continue;
@@ -702,7 +706,7 @@ fn validate_delta_operation_coverage(
                 _ => None,
             }
         }) else {
-            continue;
+            return uncovered();
         };
         let casts = operations
             .iter()
