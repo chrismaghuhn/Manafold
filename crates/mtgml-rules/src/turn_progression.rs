@@ -668,6 +668,28 @@ fn advance(
             next.combat = None;
             facts.combat_ended = true;
         }
+        if from
+            == (TurnPosition::Ending {
+                step: EndingStep::Cleanup,
+            })
+        {
+            // CR 514.2: the cleanup step ends here, whether it asked for the
+            // discard of CR 514.1 (which came first, and has been answered) or
+            // not: all damage marked on permanents is removed, simultaneously.
+            crate::combat::remove_marked_damage(next, facts);
+            // CR 514.3a: if a state-based action would be performed or a
+            // trigger waits after that, a player receives priority in the
+            // cleanup step, and another cleanup step follows. Neither can
+            // happen with lands and vanilla creatures: no damage is marked,
+            // no player is at 0 life without having lost, and nothing
+            // triggers. A state in which one does is not supported, so the
+            // turn does not go on past it, and priority is not skipped.
+            if crate::state_based_actions::any_apply(admission, next)?
+                || !next.execution.waiting_triggers.is_empty()
+            {
+                return Err(Error::TurnProgressUnsupported);
+            }
+        }
         let mut to = crate::temporal_successor(from);
         // CR 508.8: with no attackers, skip declare blockers and damage.
         if to
@@ -778,17 +800,12 @@ fn advance(
                 );
             }
             // CR 514.1-514.3: the active player discards to maximum hand
-            // size, then the turn ends without priority.
+            // size, then the damage is removed (see the top of the loop), and
+            // the turn ends without priority.
             TurnPosition::Ending {
                 step: EndingStep::Cleanup,
             } => {
                 admits(admission, "rules/cleanup-reset")?;
-                // CR 514.2: all damage marked on permanents is removed in the
-                // cleanup step. That is not supported yet, so a game does not
-                // enter it with any marked, with or without the discard.
-                if crate::combat::damage_is_marked(next) {
-                    return Err(Error::TurnProgressUnsupported);
-                }
                 let hand = next
                     .zones
                     .locations
@@ -818,12 +835,11 @@ pub(crate) fn open_priority(next: &mut EngineState) -> NextDecision {
     NextDecision::Priority(active)
 }
 
+/// CR 502.2-502.4: the next turn begins. `advance` gets here only from the
+/// cleanup step, which has removed all damage marked on permanents (CR 514.2):
+/// a state that begins a turn with some is refused by
+/// `crate::combat::validate_marked_damage` when it is committed or restored.
 fn begin_turn(next: &mut EngineState, facts: &mut Facts) -> Result<(), Error> {
-    // CR 514.2: the damage marked on permanents is gone by the end of the
-    // turn, which is not supported yet: no turn ends with any marked.
-    if crate::combat::damage_is_marked(next) {
-        return Err(Error::TurnProgressUnsupported);
-    }
     let new_active = other_player(next)?;
     let core = &mut next.core;
     core.active_player = new_active;
@@ -4655,6 +4671,33 @@ mod tests {
     }
 
     #[test]
+    fn a_graveyard_order_whose_batch_holds_a_loss_fails_closed() {
+        // A batch with a loss asks nobody (owner decision 2026-10-01), so a
+        // pending order whose batch holds one is not a state the game makes.
+        // Answering it must not end the game as though it were.
+        let (admission, before, [_, _, lions_a, lions_b]) = ogre_and_giant_blocked_by_two_lions();
+        let at_order = pass(&admission, &before).0;
+        let forged = with_order(&at_order, |batch, _| {
+            batch.insert(
+                0,
+                mtgml_state::SbaSelectedActionV1::PlayerLoses { player: P1 },
+            )
+        });
+        let mut next = forged.clone();
+        let outcome = crate::state_based_actions::order_graveyard(
+            &admission,
+            &mut next,
+            &mut Facts::default(),
+            P2,
+            vec![lions_a, lions_b],
+        );
+        assert!(matches!(
+            outcome,
+            Err(crate::BasicLandTransitionError::InvalidResult)
+        ));
+    }
+
+    #[test]
     fn a_restored_graveyard_order_the_game_could_not_have_reached_is_refused() {
         let (admission, before, [ogre, giant, lions_a, lions_b]) =
             ogre_and_giant_blocked_by_two_lions();
@@ -4956,7 +4999,9 @@ mod tests {
         // rests there. Hill Giant (3/3), Gray Ogre (2/2), Savannah Lions (2/1).
         // Damage is marked by combat damage and stays marked until cleanup
         // removes it (CR 120.6, 514.2): damage that is not lethal is accepted
-        // from the combat damage step to the end step, and nowhere else.
+        // from the combat damage step to the end step, and nowhere else but
+        // the discard of the cleanup step (see
+        // `a_restored_cleanup_accepts_marked_damage_only_while_the_discard_is_pending`).
         let (admission, state, creatures) =
             game_with_creature_cards(&[(P1, HILL_GIANT), (P1, GRAY_OGRE), (P1, SAVANNAH_LIONS)]);
         let running = EpisodeStatus::Running;
@@ -5085,66 +5130,189 @@ mod tests {
     }
 
     #[test]
-    fn entering_cleanup_with_marked_damage_fails_closed() {
-        // CR 514.2: all damage marked on permanents is removed in the cleanup
-        // step, which is not supported yet. Neither cleanup exit may go on with
-        // damage marked: not the one without a discard, and not the discard
-        // that CR 514.1 asks for first.
+    fn marked_damage_is_removed_at_cleanup_with_and_without_a_discard() {
+        // CR 120.6, 514.1, 514.2: P1's Hill Giant has 2 damage marked on it in
+        // the end step, as after a block it survives (the endpoint tests play
+        // that block). Cleanup begins when P2's pass ends the end step.
+        // Without a discard the damage is removed in that transition; with one,
+        // P1 first discards (CR 514.1), with the damage still marked, and the
+        // damage is removed with the answer (CR 514.2). Either way the turn
+        // ends and P2's turn begins, with nothing damaged.
         for (p1_extra, discards) in [(0, false), (6, true)] {
-            let (admission, _, unmarked, marked) = end_step_with_damage_and_hand(p1_extra);
-            // P1 passes, and P2's pass ends the step: cleanup begins.
-            let from = |state: &EngineState| {
-                let p2 = pass(&admission, state).0;
-                assert_eq!(pending(&p2).actor, P2);
-                (submit(&admission, &p2, pass_answer(pending(&p2))), p2)
+            let (admission, giant, _, damaged) = end_step_with_damage_and_hand(p1_extra);
+            assert_eq!(marked(&damaged, giant), 2);
+            let p2 = pass(&admission, &damaged).0;
+            assert_eq!(pending(&p2).actor, P2);
+            let (cleanup, begun) = pass(&admission, &p2);
+            let (next, product) = if discards {
+                assert_eq!(
+                    pending(&cleanup).purpose,
+                    DecisionPurposeV4::HandSizeDiscard
+                );
+                assert_eq!(cleanup.core.turn_number, 3);
+                assert_eq!(marked(&cleanup, giant), 2);
+                assert!(damage_events(&begun).is_empty());
+                pass(&admission, &cleanup)
+            } else {
+                (cleanup, begun)
             };
-            let (outcome, p2) = from(&unmarked);
-            let next = apply(&p2, &outcome.unwrap());
-            assert_eq!(
-                pending(&next).purpose == DecisionPurposeV4::HandSizeDiscard,
-                discards
-            );
-            assert_eq!(next.core.turn_number, if discards { 3 } else { 4 });
 
+            assert_eq!((next.core.turn_number, next.core.position), (4, UPKEEP));
+            assert_eq!(pending(&next).actor, P2);
+            assert_eq!(marked(&next, giant), 0);
+            assert!(!crate::combat::damage_is_marked(&next));
+            validate_magic_pending_request(&admission, &next, &EpisodeStatus::Running).unwrap();
+            // One event: the Giant's 2 damage goes to 0. No player observes it.
             assert_eq!(
-                from(&marked).0,
-                Err(crate::BasicLandTransitionError::TurnProgressUnsupported),
+                damage_events(&product),
+                [format!("marked {} 2 0", giant.0)],
                 "discards: {discards}"
             );
+            assert!(observed_events(&product).iter().all(|event| !matches!(
+                event,
+                AuthoritativeRuleEventKind::MarkedDamageChanged { .. }
+            )));
+            // CR 514.1 comes before CR 514.2: the discard moves first.
+            let position = |pick: fn(&AuthoritativeRuleEventKind) -> bool| {
+                product.events.iter().position(|event| pick(&event.event))
+            };
+            let discard = position(|event| {
+                matches!(event, AuthoritativeRuleEventKind::ZoneTransition { .. })
+            });
+            let removal = position(|event| {
+                matches!(
+                    event,
+                    AuthoritativeRuleEventKind::MarkedDamageChanged { .. }
+                )
+            })
+            .unwrap();
+            assert_eq!(discard.is_some(), discards);
+            assert!(discard.is_none_or(|discard| discard < removal));
         }
     }
 
     #[test]
-    fn a_restored_cleanup_with_marked_damage_is_refused() {
-        // The discard of CR 514.1 is asked in the cleanup step, where no
-        // damage is marked: a state there with some is not one the game
-        // reaches, and answering it must not end the turn.
-        let (admission, giant, unmarked, _) = end_step_with_damage_and_hand(6);
-        let p2 = pass(&admission, &unmarked).0;
+    fn cleanup_removes_the_damage_of_every_creature_that_had_any_in_object_order() {
+        // CR 514.2: all damage marked on permanents is removed at once, with
+        // one event for each creature that had any, in object order. The Lions
+        // has none and has no event.
+        let (admission, state, creatures) =
+            game_with_creature_cards(&[(P1, SAVANNAH_LIONS), (P1, GRAY_OGRE), (P1, HILL_GIANT)]);
+        let [lions, ogre, giant] = creatures[..] else {
+            panic!("three creatures")
+        };
+        assert!(lions < ogre && ogre < giant);
+        let end_step = restore_points(&admission, state)
+            .after_damage
+            .pop()
+            .unwrap();
+        // Damage that is not lethal: the Giant has 3 toughness, the Ogre 2.
+        let damaged = with_marked(&with_marked(&end_step, giant, 2), ogre, 1);
+        validate_magic_pending_request(&admission, &damaged, &EpisodeStatus::Running).unwrap();
+
+        let p2 = pass(&admission, &damaged).0;
+        let (next, product) = pass(&admission, &p2);
+        assert_eq!(
+            damage_events(&product),
+            [
+                format!("marked {} 1 0", ogre.0),
+                format!("marked {} 2 0", giant.0)
+            ]
+        );
+        for creature in creatures {
+            assert_eq!(marked(&next, creature), 0);
+        }
+    }
+
+    #[test]
+    fn a_restored_cleanup_accepts_marked_damage_only_while_the_discard_is_pending() {
+        // CR 514.1, 514.2: the discard is asked in the cleanup step before the
+        // damage is removed, so a checkpoint there still has it. Nowhere else
+        // in the cleanup step is any damage marked.
+        let (admission, giant, _, damaged) = end_step_with_damage_and_hand(6);
+        let p2 = pass(&admission, &damaged).0;
         let cleanup = pass(&admission, &p2).0;
         assert_eq!(
             pending(&cleanup).purpose,
             DecisionPurposeV4::HandSizeDiscard
         );
-        validate_magic_pending_request(&admission, &cleanup, &EpisodeStatus::Running).unwrap();
+        assert_eq!(marked(&cleanup, giant), 2);
+        let running = EpisodeStatus::Running;
+        crate::combat::validate_marked_damage(&admission, &cleanup).unwrap();
+        validate_magic_pending_request(&admission, &cleanup, &running).unwrap();
+        // The restored state goes on: the discard ends the turn.
+        let next = pass(&admission, &cleanup).0;
+        assert_eq!((next.core.turn_number, marked(&next, giant)), (4, 0));
 
-        let damaged = with_marked(&cleanup, giant, 2);
-        assert!(refused_everywhere(&admission, &damaged));
+        // Lethal damage is refused there as everywhere (CR 704.5g), and so is
+        // damage on a land (CR 120.3e).
+        assert!(refused_everywhere(
+            &admission,
+            &with_marked(&cleanup, giant, 3)
+        ));
+        let land = cleanup
+            .card_rules
+            .permanents
+            .permanents
+            .keys()
+            .copied()
+            .find(|object| *object != giant)
+            .unwrap();
+        assert!(refused_everywhere(
+            &admission,
+            &with_marked(&cleanup, land, 1)
+        ));
+
+        // Without the discard request, in the cleanup step or not, the same
+        // damage is not a state the game rests in.
+        let not_asked = |state: &EngineState| {
+            crate::combat::validate_marked_damage(&admission, state)
+                == Err(crate::BasicLandTransitionError::TurnProgressUnsupported)
+        };
+        let mut settled = cleanup.clone();
+        settled.execution.pending_decision = None;
+        assert!(not_asked(&settled));
+        let mut elsewhere = cleanup.clone();
+        elsewhere
+            .execution
+            .pending_decision
+            .as_mut()
+            .unwrap()
+            .purpose = DecisionPurposeV4::PriorityAction;
+        assert!(not_asked(&elsewhere));
+        // The end step's own request, in the cleanup step: the damage is only
+        // there while the discard is asked.
+        let mut end_step = damaged.clone();
+        end_step.core.position = TurnPosition::Ending {
+            step: EndingStep::Cleanup,
+        };
+        assert!(not_asked(&end_step));
     }
 
     #[test]
-    fn a_turn_never_begins_with_damage_marked() {
-        // The turn change is where damage marked must be gone (CR 514.2).
-        let (_, _, unmarked, marked) = end_step_with_damage_and_hand(0);
-        let mut facts = Facts::default();
-        let mut next = marked.clone();
-        assert_eq!(
-            begin_turn(&mut next, &mut facts),
+    fn a_state_based_action_in_cleanup_fails_closed_instead_of_granting_priority() {
+        // CR 514.3a: if a state-based action would be performed after the
+        // cleanup actions, a player receives priority in the cleanup step. With
+        // lands and vanilla creatures none can: a game never rests with a
+        // player at 0 life who has not lost, so this is not a state the slice
+        // reaches. The turn must not go on past it, and must not skip the
+        // priority either.
+        let (admission, _, unmarked, _) = end_step_with_damage_and_hand(0);
+        let advance_from = |state: &EngineState| {
+            let mut next = state.clone();
+            next.core.priority = PriorityState::None;
+            advance(&admission, &mut next, &mut Facts::default())
+        };
+        assert!(matches!(
+            advance_from(&unmarked),
+            Ok(NextDecision::Priority(P2))
+        ));
+        let mut dying = unmarked.clone();
+        dying.core.players.get_mut(&P2).unwrap().life = 0;
+        assert!(matches!(
+            advance_from(&dying),
             Err(crate::BasicLandTransitionError::TurnProgressUnsupported)
-        );
-        let mut next = unmarked.clone();
-        begin_turn(&mut next, &mut facts).unwrap();
-        assert_eq!(next.core.turn_number, unmarked.core.turn_number + 1);
+        ));
     }
 
     #[test]

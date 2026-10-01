@@ -1188,6 +1188,20 @@ fn validate_delta_operation_projection_v3(
     }
 }
 
+/// CR 514.1, 514.2: whether the transition from `before` to `after` ends the
+/// cleanup step, which removes all damage marked on permanents: it begins in
+/// the end step (when no discard is asked) or in the cleanup step (after the
+/// discard) and the next turn begins. The transition that begins the cleanup
+/// step with a discard to ask ends in it, with the damage still marked.
+fn cleanup_step_ends(before: &EngineState, after: &EngineState) -> bool {
+    matches!(
+        before.core.position,
+        TurnPosition::Ending {
+            step: mtgml_state::EndingStep::EndStep | mtgml_state::EndingStep::Cleanup
+        }
+    ) && before.core.turn_number.checked_add(1) == Some(after.core.turn_number)
+}
+
 /// The damage marked on `object`, if it is a permanent.
 fn marked_damage_of(state: &EngineState, object: GameObjectId) -> Option<u64> {
     state
@@ -1342,6 +1356,8 @@ fn validate_event_projection_v3(
         // to `to`, as the states show. A creature that is destroyed in the same
         // transition (CR 704.5g) is gone from the after state: what the event
         // says of it is that it had `from` before and that damage was added.
+        // Damage rises as it is marked, and falls only to 0, when the cleanup
+        // step removes it (CR 514.2).
         AuthoritativeRuleEventKind::MarkedDamageChanged { creature, from, to } => {
             from != to
                 && marked_damage_of(before, *creature) == Some(*from)
@@ -1349,6 +1365,7 @@ fn validate_event_projection_v3(
                     Some(now) => now == *to,
                     None => from < to && !after.zones.objects.contains_key(creature),
                 }
+                && (from < to || (*to == 0 && cleanup_step_ends(before, after)))
         }
         AuthoritativeRuleEventKind::ObjectTapped { object, from, to } => {
             from != to
@@ -3641,6 +3658,102 @@ mod tests {
         // The object is a permanent.
         assert_eq!(valid(&marked(1, 0, 0)), Err(EventDeltaError::Mismatch));
         assert_eq!(valid(&marked(99, 0, 2)), Err(EventDeltaError::Mismatch));
+    }
+
+    const END_STEP: TurnPosition = TurnPosition::Ending {
+        step: mtgml_state::EndingStep::EndStep,
+    };
+    const CLEANUP: TurnPosition = TurnPosition::Ending {
+        step: mtgml_state::EndingStep::Cleanup,
+    };
+
+    /// The states around a cleanup step that ends: the damaged creatures 3 and
+    /// 5 of `fight_states` (2 and 3 marked) at `from`, and the same game in
+    /// the upkeep of the next turn with the damage removed.
+    fn cleanup_states(from: TurnPosition) -> (EngineState, EngineState) {
+        let (_, mut before) = fight_states();
+        before.core.position = from;
+        let mut after = before.clone();
+        after.core.turn_number = before.core.turn_number + 1;
+        after.core.position = TurnPosition::Beginning {
+            step: mtgml_state::BeginningStep::Upkeep,
+        };
+        for creature in [3, 5] {
+            after
+                .card_rules
+                .permanents
+                .permanents
+                .get_mut(&GameObjectId(creature))
+                .unwrap()
+                .marked_damage = 0;
+        }
+        (before, after)
+    }
+
+    #[test]
+    fn marked_damage_falls_only_when_the_cleanup_step_ends() {
+        // CR 514.2: all damage marked on permanents is removed in the cleanup
+        // step, which ends in the transition that leaves the end step (no
+        // discard) or the cleanup step (after the discard of CR 514.1) for
+        // the next turn. A mark falls to 0 there and in no other transition.
+        for from in [END_STEP, CLEANUP] {
+            let (before, after) = cleanup_states(from);
+            assert_eq!(
+                before.card_rules.permanents.permanents[&GameObjectId(3)].marked_damage,
+                2
+            );
+            let valid = |event: &AuthoritativeRuleEventKind| {
+                validate_event_projection_v3(&before, &after, event)
+            };
+            assert_eq!(valid(&marked(3, 2, 0)), Ok(()), "{from:?}");
+            assert_eq!(valid(&marked(5, 3, 0)), Ok(()), "{from:?}");
+            // The values are still those of the states.
+            for wrong in [marked(3, 3, 0), marked(5, 2, 0), marked(4, 2, 0)] {
+                assert_eq!(valid(&wrong), Err(EventDeltaError::Mismatch), "{wrong:?}");
+            }
+            // It falls to 0, not to another value.
+            let mut partly = after.clone();
+            partly
+                .card_rules
+                .permanents
+                .permanents
+                .get_mut(&GameObjectId(3))
+                .unwrap()
+                .marked_damage = 1;
+            assert_eq!(
+                validate_event_projection_v3(&before, &partly, &marked(3, 2, 1)),
+                Err(EventDeltaError::Mismatch),
+                "{from:?}"
+            );
+        }
+
+        // Not in a transition that does not end the cleanup step: any other
+        // position, or one in which the turn does not change (the end step
+        // that begins cleanup with a discard still to answer).
+        for from in [
+            TurnPosition::PrecombatMain,
+            TurnPosition::Combat {
+                step: mtgml_state::CombatStep::CombatDamage,
+            },
+            TurnPosition::PostcombatMain,
+            TurnPosition::Beginning {
+                step: mtgml_state::BeginningStep::Upkeep,
+            },
+        ] {
+            let (before, after) = cleanup_states(from);
+            assert_eq!(
+                validate_event_projection_v3(&before, &after, &marked(3, 2, 0)),
+                Err(EventDeltaError::Mismatch),
+                "{from:?}"
+            );
+        }
+        let (before, mut still_cleanup) = cleanup_states(END_STEP);
+        still_cleanup.core.turn_number = before.core.turn_number;
+        still_cleanup.core.position = CLEANUP;
+        assert_eq!(
+            validate_event_projection_v3(&before, &still_cleanup, &marked(3, 2, 0)),
+            Err(EventDeltaError::Mismatch)
+        );
     }
 
     /// The states of `fight_states`, with the blocker 5 destroyed (CR 704.5g)

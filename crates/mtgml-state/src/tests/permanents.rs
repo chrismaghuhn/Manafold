@@ -396,6 +396,31 @@ fn marking_damage_adds_to_the_damage_marked_and_fails_without_a_permanent() {
 }
 
 #[test]
+fn removing_marked_damage_clears_every_permanent_and_reports_those_that_had_some() {
+    // CR 514.2: all damage marked on permanents is removed at once. The ones
+    // that had some are reported with it, in object order.
+    let mut permanents = PermanentsState::default();
+    for (object, turn) in [(9, 4), (3, 1), (7, 3)] {
+        permanents.enter(GameObjectId(object), turn).unwrap();
+    }
+    permanents.mark_damage(GameObjectId(9), 2).unwrap();
+    permanents.mark_damage(GameObjectId(3), 5).unwrap();
+    assert_eq!(
+        permanents.remove_marked_damage(),
+        [(GameObjectId(3), 5), (GameObjectId(9), 2)]
+    );
+    for (object, turn) in [(3, 1), (7, 3), (9, 4)] {
+        let permanent = &permanents.permanents[&GameObjectId(object)];
+        assert_eq!(
+            (permanent.marked_damage, permanent.controlled_since_turn),
+            (0, turn)
+        );
+    }
+    // Nothing is left to remove.
+    assert_eq!(permanents.remove_marked_damage(), []);
+}
+
+#[test]
 fn delta_accepts_marked_damage_with_its_event() {
     let before = state_with_content_authority();
     let after = with_damage_marked(&before, 2);
@@ -410,6 +435,14 @@ fn delta_accepts_marked_damage_with_its_event() {
     // More damage later is another change, from the damage marked before.
     let more = with_damage_marked(&after, 1);
     StateDelta::between_structural_only(&after, &more, vec![marked_damage_changed(1, 2, 3)])
+        .unwrap();
+
+    // Its removal (CR 514.2) is another, from the damage marked to 0. Which
+    // transition may remove it is for the events to say.
+    let mut cleared = more.clone();
+    cleared.revision = StateRevision(more.revision.0 + 1);
+    assert_eq!(cleared.card_rules.permanents.remove_marked_damage().len(), 1);
+    StateDelta::between_structural_only(&more, &cleared, vec![marked_damage_changed(1, 3, 0)])
         .unwrap();
 }
 

@@ -24,8 +24,8 @@ use mtgml_observation::{
 };
 use mtgml_rules::{AuthoritativeRuleEventKind, BasicLandTransitionProduct};
 use mtgml_state::{
-    CombatBlockerAssignmentV1, CombatStep, ContinuationPayload, EngineState, PriorityState,
-    SbaObjectCauseV1, SbaSelectedActionV1, SemanticDeltaOperation, TurnPosition,
+    CombatBlockerAssignmentV1, CombatStep, ContinuationPayload, EndingStep, EngineState,
+    PriorityState, SbaObjectCauseV1, SbaSelectedActionV1, SemanticDeltaOperation, TurnPosition,
     VisibilityPartition, ZoneLocation, ZonePosition,
 };
 use std::collections::{BTreeMap, BTreeSet};
@@ -169,6 +169,17 @@ impl Game {
         let mut answers = 0;
         while !reached(&self.state()) {
             self.answer(play_land, pass);
+            answers += 1;
+            assert!(answers < 500, "the game never reached the wanted state");
+        }
+    }
+
+    /// Passes until `reached` holds: plays no land and casts nothing, and
+    /// declares no attackers and no block.
+    fn pass_until(&self, reached: impl Fn(&EngineState) -> bool) {
+        let mut answers = 0;
+        while !reached(&self.state()) {
+            self.answer(|_| false, pass);
             answers += 1;
             assert!(answers < 500, "the game never reached the wanted state");
         }
@@ -1377,7 +1388,8 @@ fn a_3_3_blocked_by_a_2_1_kills_it_and_survives() {
 
     // Combat ends with the end of combat step (CR 511.3): the Giant is still
     // attacking and still has its damage until then, and the damage until the
-    // cleanup step (CR 120.6), which the game does not reach here.
+    // cleanup step (CR 120.6, 514.2), which the tests of the cleanup step go
+    // through.
     let still_in_combat = |state: &EngineState| state.combat == after.combat;
     game.answer(pass, pass);
     game.answer(pass, pass);
@@ -2012,4 +2024,251 @@ fn a_restored_graveyard_order_checkpoint_continues_identically() {
         .execute_replay(game.controller.export_replay().unwrap())
         .unwrap();
     assert_eq!(report.final_checkpoint, at_end);
+}
+
+/// The damage marked on `object`.
+fn marked(state: &EngineState, object: GameObjectId) -> u64 {
+    state.card_rules.permanents.permanents[&object].marked_damage
+}
+
+/// `state` with no damage marked on any permanent.
+fn without_damage(state: &EngineState) -> EngineState {
+    let mut undamaged = state.clone();
+    for permanent in undamaged.card_rules.permanents.permanents.values_mut() {
+        permanent.marked_damage = 0;
+    }
+    undamaged
+}
+
+/// The damage changes the product's events make: the creature, and the damage
+/// marked on it before and after.
+fn damage_changes(product: &BasicLandTransitionProduct) -> Vec<(GameObjectId, u64, u64)> {
+    product
+        .events
+        .iter()
+        .filter_map(|event| match &event.event {
+            AuthoritativeRuleEventKind::MarkedDamageChanged { creature, from, to } => {
+                Some((*creature, *from, *to))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// The end step with the player who is not the active one holding priority:
+/// their pass ends the step, and the cleanup step begins.
+fn at_the_end_of_the_end_step(state: &EngineState) -> bool {
+    state.core.position
+        == (TurnPosition::Ending {
+            step: EndingStep::EndStep,
+        })
+        && matches!(state.core.priority,
+            PriorityState::HeldBy { player, .. } if player != state.core.active_player)
+}
+
+/// What each player observes of the transition `answer` makes from `state`,
+/// and of the same transition from `state` with no damage marked: the same,
+/// because no player observes damage marked.
+fn observed_the_same_without_the_damage(state: &EngineState, answer: &DecisionAnswerV2) {
+    let undamaged = without_damage(state);
+    assert_ne!(&undamaged, state);
+    let (_, with_damage) = product_and_observations(state, answer.clone());
+    let (_, without) = product_and_observations(&undamaged, answer.clone());
+    assert_eq!(with_damage, without);
+}
+
+#[test]
+fn a_creature_that_survived_a_block_has_no_damage_marked_in_the_next_turn() {
+    // CR 120.6, 514.2: P1's Hill Giant attacks, P2's Savannah Lions blocks it
+    // and dies, and the Giant survives with 2 damage marked on it. The damage
+    // stays until the cleanup step, which P1's hand does not ask to discard
+    // in: the transition that ends the turn removes it, and the next turn
+    // begins with the Giant undamaged. No player observes any of that.
+    let [_, _, giant] = creature_definitions();
+    let (game, giant_object, lions_object) = attacker_against_a_lions(giant, 4);
+    attack_and_block(&game, giant_object);
+    game.answer(pass, pass);
+    game.pass_until(at_the_end_of_the_end_step);
+    let before = game.state();
+    assert_eq!((before.core.turn_number, game.pending().0), (9, P2));
+    assert!(!before.zones.objects.contains_key(&lions_object));
+    assert_eq!(marked(&before, giant_object), 2);
+
+    let answer = pass_in(&before);
+    let (product, observed) = product_and_observations(&before, answer.clone());
+    assert_eq!(damage_changes(&product), [(giant_object, 2, 0)]);
+    observed_the_same_without_the_damage(&before, &answer);
+
+    let (actor, step) = game.answer(pass, pass);
+    assert_eq!(actor, P2);
+    assert_eq!(step.observed_events, observed[&P2]);
+    let after = game.state();
+    assert_eq!(after, product.next_state);
+    // P2's turn has begun, and the Giant is undamaged.
+    assert_eq!(
+        (
+            after.core.turn_number,
+            after.core.active_player,
+            after.core.position
+        ),
+        (
+            10,
+            P2,
+            TurnPosition::Beginning {
+                step: mtgml_state::BeginningStep::Upkeep
+            }
+        )
+    );
+    assert_eq!(
+        after.zones.locations[&giant_object].zone,
+        ZoneKind::Battlefield
+    );
+    assert_eq!(marked(&after, giant_object), 0);
+    assert!(after
+        .card_rules
+        .permanents
+        .permanents
+        .values()
+        .all(|permanent| permanent.marked_damage == 0));
+
+    // The game goes on: the Giant, undamaged, is offered as an attacker again
+    // on P1's next turn, and the whole game replays to the same checkpoint.
+    game.run_until(at_attackers(11));
+    let next_attack = game.state();
+    assert_eq!(marked(&next_attack, giant_object), 0);
+    assert!(game.offered().contains(&CandidateIntent::SelectObject {
+        object: opaque_of(&next_attack, P1, giant_object)
+    }));
+    let checkpoint = game.checkpoint();
+    game.controller.restore(checkpoint.clone()).unwrap();
+    assert_eq!(game.checkpoint(), checkpoint);
+    let report = game
+        .controller
+        .execute_replay(game.controller.export_replay().unwrap())
+        .unwrap();
+    assert_eq!(report.final_checkpoint, checkpoint);
+}
+
+/// P2 casts a Savannah Lions on its first turn, and P1 a Hill Giant on its
+/// fourth, with the four Mountains it plays. P1 plays no land after that: it
+/// keeps the card it draws every turn, which makes eight in its hand on turn
+/// 11. The Savannah Lions it holds besides cannot be cast without white mana;
+/// they only keep its hand full. P1 is at its attacker declaration of turn 11.
+/// Returns the game, the Giant and P2's Lions.
+fn giant_attacks_with_a_full_hand() -> (Game, GameObjectId, GameObjectId) {
+    let (mountain, plains) = land_definitions();
+    let [_, _, giant] = creature_definitions();
+    let hand = [vec![mountain; 4], vec![giant], vec![lions(); 3]].concat();
+    let game = Game::with_hands([hand, vec![plains, lions()]]);
+    game.run_until(start_of_main_phase(2));
+    cast_lions(&game);
+    game.run_until(start_of_main_phase(7));
+    cast_creature(&game, 4);
+    game.pass_until(at_attackers(11));
+    let state = game.state();
+    let [giant_object]: [GameObjectId; 1] = creatures_of(&state, P1, giant).try_into().unwrap();
+    let [lions_object]: [GameObjectId; 1] = lions_of(&state, P2).try_into().unwrap();
+    let in_hand = |player| {
+        state
+            .zones
+            .locations
+            .values()
+            .filter(|location| location.zone == ZoneKind::Hand && location.player == Some(player))
+            .count()
+    };
+    assert_eq!(in_hand(P1), 8);
+    (game, giant_object, lions_object)
+}
+
+#[test]
+fn a_discard_in_the_cleanup_step_comes_before_the_damage_is_removed() {
+    // CR 514.1, 514.2: as above, but P1 holds eight cards at the cleanup step,
+    // so it first discards one. The damage is still marked while it is asked,
+    // and a checkpoint there restores with it (and still refuses damage that
+    // is lethal). The answer discards, removes the damage, and ends the turn.
+    let (game, giant_object, lions_object) = giant_attacks_with_a_full_hand();
+    attack_and_block(&game, giant_object);
+    game.answer(pass, pass);
+    game.pass_until(at_the_end_of_the_end_step);
+    game.answer(pass, pass);
+
+    let at_discard = game.checkpoint();
+    let state = &at_discard.state;
+    let (asked, request) = game.pending();
+    assert_eq!(
+        (asked, request.purpose),
+        (P1, DecisionPurposeV4::HandSizeDiscard)
+    );
+    assert_eq!(
+        (state.core.turn_number, state.core.position),
+        (
+            11,
+            TurnPosition::Ending {
+                step: EndingStep::Cleanup
+            }
+        )
+    );
+    assert!(!state.zones.objects.contains_key(&lions_object));
+    assert_eq!(marked(state, giant_object), 2);
+
+    // The checkpoint restores, damage and all.
+    game.controller.restore(at_discard.clone()).unwrap();
+    assert_eq!(game.checkpoint(), at_discard);
+    // The restore path (the same validation) takes this state and refuses
+    // the same one with lethal damage on the Giant.
+    let admission = creature_game_admission();
+    let restored = |state: EngineState| {
+        EnvironmentCheckpointV8::new_for_basic_land_profile(
+            &admission,
+            state,
+            at_discard.status.clone(),
+            at_discard.limit_counters.clone(),
+            at_discard.execution_identity.clone(),
+        )
+    };
+    assert!(restored(state.clone()).is_ok());
+    let mut lethal = state.clone();
+    lethal
+        .card_rules
+        .permanents
+        .permanents
+        .get_mut(&giant_object)
+        .unwrap()
+        .marked_damage = 3;
+    assert!(restored(lethal).is_err());
+
+    // The discard ends the turn: the damage goes with it, after the card.
+    let answer = DecisionAnswerV2::SelectMany {
+        candidate_ids: vec![request.candidates[0].candidate_id],
+    };
+    let (product, observed) = product_and_observations(state, answer.clone());
+    assert_eq!(damage_changes(&product), [(giant_object, 2, 0)]);
+    let index_of = |pick: fn(&AuthoritativeRuleEventKind) -> bool| {
+        product.events.iter().position(|event| pick(&event.event))
+    };
+    let discard =
+        index_of(|event| matches!(event, AuthoritativeRuleEventKind::ZoneTransition { .. }));
+    let removal = index_of(|event| {
+        matches!(
+            event,
+            AuthoritativeRuleEventKind::MarkedDamageChanged { .. }
+        )
+    });
+    assert!(discard.unwrap() < removal.unwrap());
+    observed_the_same_without_the_damage(state, &answer);
+
+    let (actor, step) = game.submit(answer);
+    assert_eq!(actor, P1);
+    assert_eq!(step.observed_events, observed[&P1]);
+    let after = game.state();
+    assert_eq!(after, product.next_state);
+    assert_eq!((after.core.turn_number, after.core.active_player), (12, P2));
+    assert_eq!(marked(&after, giant_object), 0);
+
+    let checkpoint = game.checkpoint();
+    let report = game
+        .controller
+        .execute_replay(game.controller.export_replay().unwrap())
+        .unwrap();
+    assert_eq!(report.final_checkpoint, checkpoint);
 }

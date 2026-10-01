@@ -75,6 +75,14 @@ fn applicable_actions(
     Ok(actions)
 }
 
+/// Whether any state-based action would be performed in `state` (CR 704.3).
+pub(crate) fn any_apply(
+    admission: &ExecutableProfileAdmissionV1,
+    state: &EngineState,
+) -> Result<bool, Error> {
+    Ok(!applicable_actions(admission, state)?.is_empty())
+}
+
 /// The players `actions` make lose.
 fn losers_of(actions: &[SbaSelectedActionV1]) -> Vec<PlayerId> {
     actions
@@ -379,9 +387,11 @@ pub(crate) fn install_order_request(
 /// CR 404.3: `owner`, whom the pending order asks, puts their cards into the
 /// graveyard in the order `top_to_bottom`, the first being the topmost. The
 /// order is recorded. With another owner to ask, that is all, and the next
-/// owner is asked. After the last owner the whole batch applies, a loss
-/// included (see `apply`), and the state-based actions are checked again
-/// (CR 704.3).
+/// owner is asked. After the last owner the whole batch applies (see `apply`),
+/// and the state-based actions are checked again (CR 704.3). A batch with a
+/// loss is never ordered (see the module documentation), so applying this one
+/// cannot make a player lose; if it does, the state is not one the game makes,
+/// and this fails closed.
 pub(crate) fn order_graveyard(
     admission: &ExecutableProfileAdmissionV1,
     next: &mut EngineState,
@@ -429,8 +439,8 @@ pub(crate) fn order_graveyard(
     let orders = completed_owner_orders.clone();
     next.execution.continuations.remove(&continuation);
     match apply(next, facts, batch, &orders)? {
-        Some(loser) => Ok(NextDecision::GameOver { loser }),
         None => perform_state_based_actions(admission, next, facts),
+        Some(_) => Err(Error::InvalidResult),
     }
 }
 

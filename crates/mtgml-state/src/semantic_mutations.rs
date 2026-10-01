@@ -854,6 +854,17 @@ impl PermanentsState {
         Ok((from, to))
     }
 
+    /// CR 514.2: all damage marked on permanents is removed. Returns each
+    /// permanent that had some, in object order, with the damage that was
+    /// marked on it.
+    pub fn remove_marked_damage(&mut self) -> Vec<(GameObjectId, u64)> {
+        self.permanents
+            .iter_mut()
+            .filter(|(_, permanent)| permanent.marked_damage != 0)
+            .map(|(object, permanent)| (*object, std::mem::take(&mut permanent.marked_damage)))
+            .collect()
+    }
+
     /// Every entry names a battlefield object and a turn that has begun.
     pub fn validate_battlefield(
         &self,

@@ -9,7 +9,8 @@
 //! marked on creatures; an attacker with two or more blockers has to divide
 //! its damage among them, which is not supported yet. A creature dealt lethal
 //! damage is destroyed by the state-based actions that follow
-//! (`crate::state_based_actions`), which remove it from combat first.
+//! (`crate::state_based_actions`), which remove it from combat first. The damage
+//! that stays marked is removed in the cleanup step (CR 514.2).
 
 use std::collections::BTreeMap;
 
@@ -721,11 +722,30 @@ pub(crate) fn damage_is_marked(state: &EngineState) -> bool {
         .any(|permanent| permanent.marked_damage != 0)
 }
 
+/// CR 514.2, 120.6: all damage marked on permanents is removed, all at once,
+/// in the cleanup step. Each creature that had some has one
+/// `MarkedDamageChanged` to 0, in object order. No player observes it, as no
+/// player observes the marking.
+pub(crate) fn remove_marked_damage(next: &mut EngineState, facts: &mut Facts) {
+    for (creature, from) in next.card_rules.permanents.remove_marked_damage() {
+        record_unobserved(
+            facts,
+            AuthoritativeRuleEventKind::MarkedDamageChanged {
+                creature,
+                from,
+                to: 0,
+            },
+        );
+    }
+}
+
 /// CR 120.6, 514.2: damage is marked by combat damage and stays marked until
 /// the cleanup step removes it, so some can exist from the combat damage step,
 /// once its damage is dealt, through the end of combat, the postcombat main
-/// phase and the end step. Removing it at cleanup is not supported yet: no
-/// game enters the cleanup step with any marked.
+/// phase and the end step. The cleanup step first has the player discard to
+/// their maximum hand size (CR 514.1), and only then removes the damage
+/// (CR 514.2): while that discard is asked it is still marked. The cleanup
+/// step has no other decision, so damage is nowhere else in it.
 fn marked_damage_may_exist(state: &EngineState) -> bool {
     match state.core.position {
         TurnPosition::Combat {
@@ -738,6 +758,13 @@ fn marked_damage_may_exist(state: &EngineState) -> bool {
         | TurnPosition::Ending {
             step: EndingStep::EndStep,
         } => true,
+        TurnPosition::Ending {
+            step: EndingStep::Cleanup,
+        } => state
+            .execution
+            .pending_decision
+            .as_ref()
+            .is_some_and(|request| request.purpose == DecisionPurposeV4::HandSizeDiscard),
         _ => false,
     }
 }
@@ -745,7 +772,8 @@ fn marked_damage_may_exist(state: &EngineState) -> bool {
 /// The damage marked on the permanents is damage this slice can have made:
 /// - it is marked only in the window of `marked_damage_may_exist`: none in the
 ///   beginning phase, the precombat main phase, the combat steps before the
-///   damage is dealt, or the cleanup step;
+///   damage is dealt, or the cleanup step but for the discard that comes
+///   before the damage is removed;
 /// - only a creature has any (CR 120.3e);
 /// - no creature has been dealt lethal damage: marked damage at least equal to
 ///   its toughness (CR 704.5g; with toughness 0 or less it is destroyed as
