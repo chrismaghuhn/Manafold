@@ -1,11 +1,13 @@
-//! Attacking (CR 508.1), declaring blockers (CR 509.1) and unblocked combat
-//! damage (CR 510.1, 510.2).
+//! Attacking (CR 508.1), declaring blockers (CR 509.1) and combat damage
+//! (CR 510.1, 510.2).
 //!
 //! The only creatures of this slice are vanilla creatures, so combat reads of
 //! a creature only its controller, whether it is tapped, since when it has
-//! been under its controller's control and its power. The defending player
-//! declares blocks one untapped creature at a time, in a continuation that
-//! only they can see; a combat with a block cannot deal its damage yet.
+//! been under its controller's control, its power and its toughness. The
+//! defending player declares blocks one untapped creature at a time, in a
+//! continuation that only they can see. Combat damage is dealt to players and
+//! marked on creatures; an attacker with two or more blockers has to divide
+//! its damage among them, which is not supported yet.
 
 use std::collections::BTreeMap;
 
@@ -30,6 +32,7 @@ struct Creature {
     object: GameObjectId,
     controller: PlayerId,
     power: i64,
+    toughness: i64,
 }
 
 /// The creatures on the battlefield, in object order.
@@ -50,13 +53,14 @@ fn battlefield_creatures(
             continue;
         }
         // Every creature has a power and a toughness (CR 208.1).
-        let (power, _) = base
+        let (power, toughness) = base
             .base_power_toughness
             .ok_or(Error::TurnProgressUnsupported)?;
         creatures.push(Creature {
             object: base.queried.object,
             controller: base.queried.controller,
             power,
+            toughness,
         });
     }
     Ok(creatures)
@@ -468,10 +472,9 @@ pub(crate) fn declare_block(
 ///   the turn-based action runs on entering the step, so no game rests there
 ///   before it;
 /// - no attacker is blocked while attackers are still being declared
-///   (CR 509.1, 508.2), and every blocker is a creature the defending player
-///   controls (CR 509.1a);
-/// - a combat with a block has not dealt its damage, which is not supported yet
-///   (see `deal_unblocked_combat_damage`);
+///   (CR 509.1, 508.2), and every blocker is an untapped creature the defending
+///   player controls (CR 509.1a): nothing taps a blocker once it blocks. An
+///   attacker may be blocked with no blocker left (CR 509.1h);
 /// - a block declaration in progress is the one the battlefield calls for (see
 ///   `validate_pending_block_declaration`). Once the declaration is complete, in the
 ///   declare blockers step with priority or in a later step, an untapped
@@ -539,17 +542,14 @@ pub(crate) fn validate_reachable_combat(
     {
         return Err(Error::TurnProgressUnsupported);
     }
-    // Damage with a block is not supported yet (`deal_unblocked_combat_damage`),
-    // so no game has dealt it.
-    if combat.damage_step_completed
-        && (!combat.blockers.is_empty() || !combat.blocked_attackers.is_empty())
-    {
-        return Err(Error::TurnProgressUnsupported);
-    }
     if combat.blockers.keys().any(|blocker| {
         !creatures.iter().any(|creature| {
             creature.object == *blocker && creature.controller == combat.defending_player
-        })
+        }) || state
+            .zones
+            .objects
+            .get(blocker)
+            .is_none_or(|object| object.tapped)
     }) {
         return Err(Error::TurnProgressUnsupported);
     }
@@ -559,47 +559,89 @@ pub(crate) fn validate_reachable_combat(
     Ok(())
 }
 
-/// CR 510.1a, 510.2, 120.3a: every attacking creature deals damage equal to
-/// its power to the defending player, simultaneously, and the player loses
-/// that much life. A creature that would assign 0 or less damage assigns none.
-/// Blockers do not deal or receive damage yet, so a combat with a block fails
-/// closed: its damage would be wrong.
-pub(crate) fn deal_unblocked_combat_damage(
+/// CR 510.1, 510.2: every attacking and blocking creature deals combat damage
+/// equal to its power, all at once:
+/// - an unblocked attacker deals it to the defending player (CR 510.1b), who
+///   loses that much life (CR 120.3a);
+/// - an attacker with exactly one blocker deals all of it to that blocker; one
+///   that is blocked with no blocker left deals none (CR 510.1c, 509.1h);
+/// - a blocker deals it to the attacker it blocks (CR 510.1d).
+///
+/// Damage dealt to a creature is marked on it (CR 120.3e). A creature that
+/// would assign 0 or less damage assigns none (CR 510.1a). An attacker with two
+/// or more blockers divides its damage among them (CR 510.1c), which is not
+/// supported yet, so the step fails closed. Whether a creature has been dealt
+/// lethal damage is for the state-based actions (see `validate_marked_damage`).
+pub(crate) fn deal_combat_damage(
     admission: &ExecutableProfileAdmissionV1,
     next: &mut EngineState,
     facts: &mut Facts,
 ) -> Result<(), Error> {
     let combat = next.combat.clone().ok_or(Error::InvalidResult)?;
-    if combat.damage_step_completed
-        || !combat.blocked_attackers.is_empty()
-        || !combat.blockers.is_empty()
-    {
+    if combat.damage_step_completed {
         return Err(Error::TurnProgressUnsupported);
     }
     let creatures = battlefield_creatures(admission, next)?;
-    let mut assignments = Vec::new();
-    let mut total: u64 = 0;
-    for attacker in &combat.attackers {
-        let creature = creatures
+    // The damage `object`, a creature `controller` controls, assigns (CR 510.1a).
+    let assigned = |object: &GameObjectId, controller: PlayerId| {
+        creatures
             .iter()
-            .find(|creature| {
-                creature.object == *attacker && creature.controller == next.core.active_player
-            })
-            .ok_or(Error::TurnProgressUnsupported)?;
-        let amount = u64::try_from(creature.power).unwrap_or(0);
-        if amount == 0 {
-            continue;
-        }
-        total = total.checked_add(amount).ok_or(Error::InvalidResult)?;
-        assignments.push(DamageAssignmentV1 {
-            source: *attacker,
-            recipient: DamageRecipientV1::Player {
+            .find(|creature| creature.object == *object && creature.controller == controller)
+            .map(|creature| u64::try_from(creature.power).unwrap_or(0))
+            .ok_or(Error::TurnProgressUnsupported)
+    };
+    let mut assignments = Vec::new();
+    for attacker in &combat.attackers {
+        let amount = assigned(attacker, next.core.active_player)?;
+        let mut blockers = combat
+            .blockers
+            .iter()
+            .filter(|(_, blocked)| *blocked == attacker)
+            .map(|(blocker, _)| *blocker);
+        let recipient = match (blockers.next(), blockers.next()) {
+            (None, _) if combat.blocked_attackers.contains(attacker) => continue,
+            (None, _) => DamageRecipientV1::Player {
                 player: combat.defending_player,
             },
-            amount,
-        });
+            (Some(blocker), None) => DamageRecipientV1::Creature { object: blocker },
+            (Some(_), Some(_)) => return Err(Error::TurnProgressUnsupported),
+        };
+        if amount > 0 {
+            assignments.push(DamageAssignmentV1 {
+                source: *attacker,
+                recipient,
+                amount,
+            });
+        }
+    }
+    for (blocker, attacker) in &combat.blockers {
+        let amount = assigned(blocker, combat.defending_player)?;
+        if amount > 0 {
+            assignments.push(DamageAssignmentV1 {
+                source: *blocker,
+                recipient: DamageRecipientV1::Creature { object: *attacker },
+                amount,
+            });
+        }
+    }
+    let mut to_player: u64 = 0;
+    let mut to_creatures: BTreeMap<GameObjectId, u64> = BTreeMap::new();
+    for assignment in &assignments {
+        let total = match assignment.recipient {
+            DamageRecipientV1::Player { .. } => &mut to_player,
+            DamageRecipientV1::Creature { object } => to_creatures.entry(object).or_default(),
+        };
+        *total = total
+            .checked_add(assignment.amount)
+            .ok_or(Error::InvalidResult)?;
     }
     if !assignments.is_empty() {
+        record_unobserved(
+            facts,
+            AuthoritativeRuleEventKind::CombatDamageDealt { assignments },
+        );
+    }
+    if to_player > 0 {
         let player = combat.defending_player;
         let from = next
             .core
@@ -607,14 +649,10 @@ pub(crate) fn deal_unblocked_combat_damage(
             .get(&player)
             .ok_or(Error::InvalidResult)?
             .life;
-        let to = i64::try_from(total)
+        let to = i64::try_from(to_player)
             .ok()
             .and_then(|total| from.checked_sub(total))
             .ok_or(Error::InvalidResult)?;
-        record_unobserved(
-            facts,
-            AuthoritativeRuleEventKind::CombatDamageDealt { assignments },
-        );
         next.core
             .players
             .get_mut(&player)
@@ -630,11 +668,53 @@ pub(crate) fn deal_unblocked_combat_damage(
             AuthoritativeRuleEventKind::LifeChanged { player, from, to },
         )?;
     }
+    // No observed event or observation field shows marked damage yet, so no
+    // player observes these rule events.
+    for (creature, amount) in to_creatures {
+        let (from, to) = next
+            .card_rules
+            .permanents
+            .mark_damage(creature, amount)
+            .map_err(|_| Error::InvalidResult)?;
+        record_unobserved(
+            facts,
+            AuthoritativeRuleEventKind::MarkedDamageChanged { creature, from, to },
+        );
+    }
     next.combat
         .as_mut()
         .ok_or(Error::InvalidResult)?
         .damage_step_completed = true;
     record_unobserved(facts, AuthoritativeRuleEventKind::CombatDamageStepCompleted);
+    Ok(())
+}
+
+/// The damage marked on the permanents is damage this slice can have made:
+/// - only a creature has any (CR 120.3e);
+/// - no creature has been dealt lethal damage: marked damage at least equal to
+///   its toughness (CR 704.5g; with toughness 0 or less it is destroyed as
+///   well, CR 704.5f). It would be destroyed before any player has priority
+///   (CR 704.3), which is not supported yet, so no game rests there and the
+///   damage step that would make one fails closed.
+pub(crate) fn validate_marked_damage(
+    admission: &ExecutableProfileAdmissionV1,
+    state: &EngineState,
+) -> Result<(), Error> {
+    let creatures = battlefield_creatures(admission, state)?;
+    let permanents = &state.card_rules.permanents.permanents;
+    if permanents.iter().any(|(object, permanent)| {
+        permanent.marked_damage != 0 && !creatures.iter().any(|creature| creature.object == *object)
+    }) {
+        return Err(Error::TurnProgressUnsupported);
+    }
+    for creature in &creatures {
+        let permanent = permanents
+            .get(&creature.object)
+            .ok_or(Error::InvalidResult)?;
+        if i128::from(permanent.marked_damage) >= i128::from(creature.toughness) {
+            return Err(Error::TurnProgressUnsupported);
+        }
+    }
     Ok(())
 }
 

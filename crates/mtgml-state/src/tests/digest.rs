@@ -381,7 +381,7 @@ fn the_combat_digest_binds_blockers_and_blocked_attackers() {
     type Mutation = (&'static str, fn(&mut EngineState));
     let baseline = combat_before_blocks();
     validate_engine_state(&baseline).unwrap();
-    let mutations: [Mutation; 7] = [
+    let mutations: [Mutation; 10] = [
         ("one block", |state| block(state, 5, 3)),
         ("the same blocker on the other attacker", |state| {
             block(state, 5, 4)
@@ -393,6 +393,12 @@ fn the_combat_digest_binds_blockers_and_blocked_attackers() {
         ("another blocker on the other attacker", |state| {
             block(state, 5, 3);
             block(state, 6, 4);
+        }),
+        // The same blockers and the same blocked attackers as the mutation
+        // above, with the attackers swapped: only the pairs differ.
+        ("the two blockers' attackers swapped", |state| {
+            block(state, 5, 4);
+            block(state, 6, 3);
         }),
         // CR 509.1h: blocked history alone, with no live blocker.
         ("a blocked attacker without a blocker", |state| {
@@ -421,6 +427,13 @@ fn the_combat_digest_binds_blockers_and_blocked_attackers() {
                 .unwrap()
                 .blocked_attackers
                 .insert(GameObjectId(4));
+        }),
+        // Only `attackers` differs from the baseline.
+        ("the first attacker alone", |state| {
+            state.combat.as_mut().unwrap().attackers = vec![GameObjectId(3)];
+        }),
+        ("the second attacker alone", |state| {
+            state.combat.as_mut().unwrap().attackers = vec![GameObjectId(4)];
         }),
     ];
     let baseline_digest = v7_digest(&baseline);

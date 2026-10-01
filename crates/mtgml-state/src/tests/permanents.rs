@@ -42,6 +42,7 @@ fn with_object_on_the_battlefield(before: &EngineState, entry: Option<u64>) -> E
             id,
             PermanentState {
                 controlled_since_turn: turn,
+                marked_damage: 0,
             },
         );
     }
@@ -68,7 +69,8 @@ fn entering_records_the_turn_and_fails_on_a_duplicate() {
         BTreeMap::from([(
             GameObjectId(7),
             PermanentState {
-                controlled_since_turn: 3
+                controlled_since_turn: 3,
+                marked_damage: 0
             }
         )])
     );
@@ -170,7 +172,13 @@ fn the_digest_record_ends_with_the_sorted_permanents() {
         .card_rules
         .permanents
         .permanents
-        .insert(GameObjectId(3), PermanentState { controlled_since_turn: 0 });
+        .insert(
+            GameObjectId(3),
+            PermanentState {
+                controlled_since_turn: 0,
+                marked_damage: 2,
+            },
+        );
     let Value::Array(record) = state.card_rules.canonical_value().unwrap() else {
         panic!("the card-rules record is an array");
     };
@@ -178,10 +186,34 @@ fn the_digest_record_ends_with_the_sorted_permanents() {
     assert_eq!(
         record[7],
         Value::Array(vec![
-            Value::Array(vec![Value::Unsigned(1), Value::Unsigned(1)]),
-            Value::Array(vec![Value::Unsigned(3), Value::Unsigned(0)]),
+            Value::Array(vec![
+                Value::Unsigned(1),
+                Value::Unsigned(1),
+                Value::Unsigned(0)
+            ]),
+            Value::Array(vec![
+                Value::Unsigned(3),
+                Value::Unsigned(0),
+                Value::Unsigned(2)
+            ]),
         ])
     );
+}
+
+#[test]
+fn the_digest_binds_the_marked_damage_of_each_permanent() {
+    let baseline = state_with_content_authority();
+    let digest = |state: &EngineState| calculate_full_state_digest(state).unwrap();
+    let mut seen = BTreeSet::from([digest(&baseline)]);
+    for damage in [1, 2, u64::MAX] {
+        let mut marked = baseline.clone();
+        marked
+            .card_rules
+            .permanents
+            .mark_damage(GameObjectId(1), damage)
+            .unwrap();
+        assert!(seen.insert(digest(&marked)), "{damage} marked damage");
+    }
 }
 
 #[test]
@@ -315,6 +347,116 @@ fn delta_rejects_a_removed_entry_while_the_object_stays() {
     after.card_rules.permanents = PermanentsState::default();
     assert_eq!(
         StateDelta::between_structural_only(&before, &after, Vec::new()).unwrap_err(),
+        DeltaApplicationError::UncoveredMutation
+    );
+}
+
+/// `before` one revision later with `damage` more damage marked on the
+/// battlefield object 1.
+fn with_damage_marked(before: &EngineState, damage: u64) -> EngineState {
+    let mut after = before.clone();
+    after.revision = StateRevision(before.revision.0 + 1);
+    after
+        .card_rules
+        .permanents
+        .mark_damage(GameObjectId(1), damage)
+        .unwrap();
+    after
+}
+
+fn marked_damage_changed(creature: u64, from: u64, to: u64) -> SemanticDeltaOperation {
+    SemanticDeltaOperation::MarkedDamageChanged {
+        creature: GameObjectId(creature),
+        from,
+        to,
+    }
+}
+
+#[test]
+fn marking_damage_adds_to_the_damage_marked_and_fails_without_a_permanent() {
+    let mut permanents = PermanentsState::default();
+    permanents.enter(GameObjectId(7), 3).unwrap();
+    assert_eq!(permanents.mark_damage(GameObjectId(7), 2), Ok((0, 2)));
+    assert_eq!(permanents.mark_damage(GameObjectId(7), 3), Ok((2, 5)));
+    assert_eq!(permanents.permanents[&GameObjectId(7)].marked_damage, 5);
+    assert_eq!(
+        permanents.permanents[&GameObjectId(7)].controlled_since_turn,
+        3
+    );
+    // A failed mark leaves the record unchanged.
+    assert_eq!(
+        permanents.mark_damage(GameObjectId(7), u64::MAX),
+        Err(StateFamilyMutationError::Overflow)
+    );
+    assert_eq!(
+        permanents.mark_damage(GameObjectId(8), 1),
+        Err(StateFamilyMutationError::UnknownObject)
+    );
+    assert_eq!(permanents.permanents[&GameObjectId(7)].marked_damage, 5);
+}
+
+#[test]
+fn delta_accepts_marked_damage_with_its_event() {
+    let before = state_with_content_authority();
+    let after = with_damage_marked(&before, 2);
+    let delta = StateDelta::between_structural_only(
+        &before,
+        &after,
+        vec![marked_damage_changed(1, 0, 2)],
+    )
+    .expect("damage is marked by a MarkedDamageChanged that names both values");
+    assert_eq!(delta.apply_structural_only(&before).unwrap(), after);
+
+    // More damage later is another change, from the damage marked before.
+    let more = with_damage_marked(&after, 1);
+    StateDelta::between_structural_only(&after, &more, vec![marked_damage_changed(1, 2, 3)])
+        .unwrap();
+}
+
+#[test]
+fn delta_rejects_marked_damage_without_the_event() {
+    let before = state_with_content_authority();
+    let after = with_damage_marked(&before, 2);
+    assert_eq!(
+        StateDelta::between_structural_only(&before, &after, Vec::new()).unwrap_err(),
+        DeltaApplicationError::UncoveredMutation
+    );
+}
+
+#[test]
+fn delta_rejects_marked_damage_that_its_event_does_not_name() {
+    let before = state_with_content_authority();
+    let after = with_damage_marked(&before, 2);
+    for (what, operation) in [
+        ("another creature", marked_damage_changed(2, 0, 2)),
+        ("another start", marked_damage_changed(1, 1, 2)),
+        ("another end", marked_damage_changed(1, 0, 3)),
+    ] {
+        assert_eq!(
+            StateDelta::between_structural_only(&before, &after, vec![operation]).unwrap_err(),
+            DeltaApplicationError::UncoveredMutation,
+            "an event for {what}"
+        );
+    }
+}
+
+#[test]
+fn delta_rejects_a_permanent_that_enters_damaged() {
+    // CR 400.7: an object that enters is a new object, with no damage marked.
+    let before = state_with_content_authority();
+    let mut after = with_object_on_the_battlefield(&before, Some(before.core.turn_number));
+    after
+        .card_rules
+        .permanents
+        .mark_damage(GameObjectId(3), 1)
+        .unwrap();
+    assert_eq!(
+        StateDelta::between_structural_only(
+            &before,
+            &after,
+            vec![object_entered(ZoneKind::Battlefield)]
+        )
+        .unwrap_err(),
         DeltaApplicationError::UncoveredMutation
     );
 }

@@ -50,9 +50,8 @@ The combat damage step emits, in this order, `CombatDamageDealt` (one
 assignment per attacker with positive power: source, the defending player as
 recipient, amount), `LifeChanged` and `CombatDamageStepCompleted`. Every
 assignment names a declared attacker and the defending player, and the amounts
-add up to the life the player lost. `DamageApplied` is not emitted: it overlaps
-these events and goes when damage to creatures is added. There are no
-replacement points.
+add up to the life the player lost. There is no `DamageApplied` event: it
+overlapped these events and is deleted. There are no replacement points.
 
 ## Decisions and ordering
 

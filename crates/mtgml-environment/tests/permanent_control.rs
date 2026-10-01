@@ -109,7 +109,8 @@ fn a_land_played_on_turn_one_is_controlled_since_turn_one() {
         BTreeMap::from([(
             land,
             PermanentState {
-                controlled_since_turn: 1
+                controlled_since_turn: 1,
+                marked_damage: 0
             }
         )])
     );

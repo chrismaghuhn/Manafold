@@ -13,9 +13,9 @@ use mtgml_model::DecisionId;
 use mtgml_random::RandomStreamKeyV1;
 
 use crate::{
-    calculate_full_state_digest, ContinuationPayload, DamageKind, DamageRecipient, EngineState,
-    EngineStateError, ManaCost, ManaPoolV1, PendingTriggerRecord, ReservedNonManaCost,
-    SelectedCostOperand, SourceContext, StackItemPayload, TargetRef, TemporaryEffectRecord,
+    calculate_full_state_digest, ContinuationPayload, EngineState, EngineStateError, ManaCost,
+    ManaPoolV1, PendingTriggerRecord, ReservedNonManaCost, SelectedCostOperand, StackItemPayload,
+    TargetRef, TemporaryEffectRecord,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -207,12 +207,6 @@ pub enum SemanticDeltaOperation {
         spent_buckets: [u32; 12],
         reserved_nonmana_costs: Vec<ReservedNonManaCost>,
         selected_cost_operands: Vec<SelectedCostOperand>,
-    },
-    DamageApplied {
-        source: Option<Box<SourceContext>>,
-        recipient: DamageRecipient,
-        post_replacement_amount: u32,
-        damage_kind: DamageKind,
     },
     ContinuationChanged {
         continuation: ContinuationId,
@@ -465,11 +459,6 @@ fn validate_delta_operation_coverage(
                 matches!(operation,
                 V3::LifeChanged { player: changed, from, to }
                     if changed == player && *from == old.life && *to == new.life)
-            })
-            && !has(&|operation| {
-                matches!(operation,
-                V3::DamageApplied { recipient: DamageRecipient::Player(changed), .. }
-                    if changed == player)
             })
         {
             return uncovered();
@@ -912,8 +901,10 @@ fn validate_delta_operation_coverage(
         return uncovered();
     }
     // A permanent's entry is made when its object enters the battlefield,
-    // under the turn in which it enters. It is not changed or removed while
-    // the object stays on the battlefield.
+    // under the turn in which it enters, undamaged. It is not removed while
+    // the object stays on the battlefield, and its turn does not change. Its
+    // marked damage changes only by a `MarkedDamageChanged` that names the
+    // creature and both values.
     if old_rules.permanents != new_rules.permanents {
         let on_battlefield_after = |object: &GameObjectId| {
             after
@@ -923,8 +914,21 @@ fn validate_delta_operation_coverage(
                 .is_some_and(|location| location.zone == mtgml_model::ZoneKind::Battlefield)
         };
         for (object, old) in &old_rules.permanents.permanents {
-            if new_rules.permanents.permanents.get(object) != Some(old)
-                && on_battlefield_after(object)
+            if !on_battlefield_after(object) {
+                continue;
+            }
+            let Some(new) = new_rules.permanents.permanents.get(object) else {
+                return uncovered();
+            };
+            if new.controlled_since_turn != old.controlled_since_turn
+                || (new.marked_damage != old.marked_damage
+                    && !has(&|operation| {
+                        matches!(operation,
+                        V3::MarkedDamageChanged { creature, from, to }
+                            if creature == object
+                                && *from == old.marked_damage
+                                && *to == new.marked_damage)
+                    }))
             {
                 return uncovered();
             }
@@ -934,6 +938,7 @@ fn validate_delta_operation_coverage(
         for (object, new) in &new_rules.permanents.permanents {
             if !old_rules.permanents.permanents.contains_key(object)
                 && (new.controlled_since_turn != after.core.turn_number
+                    || new.marked_damage != 0
                     || !has(&|operation| {
                         matches!(operation,
                         V3::ObjectEntered { new_object, to_zone: mtgml_model::ZoneKind::Battlefield, .. }
@@ -1237,17 +1242,6 @@ fn validate_turn_history_delta(
                     && *from == old_player.life
                     && *to == new_player.life
                     && from > to
-            }
-            V3::DamageApplied {
-                recipient: DamageRecipient::Player(op_player),
-                post_replacement_amount,
-                ..
-            } => {
-                *op_player == player
-                    && old_player
-                        .life
-                        .checked_sub(i64::from(*post_replacement_amount))
-                        == Some(new_player.life)
             }
             _ => false,
         })

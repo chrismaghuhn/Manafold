@@ -100,10 +100,13 @@ pub struct AbilityAuthorityStateV1 {
 }
 
 /// What the rules record about one permanent beyond its object: the turn
-/// since which its controller has controlled it (CR 302.6).
+/// since which its controller has controlled it (CR 302.6), and the damage
+/// marked on it (CR 120.3e). Only a creature is ever damaged; this crate holds
+/// no card types, so the rules that mark damage keep to that.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PermanentState {
     pub controlled_since_turn: u64,
+    pub marked_damage: u64,
 }
 
 /// One entry per permanent on the battlefield, keyed by its object.
@@ -249,6 +252,7 @@ impl PermanentsState {
             array([
                 unsigned(object.0),
                 unsigned(permanent.controlled_since_turn),
+                unsigned(permanent.marked_damage),
             ])
         }))
     }

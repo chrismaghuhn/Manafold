@@ -797,8 +797,10 @@ boolean recording whether the mandatory combat damage action has already run.
 
 The record contains typed Mana, TurnHistory, Counter, Attachment, Face,
 AbilityAuthority, and Permanents state. `permanents` is a list of
-`[object, controlled_since_turn]` pairs sorted by `GameObjectId`: the turn since
-which the permanent's controller has controlled it (CR 302.6).
+`[object, controlled_since_turn, marked_damage]` triples sorted by
+`GameObjectId`: the turn since which the permanent's controller has controlled
+it (CR 302.6), and the damage marked on it (CR 120.3e). A permanent enters with
+none; only a creature is dealt damage.
 `CardRulesAuthoritativeStateV1::validate` rejects
 noncanonical ordering, duplicates, malformed records, integer range/domain
 errors, and any `land_plays_used` value outside `{0,1}`; `EngineState`

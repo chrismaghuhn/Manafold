@@ -16,9 +16,11 @@ use mtgml_environment::{
 };
 use mtgml_model::{
     CandidateIdV1, CardDefinitionId, EpisodeStatus, GameObjectId, OpaqueObjectId,
-    PlayerDecisionIdV1, PlayerId, TruncationReason, ZoneKind,
+    PlayerDecisionIdV1, PlayerId, TruncationReason, VisibleSequence, ZoneKind,
 };
-use mtgml_observation::{PlayerStepSubmissionV1, PlayerStepV4};
+use mtgml_observation::{
+    MagicSharedExecutionObservationV1, PlayerStepSubmissionV1, PlayerStepV4, SyntheticPriority,
+};
 use mtgml_rules::{AuthoritativeRuleEventKind, BasicLandTransitionProduct};
 use mtgml_state::{
     CombatBlockerAssignmentV1, CombatStep, ContinuationPayload, EngineState, PriorityState,
@@ -135,7 +137,7 @@ impl Game {
 
     /// The deciding player declares exactly `attackers`, which the request
     /// must offer.
-    fn declare_attackers(&self, attackers: &[OpaqueObjectId]) {
+    fn declare_attackers(&self, attackers: &[OpaqueObjectId]) -> PlayerStepV4 {
         let (_, request) = self.pending();
         assert_eq!(request.purpose, DecisionPurposeV4::AttackerDeclaration);
         let candidate_ids: Vec<_> = request
@@ -148,7 +150,8 @@ impl Game {
             .map(|candidate| candidate.candidate_id)
             .collect();
         assert_eq!(candidate_ids.len(), attackers.len(), "{attackers:?}");
-        self.submit(DecisionAnswerV2::SelectMany { candidate_ids });
+        self.submit(DecisionAnswerV2::SelectMany { candidate_ids })
+            .1
     }
 
     /// The defender answers the block request it has: the creature it asks
@@ -173,6 +176,39 @@ impl Game {
     fn information_bytes(&self, player: PlayerId) -> Vec<u8> {
         mtgml_wire::encode_canonical(&self.endpoint(player).information_state().unwrap()).unwrap()
     }
+
+    /// What `player` has seen and knows, without who holds priority, which
+    /// every step of the turn changes and which is public: how many visible
+    /// occurrences there have been, what they retain, and what the
+    /// observation shows.
+    fn seen(&self, player: PlayerId) -> Seen {
+        let information = self.endpoint(player).information_state().unwrap();
+        let payload = base64::Engine::decode(
+            &base64::engine::general_purpose::STANDARD,
+            &information.current_observation.payload_base64,
+        )
+        .unwrap();
+        let mut observation: MagicSharedExecutionObservationV1 =
+            mtgml_wire::decode_canonical(&payload).unwrap();
+        observation.priority = SyntheticPriority::None;
+        Seen {
+            sequence: information.next_visible_sequence,
+            knowledge: serde_json::to_string(&information.retained_knowledge).unwrap(),
+            observation,
+        }
+    }
+
+    fn seen_by_both(&self) -> [Seen; 2] {
+        [self.seen(P1), self.seen(P2)]
+    }
+}
+
+/// See `Game::seen`.
+#[derive(Debug, PartialEq)]
+struct Seen {
+    sequence: VisibleSequence,
+    knowledge: String,
+    observation: MagicSharedExecutionObservationV1,
 }
 
 fn pass(intent: &CandidateIntent) -> bool {
@@ -1046,9 +1082,11 @@ fn a_restored_block_declaration_the_game_could_not_have_reached_is_refused() {
 }
 
 #[test]
-fn combat_damage_with_a_declared_block_fails_closed() {
-    // A declared block must not lead to silently wrong damage: until blockers
-    // deal and receive damage, the combat damage step with one is unsupported.
+fn lethal_combat_damage_fails_closed_until_creatures_can_die() {
+    // CR 704.5g: a Savannah Lions (2/1) blocked by a Savannah Lions is dealt
+    // lethal damage, as is its blocker. Creatures are not destroyed yet, so the
+    // combat damage step must not leave them on the battlefield with their
+    // damage marked: it is refused, and the game is where it was.
     let game = two_lions_each();
     let (attackers, _) = attack_with_both_lions(&game);
     let state = game.state();
@@ -1077,6 +1115,56 @@ fn combat_damage_with_a_declared_block_fails_closed() {
     assert_eq!(outcome, Err(PlayerEndpointError::ServiceUnavailable));
     assert_eq!(game.checkpoint(), before);
     assert_eq!(game.pending().1, request);
+}
+
+#[test]
+fn the_completing_block_answer_shows_nothing_about_blocks_to_either_player() {
+    // Blocks are shown to no player until the observation step (INFORMATION_MODEL):
+    // not the first answer, and not the one that completes the declaration and
+    // records them. Priority passing to the attacker is public turn structure;
+    // nothing else about either player's observation, visible events or
+    // knowledge changes.
+    let game = two_lions_each();
+    let state = game.state();
+    let attackers: [GameObjectId; 2] = lions_of(&state, P1).try_into().unwrap();
+    let own = |attacker: GameObjectId| Some(opaque_of(&state, P2, attacker));
+
+    // Positive control: the same comparison does see the attack, which is
+    // public.
+    let before_attack = game.seen_by_both();
+    let step = game.declare_attackers(&attackers.map(|attacker| opaque_of(&state, P1, attacker)));
+    let after_attack = game.seen_by_both();
+    assert!(!step.observed_events.is_empty());
+    for (before, after) in before_attack.iter().zip(&after_attack) {
+        assert_ne!(before.sequence, after.sequence);
+        assert_ne!(before.observation.attacking, after.observation.attacking);
+    }
+    game.answer(pass, pass);
+    game.answer(pass, pass);
+    assert_eq!(game.pending().0, P2);
+
+    // The first answer shows nothing, and neither does the last.
+    game.declare_block(own(attackers[0]));
+    let before = game.seen_by_both();
+    assert!(game.state().combat.as_ref().unwrap().blockers.is_empty());
+    let (_, step) = game.declare_block(own(attackers[1]));
+    let after = game.seen_by_both();
+    let combat = game.state().combat.clone().unwrap();
+    assert_eq!(combat.blockers.len(), 2, "the blocks are recorded");
+    assert_eq!(combat.blocked_attackers.len(), 2);
+    assert_eq!(game.pending().0, P1, "the attacker has priority");
+
+    assert!(step.observed_events.is_empty());
+    assert_eq!(before, after);
+    // The attacker's own step shows nothing new either.
+    assert_eq!(
+        game.endpoint(P1)
+            .visible_decision()
+            .unwrap()
+            .unwrap()
+            .purpose,
+        DecisionPurposeV4::PriorityAction
+    );
 }
 
 #[test]

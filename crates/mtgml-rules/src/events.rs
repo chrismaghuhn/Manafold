@@ -9,11 +9,10 @@ use mtgml_model::{
 };
 use mtgml_random::RandomStreamKeyV1;
 use mtgml_state::{
-    ActionCostFacts, CostCommitActionV1, CostFacts, DamageKind, DamageRecipient, EngineState,
-    ManaPoolChangeCauseV1, ManaPoolV1, ManaSourceActivation, PendingTriggerRecord,
-    PerspectiveLifecycleAuditV1, SemanticDeltaOperation, SourceContext, StackItemEndKindV1,
-    StackItemPayload, StateDelta, TargetBinding, TemporaryEffectRecord, TurnPosition,
-    ZoneTransition,
+    ActionCostFacts, CostCommitActionV1, CostFacts, EngineState, ManaPoolChangeCauseV1, ManaPoolV1,
+    ManaSourceActivation, PendingTriggerRecord, PerspectiveLifecycleAuditV1,
+    SemanticDeltaOperation, StackItemEndKindV1, StackItemPayload, StateDelta, TargetBinding,
+    TemporaryEffectRecord, TurnPosition, ZoneTransition,
 };
 use serde::{Deserialize, Serialize};
 
@@ -193,12 +192,6 @@ pub enum AuthoritativeRuleEventKind {
     PerspectiveObservationOccurrence {
         lifecycle: Box<PerspectiveLifecycleAuditV1>,
         source_event_id: RuleEventId,
-    },
-    DamageApplied {
-        source: Option<SourceContext>,
-        recipient: DamageRecipient,
-        post_replacement_amount: u32,
-        damage_kind: DamageKind,
     },
     /// CR 103.1: the chooser picked who takes the first turn. Public.
     StartingPlayerChosen {
@@ -457,17 +450,6 @@ impl AuthoritativeRuleEventKind {
                     lifecycle: lifecycle.as_ref().clone(),
                 }]
             }
-            Self::DamageApplied {
-                source,
-                recipient,
-                post_replacement_amount,
-                damage_kind,
-            } => vec![SemanticDeltaOperation::DamageApplied {
-                source: source.clone().map(Box::new),
-                recipient: *recipient,
-                post_replacement_amount: *post_replacement_amount,
-                damage_kind: *damage_kind,
-            }],
             Self::StartingPlayerChosen {
                 chooser,
                 starting_player,
@@ -798,7 +780,6 @@ fn validate_event_delta_state_inner(
         validate_event_projection_v3(before, after, &event.event)?;
     }
     validate_zone_transition_chain(before, after, events)?;
-    validate_damage_state_projection_v3(before, after, events)?;
     Ok(())
 }
 
@@ -943,51 +924,6 @@ fn is_projectable_public_source_event(event: &AuthoritativeRuleEventKind) -> boo
     )
 }
 
-fn validate_damage_state_projection_v3(
-    before: &EngineState,
-    after: &EngineState,
-    events: &[AuthoritativeRuleEvent],
-) -> Result<(), EventDeltaError> {
-    let mut player_damage = std::collections::BTreeMap::<PlayerId, u64>::new();
-    let mut object_damage = std::collections::BTreeMap::<GameObjectId, u64>::new();
-    for event in events {
-        let AuthoritativeRuleEventKind::DamageApplied {
-            recipient,
-            post_replacement_amount,
-            ..
-        } = &event.event
-        else {
-            continue;
-        };
-        let total = match recipient {
-            DamageRecipient::Player(player) => player_damage.entry(*player).or_default(),
-            DamageRecipient::Object(object) => object_damage.entry(*object).or_default(),
-        };
-        let Some(next) = total.checked_add(u64::from(*post_replacement_amount)) else {
-            return Err(EventDeltaError::Mismatch);
-        };
-        *total = next;
-    }
-    for (player, amount) in player_damage {
-        let Some(before_player) = before.core.players.get(&player) else {
-            return Err(EventDeltaError::Mismatch);
-        };
-        let Some(after_player) = after.core.players.get(&player) else {
-            return Err(EventDeltaError::Mismatch);
-        };
-        let actual_loss = i128::from(before_player.life) - i128::from(after_player.life);
-        if actual_loss != i128::from(amount) {
-            return Err(EventDeltaError::Mismatch);
-        }
-    }
-    // No state component records marked damage yet: damage to an object
-    // cannot be projected and fails closed.
-    if !object_damage.is_empty() {
-        return Err(EventDeltaError::Mismatch);
-    }
-    Ok(())
-}
-
 fn validate_delta_operation_projection_v3(
     before: &EngineState,
     after: &EngineState,
@@ -1025,7 +961,6 @@ fn validate_delta_operation_projection_v3(
         | SemanticDeltaOperation::ObjectEntered { .. }
         | SemanticDeltaOperation::AbilityAuthorityAdded { .. }
         | SemanticDeltaOperation::AbilityAuthorityRemoved { .. }
-        | SemanticDeltaOperation::DamageApplied { .. }
         | SemanticDeltaOperation::StartingPlayerChosen { .. }
         | SemanticDeltaOperation::MulliganDeclared { .. }
         | SemanticDeltaOperation::LibraryShuffled { .. } => true,
@@ -1253,6 +1188,100 @@ fn validate_delta_operation_projection_v3(
     }
 }
 
+/// The damage marked on `object`, if it is a permanent.
+fn marked_damage_of(state: &EngineState, object: GameObjectId) -> Option<u64> {
+    state
+        .card_rules
+        .permanents
+        .permanents
+        .get(&object)
+        .map(|permanent| permanent.marked_damage)
+}
+
+/// CR 510.1a-d: whether `assignment` is damage that `combat` lets its source
+/// assign: it is positive; an unblocked attacker assigns to the defending
+/// player (CR 510.1b); a blocked attacker assigns to a creature that blocks it
+/// (CR 510.1c); a blocker assigns to the attacker it blocks (CR 510.1d).
+fn combat_damage_may_be_assigned(
+    combat: &mtgml_state::CombatState,
+    assignment: &mtgml_state::DamageAssignmentV1,
+) -> bool {
+    use mtgml_state::DamageRecipientV1 as Recipient;
+    let source = assignment.source;
+    assignment.amount > 0
+        && match assignment.recipient {
+            Recipient::Player { player } => {
+                player == combat.defending_player
+                    && combat.attackers.contains(&source)
+                    && !combat.blocked_attackers.contains(&source)
+            }
+            Recipient::Creature { object } => {
+                (combat.attackers.contains(&source)
+                    && combat.blockers.get(&object) == Some(&source))
+                    || combat.blockers.get(&source) == Some(&object)
+            }
+        }
+}
+
+/// Whether the damage `assignments` are combat damage the `before` combat
+/// can deal (see `combat_damage_may_be_assigned`), and `after` shows exactly
+/// what it does, all at once (CR 510.2): the defending player lost as much
+/// life as the damage dealt to them (CR 120.3a), and each permanent has as much
+/// more damage marked on it as the damage dealt to it (CR 120.3e), which is
+/// none for a permanent no damage was dealt to.
+fn combat_damage_matches_the_states(
+    before: &EngineState,
+    after: &EngineState,
+    assignments: &[mtgml_state::DamageAssignmentV1],
+) -> bool {
+    use mtgml_state::DamageRecipientV1 as Recipient;
+    let Some(combat) = before.combat.as_ref() else {
+        return false;
+    };
+    let mut to_player = 0_u64;
+    let mut to_creatures = std::collections::BTreeMap::<GameObjectId, u64>::new();
+    for assignment in assignments {
+        if !combat_damage_may_be_assigned(combat, assignment) {
+            return false;
+        }
+        let total = match assignment.recipient {
+            Recipient::Player { .. } => &mut to_player,
+            Recipient::Creature { object } => to_creatures.entry(object).or_default(),
+        };
+        let Some(sum) = total.checked_add(assignment.amount) else {
+            return false;
+        };
+        *total = sum;
+    }
+    let life = |state: &EngineState| {
+        state
+            .core
+            .players
+            .get(&combat.defending_player)
+            .map(|player| i128::from(player.life))
+    };
+    let permanents_before = &before.card_rules.permanents.permanents;
+    !assignments.is_empty()
+        && match (life(before), life(after)) {
+            (Some(before), Some(after)) => before - after == i128::from(to_player),
+            _ => false,
+        }
+        && to_creatures
+            .keys()
+            .all(|creature| permanents_before.contains_key(creature))
+        && permanents_before.iter().all(|(object, was)| {
+            after
+                .card_rules
+                .permanents
+                .permanents
+                .get(object)
+                .is_some_and(|now| {
+                    now.marked_damage.checked_sub(was.marked_damage)
+                        == Some(to_creatures.get(object).copied().unwrap_or(0))
+                })
+        })
+}
+
 fn validate_event_projection_v3(
     before: &EngineState,
     after: &EngineState,
@@ -1306,9 +1335,13 @@ fn validate_event_projection_v3(
                     .get(player)
                     .is_some_and(|state| state.life == *to)
         }
-        // No state component records marked damage yet: the event cannot be
-        // projected and fails closed.
-        AuthoritativeRuleEventKind::MarkedDamageChanged { .. } => false,
+        // CR 120.3e, 120.6: the damage marked on a creature goes from `from`
+        // to `to`, as the states show.
+        AuthoritativeRuleEventKind::MarkedDamageChanged { creature, from, to } => {
+            from != to
+                && marked_damage_of(before, *creature) == Some(*from)
+                && marked_damage_of(after, *creature) == Some(*to)
+        }
         AuthoritativeRuleEventKind::ObjectTapped { object, from, to } => {
             from != to
                 && before
@@ -1445,38 +1478,13 @@ fn validate_event_projection_v3(
         AuthoritativeRuleEventKind::TurnNumberChanged { from, to } => {
             from != to && before.core.turn_number == *from && after.core.turn_number == *to
         }
-        // CR 510.2, 120.3a: attacking creatures deal damage to the defending
-        // player, and the player loses that much life. Damage to a creature
-        // has no state to check it against yet and fails closed.
+        // CR 510.1, 510.2, 120.3: attacking creatures deal damage to the
+        // defending player or to the creatures that block them, and blocking
+        // creatures to the attacker they block, all at once. The player loses
+        // that much life and each damaged creature has that much more damage
+        // marked on it.
         AuthoritativeRuleEventKind::CombatDamageDealt { assignments } => {
-            before.combat.as_ref().is_some_and(|combat| {
-                let dealt = assignments.iter().try_fold(0_u64, |total, assignment| {
-                    let to_defender = matches!(assignment.recipient,
-                        mtgml_state::DamageRecipientV1::Player { player }
-                            if player == combat.defending_player);
-                    if assignment.amount == 0
-                        || !to_defender
-                        || !combat.attackers.contains(&assignment.source)
-                    {
-                        return None;
-                    }
-                    total.checked_add(assignment.amount)
-                });
-                let life = |state: &EngineState| {
-                    state
-                        .core
-                        .players
-                        .get(&combat.defending_player)
-                        .map(|player| i128::from(player.life))
-                };
-                !assignments.is_empty()
-                    && match (dealt, life(before), life(after)) {
-                        (Some(dealt), Some(before), Some(after)) => {
-                            before - after == i128::from(dealt)
-                        }
-                        _ => false,
-                    }
-            })
+            combat_damage_matches_the_states(before, after, assignments)
         }
         // CR 509.1, 509.1g, 509.1h: the defending player declares every
         // blocker at once, listed by blocker. Each blocker blocks one attacker
@@ -1505,7 +1513,6 @@ fn validate_event_projection_v3(
                 }
         }
         AuthoritativeRuleEventKind::PerspectiveObservationOccurrence { .. } => true,
-        AuthoritativeRuleEventKind::DamageApplied { .. } => true,
         AuthoritativeRuleEventKind::StackItemAdded {
             stack_object,
             payload,
@@ -2196,8 +2203,8 @@ mod tests {
     use mtgml_state::{
         construct_synthetic_engine_state, AbilityAuthorityV1, ActionCostFacts, CounterKindV1,
         EngineState, ManaCost, ManaPoolV1, ManaSourceActivation, ManaSourceActivationCost,
-        SemanticDeltaOperation, StackRecord, StateDelta, SyntheticResetInputs, SyntheticV4Setup,
-        VisibilityPartition, ZoneLocation, ZonePosition,
+        SemanticDeltaOperation, SourceContext, StackRecord, StateDelta, SyntheticResetInputs,
+        SyntheticV4Setup, VisibilityPartition, ZoneLocation, ZonePosition,
     };
 
     fn state() -> EngineState {
@@ -2721,66 +2728,6 @@ mod tests {
             }])
             .collect();
         let wrong_delta = StateDelta::between(&before, &after, wrong_operations).unwrap();
-        assert_eq!(
-            validate_event_delta_state(&before, &after, &wrong_events, &wrong_delta),
-            Err(EventDeltaError::Mismatch)
-        );
-    }
-
-    #[test]
-    fn post_replacement_damage_event_matches_the_actual_player_life_delta() {
-        let before = state();
-        let player = PlayerId(1);
-        let life_before = before.core.players[&player].life;
-        let mut after = before.clone();
-        after.core.players.get_mut(&player).unwrap().life -= 3;
-        after.revision = StateRevision(before.revision.0 + 1);
-
-        let kinds = [
-            AuthoritativeRuleEventKind::DamageApplied {
-                source: None,
-                recipient: DamageRecipient::Player(player),
-                post_replacement_amount: 3,
-                damage_kind: DamageKind::Noncombat,
-            },
-            AuthoritativeRuleEventKind::LifeChanged {
-                player,
-                from: life_before,
-                to: life_before - 3,
-            },
-        ];
-        let (events, next) =
-            allocate_rule_events(before.allocators.next_rule_event_id, after.revision, kinds)
-                .unwrap();
-        after.allocators.next_rule_event_id = next;
-        let delta = StateDelta::between(
-            &before,
-            &after,
-            events
-                .iter()
-                .flat_map(AuthoritativeRuleEvent::semantic_operations)
-                .collect(),
-        )
-        .unwrap();
-        validate_event_delta_state(&before, &after, &events, &delta).unwrap();
-
-        let mut wrong_events = events.clone();
-        if let AuthoritativeRuleEventKind::DamageApplied {
-            post_replacement_amount,
-            ..
-        } = &mut wrong_events[0].event
-        {
-            *post_replacement_amount = 4;
-        }
-        let wrong_delta = StateDelta::between(
-            &before,
-            &after,
-            wrong_events
-                .iter()
-                .flat_map(AuthoritativeRuleEvent::semantic_operations)
-                .collect(),
-        )
-        .unwrap();
         assert_eq!(
             validate_event_delta_state(&before, &after, &wrong_events, &wrong_delta),
             Err(EventDeltaError::Mismatch)
@@ -3315,18 +3262,307 @@ mod tests {
         );
     }
 
-    #[test]
-    fn combat_damage_to_a_creature_fails_closed() {
-        assert_eq!(
-            combat_damage_is_valid(vec![damage(
-                1,
-                mtgml_state::DamageRecipientV1::Creature {
-                    object: GameObjectId(2)
+    /// P1's creatures 3 and 4 attack P2, who has 40 life and controls the
+    /// creature 5, which blocks 3, in the combat damage step: `(before,
+    /// after)` of the damage that Hill Giant 3 (power 3) deals to 5, 5 (power
+    /// 2) deals to 3 and the unblocked 4 (power 2) deals to P2.
+    fn fight_states() -> (EngineState, EngineState) {
+        let mut before = state();
+        for (id, controller) in [(3, 1), (4, 1), (5, 2)] {
+            let id = GameObjectId(id);
+            before.zones.objects.insert(
+                id,
+                mtgml_state::GameObject {
+                    id,
+                    physical_card: Some(mtgml_model::PhysicalCardId(id.0)),
+                    card_definition: mtgml_model::CardDefinitionId(1),
+                    owner: PlayerId(controller),
+                    controller: PlayerId(controller),
+                    tapped: controller == 1,
+                    face_down: false,
                 },
-                3
-            )]),
-            Err(EventDeltaError::Mismatch)
+            );
+            before.zones.locations.insert(
+                id,
+                ZoneLocation {
+                    zone: mtgml_model::ZoneKind::Battlefield,
+                    player: None,
+                    position: ZonePosition::Unordered,
+                    visibility: VisibilityPartition::Public,
+                    partition: None,
+                },
+            );
+            before.card_rules.permanents.enter(id, 1).unwrap();
+        }
+        before.allocators.next_object_id = GameObjectId(6);
+        before.core.position = TurnPosition::Combat {
+            step: mtgml_state::CombatStep::CombatDamage,
+        };
+        before.combat = Some(mtgml_state::CombatState {
+            defending_player: PlayerId(2),
+            attackers: vec![GameObjectId(3), GameObjectId(4)],
+            damage_step_completed: false,
+            blocked_attackers: std::collections::BTreeSet::from([GameObjectId(3)]),
+            blockers: std::collections::BTreeMap::from([(GameObjectId(5), GameObjectId(3))]),
+        });
+        before.validate().unwrap();
+        let mut after = before.clone();
+        after.revision = StateRevision(before.revision.0 + 1);
+        after.core.players.get_mut(&PlayerId(2)).unwrap().life -= 2;
+        after.combat.as_mut().unwrap().damage_step_completed = true;
+        after
+            .card_rules
+            .turn_history
+            .players
+            .get_mut(&PlayerId(2))
+            .unwrap()
+            .lost_life_this_turn = true;
+        for (creature, amount) in [(3, 2), (5, 3)] {
+            after
+                .card_rules
+                .permanents
+                .mark_damage(GameObjectId(creature), amount)
+                .unwrap();
+        }
+        after.validate().unwrap();
+        (before, after)
+    }
+
+    fn marked(creature: u64, from: u64, to: u64) -> AuthoritativeRuleEventKind {
+        AuthoritativeRuleEventKind::MarkedDamageChanged {
+            creature: GameObjectId(creature),
+            from,
+            to,
+        }
+    }
+
+    /// The events of the damage step of `fight_states` with the damage
+    /// `assignments`, as they must be.
+    fn fight_events(
+        assignments: Vec<mtgml_state::DamageAssignmentV1>,
+    ) -> Vec<AuthoritativeRuleEventKind> {
+        vec![
+            AuthoritativeRuleEventKind::CombatDamageDealt { assignments },
+            AuthoritativeRuleEventKind::LifeChanged {
+                player: PlayerId(2),
+                from: 40,
+                to: 38,
+            },
+            marked(3, 0, 2),
+            marked(5, 0, 3),
+            AuthoritativeRuleEventKind::CombatDamageStepCompleted,
+        ]
+    }
+
+    /// Validates `events` as the events of `fight_states`' transition, from
+    /// the delta they give to the projections.
+    fn fight_is_valid(events: Vec<AuthoritativeRuleEventKind>) -> Result<(), String> {
+        let (before, mut after) = fight_states();
+        let (events, next) =
+            allocate_rule_events(before.allocators.next_rule_event_id, after.revision, events)
+                .unwrap();
+        after.allocators.next_rule_event_id = next;
+        let delta = StateDelta::between(
+            &before,
+            &after,
+            events
+                .iter()
+                .flat_map(AuthoritativeRuleEvent::semantic_operations)
+                .collect(),
+        )
+        .map_err(|error| format!("delta: {error:?}"))?;
+        validate_event_delta_state(&before, &after, &events, &delta)
+            .map_err(|error| format!("events: {error:?}"))
+    }
+
+    fn to_creature(object: u64) -> mtgml_state::DamageRecipientV1 {
+        mtgml_state::DamageRecipientV1::Creature {
+            object: GameObjectId(object),
+        }
+    }
+
+    fn the_fight() -> Vec<mtgml_state::DamageAssignmentV1> {
+        let to_p2 = mtgml_state::DamageRecipientV1::Player {
+            player: PlayerId(2),
+        };
+        vec![
+            damage(3, to_creature(5), 3),
+            damage(4, to_p2, 2),
+            damage(5, to_creature(3), 2),
+        ]
+    }
+
+    #[test]
+    fn combat_damage_to_creatures_must_match_the_blocks_and_the_marked_damage() {
+        let to_p2 = mtgml_state::DamageRecipientV1::Player {
+            player: PlayerId(2),
+        };
+        assert_eq!(fight_is_valid(fight_events(the_fight())), Ok(()));
+
+        let refused = |assignments: Vec<mtgml_state::DamageAssignmentV1>| {
+            fight_is_valid(fight_events(assignments)).unwrap_err()
+        };
+        let events_mismatch = "events: Mismatch";
+        // An amount that is not the damage marked (CR 120.3e), more or less.
+        for (to_5, to_3) in [(2, 2), (4, 2), (3, 1), (3, 3)] {
+            assert_eq!(
+                refused(vec![
+                    damage(3, to_creature(5), to_5),
+                    damage(4, to_p2, 2),
+                    damage(5, to_creature(3), to_3),
+                ]),
+                events_mismatch,
+                "{to_5} {to_3}"
+            );
+        }
+        // The damage to a creature is positive (CR 510.1a).
+        let mut zero = the_fight();
+        zero.push(damage(5, to_creature(3), 0));
+        assert_eq!(refused(zero), events_mismatch);
+        // CR 510.1c: a blocked attacker assigns to the creature blocking it,
+        // not to the player or to a creature that does not block it.
+        assert_eq!(
+            refused(vec![
+                damage(3, to_p2, 3),
+                damage(4, to_p2, 2),
+                damage(5, to_creature(3), 2)
+            ]),
+            events_mismatch
         );
+        assert_eq!(
+            refused(vec![
+                damage(3, to_creature(4), 3),
+                damage(4, to_p2, 2),
+                damage(5, to_creature(3), 2)
+            ]),
+            events_mismatch
+        );
+        // CR 510.1b: an unblocked attacker assigns to the player it attacks,
+        // not to a creature.
+        assert_eq!(
+            refused(vec![
+                damage(3, to_creature(5), 3),
+                damage(4, to_creature(5), 2),
+                damage(5, to_creature(3), 2)
+            ]),
+            events_mismatch
+        );
+        // CR 510.1d: a blocker assigns to the attacker it blocks, never to the
+        // player, to the other attacker or to a creature on its own side.
+        for recipient in [to_p2, to_creature(4), to_creature(5)] {
+            assert_eq!(
+                refused(vec![
+                    damage(3, to_creature(5), 3),
+                    damage(4, to_p2, 2),
+                    damage(5, recipient, 2)
+                ]),
+                events_mismatch
+            );
+        }
+        // A creature that does not fight assigns nothing.
+        assert_eq!(
+            refused(vec![
+                damage(3, to_creature(5), 3),
+                damage(4, to_p2, 2),
+                damage(5, to_creature(3), 2),
+                damage(2, to_p2, 1)
+            ]),
+            events_mismatch
+        );
+        // Damage marked that no assignment accounts for: nothing is assigned
+        // to the creature 3, which has 2 marked.
+        assert_eq!(
+            refused(vec![damage(3, to_creature(5), 3), damage(4, to_p2, 2)]),
+            events_mismatch
+        );
+    }
+
+    #[test]
+    fn combat_damage_goes_where_the_combat_sends_it() {
+        // In `fight_states`, 3 and 4 attack P2 and 5 blocks 3. Of every damage
+        // a creature of 0 to 7 could assign to a player or a creature of 0 to
+        // 7, exactly three are legal: the blocked attacker to its blocker
+        // (CR 510.1c), the unblocked attacker to the player (CR 510.1b) and the
+        // blocker to the attacker it blocks (CR 510.1d).
+        let (before, _) = fight_states();
+        let combat = before.combat.as_ref().unwrap();
+        let to_player = |player| mtgml_state::DamageRecipientV1::Player {
+            player: PlayerId(player),
+        };
+        let legal = [(3, to_creature(5)), (4, to_player(2)), (5, to_creature(3))];
+        let recipients: Vec<_> = [to_player(1), to_player(2)]
+            .into_iter()
+            .chain((0..=7).map(to_creature))
+            .collect();
+        for source in 0..=7 {
+            for recipient in &recipients {
+                assert_eq!(
+                    combat_damage_may_be_assigned(combat, &damage(source, *recipient, 1)),
+                    legal.contains(&(source, *recipient)),
+                    "{source} to {recipient:?}"
+                );
+            }
+        }
+        // CR 510.1a: it is positive.
+        for (source, recipient) in legal {
+            assert!(!combat_damage_may_be_assigned(
+                combat,
+                &damage(source, recipient, 0)
+            ));
+        }
+    }
+
+    #[test]
+    fn combat_damage_without_the_marked_damage_events_is_uncovered() {
+        // The marks are state changes of the transition: each needs its event.
+        let events = |skip: u64| {
+            fight_events(the_fight())
+                .into_iter()
+                .filter(|event| {
+                    !matches!(event,
+                        AuthoritativeRuleEventKind::MarkedDamageChanged { creature, .. }
+                            if creature.0 == skip)
+                })
+                .collect::<Vec<_>>()
+        };
+        for skip in [3, 5] {
+            assert_eq!(
+                fight_is_valid(events(skip)),
+                Err("delta: UncoveredMutation".to_owned()),
+                "{skip}"
+            );
+        }
+        // An event that states other values than the marks is not covering.
+        let mut wrong = fight_events(the_fight());
+        wrong[3] = marked(5, 0, 2);
+        assert_eq!(
+            fight_is_valid(wrong),
+            Err("delta: UncoveredMutation".to_owned())
+        );
+    }
+
+    #[test]
+    fn marked_damage_changed_must_match_the_states() {
+        let (before, after) = fight_states();
+        let valid = |event: &AuthoritativeRuleEventKind| {
+            validate_event_projection_v3(&before, &after, event)
+        };
+        assert_eq!(valid(&marked(3, 0, 2)), Ok(()));
+        assert_eq!(valid(&marked(5, 0, 3)), Ok(()));
+        // The values are those of the states, and they differ.
+        for event in [
+            marked(3, 0, 3),
+            marked(3, 1, 2),
+            marked(5, 0, 2),
+            marked(4, 0, 0),
+        ] {
+            assert_eq!(valid(&event), Err(EventDeltaError::Mismatch), "{event:?}");
+        }
+        // A creature that was not damaged did not change.
+        assert_eq!(valid(&marked(4, 0, 2)), Err(EventDeltaError::Mismatch));
+        // The object is a permanent.
+        assert_eq!(valid(&marked(1, 0, 0)), Err(EventDeltaError::Mismatch));
+        assert_eq!(valid(&marked(99, 0, 2)), Err(EventDeltaError::Mismatch));
     }
 
     /// P1's creatures 3 and 4 attack P2, who controls the creatures 5 and

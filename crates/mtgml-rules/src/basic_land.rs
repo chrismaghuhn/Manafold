@@ -1281,8 +1281,24 @@ pub(crate) fn put_vanilla_creature_on_battlefield(
     state: &mut EngineState,
     owner: PlayerId,
 ) -> mtgml_model::GameObjectId {
-    tests::add_vanilla_creature(state, owner)
+    tests::add_vanilla_creature(state, owner, tests::SAVANNAH_LIONS)
 }
+
+/// Puts the vanilla creature `definition` (`SAVANNAH_LIONS`, `GRAY_OGRE` or
+/// `HILL_GIANT`) on `owner`'s battlefield.
+#[cfg(test)]
+pub(crate) fn put_creature_card_on_battlefield(
+    state: &mut EngineState,
+    owner: PlayerId,
+    definition: mtgml_model::CardDefinitionId,
+) -> mtgml_model::GameObjectId {
+    tests::add_vanilla_creature(state, owner, definition)
+}
+
+/// The vanilla creatures of the combined catalog: Savannah Lions (2/1), Gray
+/// Ogre (2/2) and Hill Giant (3/3).
+#[cfg(test)]
+pub(crate) use tests::{GRAY_OGRE, HILL_GIANT, SAVANNAH_LIONS};
 
 #[cfg(test)]
 mod tests {
@@ -1364,21 +1380,20 @@ mod tests {
         )
     }
 
-    /// A Savannah Lions (definition 3 of the combined catalog) on `owner`'s
+    pub(crate) const SAVANNAH_LIONS: CardDefinitionId = CardDefinitionId(3);
+    pub(crate) const GRAY_OGRE: CardDefinitionId = CardDefinitionId(4);
+    pub(crate) const HILL_GIANT: CardDefinitionId = CardDefinitionId(5);
+
+    /// The vanilla creature `definition` of the combined catalog on `owner`'s
     /// battlefield, with its face entry.
     pub(super) fn add_vanilla_creature(
         state: &mut mtgml_state::EngineState,
         owner: PlayerId,
+        definition: CardDefinitionId,
     ) -> mtgml_model::GameObjectId {
         // Each creature has its own opaque identity.
         let opaque_id = 40 + state.allocators.next_object_id.0;
-        let object = add_object(
-            state,
-            CardDefinitionId(3),
-            owner,
-            ZoneKind::Battlefield,
-            opaque_id,
-        );
+        let object = add_object(state, definition, owner, ZoneKind::Battlefield, opaque_id);
         state.card_rules.faces.faces.insert(object, 0);
         state
             .card_rules

@@ -815,7 +815,7 @@ impl FaceStateV1 {
 
 impl PermanentsState {
     /// Records that `object` entered the battlefield on `turn`, under its
-    /// controller's control from then on. An object enters once.
+    /// controller's control from then on, undamaged. An object enters once.
     pub fn enter(
         &mut self,
         object: GameObjectId,
@@ -828,10 +828,30 @@ impl PermanentsState {
             std::collections::btree_map::Entry::Vacant(entry) => {
                 entry.insert(PermanentState {
                     controlled_since_turn: turn,
+                    marked_damage: 0,
                 });
                 Ok(())
             }
         }
+    }
+
+    /// CR 120.3e, 120.6: `amount` more damage is marked on the permanent
+    /// `object`. Returns the damage marked on it before and after.
+    pub fn mark_damage(
+        &mut self,
+        object: GameObjectId,
+        amount: u64,
+    ) -> Result<(u64, u64), StateFamilyMutationError> {
+        let permanent = self
+            .permanents
+            .get_mut(&object)
+            .ok_or(StateFamilyMutationError::UnknownObject)?;
+        let from = permanent.marked_damage;
+        let to = from
+            .checked_add(amount)
+            .ok_or(StateFamilyMutationError::Overflow)?;
+        permanent.marked_damage = to;
+        Ok((from, to))
     }
 
     /// Every entry names a battlefield object and a turn that has begun.
