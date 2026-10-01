@@ -1420,19 +1420,7 @@ fn validate_event_projection_v3(
             continuation,
             owner,
             top_to_bottom,
-        } => after
-            .execution
-            .continuations
-            .get(continuation)
-            .is_some_and(|record| match &record.payload {
-                mtgml_state::ContinuationPayload::MagicSbaGraveyardOrderV1 {
-                    completed_owner_orders,
-                    ..
-                } => completed_owner_orders
-                    .iter()
-                    .any(|order| order.owner == *owner && order.top_to_bottom == *top_to_bottom),
-                _ => false,
-            }),
+        } => graveyard_order_is_recorded(before, after, *continuation, *owner, top_to_bottom),
         AuthoritativeRuleEventKind::StateBasedActionsApplied { actions } => {
             actions.iter().all(|action| match action {
                 mtgml_state::SbaSelectedActionV1::PlayerLoses { player } => after
@@ -1440,7 +1428,9 @@ fn validate_event_projection_v3(
                     .players
                     .get(player)
                     .is_some_and(|state| state.has_lost),
-                // A battlefield object that is gone afterwards.
+                // A battlefield object that is gone afterwards, and that is no
+                // longer in combat (CR 506.4): the delta lets this event stand
+                // for the combat changing in a transition that dealt no damage.
                 mtgml_state::SbaSelectedActionV1::ObjectToOwnerGraveyard { object, .. } => {
                     before
                         .zones
@@ -1448,6 +1438,12 @@ fn validate_event_projection_v3(
                         .get(object)
                         .is_some_and(|location| location.zone == ZoneKind::Battlefield)
                         && !after.zones.objects.contains_key(object)
+                        && after.combat.as_ref().is_none_or(|combat| {
+                            !combat.attackers.contains(object)
+                                && !combat.blocked_attackers.contains(object)
+                                && !combat.blockers.contains_key(object)
+                                && !combat.blockers.values().any(|attacker| attacker == object)
+                        })
                 }
             })
         }
@@ -1742,6 +1738,74 @@ fn validate_event_projection_v3(
     } else {
         Err(EventDeltaError::Mismatch)
     }
+}
+
+/// CR 404.3: the order `owner` chose for their cards that die together is
+/// recorded in the continuation of the pending order, with the owners still to
+/// be asked. When `owner` is the last, it is not kept: the continuation ends
+/// and the batch applies, which takes each card of the order, and exactly those
+/// of `owner` that the batch holds, off the battlefield.
+fn graveyard_order_is_recorded(
+    before: &EngineState,
+    after: &EngineState,
+    continuation: ContinuationId,
+    owner: PlayerId,
+    top_to_bottom: &[GameObjectId],
+) -> bool {
+    let kept = after
+        .execution
+        .continuations
+        .get(&continuation)
+        .is_some_and(|record| match &record.payload {
+            mtgml_state::ContinuationPayload::MagicSbaGraveyardOrderV1 {
+                completed_owner_orders,
+                ..
+            } => completed_owner_orders
+                .iter()
+                .any(|order| order.owner == owner && order.top_to_bottom == top_to_bottom),
+            _ => false,
+        });
+    let applied_with_the_batch = !after.execution.continuations.contains_key(&continuation)
+        && before
+            .execution
+            .continuations
+            .get(&continuation)
+            .is_some_and(|record| match &record.payload {
+                mtgml_state::ContinuationPayload::MagicSbaGraveyardOrderV1 {
+                    selected_sba_actions,
+                    apnap_owners,
+                    next_owner_index,
+                    ..
+                } => {
+                    let asked = usize::try_from(*next_owner_index).ok();
+                    let owned: std::collections::BTreeSet<_> = selected_sba_actions
+                        .iter()
+                        .filter_map(|action| match action {
+                            mtgml_state::SbaSelectedActionV1::ObjectToOwnerGraveyard {
+                                object,
+                                ..
+                            } if before
+                                .zones
+                                .objects
+                                .get(object)
+                                .is_some_and(|card| card.owner == owner) =>
+                            {
+                                Some(*object)
+                            }
+                            _ => None,
+                        })
+                        .collect();
+                    asked.and_then(|asked| apnap_owners.get(asked)) == Some(&owner)
+                        && asked.is_some_and(|asked| asked + 1 == apnap_owners.len())
+                        && owned.len() == top_to_bottom.len()
+                        && owned == top_to_bottom.iter().copied().collect()
+                }
+                _ => false,
+            })
+        && top_to_bottom
+            .iter()
+            .all(|object| !after.zones.objects.contains_key(object));
+    kept || applied_with_the_batch
 }
 
 fn game_start_of(state: &EngineState) -> Option<&mtgml_state::GameStartContinuation> {
@@ -3711,6 +3775,199 @@ mod tests {
             .zone = mtgml_model::ZoneKind::Hand;
         assert_eq!(
             validate_event_projection_v3(&elsewhere, &after, &destroyed(5)),
+            Err(EventDeltaError::Mismatch)
+        );
+        // A destroyed creature is removed from combat (CR 506.4): as a blocker,
+        // and as a blocked or attacking creature, with the blockers it had.
+        let mut still_blocking = after.clone();
+        still_blocking
+            .combat
+            .as_mut()
+            .unwrap()
+            .blockers
+            .insert(GameObjectId(5), GameObjectId(3));
+        assert_eq!(
+            validate_event_projection_v3(&before, &still_blocking, &destroyed(5)),
+            Err(EventDeltaError::Mismatch)
+        );
+        let mut still_attacking = after.clone();
+        still_attacking.combat.as_mut().unwrap().attackers = vec![GameObjectId(5)];
+        assert_eq!(
+            validate_event_projection_v3(&before, &still_attacking, &destroyed(5)),
+            Err(EventDeltaError::Mismatch)
+        );
+        let mut still_blocked = after.clone();
+        still_blocked
+            .combat
+            .as_mut()
+            .unwrap()
+            .blocked_attackers
+            .insert(GameObjectId(5));
+        assert_eq!(
+            validate_event_projection_v3(&before, &still_blocked, &destroyed(5)),
+            Err(EventDeltaError::Mismatch)
+        );
+        let mut blocked_by_it = after.clone();
+        blocked_by_it
+            .combat
+            .as_mut()
+            .unwrap()
+            .blockers
+            .insert(GameObjectId(3), GameObjectId(5));
+        assert_eq!(
+            validate_event_projection_v3(&before, &blocked_by_it, &destroyed(5)),
+            Err(EventDeltaError::Mismatch)
+        );
+    }
+
+    /// P2 owns the creatures 5 and 6, which die in a batch together with P1's 3
+    /// (CR 404.3), and the state waits for the order of P2, the last owner to be
+    /// asked: `(before, after)` of P2's answer, in which the batch applies and
+    /// the continuation ends.
+    fn last_graveyard_order_states() -> (EngineState, EngineState) {
+        let (mut before, _) = fight_states();
+        before.revision = StateRevision(5);
+        let id = GameObjectId(6);
+        before.zones.objects.insert(
+            id,
+            mtgml_state::GameObject {
+                id,
+                physical_card: Some(mtgml_model::PhysicalCardId(id.0)),
+                card_definition: mtgml_model::CardDefinitionId(1),
+                owner: PlayerId(2),
+                controller: PlayerId(2),
+                tapped: false,
+                face_down: false,
+            },
+        );
+        before.zones.locations.insert(
+            id,
+            ZoneLocation {
+                zone: mtgml_model::ZoneKind::Battlefield,
+                player: None,
+                position: ZonePosition::Unordered,
+                visibility: VisibilityPartition::Public,
+                partition: None,
+            },
+        );
+        before.allocators.next_object_id = GameObjectId(7);
+        let destroyed = |object: u64| mtgml_state::SbaSelectedActionV1::ObjectToOwnerGraveyard {
+            object: GameObjectId(object),
+            causes: vec![mtgml_state::SbaObjectCauseV1::LethalDamage],
+        };
+        before.execution.continuations.insert(
+            ContinuationId(1),
+            mtgml_state::ContinuationRecord {
+                id: ContinuationId(1),
+                created_at_revision: before.revision,
+                payload: mtgml_state::ContinuationPayload::MagicSbaGraveyardOrderV1 {
+                    round_start_revision: StateRevision(before.revision.0 - 1),
+                    selected_sba_actions: vec![destroyed(3), destroyed(5), destroyed(6)],
+                    apnap_owners: vec![PlayerId(2)],
+                    next_owner_index: 0,
+                    completed_owner_orders: Vec::new(),
+                },
+            },
+        );
+        let mut after = before.clone();
+        after.revision = StateRevision(before.revision.0 + 1);
+        after.execution.continuations.clear();
+        for gone in [3, 5, 6] {
+            after.zones.objects.remove(&GameObjectId(gone));
+            after.zones.locations.remove(&GameObjectId(gone));
+        }
+        (before, after)
+    }
+
+    fn order_chosen(owner: u64, top_to_bottom: &[u64]) -> AuthoritativeRuleEventKind {
+        AuthoritativeRuleEventKind::SbaGraveyardOrderChosen {
+            continuation: ContinuationId(1),
+            owner: PlayerId(owner),
+            top_to_bottom: top_to_bottom.iter().copied().map(GameObjectId).collect(),
+        }
+    }
+
+    #[test]
+    fn the_last_graveyard_order_is_applied_with_its_batch() {
+        // CR 404.3: the order of the last owner is not kept in the state: the
+        // batch applies, and the continuation ends with the cards gone.
+        let (before, after) = last_graveyard_order_states();
+        let valid = |event: &AuthoritativeRuleEventKind| {
+            validate_event_projection_v3(&before, &after, event)
+        };
+        assert_eq!(valid(&order_chosen(2, &[5, 6])), Ok(()));
+        assert_eq!(valid(&order_chosen(2, &[6, 5])), Ok(()));
+        // Only the owner who is asked, with exactly its cards of the batch.
+        for wrong in [
+            order_chosen(1, &[3]),
+            order_chosen(1, &[5, 6]),
+            order_chosen(2, &[5]),
+            order_chosen(2, &[5, 5]),
+            order_chosen(2, &[5, 6, 3]),
+            order_chosen(2, &[5, 4]),
+        ] {
+            assert_eq!(valid(&wrong), Err(EventDeltaError::Mismatch), "{wrong:?}");
+        }
+        // Another continuation is not the one that ended.
+        let other = AuthoritativeRuleEventKind::SbaGraveyardOrderChosen {
+            continuation: ContinuationId(2),
+            owner: PlayerId(2),
+            top_to_bottom: vec![GameObjectId(5), GameObjectId(6)],
+        };
+        assert_eq!(valid(&other), Err(EventDeltaError::Mismatch));
+        // The cards are gone: the order alone, with the batch not applied, is
+        // not the last one.
+        let mut alive = after.clone();
+        alive.zones.objects.insert(
+            GameObjectId(6),
+            before.zones.objects[&GameObjectId(6)].clone(),
+        );
+        assert_eq!(
+            validate_event_projection_v3(&before, &alive, &order_chosen(2, &[5, 6])),
+            Err(EventDeltaError::Mismatch)
+        );
+        // With another owner still to be asked it is kept in the continuation,
+        // which the state still holds, and is not applied.
+        let mut two_owners = before.clone();
+        let mtgml_state::ContinuationPayload::MagicSbaGraveyardOrderV1 { apnap_owners, .. } =
+            &mut two_owners
+                .execution
+                .continuations
+                .get_mut(&ContinuationId(1))
+                .unwrap()
+                .payload
+        else {
+            unreachable!()
+        };
+        *apnap_owners = vec![PlayerId(2), PlayerId(1)];
+        assert_eq!(
+            validate_event_projection_v3(&two_owners, &after, &order_chosen(2, &[5, 6])),
+            Err(EventDeltaError::Mismatch)
+        );
+        let mut kept = after.clone();
+        let mut record = two_owners.execution.continuations[&ContinuationId(1)].clone();
+        let mtgml_state::ContinuationPayload::MagicSbaGraveyardOrderV1 {
+            next_owner_index,
+            completed_owner_orders,
+            ..
+        } = &mut record.payload
+        else {
+            unreachable!()
+        };
+        *next_owner_index = 1;
+        *completed_owner_orders = vec![mtgml_state::SbaGraveyardOwnerOrderV1 {
+            owner: PlayerId(2),
+            top_to_bottom: vec![GameObjectId(5), GameObjectId(6)],
+        }];
+        kept.execution
+            .continuations
+            .insert(ContinuationId(1), record);
+        assert_eq!(
+            validate_event_projection_v3(&two_owners, &kept, &order_chosen(2, &[5, 6])),
+            Ok(())
+        );
+        assert_eq!(
+            validate_event_projection_v3(&two_owners, &kept, &order_chosen(2, &[6, 5])),
             Err(EventDeltaError::Mismatch)
         );
     }

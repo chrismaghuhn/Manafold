@@ -282,8 +282,9 @@ fn game_start(state: &EngineState) -> Option<(ContinuationId, &GameStartContinua
         })
 }
 
-/// The starting player first, then the other player (CR 103.5, 101.4).
-fn turn_order(state: &EngineState, starting_player: PlayerId) -> Vec<PlayerId> {
+/// `starting_player` first, then the other players (CR 103.5, 101.4). Given the
+/// active player, that is APNAP order.
+pub(crate) fn turn_order(state: &EngineState, starting_player: PlayerId) -> Vec<PlayerId> {
     std::iter::once(starting_player)
         .chain(
             state

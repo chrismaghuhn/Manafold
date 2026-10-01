@@ -169,9 +169,11 @@ git-ignored `.rules/` folder, never committed, per ADR 0051).
   - 704.5a: a player at 0 or less life loses.
   - 704.5g: a creature with lethal damage marked on it is destroyed.
   - When several creatures go to one graveyard at once, their owner orders
-    them (404.3) through the existing `SbaGraveyardOrder` contract. That
-    contract already puts `PlayerLoses` in the same ordered batch, so owners
-    order before the loss applies.
+    them (404.3) through the existing `SbaGraveyardOrder` contract. Owners
+    order only when no player loses in the batch. When a player loses, the
+    game ends (104.2a) and the cards go to their graveyards in object order
+    without a decision (owner decision 2026-10-01: a decision with no
+    consequence is noise, as with the excluded 103.3 cut).
   - Only the contract exists. State shape, validation and projection are in
     place, but nothing in `mtgml-rules` produces or executes it; that is new
     runtime work.

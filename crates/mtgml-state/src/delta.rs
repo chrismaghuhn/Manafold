@@ -483,6 +483,9 @@ fn validate_delta_operation_coverage(
     {
         return uncovered();
     }
+    // A creature destroyed by the state-based actions is removed from combat
+    // (CR 506.4), in the transition that applies them, which need not be the one
+    // that dealt the damage.
     if old_before.combat != old_after.combat
         && !has(&|operation| {
             matches!(
@@ -492,6 +495,7 @@ fn validate_delta_operation_coverage(
                     | V3::CombatDamageDealt { .. }
                     | V3::CombatDamageStepCompleted
                     | V3::CombatEnded
+                    | V3::StateBasedActionsApplied { .. }
             )
         })
     {

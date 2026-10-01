@@ -11,21 +11,22 @@ use mtgml_decision::{
     DecisionVisibility, PlayerDecisionRequestV4, DECISION_RESPONSE_V3_SCHEMA,
 };
 use mtgml_environment::{
-    EnvironmentCheckpointV8, PlayerEndpoint, PlayerEndpointError, PlayerEndpointHandle,
-    TrustedEnvironmentController,
+    EnvironmentCheckpointV8, PlayerEndpoint, PlayerEndpointHandle, TrustedEnvironmentController,
 };
 use mtgml_model::{
     CandidateIdV1, CardDefinitionId, EpisodeStatus, GameObjectId, OpaqueObjectId,
-    PlayerDecisionIdV1, PlayerId, TruncationReason, VisibleSequence, ZoneKind,
+    PlayerDecisionIdV1, PlayerId, StateRevision, TruncationReason, VisibleSequence, ZoneKind,
 };
 use mtgml_observation::{
-    MagicSharedExecutionObservationV1, ObservedEventEnvelopeV4, ObservedEventKindV4,
-    PlayerStepSubmissionV1, PlayerStepV4, SyntheticPriority,
+    MagicCompletedOrder, MagicPendingSbaOrdering, MagicSharedExecutionObservationV1,
+    ObservedEventEnvelopeV4, ObservedEventKindV4, PlayerStepSubmissionV1, PlayerStepV4,
+    SyntheticPriority,
 };
 use mtgml_rules::{AuthoritativeRuleEventKind, BasicLandTransitionProduct};
 use mtgml_state::{
     CombatBlockerAssignmentV1, CombatStep, ContinuationPayload, EngineState, PriorityState,
-    SemanticDeltaOperation, TurnPosition,
+    SbaObjectCauseV1, SbaSelectedActionV1, SemanticDeltaOperation, TurnPosition,
+    VisibilityPartition, ZoneLocation, ZonePosition,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -1494,64 +1495,6 @@ fn a_2_2_and_a_2_1_that_block_each_other_both_die_one_to_each_graveyard() {
 }
 
 #[test]
-fn two_creatures_of_one_owner_dying_together_fail_closed_until_the_owner_can_order_them() {
-    // CR 404.3: cards put into one graveyard at the same time are arranged by
-    // their owner, a decision the game does not offer yet. Both of P1's Lions
-    // attack, and each is blocked by one of P2's: all four are destroyed, two
-    // of them for each owner. The step is refused and the game is where it was.
-    let game = two_lions_each();
-    let (attackers, _) = attack_with_both_lions(&game);
-    let declared = game.checkpoint();
-    let state = game.state();
-    game.declare_block(Some(opaque_of(&state, P2, attackers[0])));
-    game.declare_block(Some(opaque_of(&state, P2, attackers[1])));
-    game.answer(pass, pass);
-    assert_eq!(game.state().combat.as_ref().unwrap().blockers.len(), 2);
-
-    let before = game.checkpoint();
-    let (actor, request) = game.pending();
-    assert_eq!(actor, P2);
-    let outcome = game.endpoint(P2).submit(DecisionResponseV3 {
-        schema_version: DECISION_RESPONSE_V3_SCHEMA.to_owned(),
-        player_decision_id: request.player_decision_id,
-        view_sequence: request.view_sequence,
-        answer: DecisionAnswerV2::SelectOne {
-            candidate_id: request
-                .candidates
-                .iter()
-                .find(|candidate| pass(&candidate.intent))
-                .unwrap()
-                .candidate_id,
-        },
-    });
-    assert_eq!(outcome, Err(PlayerEndpointError::ServiceUnavailable));
-    assert_eq!(game.checkpoint(), before);
-    assert_eq!(game.pending().1, request);
-
-    // With one of the attackers blocked, only one creature of each owner is
-    // destroyed (the other Lions hits P2), and the same step is supported.
-    game.controller.restore(declared).unwrap();
-    game.declare_block(Some(opaque_of(&state, P2, attackers[0])));
-    game.declare_block(None);
-    game.answer(pass, pass);
-    game.answer(pass, pass);
-    let after = game.state();
-    assert_eq!(
-        after
-            .zones
-            .locations
-            .values()
-            .filter(|location| location.zone == ZoneKind::Graveyard)
-            .count(),
-        2
-    );
-    assert_eq!(
-        after.core.players[&P2].life,
-        before.state.core.players[&P2].life - 2
-    );
-}
-
-#[test]
 fn a_restored_combat_after_a_blocker_died_continues_identically() {
     // CR 509.1h: the Hill Giant stays blocked after the Savannah Lions that
     // blocked it was destroyed. A checkpoint taken from the damage step to the
@@ -1606,4 +1549,467 @@ fn a_restored_combat_after_a_blocker_died_continues_identically() {
         assert_eq!(game.checkpoint(), window[1]);
     }
     assert_eq!(game.checkpoint(), last);
+}
+
+/// The cards in `owner`'s graveyard, top first.
+fn graveyard_of(state: &EngineState, owner: PlayerId) -> Vec<GameObjectId> {
+    let key = ZoneLocation {
+        zone: ZoneKind::Graveyard,
+        player: Some(owner),
+        position: ZonePosition::Top { offset: 0 },
+        visibility: VisibilityPartition::Public,
+        partition: None,
+    }
+    .key();
+    state
+        .zones
+        .ordered_zones
+        .get(&key)
+        .cloned()
+        .unwrap_or_default()
+}
+
+/// The answer to a graveyard order request that puts the cards `top_to_bottom`
+/// (the ids their owner knows them by) in that order.
+fn order_answer(
+    request: &PlayerDecisionRequestV4,
+    top_to_bottom: &[OpaqueObjectId],
+) -> DecisionAnswerV2 {
+    DecisionAnswerV2::Order {
+        candidate_ids: top_to_bottom
+            .iter()
+            .map(|wanted| {
+                request
+                    .candidates
+                    .iter()
+                    .find(|candidate| {
+                        matches!(candidate.intent,
+                            CandidateIntent::SelectObject { object } if object == *wanted)
+                    })
+                    .unwrap_or_else(|| panic!("the request does not offer {wanted:?}"))
+                    .candidate_id
+            })
+            .collect(),
+    }
+}
+
+/// What `player` is told, in the observation, of the order the owners are
+/// arranging their graveyards in.
+fn pending_ordering(game: &Game, player: PlayerId) -> Option<MagicPendingSbaOrdering> {
+    game.seen(player).observation.pending_sba_ordering
+}
+
+/// The state-based action that destroys `object`, which was dealt lethal damage.
+fn destroyed(object: GameObjectId) -> SbaSelectedActionV1 {
+    SbaSelectedActionV1::ObjectToOwnerGraveyard {
+        object,
+        causes: vec![SbaObjectCauseV1::LethalDamage],
+    }
+}
+
+/// The Gray Ogre and the Hill Giant of P1 against two Savannah Lions of P2.
+struct Fight {
+    game: Game,
+    ogre: GameObjectId,
+    giant: GameObjectId,
+    /// P2's Lions in the order P2 is asked about them: the one that blocks the
+    /// Ogre, then the one that blocks the Giant.
+    lions: [GameObjectId; 2],
+}
+
+/// P2 casts a Savannah Lions on each of its first two turns (2 and 4); P1 casts
+/// a Gray Ogre on turn 5 and a Hill Giant on turn 7. On turn 9 P1 attacks with
+/// both and P2 blocks the Ogre with the Lions it is asked about first and the
+/// Giant with the other. P2 holds priority in the declare blockers step: its
+/// pass opens the combat damage step.
+fn ogre_and_giant_blocked_by_two_lions() -> Fight {
+    let [_, ogre, giant] = creature_definitions();
+    let (mountain, plains) = land_definitions();
+    let game = Game::with_hands([
+        vec![mountain, mountain, mountain, mountain, ogre, giant],
+        vec![plains, lions(), plains, lions()],
+    ]);
+    game.run_until(start_of_main_phase(2));
+    cast_lions(&game);
+    game.run_until(start_of_main_phase(4));
+    cast_lions(&game);
+    game.run_until(start_of_main_phase(5));
+    cast_creature(&game, 3);
+    game.run_until(start_of_main_phase(7));
+    cast_creature(&game, 4);
+    game.run_until(at_attackers(9));
+
+    let state = game.state();
+    let [ogre_object]: [GameObjectId; 1] = creatures_of(&state, P1, ogre).try_into().unwrap();
+    let [giant_object]: [GameObjectId; 1] = creatures_of(&state, P1, giant).try_into().unwrap();
+    let lions: [GameObjectId; 2] = in_opaque_order(&state, P2, lions_of(&state, P2))
+        .try_into()
+        .unwrap();
+    game.declare_attackers(&[
+        opaque_of(&state, P1, ogre_object),
+        opaque_of(&state, P1, giant_object),
+    ]);
+    game.answer(pass, pass);
+    game.answer(pass, pass);
+    game.declare_block(Some(opaque_of(&state, P2, ogre_object)));
+    game.declare_block(Some(opaque_of(&state, P2, giant_object)));
+    game.answer(pass, pass);
+    assert_eq!(game.pending().0, P2);
+    assert_eq!(
+        game.state().core.position,
+        TurnPosition::Combat {
+            step: CombatStep::DeclareBlockers
+        }
+    );
+    Fight {
+        game,
+        ogre: ogre_object,
+        giant: giant_object,
+        lions,
+    }
+}
+
+#[test]
+fn two_creatures_dying_together_ask_their_owner_for_the_order() {
+    // CR 404.3, 704.3, 704.5g: P1 attacks with its Gray Ogre (2/2) and Hill
+    // Giant (3/3); P2 blocks the Ogre with a Savannah Lions (2/1) and the Giant
+    // with another. Both Lions die (2 and 3 damage on a toughness of 1); the
+    // Ogre dies (2 damage on a toughness of 2); the Giant survives with 2
+    // damage marked. P1 has one dying card and is not asked how to arrange it.
+    // P2 owns two and orders them: that decision is P2's alone, and the
+    // creatures die when it is answered, not before.
+    let Fight {
+        game,
+        ogre,
+        giant,
+        lions: [lions_a, lions_b],
+    } = ogre_and_giant_blocked_by_two_lions();
+    game.answer(pass, pass);
+    let at_order = game.checkpoint();
+    let before = &at_order.state;
+
+    // The request: P2's own, over its two Lions, in the order of its opaque ids.
+    let (actor, request) = game.pending();
+    assert_eq!(actor, P2);
+    assert_eq!(game.endpoint(P1).visible_decision().unwrap(), None);
+    assert_eq!(request.purpose, DecisionPurposeV4::SbaGraveyardOrder);
+    assert_eq!(request.visibility, DecisionVisibility::ActingPlayerOnly);
+    assert_eq!(
+        request.decision_domain_v2,
+        DecisionDomainV2::Order {
+            minimum: 2,
+            maximum: 2
+        }
+    );
+    assert_eq!(
+        game.offered(),
+        [lions_a, lions_b].map(|lions| CandidateIntent::SelectObject {
+            object: opaque_of(before, P2, lions)
+        })
+    );
+
+    // Nothing has died yet, and every creature carries the damage it was dealt.
+    for creature in [ogre, giant, lions_a, lions_b] {
+        assert_eq!(
+            before.zones.locations[&creature].zone,
+            ZoneKind::Battlefield
+        );
+    }
+    let marked =
+        |creature: GameObjectId| before.card_rules.permanents.permanents[&creature].marked_damage;
+    assert_eq!([ogre, giant, lions_a, lions_b].map(marked), [2, 2, 2, 3]);
+    // The batch waits in a continuation with P2 as the only owner asked.
+    let mut dying = [ogre, lions_a, lions_b];
+    dying.sort();
+    let [(_, record)] = before.execution.continuations.iter().collect::<Vec<_>>()[..] else {
+        panic!("one continuation")
+    };
+    assert_eq!(
+        record.payload,
+        ContinuationPayload::MagicSbaGraveyardOrderV1 {
+            round_start_revision: StateRevision(before.revision.0 - 1),
+            selected_sba_actions: dying.map(destroyed).to_vec(),
+            apnap_owners: vec![P2],
+            next_owner_index: 0,
+            completed_owner_orders: Vec::new(),
+        }
+    );
+    // Both players see that P2 is ordering, and nothing of how.
+    for player in [P1, P2] {
+        assert_eq!(
+            pending_ordering(&game, player),
+            Some(MagicPendingSbaOrdering {
+                completed_orders: Vec::new(),
+                next_order_owner: P2
+            }),
+            "{player:?}"
+        );
+    }
+
+    // Whichever way P2 answers, its graveyard lies that way, top to bottom.
+    // The batch moves in object order, so only one of the two answers is the
+    // engine's own order; the other shows the answer decides.
+    let mut by_object = [lions_a, lions_b];
+    by_object.sort();
+    let mut reversed = by_object;
+    reversed.reverse();
+    for top_to_bottom in [by_object, reversed] {
+        game.controller.restore(at_order.clone()).unwrap();
+        let wanted = top_to_bottom.map(|lions| opaque_of(before, P2, lions));
+        let answer = order_answer(&request, &wanted);
+        let (product, observed) = product_and_observations(before, answer.clone());
+        let (actor, step) = game.submit(answer);
+        assert_eq!(actor, P2);
+        assert_eq!(step.observed_events, observed[&P2]);
+        let after = game.state();
+        assert_eq!(after, product.next_state);
+
+        // P2's graveyard is in its order, and its cards are the Lions.
+        let pile = graveyard_of(&after, P2);
+        assert_eq!(
+            pile.iter()
+                .map(|card| opaque_of(&after, P2, *card))
+                .collect::<Vec<_>>(),
+            wanted
+        );
+        assert!(pile
+            .iter()
+            .all(|card| after.zones.objects[card].card_definition == lions()));
+        // The Ogre is in P1's graveyard, alone.
+        let [ogre_card] = graveyard_of(&after, P1)[..] else {
+            panic!("P1's graveyard holds the Ogre")
+        };
+        assert_eq!(
+            opaque_of(&after, P1, ogre_card),
+            opaque_of(before, P1, ogre)
+        );
+        for dead in [ogre, lions_a, lions_b] {
+            assert!(!after.zones.objects.contains_key(&dead));
+        }
+        // The Giant survives with 2 damage marked, attacking and still blocked.
+        assert_eq!(
+            after.card_rules.permanents.permanents[&giant].marked_damage,
+            2
+        );
+        let combat = after.combat.clone().unwrap();
+        assert_eq!(combat.attackers, vec![giant]);
+        assert_eq!(combat.blocked_attackers, BTreeSet::from([giant]));
+        assert!(combat.blockers.is_empty());
+        // The order is in the events, then the whole batch in one.
+        let chosen: Vec<_> = product
+            .events
+            .iter()
+            .filter_map(|event| match &event.event {
+                AuthoritativeRuleEventKind::SbaGraveyardOrderChosen {
+                    owner,
+                    top_to_bottom,
+                    ..
+                } => Some((*owner, top_to_bottom.clone())),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(chosen, [(P2, top_to_bottom.to_vec())]);
+        let applied: Vec<_> = product
+            .events
+            .iter()
+            .filter_map(|event| match &event.event {
+                AuthoritativeRuleEventKind::StateBasedActionsApplied { actions } => Some(actions),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(applied, [&dying.map(destroyed).to_vec()]);
+        // Both players see the three deaths, and follow each card.
+        for player in [P1, P2] {
+            let mut moves = observed_moves(&observed[&player]);
+            moves.sort();
+            let mut expected: Vec<_> = dying
+                .iter()
+                .map(|dead| {
+                    let opaque = Some(opaque_of(before, player, *dead));
+                    (opaque, opaque, ZoneKind::Battlefield, ZoneKind::Graveyard)
+                })
+                .collect();
+            expected.sort();
+            assert_eq!(moves, expected, "{player:?}");
+        }
+        // The decision and the continuation are over, and the active player
+        // has priority in the combat damage step (CR 510.3).
+        assert!(after.execution.continuations.is_empty());
+        assert_eq!(game.pending().0, P1);
+        assert_eq!(
+            after.core.position,
+            TurnPosition::Combat {
+                step: CombatStep::CombatDamage
+            }
+        );
+        for player in [P1, P2] {
+            assert_eq!(pending_ordering(&game, player), None, "{player:?}");
+        }
+        game.controller.restore(game.checkpoint()).unwrap();
+    }
+}
+
+/// P1 attacks with both of its Lions and P2 blocks each with one of its own:
+/// all four die. Returns the game at the combat damage step, with P1, the
+/// active player, asked to order its two.
+fn four_lions_dying_together() -> Game {
+    let game = two_lions_each();
+    let (attackers, _) = attack_with_both_lions(&game);
+    let state = game.state();
+    game.declare_block(Some(opaque_of(&state, P2, attackers[0])));
+    game.declare_block(Some(opaque_of(&state, P2, attackers[1])));
+    game.answer(pass, pass);
+    game.answer(pass, pass);
+    game
+}
+
+/// The Lions of `owner`, whose order the pending request asks for, from the
+/// higher object id to the lower, and the answer that puts them in that order.
+fn higher_object_first(game: &Game, owner: PlayerId) -> (Vec<GameObjectId>, DecisionAnswerV2) {
+    let state = game.state();
+    let (actor, request) = game.pending();
+    assert_eq!(actor, owner);
+    let mut lions = lions_of(&state, owner);
+    lions.sort();
+    lions.reverse();
+    let wanted: Vec<_> = lions
+        .iter()
+        .map(|lions| opaque_of(&state, owner, *lions))
+        .collect();
+    (lions, order_answer(&request, &wanted))
+}
+
+#[test]
+fn owners_order_in_turn_order_and_the_second_sees_the_first() {
+    // CR 101.4, 404.3: two cards of each owner die together. The active player
+    // orders its two first, then the other player its two (APNAP), who knows
+    // the first order when it answers (CR 101.4b). The creatures die with the
+    // last answer, and each graveyard is in its owner's order.
+    let game = four_lions_dying_together();
+    let at_first = game.checkpoint();
+    assert_eq!(game.pending().0, P1);
+    let p1_lions = lions_of(&at_first.state, P1);
+    let p2_lions = lions_of(&at_first.state, P2);
+    assert_eq!((p1_lions.len(), p2_lions.len()), (2, 2));
+    assert_eq!(game.endpoint(P2).visible_decision().unwrap(), None);
+    let [(_, record)] = at_first
+        .state
+        .execution
+        .continuations
+        .iter()
+        .collect::<Vec<_>>()[..]
+    else {
+        panic!("one continuation")
+    };
+    let ContinuationPayload::MagicSbaGraveyardOrderV1 {
+        apnap_owners,
+        next_owner_index,
+        selected_sba_actions,
+        ..
+    } = &record.payload
+    else {
+        panic!("a graveyard order")
+    };
+    assert_eq!((apnap_owners.clone(), *next_owner_index), (vec![P1, P2], 0));
+    // One batch holding all four.
+    let mut dying = [p1_lions.clone(), p2_lions.clone()].concat();
+    dying.sort();
+    assert_eq!(
+        selected_sba_actions,
+        &dying.iter().copied().map(destroyed).collect::<Vec<_>>()
+    );
+
+    // P1 answers; nothing dies, and nothing is seen of it yet.
+    let (p1_order, answer) = higher_object_first(&game, P1);
+    let (_, observed) = product_and_observations(&at_first.state, answer.clone());
+    assert!(observed.values().all(|events| events.is_empty()));
+    let (actor, step) = game.submit(answer);
+    assert_eq!(actor, P1);
+    assert!(step.observed_events.is_empty());
+    let at_second = game.checkpoint();
+    assert_eq!(at_second.state.revision.0, at_first.state.revision.0 + 1);
+    assert_eq!(game.pending().0, P2);
+    assert_eq!(game.endpoint(P1).visible_decision().unwrap(), None);
+    for creature in &dying {
+        assert!(at_second.state.zones.objects.contains_key(creature));
+    }
+    // Each player is told P1's order in the ids it knows the cards by, and that
+    // P2 is next.
+    for player in [P1, P2] {
+        assert_eq!(
+            pending_ordering(&game, player),
+            Some(MagicPendingSbaOrdering {
+                completed_orders: vec![MagicCompletedOrder {
+                    owner: P1,
+                    ordered_objects: p1_order
+                        .iter()
+                        .map(|lions| opaque_of(&at_second.state, player, *lions))
+                        .collect(),
+                }],
+                next_order_owner: P2
+            }),
+            "{player:?}"
+        );
+    }
+
+    // P2 answers, and the batch applies.
+    let (p2_order, answer) = higher_object_first(&game, P2);
+    let (actor, _) = game.submit(answer);
+    assert_eq!(actor, P2);
+    let after = game.state();
+    assert_eq!(after.revision.0, at_second.state.revision.0 + 1);
+    assert!(after.execution.continuations.is_empty());
+    for (owner, order) in [(P1, &p1_order), (P2, &p2_order)] {
+        assert_eq!(
+            graveyard_of(&after, owner)
+                .iter()
+                .map(|card| opaque_of(&after, owner, *card))
+                .collect::<Vec<_>>(),
+            order
+                .iter()
+                .map(|lions| opaque_of(&at_second.state, owner, *lions))
+                .collect::<Vec<_>>(),
+            "{owner:?}"
+        );
+    }
+    for creature in &dying {
+        assert!(!after.zones.objects.contains_key(creature));
+    }
+    assert_eq!(game.pending().0, P1);
+    for player in [P1, P2] {
+        assert_eq!(pending_ordering(&game, player), None, "{player:?}");
+    }
+}
+
+#[test]
+fn a_restored_graveyard_order_checkpoint_continues_identically() {
+    // Each order checkpoint of the two owners restores, and the same answer
+    // leads to the same next checkpoint; the whole game replays to the end.
+    let game = four_lions_dying_together();
+    let at_first = game.checkpoint();
+    let (_, first_answer) = higher_object_first(&game, P1);
+    game.submit(first_answer.clone());
+    let at_second = game.checkpoint();
+    let (_, second_answer) = higher_object_first(&game, P2);
+    game.submit(second_answer.clone());
+    let at_end = game.checkpoint();
+    assert_ne!(at_first, at_second);
+    assert_ne!(at_second, at_end);
+
+    game.controller.restore(at_first.clone()).unwrap();
+    assert_eq!(game.checkpoint(), at_first);
+    assert_eq!(game.pending().0, P1);
+    game.submit(first_answer);
+    assert_eq!(game.checkpoint(), at_second);
+    game.controller.restore(at_second.clone()).unwrap();
+    assert_eq!(game.checkpoint(), at_second);
+    assert_eq!(game.pending().0, P2);
+    game.submit(second_answer);
+    assert_eq!(game.checkpoint(), at_end);
+
+    let report = game
+        .controller
+        .execute_replay(game.controller.export_replay().unwrap())
+        .unwrap();
+    assert_eq!(report.final_checkpoint, at_end);
 }

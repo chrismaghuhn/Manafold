@@ -152,6 +152,29 @@ pub fn execute_magic_response(
                 attacker: *attacker,
             }
         }
+        // CR 404.3: an owner chose the order of their cards, top to bottom.
+        DecisionPurposeV4::SbaGraveyardOrder => {
+            validate_magic_pending_request(admission, state, status)
+                .map_err(|_| Error::InvalidSelection)?;
+            let DecisionAnswerV2::Order { candidate_ids } = &response.answer else {
+                return Err(Error::InvalidSelection);
+            };
+            let top_to_bottom = candidate_ids
+                .iter()
+                .map(|chosen| {
+                    match request
+                        .candidates
+                        .iter()
+                        .find(|candidate| candidate.candidate_id == *chosen)
+                        .map(|candidate| &candidate.trusted_binding)
+                    {
+                        Some(EngineCandidateBinding::SelectObject { object }) => Ok(*object),
+                        _ => Err(Error::InvalidSelection),
+                    }
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Answer::GraveyardOrder(top_to_bottom)
+        }
         DecisionPurposeV4::HandSizeDiscard => {
             validate_magic_pending_request(admission, state, status)
                 .map_err(|_| Error::InvalidSelection)?;
@@ -211,6 +234,7 @@ pub fn validate_magic_pending_request(
             request.purpose,
             DecisionPurposeV4::AttackerDeclaration
                 | DecisionPurposeV4::BlockerDeclaration
+                | DecisionPurposeV4::SbaGraveyardOrder
                 | DecisionPurposeV4::HandSizeDiscard
                 | DecisionPurposeV4::ManaPayment
         )
@@ -222,6 +246,9 @@ pub fn validate_magic_pending_request(
     }
     if request.purpose == DecisionPurposeV4::BlockerDeclaration {
         return validate_block_request(admission, state, request, status);
+    }
+    if request.purpose == DecisionPurposeV4::SbaGraveyardOrder {
+        return validate_graveyard_order_request(admission, state, request, status);
     }
     if request.purpose == DecisionPurposeV4::ManaPayment {
         return validate_payment_request(admission, state, request, status);
@@ -240,6 +267,8 @@ enum Answer {
         attacker: Option<GameObjectId>,
     },
     Discard(GameObjectId),
+    /// The owner's order for their cards that die together, top to bottom.
+    GraveyardOrder(Vec<GameObjectId>),
 }
 
 pub(crate) enum NextDecision {
@@ -250,6 +279,9 @@ pub(crate) enum NextDecision {
     /// The defending player is asked about the next creature of a block
     /// declaration.
     Blockers,
+    /// The next owner is asked for the order of their cards that die together
+    /// (CR 404.3).
+    GraveyardOrder,
     Discard,
     /// The next request of the start of the game (CR 103).
     Pregame,
@@ -321,14 +353,17 @@ pub(crate) fn record_unobserved(facts: &mut Facts, event: AuthoritativeRuleEvent
 /// admitted lands and vanilla creatures on the battlefield, each controlled by
 /// its owner, a stack that is empty or holds one creature spell that the active
 /// player cast in a main phase (see `crate::casting::stack_within_profile`), no
-/// continuation but the payment of that spell or the defending player's block
-/// declaration (see `crate::combat::validate_pending_block_declaration`), a combat that
+/// continuation but the payment of that spell, the defending player's block
+/// declaration (see `crate::combat::validate_pending_block_declaration`) or an
+/// owner's graveyard order (see
+/// `crate::state_based_actions::validate_pending_graveyard_order`), a combat that
 /// this slice could have produced (see `crate::combat::validate_reachable_combat`),
 /// and none of the state no rule of this slice can evaluate. State-based actions
 /// are checked before a player would receive priority (CR 704.3), so a decision
 /// is never pending while one applies: a player at 0 or less life who has not
 /// lost is not a state of this slice (CR 704.5a), nor is a creature with lethal
-/// damage marked on it (CR 704.5g; see `crate::combat::validate_marked_damage`).
+/// damage marked on it (CR 704.5g; see `crate::combat::validate_marked_damage`),
+/// except for the creatures that die with a pending graveyard order.
 fn validate_slice(
     admission: &ExecutableProfileAdmissionV1,
     state: &EngineState,
@@ -341,7 +376,9 @@ fn validate_slice(
         || cards.attachments != Default::default()
         || (!execution.continuations.is_empty()
             && crate::casting::pending_payment(admission, state).is_err()
-            && crate::combat::validate_pending_block_declaration(admission, state).is_err())
+            && crate::combat::validate_pending_block_declaration(admission, state).is_err()
+            && crate::state_based_actions::validate_pending_graveyard_order(admission, state)
+                .is_err())
         || !execution.effects.is_empty()
         || !execution.waiting_triggers.is_empty()
         || !execution.delayed_effects.is_empty()
@@ -515,6 +552,15 @@ fn progress(
                 NextDecision::Blockers
             }
         }
+        // CR 404.3: the owner orders their cards. After the last owner the
+        // creatures die, and the active player receives priority.
+        Answer::GraveyardOrder(top_to_bottom) => crate::state_based_actions::order_graveyard(
+            admission,
+            &mut next,
+            &mut facts,
+            request.actor,
+            top_to_bottom,
+        )?,
         // CR 514.1: the discard ends cleanup; the turn then ends (CR 514.3).
         Answer::Discard(object) => {
             move_card(
@@ -725,14 +771,10 @@ fn advance(
                 // CR 704.3: state-based actions are checked before the active
                 // player gets priority (CR 510.3): a creature dealt lethal
                 // damage is destroyed (CR 704.5g) and a player at 0 life
-                // loses (CR 704.5a).
-                return Ok(
-                    match crate::state_based_actions::perform_state_based_actions(
-                        admission, next, facts,
-                    )? {
-                        Some(loser) => NextDecision::GameOver { loser },
-                        None => open_priority(next),
-                    },
+                // loses (CR 704.5a). Owners of cards that die together order
+                // them first (CR 404.3).
+                return crate::state_based_actions::perform_state_based_actions(
+                    admission, next, facts,
                 );
             }
             // CR 514.1-514.3: the active player discards to maximum hand
@@ -1061,6 +1103,12 @@ pub(crate) fn finish(
         NextDecision::Blockers => (
             running,
             Some(crate::combat::install_block_request(&mut next)?),
+        ),
+        NextDecision::GraveyardOrder => (
+            running,
+            Some(crate::state_based_actions::install_order_request(
+                &mut next,
+            )?),
         ),
         NextDecision::Pregame => (
             running,
@@ -1408,6 +1456,43 @@ fn validate_block_request(
     let mismatch = BasicLandCandidateError::PendingCandidateSetMismatch;
     // `validate_slice` has checked the continuation against the battlefield.
     let expected = crate::combat::block_request_shape(state).map_err(|_| mismatch)?;
+    let shape = RequestShape {
+        actor: request.actor,
+        visibility: request.visibility,
+        continuation_id: request.continuation_id,
+        purpose: request.purpose.clone(),
+        decision_domain_v2: request.decision_domain_v2.clone(),
+        candidates: request.candidates.clone(),
+    };
+    if !matches!(status, EpisodeStatus::Running)
+        || shape != expected
+        || !request_is_current(state, request)
+    {
+        return Err(mismatch);
+    }
+    Ok(())
+}
+
+/// CR 404.3: a restored or committed graveyard order request is exactly the one
+/// the pending order calls for: for the owner whose turn it is to arrange their
+/// cards, who need not be the active player, with the identities the installer
+/// allocates.
+fn validate_graveyard_order_request(
+    admission: &ExecutableProfileAdmissionV1,
+    state: &EngineState,
+    request: &AuthoritativeDecisionRequest,
+    status: &EpisodeStatus,
+) -> Result<(), BasicLandCandidateError> {
+    state
+        .validate_structure()
+        .map_err(|_| BasicLandCandidateError::InvalidState)?;
+    // `validate_slice` has checked the continuation against the state.
+    validate_slice(admission, state).map_err(|_| BasicLandCandidateError::InvalidState)?;
+    // Only an admission with the rule that creates this request accepts it.
+    admits(admission, "rules/state-based-actions-combat")
+        .map_err(|_| BasicLandCandidateError::PendingCandidateSetMismatch)?;
+    let mismatch = BasicLandCandidateError::PendingCandidateSetMismatch;
+    let expected = crate::state_based_actions::order_request_shape(state).map_err(|_| mismatch)?;
     let shape = RequestShape {
         actor: request.actor,
         visibility: request.visibility,
@@ -4035,7 +4120,14 @@ mod tests {
         let perform = |state: &EngineState, facts: &mut Facts| {
             let mut next = state.clone();
             crate::state_based_actions::perform_state_based_actions(&admission, &mut next, facts)
-                .map(|loser| (loser, next))
+                .map(|decision| match decision {
+                    NextDecision::GameOver { loser } => (Some(loser), next),
+                    NextDecision::Priority(player) => {
+                        assert_eq!(player, next.core.active_player);
+                        (None, next)
+                    }
+                    _ => panic!("a state without creatures to order asks nothing else"),
+                })
         };
 
         // One player at 0 or less life loses (CR 704.5a), whichever it is.
@@ -4060,39 +4152,652 @@ mod tests {
         assert!(facts.zone_events.is_empty());
     }
 
-    #[test]
-    fn two_creatures_of_one_owner_dying_together_fail_closed_until_the_owner_can_order_them() {
-        // CR 404.3: two cards put into one graveyard at the same time are
-        // arranged by their owner, which is a decision this slice does not
-        // offer yet. P1 attacks with two Savannah Lions; P2's two Hill Giants
-        // block one each, and both Lions are destroyed.
+    /// P1's Gray Ogre and Hill Giant attack, and P2's two Savannah Lions block
+    /// them: the first blocks the Ogre, the second the Giant. P2 holds priority
+    /// in the declare blockers step, one pass from the damage step. Returns the
+    /// state and the Ogre, the Giant and the two Lions.
+    fn ogre_and_giant_blocked_by_two_lions(
+    ) -> (ExecutableProfileAdmissionV1, EngineState, [GameObjectId; 4]) {
         let (admission, state, creatures) = game_with_creature_cards(&[
-            (P1, SAVANNAH_LIONS),
-            (P1, SAVANNAH_LIONS),
-            (P2, HILL_GIANT),
-            (P2, HILL_GIANT),
+            (P1, GRAY_OGRE),
+            (P1, HILL_GIANT),
+            (P2, SAVANNAH_LIONS),
+            (P2, SAVANNAH_LIONS),
         ]);
-        let [first, second, first_giant, second_giant] = creatures[..] else {
+        let [ogre, giant, lions_a, lions_b] = creatures[..] else {
             panic!("four creatures")
         };
         let before = blocks_declared(
             &admission,
-            state.clone(),
-            &[first, second],
-            &[(first_giant, first), (second_giant, second)],
+            state,
+            &[ogre, giant],
+            &[(lions_a, ogre), (lions_b, giant)],
         );
+        (admission, before, [ogre, giant, lions_a, lions_b])
+    }
+
+    /// The answer to the pending graveyard order request that puts
+    /// `top_to_bottom` in that order.
+    fn order_in(state: &EngineState, top_to_bottom: &[GameObjectId]) -> DecisionAnswerV2 {
+        DecisionAnswerV2::Order {
+            candidate_ids: top_to_bottom
+                .iter()
+                .map(|wanted| {
+                    candidate(pending(state), |binding| {
+                        matches!(binding,
+                            EngineCandidateBinding::SelectObject { object } if object == wanted)
+                    })
+                    .expect("the request offers the card")
+                })
+                .collect(),
+        }
+    }
+
+    /// The batch and the owners waiting in `state`'s graveyard order.
+    fn pending_order(
+        state: &EngineState,
+    ) -> (
+        Vec<mtgml_state::SbaSelectedActionV1>,
+        Vec<PlayerId>,
+        u32,
+        Vec<mtgml_state::SbaGraveyardOwnerOrderV1>,
+    ) {
+        let [record] = state
+            .execution
+            .continuations
+            .values()
+            .collect::<Vec<_>>()
+            .try_into()
+            .expect("one continuation");
+        match &record.payload {
+            mtgml_state::ContinuationPayload::MagicSbaGraveyardOrderV1 {
+                selected_sba_actions,
+                apnap_owners,
+                next_owner_index,
+                completed_owner_orders,
+                ..
+            } => (
+                selected_sba_actions.clone(),
+                apnap_owners.clone(),
+                *next_owner_index,
+                completed_owner_orders.clone(),
+            ),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// The events of the product that say an owner chose an order.
+    fn orders_chosen(
+        product: &crate::BasicLandTransitionProduct,
+    ) -> Vec<(PlayerId, Vec<GameObjectId>)> {
+        product
+            .events
+            .iter()
+            .filter_map(|event| match &event.event {
+                AuthoritativeRuleEventKind::SbaGraveyardOrderChosen {
+                    owner,
+                    top_to_bottom,
+                    ..
+                } => Some((*owner, top_to_bottom.clone())),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The kinds of the events of the product that are about the order and the
+    /// batch, in the order they were recorded.
+    fn order_and_batch_events(product: &crate::BasicLandTransitionProduct) -> Vec<&'static str> {
+        product
+            .events
+            .iter()
+            .filter_map(|event| match &event.event {
+                AuthoritativeRuleEventKind::SbaGraveyardOrderChosen { .. } => Some("order"),
+                AuthoritativeRuleEventKind::ZoneTransition { .. } => Some("move"),
+                AuthoritativeRuleEventKind::StateBasedActionsApplied { .. } => Some("batch"),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn two_creatures_dying_together_ask_their_owner_for_the_order() {
+        // CR 404.3, 704.3: two cards put into one graveyard at the same time
+        // are arranged by their owner. P1's Gray Ogre and Hill Giant attack;
+        // P2's Savannah Lions block them. The Ogre and both Lions die, the
+        // Giant survives. P1 has one dying card and is not asked; P2 has two
+        // and is, and nothing dies before it answers.
+        let (admission, before, [ogre, giant, lions_a, lions_b]) =
+            ogre_and_giant_blocked_by_two_lions();
+        let product = submit(&admission, &before, pass_answer(pending(&before))).unwrap();
+        let at_order = apply(&before, &product);
+
+        // The damage step dealt its damage and nothing more: the creatures are
+        // still on the battlefield with their marks, nobody has priority and
+        // the only decision is P2's order.
         assert_eq!(
-            submit(&admission, &before, pass_answer(pending(&before))),
-            Err(crate::BasicLandTransitionError::TurnProgressUnsupported)
+            [ogre, giant, lions_a, lions_b].map(|creature| marked(&at_order, creature)),
+            [2, 2, 2, 3]
+        );
+        assert!(moves(&product).is_empty() && state_based_actions(&product).is_empty());
+        assert_eq!(at_order.core.priority, PriorityState::None);
+        let request = pending(&at_order);
+        assert_eq!(request.actor, P2);
+        assert_eq!(request.purpose, DecisionPurposeV4::SbaGraveyardOrder);
+        assert_eq!(request.visibility, DecisionVisibility::ActingPlayerOnly);
+        assert_eq!(
+            request.decision_domain_v2,
+            DecisionDomainV2::Order {
+                minimum: 2,
+                maximum: 2
+            }
+        );
+        // The Lions are offered in the order of P2's opaque ids.
+        let opaque = |object: GameObjectId| {
+            at_order.perspective_identities.players[&P2].object_to_opaque[&object]
+        };
+        let offered: Vec<_> = request
+            .candidates
+            .iter()
+            .map(|candidate| candidate.visible_intent.clone())
+            .collect();
+        let mut expected = [lions_a, lions_b];
+        expected.sort_by_key(|lions| opaque(*lions));
+        assert_eq!(
+            offered,
+            expected.map(|lions| CandidateIntent::SelectObject {
+                object: opaque(lions)
+            })
+        );
+        let mut dying = [ogre, lions_a, lions_b];
+        dying.sort();
+        assert_eq!(
+            pending_order(&at_order),
+            (dying.map(destroyed).to_vec(), vec![P2], 0, Vec::new())
+        );
+        validate_magic_pending_request(&admission, &at_order, &EpisodeStatus::Running).unwrap();
+
+        // P2 answers, in either order: its graveyard follows the answer, and
+        // the batch applies as one event after the order that chose it.
+        for top_to_bottom in [[lions_a, lions_b], [lions_b, lions_a]] {
+            let product =
+                submit(&admission, &at_order, order_in(&at_order, &top_to_bottom)).unwrap();
+            let after = apply(&at_order, &product);
+            assert_eq!(orders_chosen(&product), [(P2, top_to_bottom.to_vec())]);
+            assert_eq!(
+                order_and_batch_events(&product),
+                ["order", "move", "move", "move", "batch"]
+            );
+            assert_eq!(
+                state_based_actions(&product),
+                [dying.map(destroyed).to_vec()]
+            );
+            // The pile of the new objects, top to bottom, is the answer.
+            let new_of = |old: GameObjectId| {
+                moves(&product)
+                    .into_iter()
+                    .find(|(moved, ..)| *moved == old)
+                    .map(|(_, new, ..)| new)
+                    .unwrap()
+            };
+            assert_eq!(graveyard_of(&after, P2), top_to_bottom.map(new_of).to_vec());
+            assert_eq!(graveyard_of(&after, P1), [new_of(ogre)]);
+            for dead in dying {
+                assert!(!after.zones.objects.contains_key(&dead));
+            }
+            // The Giant survives, damaged, blocked and attacking; the others
+            // left combat.
+            assert_eq!(marked(&after, giant), 2);
+            let combat = after.combat.as_ref().unwrap();
+            assert_eq!(combat.attackers, vec![giant]);
+            assert_eq!(combat.blocked_attackers, [giant].into());
+            assert!(combat.blockers.is_empty());
+            // The continuation is gone and the active player has priority.
+            assert!(after.execution.continuations.is_empty());
+            assert_eq!(pending(&after).actor, P1);
+            assert_eq!(pending(&after).purpose, DecisionPurposeV4::PriorityAction);
+            for owner in [P1, P2] {
+                assert!(after.card_rules.turn_history.players[&owner].permanent_card_to_graveyard);
+            }
+            validate_magic_pending_request(&admission, &after, &EpisodeStatus::Running).unwrap();
+        }
+    }
+
+    #[test]
+    fn an_owner_is_offered_their_cards_in_the_order_of_their_opaque_ids() {
+        // Requests and candidates follow the actor's opaque ids, never the
+        // engine's object ids (INFORMATION_MODEL, Noninterference).
+        let (admission, before, [_, _, lions_a, lions_b]) = ogre_and_giant_blocked_by_two_lions();
+        let offered = |state: &EngineState| -> Vec<GameObjectId> {
+            pending(state)
+                .candidates
+                .iter()
+                .map(|candidate| match candidate.trusted_binding {
+                    EngineCandidateBinding::SelectObject { object } => object,
+                    _ => panic!("a card"),
+                })
+                .collect()
+        };
+        assert!(lions_a < lions_b);
+        // The fixture's opaque ids rise with the object ids.
+        assert_eq!(offered(&pass(&admission, &before).0), [lions_a, lions_b]);
+
+        // With P2's opaque ids of the two Lions swapped, the second is offered
+        // first, under the opaque id the first had.
+        let mut swapped = before.clone();
+        let identity = swapped.perspective_identities.players.get_mut(&P2).unwrap();
+        let (low, high) = (
+            identity.object_to_opaque[&lions_a],
+            identity.object_to_opaque[&lions_b],
+        );
+        assert!(low < high);
+        identity.object_to_opaque.insert(lions_a, high);
+        identity.object_to_opaque.insert(lions_b, low);
+        identity.opaque_to_object.insert(low, lions_b);
+        identity.opaque_to_object.insert(high, lions_a);
+        // P2 knows each opaque id as the card it is.
+        let knowledge = &mut swapped.knowledge.players.get_mut(&P2).unwrap().active;
+        let (low_card, high_card) = (
+            knowledge[&low].physical_card,
+            knowledge[&high].physical_card,
+        );
+        knowledge.get_mut(&low).unwrap().physical_card = high_card;
+        knowledge.get_mut(&high).unwrap().physical_card = low_card;
+        let at_order = pass(&admission, &swapped).0;
+        assert_eq!(offered(&at_order), [lions_b, lions_a]);
+        assert_eq!(
+            pending(&at_order)
+                .candidates
+                .iter()
+                .map(|candidate| candidate.visible_intent.clone())
+                .collect::<Vec<_>>(),
+            [low, high].map(|object| CandidateIntent::SelectObject { object })
+        );
+        validate_magic_pending_request(&admission, &at_order, &EpisodeStatus::Running).unwrap();
+    }
+
+    #[test]
+    fn owners_are_asked_in_turn_order_and_the_batch_waits_for_the_last() {
+        // CR 101.4, 404.3: P1 attacks with two Savannah Lions and P2 blocks each
+        // with one of its own: two cards of each owner die. The active player
+        // orders first, then the other player; each answer is its own
+        // transition and the creatures die with the second.
+        let (admission, state, creatures) = game_with_creature_cards(&[
+            (P1, SAVANNAH_LIONS),
+            (P1, SAVANNAH_LIONS),
+            (P2, SAVANNAH_LIONS),
+            (P2, SAVANNAH_LIONS),
+        ]);
+        let [first, second, first_blocker, second_blocker] = creatures[..] else {
+            panic!("four creatures")
+        };
+        let before = blocks_declared(
+            &admission,
+            state,
+            &[first, second],
+            &[(first_blocker, first), (second_blocker, second)],
+        );
+        let product = submit(&admission, &before, pass_answer(pending(&before))).unwrap();
+        let at_first = apply(&before, &product);
+        assert_eq!(pending(&at_first).actor, P1);
+        assert_eq!(
+            pending(&at_first).purpose,
+            DecisionPurposeV4::SbaGraveyardOrder
+        );
+        let (batch, owners, index, completed) = pending_order(&at_first);
+        assert_eq!(batch.len(), 4);
+        assert_eq!((owners, index, completed), (vec![P1, P2], 0, Vec::new()));
+
+        // APNAP order is the order of the turn, the active player first. A
+        // state that asks P2 first, with a request of its own for it, agrees
+        // with itself and is refused for that alone; asking again the owner
+        // the pending order asks first is accepted.
+        let running = EpisodeStatus::Running;
+        let mut again = at_first.clone();
+        crate::state_based_actions::install_order_request(&mut again).unwrap();
+        validate_magic_pending_request(&admission, &again, &running).unwrap();
+        let mut backwards = at_first.clone();
+        let record = backwards
+            .execution
+            .continuations
+            .values_mut()
+            .next()
+            .unwrap();
+        let mtgml_state::ContinuationPayload::MagicSbaGraveyardOrderV1 { apnap_owners, .. } =
+            &mut record.payload
+        else {
+            unreachable!()
+        };
+        apnap_owners.reverse();
+        crate::state_based_actions::install_order_request(&mut backwards).unwrap();
+        assert_eq!(pending(&backwards).actor, P2);
+        assert!(validate_magic_pending_request(&admission, &backwards, &running).is_err());
+
+        // P1 answers: only the order is recorded; P2 is asked next and nobody
+        // has priority.
+        let p1_order = [second, first];
+        let product = submit(&admission, &at_first, order_in(&at_first, &p1_order)).unwrap();
+        let at_second = apply(&at_first, &product);
+        assert_eq!(order_and_batch_events(&product), ["order"]);
+        assert_eq!(orders_chosen(&product), [(P1, p1_order.to_vec())]);
+        assert_eq!(pending(&at_second).actor, P2);
+        assert_eq!(
+            pending(&at_second).purpose,
+            DecisionPurposeV4::SbaGraveyardOrder
+        );
+        assert_eq!(at_second.core.priority, PriorityState::None);
+        let (_, owners, index, completed) = pending_order(&at_second);
+        assert_eq!((owners, index), (vec![P1, P2], 1));
+        assert_eq!(
+            completed,
+            [mtgml_state::SbaGraveyardOwnerOrderV1 {
+                owner: P1,
+                top_to_bottom: p1_order.to_vec()
+            }]
+        );
+        for creature in creatures {
+            assert!(at_second.zones.objects.contains_key(&creature));
+        }
+        validate_magic_pending_request(&admission, &at_second, &EpisodeStatus::Running).unwrap();
+
+        // P2 answers: the whole batch applies, each graveyard in its owner's
+        // order.
+        let p2_order = [first_blocker, second_blocker];
+        let product = submit(&admission, &at_second, order_in(&at_second, &p2_order)).unwrap();
+        let after = apply(&at_second, &product);
+        assert_eq!(
+            order_and_batch_events(&product),
+            ["order", "move", "move", "move", "move", "batch"]
+        );
+        let new_of = |old: GameObjectId| {
+            moves(&product)
+                .into_iter()
+                .find(|(moved, ..)| *moved == old)
+                .map(|(_, new, ..)| new)
+                .unwrap()
+        };
+        assert_eq!(graveyard_of(&after, P1), p1_order.map(new_of).to_vec());
+        assert_eq!(graveyard_of(&after, P2), p2_order.map(new_of).to_vec());
+        assert!(after.execution.continuations.is_empty());
+        assert_eq!(pending(&after).actor, P1);
+        validate_magic_pending_request(&admission, &after, &EpisodeStatus::Running).unwrap();
+    }
+
+    #[test]
+    fn a_player_losing_in_the_same_batch_skips_the_graveyard_order() {
+        // CR 104.2a, 404.3, 704.3. P2 is at 2 life and P1's free Savannah
+        // Lions is unblocked: P2 loses while its two Lions, blocking P1's Gray
+        // Ogre and Hill Giant, die. The loss ends the game in this batch, so
+        // the order the owner would give could never matter: nobody is asked
+        // (owner decision 2026-10-01; a decision with no consequence is
+        // noise). The batch applies at once and the cards go to the graveyard
+        // in object order.
+        let (admission, mut state, creatures) = game_with_creature_cards(&[
+            (P1, GRAY_OGRE),
+            (P1, HILL_GIANT),
+            (P1, SAVANNAH_LIONS),
+            (P2, SAVANNAH_LIONS),
+            (P2, SAVANNAH_LIONS),
+        ]);
+        let [ogre, giant, free, lions_a, lions_b] = creatures[..] else {
+            panic!("five creatures")
+        };
+        state.core.players.get_mut(&P2).unwrap().life = 2;
+        let before = blocks_declared(
+            &admission,
+            state,
+            &[ogre, giant, free],
+            &[(lions_a, ogre), (lions_b, giant)],
         );
 
-        // With one of them blocked, one creature of each owner at most dies
-        // (the other Lions hits P2), and the step is supported.
-        let one = blocks_declared(&admission, state, &[first, second], &[(first_giant, first)]);
-        let (after, product) = pass(&admission, &one);
-        assert_eq!(state_based_actions(&product), [vec![destroyed(first)]]);
-        assert_eq!(graveyard_of(&after, P1).len(), 1);
-        assert!(after.zones.objects.contains_key(&second));
+        let product = submit(&admission, &before, pass_answer(pending(&before))).unwrap();
+        let after = apply(&before, &product);
+        // The game is over, and nothing was asked.
+        assert_eq!(product.next_decision, None);
+        assert!(matches!(
+            product.status,
+            EpisodeStatus::Terminal {
+                reason: mtgml_model::TerminalReason::RulesLoss,
+                ..
+            }
+        ));
+        assert!(after.core.players[&P2].has_lost && !after.core.players[&P1].has_lost);
+        assert!(after.execution.continuations.is_empty());
+        assert!(orders_chosen(&product).is_empty());
+        // One batch: the loss, then the destructions in object order.
+        let mut dying = [ogre, lions_a, lions_b];
+        dying.sort();
+        assert_eq!(
+            state_based_actions(&product),
+            [[
+                vec![mtgml_state::SbaSelectedActionV1::PlayerLoses { player: P2 }],
+                dying.map(destroyed).to_vec()
+            ]
+            .concat()]
+        );
+        // The moves are in object order, so the card of the higher object id
+        // lies on top of P2's graveyard.
+        let moved: Vec<_> = moves(&product)
+            .into_iter()
+            .map(|(old, new, ..)| (old, new))
+            .collect();
+        assert_eq!(moved.iter().map(|(old, _)| *old).collect::<Vec<_>>(), dying);
+        let new_of = |old: GameObjectId| moved.iter().find(|(o, _)| *o == old).unwrap().1;
+        assert_eq!(graveyard_of(&after, P2), [new_of(lions_b), new_of(lions_a)]);
+        assert_eq!(graveyard_of(&after, P1), [new_of(ogre)]);
+        validate_magic_pending_request(&admission, &after, &product.status).unwrap();
+    }
+
+    #[test]
+    fn a_pending_graveyard_order_may_hold_the_lethal_damage_of_its_own_batch_only() {
+        // Restore refuses a creature with lethal damage marked on it at a
+        // decision point (CR 704.5g): it is destroyed before any player has
+        // priority. The creatures of a pending graveyard order are the one
+        // exception: exactly those, and only while that request is pending.
+        let (admission, before, [ogre, giant, lions_a, lions_b]) =
+            ogre_and_giant_blocked_by_two_lions();
+        let at_order = pass(&admission, &before).0;
+        let running = EpisodeStatus::Running;
+        // The creatures that die carry lethal damage: the Ogre and a Lions 2,
+        // the other Lions 3.
+        assert_eq!(
+            [ogre, lions_a, lions_b].map(|creature| marked(&at_order, creature)),
+            [2, 2, 3]
+        );
+        crate::combat::validate_marked_damage(&admission, &at_order).unwrap();
+        validate_magic_pending_request(&admission, &at_order, &running).unwrap();
+
+        // Another creature with lethal damage is refused: the Giant has 3
+        // damage on a toughness of 3 and is not in the batch.
+        let giant_dying = with_marked(&at_order, giant, 3);
+        assert!(crate::combat::validate_marked_damage(&admission, &giant_dying).is_err());
+        assert!(validate_magic_pending_request(&admission, &giant_dying, &running).is_err());
+
+        // Without the pending request the same lethal damage is refused.
+        let mut settled = at_order.clone();
+        settled.execution.pending_decision = None;
+        settled.execution.continuations.clear();
+        assert!(crate::combat::validate_marked_damage(&admission, &settled).is_err());
+        // The creatures that die with the order are those of the batch of the
+        // pending request: none when another request is pending, or none.
+        let awaiting = crate::state_based_actions::creatures_awaiting_the_order;
+        let mut dying = [ogre, lions_a, lions_b];
+        dying.sort();
+        assert_eq!(awaiting(&at_order), dying);
+        assert!(awaiting(&settled).is_empty());
+        let mut elsewhere = at_order.clone();
+        elsewhere
+            .execution
+            .pending_decision
+            .as_mut()
+            .unwrap()
+            .purpose = DecisionPurposeV4::PriorityAction;
+        assert!(awaiting(&elsewhere).is_empty());
+    }
+
+    /// `state` with `edit` applied to the batch and the owners of its pending
+    /// graveyard order.
+    fn with_order(
+        state: &EngineState,
+        edit: impl FnOnce(&mut Vec<mtgml_state::SbaSelectedActionV1>, &mut Vec<PlayerId>),
+    ) -> EngineState {
+        let mut forged = state.clone();
+        let record = forged.execution.continuations.values_mut().next().unwrap();
+        let mtgml_state::ContinuationPayload::MagicSbaGraveyardOrderV1 {
+            selected_sba_actions,
+            apnap_owners,
+            ..
+        } = &mut record.payload
+        else {
+            unreachable!()
+        };
+        edit(selected_sba_actions, apnap_owners);
+        forged
+    }
+
+    #[test]
+    fn a_restored_graveyard_order_the_game_could_not_have_reached_is_refused() {
+        let (admission, before, [ogre, giant, lions_a, lions_b]) =
+            ogre_and_giant_blocked_by_two_lions();
+        let at_order = pass(&admission, &before).0;
+        let running = EpisodeStatus::Running;
+        validate_magic_pending_request(&admission, &at_order, &running).unwrap();
+        let refused = |what: &str, tampered: &EngineState| {
+            assert!(
+                validate_magic_pending_request(&admission, tampered, &running).is_err(),
+                "{what}"
+            );
+        };
+
+        // The batch is exactly what the state calls for (CR 704.3).
+        refused(
+            "a batch that leaves out a creature with lethal damage",
+            &with_order(&at_order, |batch, _| {
+                batch.retain(|action| *action != destroyed(ogre))
+            }),
+        );
+        let mut with_giant = vec![destroyed(giant)];
+        with_giant.extend([ogre, lions_a, lions_b].map(destroyed));
+        with_giant.sort();
+        refused(
+            "a batch with a creature that is not dying",
+            &with_order(&at_order, |batch, _| *batch = with_giant),
+        );
+        refused(
+            "a batch with another cause",
+            &with_order(&at_order, |batch, _| {
+                batch[0] = mtgml_state::SbaSelectedActionV1::ObjectToOwnerGraveyard {
+                    object: ogre,
+                    causes: vec![mtgml_state::SbaObjectCauseV1::ZeroToughness],
+                }
+            }),
+        );
+        refused(
+            "a batch in which a player at 20 life loses",
+            &with_order(&at_order, |batch, _| {
+                batch.insert(
+                    0,
+                    mtgml_state::SbaSelectedActionV1::PlayerLoses { player: P1 },
+                )
+            }),
+        );
+        // The owners asked are those with two or more dying cards, in APNAP
+        // order, and no one else.
+        refused(
+            "an owner with one dying card asked too",
+            &with_order(&at_order, |_, owners| *owners = vec![P1, P2]),
+        );
+        refused(
+            "the wrong owner asked",
+            &with_order(&at_order, |_, owners| *owners = vec![P1]),
+        );
+        refused(
+            "nobody asked",
+            &with_order(&at_order, |_, owners| owners.clear()),
+        );
+
+        // CR 704.5g: a creature outside the batch with lethal damage.
+        refused(
+            "lethal damage outside the batch",
+            &with_marked(&at_order, giant, 3),
+        );
+
+        // Owner decision 2026-10-01: a batch with a loss never asks for an
+        // order. P2 at 0 life is a loss the state calls for, and a batch that
+        // lists it is the batch the state calls for, yet it is refused.
+        let mut at_zero = at_order.clone();
+        at_zero.core.players.get_mut(&P2).unwrap().life = 0;
+        let losing = with_order(&at_zero, |batch, _| {
+            batch.insert(
+                0,
+                mtgml_state::SbaSelectedActionV1::PlayerLoses { player: P2 },
+            )
+        });
+        assert!(
+            crate::state_based_actions::validate_pending_graveyard_order(&admission, &losing)
+                .is_err()
+        );
+        refused("a batch with a loss that asks for an order", &losing);
+        refused("a player at 0 life who has not lost", &at_zero);
+
+        // It rests in the combat damage step, before anyone has priority.
+        let mut elsewhere = at_order.clone();
+        elsewhere.core.position = TurnPosition::Combat {
+            step: CombatStep::EndOfCombat,
+        };
+        refused("another step", &elsewhere);
+        let mut priority = at_order.clone();
+        priority.core.priority = PriorityState::HeldBy {
+            player: P1,
+            consecutive_passes: 0,
+        };
+        refused("priority held", &priority);
+        assert!(validate_magic_pending_request(
+            &admission,
+            &at_order,
+            &EpisodeStatus::Terminal {
+                reason: mtgml_model::TerminalReason::RulesLoss,
+                players: Vec::new(),
+            }
+        )
+        .is_err());
+
+        // The request is the one the continuation calls for.
+        let tampered = |edit: &dyn Fn(&mut AuthoritativeDecisionRequest)| {
+            let mut state = at_order.clone();
+            edit(state.execution.pending_decision.as_mut().unwrap());
+            state
+        };
+        refused(
+            "the active player as the actor",
+            &tampered(&|request| request.actor = P1),
+        );
+        refused(
+            "a public request",
+            &tampered(&|request| request.visibility = DecisionVisibility::Public),
+        );
+        refused(
+            "a domain wider than the cards",
+            &tampered(&|request| {
+                request.decision_domain_v2 = DecisionDomainV2::Order {
+                    minimum: 1,
+                    maximum: 2,
+                }
+            }),
+        );
+        refused(
+            "no continuation",
+            &tampered(&|request| request.continuation_id = None),
+        );
+        refused(
+            "another purpose",
+            &tampered(&|request| request.purpose = DecisionPurposeV4::TriggerOrder),
+        );
+        refused(
+            "a card never offered",
+            &tampered(&|request| {
+                request.candidates.pop();
+            }),
+        );
     }
 
     #[test]

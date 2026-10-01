@@ -751,7 +751,12 @@ fn marked_damage_may_exist(state: &EngineState) -> bool {
 ///   its toughness (CR 704.5g; with toughness 0 or less it is destroyed as
 ///   well, CR 704.5f, which no card of this slice has). It is destroyed by the
 ///   state-based actions before any player has priority (CR 704.3), so no
-///   game rests there.
+///   game rests there. The one exception is a decision made in the middle of
+///   those actions: while an owner is asked for the order of their cards
+///   (CR 404.3), the creatures that die with that order are still on the
+///   battlefield with their lethal damage (see
+///   `crate::state_based_actions::creatures_awaiting_the_order`), and only
+///   those.
 pub(crate) fn validate_marked_damage(
     admission: &ExecutableProfileAdmissionV1,
     state: &EngineState,
@@ -766,11 +771,14 @@ pub(crate) fn validate_marked_damage(
     }) {
         return Err(Error::TurnProgressUnsupported);
     }
+    let dying = crate::state_based_actions::creatures_awaiting_the_order(state);
     for creature in &creatures {
         let permanent = permanents
             .get(&creature.object)
             .ok_or(Error::InvalidResult)?;
-        if i128::from(permanent.marked_damage) >= i128::from(creature.toughness) {
+        if i128::from(permanent.marked_damage) >= i128::from(creature.toughness)
+            && !dying.contains(&creature.object)
+        {
             return Err(Error::TurnProgressUnsupported);
         }
     }
