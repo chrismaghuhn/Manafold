@@ -125,7 +125,7 @@ and the position is the combat damage step after the damage was dealt.
   `a_creature_that_dies_is_removed_from_combat_but_its_attacker_stays_blocked`,
   `the_prune_removes_a_departed_permanent`,
   `both_players_losing_at_once_fails_closed`,
-  `two_creatures_dying_together_ask_their_owner_for_the_order`,
+  `the_owner_of_two_dying_cards_alone_is_asked_for_the_order`,
   `an_owner_is_offered_their_cards_in_the_order_of_their_opaque_ids`,
   `owners_are_asked_in_turn_order_and_the_batch_waits_for_the_last`,
   `a_player_losing_in_the_same_batch_skips_the_graveyard_order`,

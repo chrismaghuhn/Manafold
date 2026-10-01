@@ -108,8 +108,9 @@ combat, its attackers are creatures on the battlefield that the active player
 controls, it attacks the other player, and its blocks are ones the declare
 blockers step could have made (see `rules/declare-blockers`). From the combat
 damage step on, a combat with attackers has dealt its damage: the turn-based
-action runs on entering the step, so no game rests there before it. Anything
-else fails closed, for priority requests too.
+action runs on entering the step, so no game rests there before it, and the end
+of combat step is reached only through it (CR 508.8, 510.1; with no attackers
+the step is skipped). Anything else fails closed, for priority requests too.
 
 ## Conformance, property, replay, and performance evidence
 
@@ -133,7 +134,9 @@ else fails closed, for priority requests too.
   `a_restored_combat_needs_attackers_the_active_player_controls`,
   `a_restored_combat_is_in_a_combat_step_it_could_be_in`,
   `a_restored_combat_without_attackers_may_have_a_defender_with_a_creature`,
-  `every_boundary_of_an_attack_validates`.
+  `every_boundary_of_an_attack_validates`; in
+  `crates/mtgml-state/src/tests/validation.rs`:
+  `an_end_of_combat_with_attackers_has_dealt_their_damage`.
 - Production-endpoint cases in `crates/mtgml-environment/tests/creature_game.rs`:
   `an_unblocked_attack_lowers_the_defenders_life` and
   `a_restored_combat_the_game_could_not_reach_is_refused`.
@@ -141,8 +144,9 @@ else fails closed, for priority requests too.
   `declaring_no_block_declares_an_empty_block_and_the_attack_stays_unblocked`
   (two unblocked attackers lower the defender's life by their powers),
   `a_3_3_blocked_by_a_2_1_kills_it_and_survives`,
-  `a_2_2_and_a_2_1_that_block_each_other_both_die_one_to_each_graveyard` and
-  `a_restored_combat_after_a_blocker_died_continues_identically`.
+  `a_2_2_and_a_2_1_that_block_each_other_both_die_one_to_each_graveyard`,
+  `a_restored_combat_after_a_blocker_died_continues_identically` and
+  `a_restored_end_of_combat_has_dealt_the_damage_of_its_attackers`.
 - Random smoke games in `crates/mtgml-environment/tests/random_smoke.rs`:
   `asymmetric_games_cast_attack_and_end_at_zero_life` plays ten seeded games of a
   creature deck against a land deck, in which creatures attack and unblocked

@@ -378,6 +378,11 @@ that show the behaviour in a real game flow (AGENTS.md §5).
        - a half-declared block is invisible to the attacker.
    - **3b.** Damage division, observation of blocks and damage, and symmetric
      creature smoke decks. The smoke games switch only at 3b.
+     - The blockers record must express "blocking, attacker gone" before blocks
+       are observed (CR 509.1g). 3a drops a surviving blocker whose attacker
+       died, a known divergence that nothing reads yet
+       (`docs/rules/capabilities/rules/declare-blockers.md`, "Known
+       divergence").
      - Red tests:
        - Hill Giant blocked by Lions and Ogre can assign 0/3, 1/2, 2/1 and
          3/0;

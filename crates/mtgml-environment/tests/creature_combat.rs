@@ -1563,6 +1563,88 @@ fn a_restored_combat_after_a_blocker_died_continues_identically() {
     assert_eq!(game.checkpoint(), last);
 }
 
+#[test]
+fn a_restored_end_of_combat_has_dealt_the_damage_of_its_attackers() {
+    // CR 508.8, 510.1, 510.2: with attackers declared the combat damage step
+    // always runs, so a combat that reaches the end of combat step with
+    // attackers still in it has dealt its damage. Without attackers the step
+    // is skipped, and a combat whose attackers all died has dealt its damage
+    // too: both are states the game reaches, and restore them.
+    let at_end_of_combat = |state: &EngineState| {
+        state.core.position
+            == TurnPosition::Combat {
+                step: CombatStep::EndOfCombat,
+            }
+    };
+    let admission = creature_game_admission();
+    let restore = |game: &Game, state: EngineState| {
+        let reached = game.checkpoint();
+        let checkpoint = EnvironmentCheckpointV8::new_for_basic_land_profile(
+            &admission,
+            state,
+            reached.status.clone(),
+            reached.limit_counters.clone(),
+            reached.execution_identity.clone(),
+        )
+        .map_err(|error| format!("{error:?}"))?;
+        game.controller
+            .restore(checkpoint)
+            .map_err(|error| format!("{error:?}"))
+    };
+
+    // P1's Hill Giant attacks, and P2 does not block with its Savannah Lions.
+    // The Giant is still attacking at the end of combat and nothing is marked
+    // on any creature, so only the flag says that its damage was dealt.
+    let [_, _, giant] = creature_definitions();
+    let (game, giant_object, _) = attacker_against_a_lions(giant, 4);
+    let state = game.state();
+    game.declare_attackers(&[opaque_of(&state, P1, giant_object)]);
+    game.pass_until(at_end_of_combat);
+    let reached = game.checkpoint();
+    let combat = reached.state.combat.as_ref().unwrap();
+    assert_eq!(combat.attackers, [giant_object]);
+    assert!(combat.damage_step_completed);
+    assert!(combat.blockers.is_empty() && combat.blocked_attackers.is_empty());
+    assert!(reached
+        .state
+        .card_rules
+        .permanents
+        .permanents
+        .values()
+        .all(|permanent| permanent.marked_damage == 0));
+    restore(&game, reached.state.clone()).unwrap();
+    assert_eq!(game.checkpoint(), reached);
+
+    // The same combat with its damage undealt is not one the game makes.
+    let mut undealt = reached.state.clone();
+    undealt.combat.as_mut().unwrap().damage_step_completed = false;
+    assert!(restore(&game, undealt).is_err());
+    assert_eq!(game.checkpoint(), reached);
+
+    // Both attackers of a fight die: the combat has none left, and its damage
+    // was dealt.
+    let [_, ogre, _] = creature_definitions();
+    let (game, ogre_object, _) = attacker_against_a_lions(ogre, 3);
+    attack_and_block(&game, ogre_object);
+    game.answer(pass, pass);
+    game.pass_until(at_end_of_combat);
+    let reached = game.checkpoint();
+    let combat = reached.state.combat.as_ref().unwrap();
+    assert!(combat.attackers.is_empty() && combat.damage_step_completed);
+    restore(&game, reached.state.clone()).unwrap();
+    assert_eq!(game.checkpoint(), reached);
+
+    // No attacker is declared: the combat has no damage step, and its flag
+    // stays false.
+    let (game, _, _) = attacker_against_a_lions(giant, 4);
+    game.pass_until(at_end_of_combat);
+    let reached = game.checkpoint();
+    let combat = reached.state.combat.as_ref().unwrap();
+    assert!(combat.attackers.is_empty() && !combat.damage_step_completed);
+    restore(&game, reached.state.clone()).unwrap();
+    assert_eq!(game.checkpoint(), reached);
+}
+
 /// The cards in `owner`'s graveyard, top first.
 fn graveyard_of(state: &EngineState, owner: PlayerId) -> Vec<GameObjectId> {
     let key = ZoneLocation {

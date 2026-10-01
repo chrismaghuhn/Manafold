@@ -471,9 +471,14 @@ pub(crate) fn declare_block(
 ///   controls (CR 508.1a), and they attack the other player (CR 506.2);
 /// - each attacker is tapped (CR 508.1f) and has been under its controller's
 ///   control since the turn began (CR 302.6, 508.1a);
-/// - the damage step with attackers has dealt its damage (CR 510.1, 510.3):
-///   the turn-based action runs on entering the step, so no game rests there
-///   before it;
+/// - a combat with attackers has dealt its damage from the damage step on
+///   (CR 508.8, 510.1, 510.3): the turn-based action runs on entering the step,
+///   so no game rests there before it, and the end of combat step is reached
+///   only through it. The damage step is checked here. The end of combat step
+///   is checked by the state's structural validation (`validate_combat` in
+///   `mtgml-state`), which a restored or committed state passes before this
+///   function runs. With no attackers the step is skipped (CR 508.8) and the
+///   flag stays false;
 /// - no attacker is blocked while attackers are still being declared
 ///   (CR 509.1, 508.2), and every blocker is an untapped creature the defending
 ///   player controls (CR 509.1a): nothing taps a blocker once it blocks. An
@@ -564,11 +569,13 @@ pub(crate) fn validate_reachable_combat(
 
 /// CR 506.4: the creature `object`, which leaves the battlefield, is removed
 /// from combat and stops being an attacking, blocking, blocked creature.
-/// - An attacker leaves `attackers` and `blocked_attackers`. The creatures that
-///   blocked it remain blocking creatures (CR 509.1g) with nothing to block,
-///   and a creature that blocks nothing assigns no combat damage (CR 510.1d)
-///   as one that never blocked does. The combat records a block as the
-///   attacker its blocker blocks, so they leave the blocks with it.
+/// - An attacker leaves `attackers` and `blocked_attackers`, and the entries of
+///   the creatures that blocked it are dropped from `blockers`. That is a known
+///   divergence from CR 509.1g, which keeps them blocking creatures until combat
+///   ends: the combat records a block as the attacker its blocker blocks, so a
+///   blocker whose attacker is gone has no record (see "Known divergence" in
+///   `docs/rules/capabilities/rules/declare-blockers.md`). Nothing of this slice
+///   reads them afterwards.
 /// - A blocker leaves the blocks. The attacker it blocked stays blocked with no
 ///   blocker left (CR 509.1h): it stays in `blocked_attackers`.
 pub(crate) fn remove_from_combat(next: &mut EngineState, object: GameObjectId) {

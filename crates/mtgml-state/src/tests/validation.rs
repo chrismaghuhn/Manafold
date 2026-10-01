@@ -357,6 +357,33 @@ fn a_blocked_attacker_stays_blocked_without_a_blocker() {
 }
 
 #[test]
+fn an_end_of_combat_with_attackers_has_dealt_their_damage() {
+    // CR 508.8, 510.1, 510.2: with attackers declared the combat damage step
+    // always runs, so the end of combat step is reached with its damage dealt.
+    // Without attackers the step is skipped and the flag stays false.
+    let mut state = combat_before_blocks();
+    state.core.position = TurnPosition::Combat {
+        step: crate::CombatStep::EndOfCombat,
+    };
+    assert_eq!(
+        validate_engine_state(&state),
+        Err(EngineStateViolation::CombatState)
+    );
+
+    state.combat.as_mut().unwrap().damage_step_completed = true;
+    validate_engine_state(&state).unwrap();
+
+    // Every attacker died in the damage step: none is left, and its damage
+    // was dealt.
+    state.combat.as_mut().unwrap().attackers.clear();
+    validate_engine_state(&state).unwrap();
+
+    // Nobody attacked: no damage step, and its damage was never dealt.
+    state.combat.as_mut().unwrap().damage_step_completed = false;
+    validate_engine_state(&state).unwrap();
+}
+
+#[test]
 fn a_blocker_of_the_attacking_player_is_rejected() {
     // CR 509.1a: the defending player chooses the blockers.
     let mut state = combat_before_blocks();

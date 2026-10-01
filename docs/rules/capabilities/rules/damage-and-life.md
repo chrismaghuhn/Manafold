@@ -108,7 +108,7 @@ this slice does not support: the transition fails closed.
   `combat_damage_to_creatures_must_match_the_blocks_and_the_marked_damage`,
   `marked_damage_changed_must_match_the_states`,
   `marked_damage_falls_only_when_the_cleanup_step_ends`.
-- State cases in `crates/mtgml-state/src/tests/` and `semantic_mutations`:
+- State cases in `crates/mtgml-state/src/tests/permanents.rs`:
   `the_digest_binds_the_marked_damage_of_each_permanent`,
   `marking_damage_adds_to_the_damage_marked_and_fails_without_a_permanent`,
   `removing_marked_damage_clears_every_permanent_and_reports_those_that_had_some`,

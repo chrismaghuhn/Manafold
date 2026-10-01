@@ -4068,10 +4068,15 @@ mod tests {
             [vec![destroyed(lions), destroyed(blocking_lions)]]
         );
         let combat = after.combat.as_ref().unwrap();
-        // The attacker that died is no longer attacking or blocked, and the
-        // creature that blocked it blocks nothing: nothing of it is left.
-        // The blocker that died is gone, and the Giant it blocked is still
-        // attacking, and still blocked.
+        // The attacker that died is no longer attacking or blocked. Known
+        // divergence: CR 509.1g keeps the creature that blocked it (P2's Hill
+        // Giant) a blocking creature until combat ends, but the combat records
+        // a block as the attacker its blocker blocks, so its entry is dropped
+        // with the attacker (`rules/declare-blockers`, "Known divergence").
+        // The assertion that no blocker is left pins that divergence; a fix
+        // that keeps the creature blocking changes it. The blocker that died
+        // is gone, and the Giant it blocked is still attacking, and still
+        // blocked (CR 509.1h).
         assert_eq!(combat.attackers, [giant]);
         assert_eq!(combat.blocked_attackers, [giant].into());
         assert!(combat.blockers.is_empty());
@@ -4278,7 +4283,7 @@ mod tests {
     }
 
     #[test]
-    fn two_creatures_dying_together_ask_their_owner_for_the_order() {
+    fn the_owner_of_two_dying_cards_alone_is_asked_for_the_order() {
         // CR 404.3, 704.3: two cards put into one graveyard at the same time
         // are arranged by their owner. P1's Gray Ogre and Hill Giant attack;
         // P2's Savannah Lions block them. The Ogre and both Lions die, the

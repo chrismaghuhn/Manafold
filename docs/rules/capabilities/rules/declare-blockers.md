@@ -72,7 +72,10 @@ matter once blocking creatures are observed or read after the damage step. The
 record has to be fixed before blocks are observed (see
 `docs/INFORMATION_MODEL.md`) so that a blocker whose attacker has died is still a
 blocking creature that blocks nothing. The reverse case follows the rule: a
-blocker that dies leaves its attacker blocked.
+blocker that dies leaves its attacker blocked. The divergence is pinned by
+`a_creature_that_dies_is_removed_from_combat_but_its_attacker_stays_blocked` in
+`crates/mtgml-rules/src/turn_progression.rs`, whose assertion that no blocker is
+left is the divergence: a fix has to change it.
 
 ## State and identity model
 
@@ -144,11 +147,13 @@ was.
   `a_restored_blocker_is_a_creature_the_defending_player_controls`,
   `a_restored_tapped_blocker_is_refused`,
   `a_restored_blocked_attacker_without_a_blocker_is_accepted`.
-- State cases in `crates/mtgml-state/src/tests/`:
+- State cases in `crates/mtgml-state/src/tests/validation.rs`:
   `two_blockers_on_one_attacker_validate`,
   `a_blocked_attacker_stays_blocked_without_a_blocker`,
-  `a_block_makes_its_attacker_blocked`,
-  `the_combat_digest_binds_blockers_and_blocked_attackers`,
+  `a_block_makes_its_attacker_blocked`; in
+  `crates/mtgml-state/src/tests/digest.rs`:
+  `the_combat_digest_binds_blockers_and_blocked_attackers`; and in
+  `crates/mtgml-state/src/digest.rs`:
   `the_block_declaration_digest_binds_every_field`.
 - Event projection case in `crates/mtgml-rules/src/events.rs`:
   `declared_blockers_must_match_the_blocks_in_the_combat`.
