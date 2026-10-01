@@ -200,6 +200,28 @@ pub enum AuthoritativeRuleEventKind {
         post_replacement_amount: u32,
         damage_kind: DamageKind,
     },
+    /// CR 103.1: the chooser picked who takes the first turn. Public.
+    StartingPlayerChosen {
+        chooser: PlayerId,
+        starting_player: PlayerId,
+    },
+    /// CR 103.5: a player kept their hand (`mulligan: false`) or took a
+    /// mulligan. Public.
+    MulliganDeclared {
+        player: PlayerId,
+        mulligan: bool,
+    },
+    /// CR 103.3, 701.24: one library was shuffled. A trusted audit of the
+    /// draw (RNG_CONTRACT.md): the stream, its cursors and the resulting
+    /// order. Never projected.
+    LibraryShuffled {
+        player: PlayerId,
+        stream: RandomStreamKeyV1,
+        cursor_before: u64,
+        cursor_after: u64,
+        raw_words_consumed: u64,
+        top_to_bottom: Vec<GameObjectId>,
+    },
 }
 
 impl AuthoritativeRuleEventKind {
@@ -445,6 +467,34 @@ impl AuthoritativeRuleEventKind {
                 recipient: *recipient,
                 post_replacement_amount: *post_replacement_amount,
                 damage_kind: *damage_kind,
+            }],
+            Self::StartingPlayerChosen {
+                chooser,
+                starting_player,
+            } => vec![SemanticDeltaOperation::StartingPlayerChosen {
+                chooser: *chooser,
+                starting_player: *starting_player,
+            }],
+            Self::MulliganDeclared { player, mulligan } => {
+                vec![SemanticDeltaOperation::MulliganDeclared {
+                    player: *player,
+                    mulligan: *mulligan,
+                }]
+            }
+            Self::LibraryShuffled {
+                player,
+                stream,
+                cursor_before,
+                cursor_after,
+                raw_words_consumed,
+                top_to_bottom,
+            } => vec![SemanticDeltaOperation::LibraryShuffled {
+                player: *player,
+                stream: *stream,
+                cursor_before: *cursor_before,
+                cursor_after: *cursor_after,
+                raw_words_consumed: *raw_words_consumed,
+                top_to_bottom: top_to_bottom.clone(),
             }],
         }
     }
@@ -886,6 +936,8 @@ fn is_projectable_public_source_event(event: &AuthoritativeRuleEventKind) -> boo
             | AuthoritativeRuleEventKind::TemporaryEffectExpired { .. }
             | AuthoritativeRuleEventKind::ZoneTransition { .. }
             | AuthoritativeRuleEventKind::ObjectTapped { .. }
+            | AuthoritativeRuleEventKind::StartingPlayerChosen { .. }
+            | AuthoritativeRuleEventKind::MulliganDeclared { .. }
     )
 }
 
@@ -971,7 +1023,10 @@ fn validate_delta_operation_projection_v3(
         | SemanticDeltaOperation::ObjectEntered { .. }
         | SemanticDeltaOperation::AbilityAuthorityAdded { .. }
         | SemanticDeltaOperation::AbilityAuthorityRemoved { .. }
-        | SemanticDeltaOperation::DamageApplied { .. } => true,
+        | SemanticDeltaOperation::DamageApplied { .. }
+        | SemanticDeltaOperation::StartingPlayerChosen { .. }
+        | SemanticDeltaOperation::MulliganDeclared { .. }
+        | SemanticDeltaOperation::LibraryShuffled { .. } => true,
         SemanticDeltaOperation::StackOrderChanged { from, to } => {
             &before.zones.stack_order == from && &after.zones.stack_order == to
         }
@@ -1203,7 +1258,21 @@ fn validate_event_projection_v3(
 ) -> Result<(), EventDeltaError> {
     let valid = match event {
         // Checked as one chain by `validate_zone_transition_chain`.
-        AuthoritativeRuleEventKind::ZoneTransition { .. } => true,
+        AuthoritativeRuleEventKind::ZoneTransition { .. }
+        | AuthoritativeRuleEventKind::LibraryShuffled { .. } => true,
+        AuthoritativeRuleEventKind::StartingPlayerChosen {
+            chooser,
+            starting_player,
+        } => {
+            game_start_of(before)
+                .is_some_and(|start| start.chooser == *chooser && start.starting_player.is_none())
+                && game_start_of(after)
+                    .is_some_and(|start| start.starting_player == Some(*starting_player))
+        }
+        AuthoritativeRuleEventKind::MulliganDeclared { player, .. } => game_start_of(before)
+            .is_some_and(|start| {
+                start.stage == mtgml_state::GameStartStage::Declaring { player: *player }
+            }),
         AuthoritativeRuleEventKind::ObjectCeasedToExist { object } => {
             before.zones.objects.contains_key(object) && !after.zones.objects.contains_key(object)
         }
@@ -1572,6 +1641,17 @@ fn validate_event_projection_v3(
     }
 }
 
+fn game_start_of(state: &EngineState) -> Option<&mtgml_state::GameStartContinuation> {
+    state
+        .execution
+        .continuations
+        .values()
+        .find_map(|record| match &record.payload {
+            mtgml_state::ContinuationPayload::GameStart(start) => Some(start),
+            _ => None,
+        })
+}
+
 /// Zone transitions compose (CR 400.7: every move makes a new object). They
 /// are replayed in event order over a copy of the before zones: each move must
 /// start from where its card lies at that moment, and the replay must end in
@@ -1584,10 +1664,58 @@ fn validate_zone_transition_chain(
 ) -> Result<(), EventDeltaError> {
     let mismatch = || EventDeltaError::Mismatch;
     let mut zones = before.zones.clone();
+    let mut cursors = before.random.streams.clone();
+    let mut shuffled_streams = std::collections::BTreeSet::new();
     let mut left = std::collections::BTreeSet::new();
     let mut created = std::collections::BTreeSet::new();
     let mut ordered = std::collections::BTreeSet::new();
     for event in events {
+        if let AuthoritativeRuleEventKind::LibraryShuffled {
+            player,
+            stream,
+            cursor_before,
+            cursor_after,
+            raw_words_consumed,
+            top_to_bottom,
+        } = &event.event
+        {
+            if *stream
+                != RandomStreamKeyV1::player_scoped(
+                    mtgml_random::RandomStreamKindV1::LibraryShuffle,
+                    player.0,
+                )
+                || cursors.get(stream).map(|cursor| cursor.next_raw_u64) != Some(*cursor_before)
+            {
+                return Err(mismatch());
+            }
+            let key = library_key(*player);
+            let mut order = zones
+                .ordered_zones
+                .get(&key)
+                .cloned()
+                .ok_or_else(mismatch)?;
+            let (consumed, cursor) = mtgml_random::sampling::shuffle(
+                &mut order,
+                &before.random.root_seed,
+                stream,
+                &mtgml_random::RandomStreamCursorV1 {
+                    next_raw_u64: *cursor_before,
+                },
+            )
+            .map_err(|_| mismatch())?;
+            if &order != top_to_bottom
+                || consumed != *raw_words_consumed
+                || cursor.next_raw_u64 != *cursor_after
+            {
+                return Err(mismatch());
+            }
+            zones.ordered_zones.insert(key.clone(), order);
+            rewitness_ordered_zone(&mut zones, &key)?;
+            ordered.insert(key);
+            cursors.insert(*stream, cursor);
+            shuffled_streams.insert(*stream);
+            continue;
+        }
         let AuthoritativeRuleEventKind::ZoneTransition { transition } = &event.event else {
             continue;
         };
@@ -1646,7 +1774,10 @@ fn validate_zone_transition_chain(
         after.zones.objects.get(id) == zones.objects.get(id)
             && after.zones.locations.get(id) == zones.locations.get(id)
     };
-    if left.iter().any(|id| after.zones.objects.contains_key(id))
+    if shuffled_streams
+        .iter()
+        .any(|stream| after.random.streams.get(stream) != cursors.get(stream))
+        || left.iter().any(|id| after.zones.objects.contains_key(id))
         || !created.iter().all(objects_match)
         || ordered.iter().any(|key| {
             let members = zones.ordered_zones.get(key);
@@ -1657,6 +1788,18 @@ fn validate_zone_transition_chain(
         return Err(mismatch());
     }
     Ok(())
+}
+
+/// The ordered zone of `player`'s face-down library.
+fn library_key(player: PlayerId) -> mtgml_state::ZoneKey {
+    mtgml_state::ZoneLocation {
+        zone: mtgml_model::ZoneKind::Library,
+        player: Some(player),
+        position: mtgml_state::ZonePosition::Top { offset: 0 },
+        visibility: mtgml_state::VisibilityPartition::FaceDown,
+        partition: None,
+    }
+    .key()
 }
 
 /// Every member of an ordered zone sits at `Top { offset }` equal to its

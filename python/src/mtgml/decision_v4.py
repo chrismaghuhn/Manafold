@@ -73,6 +73,9 @@ _PURPOSE_CANDIDATES = {
     "trigger_order": {"select_trigger"},
     "trigger_target": {"select_object", "select_player"},
     "synthetic_assembly": {"select_object"},
+    "starting_player": {"select_player"},
+    "mulligan_declaration": {"choose_boolean"},
+    "mulligan_bottom": {"select_object"},
 }
 _PURPOSE_DOMAINS = {
     "priority_action": {"choose_one"},
@@ -90,6 +93,9 @@ _PURPOSE_DOMAINS = {
     "trigger_order": {"order"},
     "trigger_target": {"choose_one", "choose_many"},
     "synthetic_assembly": {"choose_one", "choose_number", "choose_many", "order"},
+    "starting_player": {"choose_one"},
+    "mulligan_declaration": {"choose_one"},
+    "mulligan_bottom": {"order"},
 }
 
 
@@ -1052,6 +1058,9 @@ class DecisionPurposeV4:
             "priority_action": set(),
             "attacker_declaration": set(),
             "hand_size_discard": set(),
+            "starting_player": set(),
+            "mulligan_declaration": set(),
+            "mulligan_bottom": set(),
             "sba_graveyard_order": set(),
             "cast_cost_route": set(),
             "mode_selection": {"mode_slot"},
@@ -1129,6 +1138,9 @@ class DecisionPurposeV4:
             "priority_action": set(),
             "attacker_declaration": set(),
             "hand_size_discard": set(),
+            "starting_player": set(),
+            "mulligan_declaration": set(),
+            "mulligan_bottom": set(),
             "sba_graveyard_order": set(),
             "cast_cost_route": set(),
             "mode_selection": {"mode_slot"},
@@ -1228,11 +1240,16 @@ class PlayerDecisionRequestV4:
         self.purpose.validate()
         if self.decision_domain_v2.kind not in _PURPOSE_DOMAINS[self.purpose.kind]:
             raise WireError("semantic.decision", "decision domain is incompatible with purpose")
-        if self.purpose.kind == "hand_size_discard" and (
+        if self.purpose.kind in {"hand_size_discard", "mulligan_bottom"} and (
             self.decision_domain_v2.minimum != self.decision_domain_v2.maximum
             or (self.decision_domain_v2.minimum or 0) < 1
         ):
-            raise WireError("semantic.decision", "hand-size discard needs an exact positive count")
+            raise WireError("semantic.decision", "this request needs an exact positive count")
+        if (
+            self.purpose.kind in {"starting_player", "mulligan_declaration"}
+            and self.visibility != "public"
+        ):
+            raise WireError("semantic.decision", "game-start declaration request is not public")
         if (
             self.purpose.kind
             in {
@@ -1241,6 +1258,7 @@ class PlayerDecisionRequestV4:
                 "hand_size_discard",
                 "sba_graveyard_order",
                 "cast_cost_route",
+                "mulligan_bottom",
             }
             and self.visibility != "acting_player_only"
         ):

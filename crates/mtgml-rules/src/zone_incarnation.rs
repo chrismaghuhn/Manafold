@@ -68,6 +68,22 @@ fn validate_old_references(
 pub(crate) enum ZoneMoveEvent {
     Transition(Box<ZoneTransition>),
     Occurrence(PerspectiveLifecycleAuditV1),
+    /// One library was shuffled (CR 701.24); the trusted audit of the draw.
+    Shuffle(Box<LibraryShuffleAudit>),
+    /// A public rule event; every player's occurrence follows it.
+    Public(Box<crate::AuthoritativeRuleEventKind>),
+}
+
+/// The draw of one library shuffle: the stream, its cursors, the words it
+/// consumed and the resulting order, top to bottom.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct LibraryShuffleAudit {
+    pub player: mtgml_model::PlayerId,
+    pub stream: mtgml_random::RandomStreamKeyV1,
+    pub cursor_before: u64,
+    pub cursor_after: u64,
+    pub raw_words_consumed: u64,
+    pub top_to_bottom: Vec<GameObjectId>,
 }
 
 fn emit_perspective_occurrence(

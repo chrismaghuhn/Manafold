@@ -49,7 +49,7 @@ pub use digest::{
     calculate_full_state_digest, calculate_full_state_digest_structural_only,
     canonical_state_bytes, full_state_digest_from_payload, StateDigestError,
 };
-pub use engine::{EngineState, EngineStateError};
+pub use engine::{EngineState, EngineStateError, STARTING_HAND_SIZE};
 pub use engine_state_shape::{
     AssemblyStageV2, KnowledgeInvalidationV2, KnowledgeRecordV2, KnowledgeStateV2,
     KnownLocationFactV2, PerspectiveIdentityRecordV2, PerspectiveIdentityStateV2,
@@ -75,13 +75,14 @@ pub use semantic_mutations::{
 pub use shared_execution::{
     AbilitySourceContext, ActionCostFacts, AttackerFact, CastContinuation, CastContinuationStage,
     CompletedTriggerOrder, ContinuationPayload, ContinuationRecord, CostFacts, CostRoute,
-    DamageKind, DamageRecipient, EffectExpiry, EffectTimestamp, LifeChangeCause, ManaCost,
-    ManaPaymentStage, ManaPaymentStaging, ManaSourceActivation, ManaSourceActivationCost,
-    ModeBinding, NonManaActivationContinuation, NonManaActivationStage, PendingTriggerRecord,
-    ReservedNonManaCost, SelectedCostOperand, SelectedTriggerTarget, SourceContext,
-    StackItemPayload, StackResolutionContinuation, StackResolutionStage, TargetBinding, TargetRef,
-    TemporaryEffectRecord, TemporaryKeyword, TemporaryOperation, TriggerActorRequestRoot,
-    TriggerEventSnapshot, TriggerPlacementContinuation, TriggerTargetTiming,
+    DamageKind, DamageRecipient, EffectExpiry, EffectTimestamp, GameStartContinuation,
+    GameStartStage, LifeChangeCause, ManaCost, ManaPaymentStage, ManaPaymentStaging,
+    ManaSourceActivation, ManaSourceActivationCost, ModeBinding, NonManaActivationContinuation,
+    NonManaActivationStage, PendingTriggerRecord, ReservedNonManaCost, SelectedCostOperand,
+    SelectedTriggerTarget, SourceContext, StackItemPayload, StackResolutionContinuation,
+    StackResolutionStage, TargetBinding, TargetRef, TemporaryEffectRecord, TemporaryKeyword,
+    TemporaryOperation, TriggerActorRequestRoot, TriggerEventSnapshot,
+    TriggerPlacementContinuation, TriggerTargetTiming,
 };
 pub use validation::{validate_engine_state, EngineStateViolation};
 pub use zones::{

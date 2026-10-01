@@ -128,6 +128,17 @@ pub enum ObservedEventKindV4 {
     TemporaryEffectExpired {
         effect: PublicTemporaryEffectV1,
     },
+    /// CR 103.1: the chooser picked who takes the first turn.
+    StartingPlayerChosen {
+        chooser: PlayerId,
+        starting_player: PlayerId,
+    },
+    /// CR 103.5: a player kept their hand (`mulligan: false`) or took a
+    /// mulligan.
+    MulliganDeclared {
+        player: PlayerId,
+        mulligan: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -205,5 +216,46 @@ impl ObservedEventEnvelopeV4 {
             _ => {}
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn game_start_events_round_trip_as_public_wire_values() {
+        for (event, json) in [
+            (
+                ObservedEventKindV4::StartingPlayerChosen {
+                    chooser: PlayerId(2),
+                    starting_player: PlayerId(1),
+                },
+                serde_json::json!({
+                    "kind": "starting_player_chosen",
+                    "chooser": "2",
+                    "starting_player": "1",
+                }),
+            ),
+            (
+                ObservedEventKindV4::MulliganDeclared {
+                    player: PlayerId(1),
+                    mulligan: true,
+                },
+                serde_json::json!({"kind": "mulligan_declared", "player": "1", "mulligan": true}),
+            ),
+        ] {
+            let envelope = ObservedEventEnvelopeV4 {
+                schema_version: OBSERVED_EVENT_SCHEMA_V4.into(),
+                sequence: VisibleSequence(3),
+                event,
+            };
+            envelope.validate().unwrap();
+            assert_eq!(serde_json::to_value(&envelope.event).unwrap(), json);
+            assert_eq!(
+                serde_json::from_value::<ObservedEventKindV4>(json).unwrap(),
+                envelope.event
+            );
+        }
     }
 }

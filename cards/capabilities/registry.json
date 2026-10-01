@@ -249,6 +249,32 @@
     },
     {
       "authority_refs": [
+        "wotc-cr-2026-09-25-txt-20260925-sha256-8d860e451f20f38865b725b42d82feb714c725373dd8f3b32b8652b3eeb070ca"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/draw-card",
+        "rules/turn-structure",
+        "rules/zone-incarnation"
+      ],
+      "implementation_paths": [
+        "crates/mtgml-rules/src/game_start.rs"
+      ],
+      "information_risk": "high",
+      "key": "rules/game-start",
+      "lifecycle": "specified",
+      "notes": "Specified for the first game of a two-player match with admitted basic-land decks. Sideboards, companions, commanders, opening-hand actions, later games of a match and variants are excluded and fail closed.",
+      "owners": [
+        "turn"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/game-start.md",
+      "summary": "A game starts from two deck lists: the first player is chosen, libraries are shuffled, players draw seven and take London mulligans.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
         "docs/superpowers/specs/2026-09-26-m4-unified-state-cut-semantic-spec.md",
         "wotc-cr-2026-09-25-txt-20260925-sha256-8d860e451f20f38865b725b42d82feb714c725373dd8f3b32b8652b3eeb070ca"
       ],

@@ -36,3 +36,24 @@ class ObservedEventV4DecoderTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class GameStartObservedEventTests(unittest.TestCase):
+    def test_game_start_events_round_trip(self) -> None:
+        for value in (
+            {"kind": "starting_player_chosen", "chooser": "2", "starting_player": "1"},
+            {"kind": "mulligan_declared", "player": "1", "mulligan": True},
+            {"kind": "mulligan_declared", "player": "2", "mulligan": False},
+        ):
+            event = ObservedEventV4.from_wire(value)
+            self.assertEqual(event.to_wire(), value)
+
+    def test_malformed_game_start_events_are_rejected(self) -> None:
+        for value in (
+            {"kind": "starting_player_chosen", "chooser": "2"},
+            {"kind": "starting_player_chosen", "chooser": 2, "starting_player": "1"},
+            {"kind": "mulligan_declared", "player": "1", "mulligan": 1},
+            {"kind": "mulligan_declared", "player": "1", "mulligan": True, "extra": 0},
+        ):
+            with self.assertRaises(WireError):
+                ObservedEventV4.from_wire(value)

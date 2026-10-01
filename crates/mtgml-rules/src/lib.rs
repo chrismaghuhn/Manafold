@@ -5,6 +5,8 @@ mod basic_land;
 mod characteristic_query;
 mod errors;
 mod events;
+mod game_start;
+pub use game_start::{start_game, GameStartError, STARTING_LIFE};
 mod snapshots;
 mod turn_progression;
 mod turn_structure;

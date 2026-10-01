@@ -565,6 +565,20 @@ impl EngineState {
             self.validate_trigger_event_snapshot(&trigger.trigger_context, &players)
                 .map_err(|_| EngineStateError::TriggerRecord)?;
         }
+        let game_start =
+            execution
+                .continuations
+                .values()
+                .find_map(|record| match &record.payload {
+                    crate::ContinuationPayload::GameStart(value) => Some(value),
+                    _ => None,
+                });
+        if (state.core.turn_number == 0) != game_start.is_some() {
+            return Err(EngineStateError::GameStart);
+        }
+        if let Some(start) = game_start {
+            self.validate_pregame(start)?;
+        }
         let has_trigger_placement = execution.continuations.values().any(|record| {
             matches!(
                 &record.payload,
@@ -650,6 +664,66 @@ impl EngineState {
             || state.allocators.next_decision_id.0 == 0
         {
             return Err(EngineStateError::Allocator);
+        }
+        Ok(())
+    }
+
+    /// Turn 0 (CR 103): nothing has happened yet but the start of the game.
+    /// The pending request and the continuation agree, and each hand holds
+    /// exactly what the stage implies: nothing before the first draw, seven
+    /// after a redraw, and seven less one per mulligan once bottomed.
+    fn validate_pregame(
+        &self,
+        start: &crate::GameStartContinuation,
+    ) -> Result<(), EngineStateError> {
+        let invalid = || Err(EngineStateError::GameStart);
+        let core = &self.core;
+        let battlefield = self
+            .zones
+            .locations
+            .values()
+            .any(|location| location.zone == mtgml_model::ZoneKind::Battlefield);
+        if core.position
+            != (crate::TurnPosition::Beginning {
+                step: crate::BeginningStep::Untap,
+            })
+            || core.priority != crate::PriorityState::None
+            || core.active_player != start.starting_player.unwrap_or(start.chooser)
+            || self.combat.is_some()
+            || battlefield
+            || !self.zones.stack_order.is_empty()
+            || !self.zones.stack_records.is_empty()
+            || self
+                .card_rules
+                .mana
+                .pools
+                .values()
+                .any(|pool| *pool != crate::ManaPoolV1::default())
+        {
+            return invalid();
+        }
+        for player in core.players.keys() {
+            let hand = self
+                .zones
+                .locations
+                .values()
+                .filter(|location| {
+                    location.zone == mtgml_model::ZoneKind::Hand && location.player == Some(*player)
+                })
+                .count();
+            let taken = start.mulligans_taken.get(player).copied().unwrap_or(0);
+            let expected = match start.stage {
+                crate::GameStartStage::ChoosingStartingPlayer => 0,
+                crate::GameStartStage::Bottoming { .. }
+                    if start.round_mulligans.contains(player) =>
+                {
+                    STARTING_HAND_SIZE
+                }
+                _ => STARTING_HAND_SIZE - taken.min(STARTING_HAND_SIZE as u32) as usize,
+            };
+            if hand != expected {
+                return invalid();
+            }
         }
         Ok(())
     }
@@ -776,6 +850,11 @@ impl EngineState {
             }
             crate::ContinuationPayload::TriggerPlacement(value) => {
                 self.validate_trigger_placement(value, players)?;
+            }
+            crate::ContinuationPayload::GameStart(value) => {
+                if !game_start_shape_is_valid(value, players) {
+                    return Err(EngineStateError::GameStart);
+                }
             }
             crate::ContinuationPayload::StackResolution(value) => {
                 if !self
@@ -966,6 +1045,11 @@ impl EngineState {
                 .get(value.current_actor_index as usize)
                 .copied(),
             crate::ContinuationPayload::StackResolution(_) => None,
+            crate::ContinuationPayload::GameStart(value) => Some(match value.stage {
+                crate::GameStartStage::ChoosingStartingPlayer => value.chooser,
+                crate::GameStartStage::Declaring { player }
+                | crate::GameStartStage::Bottoming { player } => player,
+            }),
         }
     }
 
@@ -998,6 +1082,19 @@ impl EngineState {
                     )
                 )
             }
+            crate::ContinuationPayload::GameStart(value) => matches!(
+                (value.stage, &request.purpose),
+                (
+                    crate::GameStartStage::ChoosingStartingPlayer,
+                    Purpose::StartingPlayer
+                ) | (
+                    crate::GameStartStage::Declaring { .. },
+                    Purpose::MulliganDeclaration
+                ) | (
+                    crate::GameStartStage::Bottoming { .. },
+                    Purpose::MulliganBottom
+                )
+            ),
             crate::ContinuationPayload::MagicSbaGraveyardOrderV1 { .. } => {
                 matches!(&request.purpose, Purpose::SbaGraveyardOrder)
                     && matches!(&request.decision_domain_v2, Domain::Order { .. })
@@ -1938,10 +2035,56 @@ impl EngineState {
     }
 }
 
+/// CR 103.5: every player draws a starting hand of seven.
+pub const STARTING_HAND_SIZE: usize = 7;
+
+/// The game-start record on its own: known players, a starting player exactly
+/// once one is chosen, one mulligan count per player, disjoint kept and
+/// mulliganing sets, and a stage naming the player the sets imply: the first
+/// player in turn order still to declare, or still to put cards on the
+/// bottom.
+fn game_start_shape_is_valid(
+    start: &crate::GameStartContinuation,
+    players: &BTreeSet<mtgml_model::PlayerId>,
+) -> bool {
+    let counted: BTreeSet<_> = start.mulligans_taken.keys().copied().collect();
+    if !players.contains(&start.chooser)
+        || &counted != players
+        || !start.kept.is_subset(players)
+        || !start.round_mulligans.is_subset(players)
+        || !start.kept.is_disjoint(&start.round_mulligans)
+    {
+        return false;
+    }
+    let Some(first) = start.starting_player else {
+        return start.stage == crate::GameStartStage::ChoosingStartingPlayer
+            && start.mulligans_taken.values().all(|count| *count == 0)
+            && start.kept.is_empty()
+            && start.round_mulligans.is_empty();
+    };
+    if !players.contains(&first) {
+        return false;
+    }
+    let mut turn_order =
+        std::iter::once(first).chain(players.iter().copied().filter(|player| *player != first));
+    match start.stage {
+        crate::GameStartStage::ChoosingStartingPlayer => false,
+        crate::GameStartStage::Declaring { player } => {
+            turn_order.find(|p| !start.kept.contains(p) && !start.round_mulligans.contains(p))
+                == Some(player)
+        }
+        crate::GameStartStage::Bottoming { player } => {
+            turn_order.find(|p| start.round_mulligans.contains(p)) == Some(player)
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum EngineStateError {
     #[error("the state violates a component or card-rules invariant")]
     StateInvariant,
+    #[error("the start of the game is inconsistent with turn 0 or the state")]
+    GameStart,
     #[error("successor stack order is not a bijection with stack records")]
     StackOrder,
     #[error("successor stack record identity is inconsistent")]

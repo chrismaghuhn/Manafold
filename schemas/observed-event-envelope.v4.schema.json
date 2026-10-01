@@ -453,6 +453,46 @@
             "effect"
           ],
           "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "chooser": {
+              "$ref": "#/$defs/uint"
+            },
+            "kind": {
+              "const": "starting_player_chosen"
+            },
+            "starting_player": {
+              "$ref": "#/$defs/uint"
+            }
+          },
+          "required": [
+            "kind",
+            "chooser",
+            "starting_player"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "mulligan_declared"
+            },
+            "mulligan": {
+              "type": "boolean"
+            },
+            "player": {
+              "$ref": "#/$defs/uint"
+            }
+          },
+          "required": [
+            "kind",
+            "player",
+            "mulligan"
+          ],
+          "type": "object"
         }
       ]
     },

@@ -115,6 +115,14 @@
     {
       "contract": "player-decision-request.v4",
       "path": "player-decision-request-v4-sba-graveyard-order.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "path": "observed-event-v4-starting-player-chosen.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "path": "observed-event-v4-mulligan-declared.json"
     }
   ]
 }

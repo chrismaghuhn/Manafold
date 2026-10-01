@@ -4,6 +4,8 @@
 //! candidate generation, or any writer. G0d adds successor ownership and
 //! semantic validation; G0e adds canonical persistence.
 
+use std::collections::{BTreeMap, BTreeSet};
+
 use mtgml_card_ir::{AbilityKey, CardSemanticProfileId, FaceKey};
 use mtgml_model::{
     AbilityInstanceId, ContinuationId, EffectInstanceId, GameObjectId, PlayerDecisionIdV1,
@@ -196,6 +198,35 @@ pub enum ContinuationPayload {
     NonManaActivation(NonManaActivationContinuation),
     TriggerPlacement(TriggerPlacementContinuation),
     StackResolution(StackResolutionContinuation),
+    GameStart(GameStartContinuation),
+}
+
+/// Where the start of the game is (CR 103).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GameStartStage {
+    /// The chooser picks who takes the first turn (CR 103.1).
+    ChoosingStartingPlayer,
+    /// `player` declares keep or mulligan next (CR 103.5).
+    Declaring { player: PlayerId },
+    /// `player` puts cards on the bottom of their library next (CR 103.5).
+    Bottoming { player: PlayerId },
+}
+
+/// The start of the game until turn 1 begins. It exists exactly while the
+/// turn number is 0.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GameStartContinuation {
+    pub chooser: PlayerId,
+    /// `None` only while the starting player is being chosen.
+    pub starting_player: Option<PlayerId>,
+    pub stage: GameStartStage,
+    /// Mulligans each player has taken (every player has an entry).
+    pub mulligans_taken: BTreeMap<PlayerId, u32>,
+    /// Players who kept their hand and take no further mulligans.
+    pub kept: BTreeSet<PlayerId>,
+    /// Players who declared a mulligan this round and have not yet put their
+    /// cards on the bottom.
+    pub round_mulligans: BTreeSet<PlayerId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

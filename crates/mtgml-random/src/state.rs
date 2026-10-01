@@ -145,6 +145,11 @@ impl RandomStateV1 {
         key: RandomStreamKeyV1,
         cursor: RandomStreamCursorV1,
     ) -> Result<(), RandomValidationError> {
+        if !key.has_allowed_scope() {
+            return Err(RandomValidationError::ScopeNotAllowedForKind(
+                key.kind() as u16
+            ));
+        }
         if self.streams.contains_key(&key) {
             return Err(RandomValidationError::DuplicateStreamKey);
         }
@@ -183,6 +188,11 @@ impl RandomStateV1 {
         let mut prev_key_bytes: Option<Vec<u8>> = None;
         let mut seen_keys = std::collections::BTreeSet::new();
         for key in self.streams.keys() {
+            if !key.has_allowed_scope() {
+                return Err(RandomValidationError::ScopeNotAllowedForKind(
+                    key.kind() as u16
+                ));
+            }
             let key_bytes = key.to_canonical_bytes();
             if !seen_keys.insert(key_bytes.clone()) {
                 return Err(RandomValidationError::DuplicateStreamKey);
@@ -288,6 +298,22 @@ mod tests {
             }
             prev = Some(b);
         }
+    }
+
+    #[test]
+    fn a_stream_outside_its_kind_scope_is_rejected() {
+        let seed = RootSeed256::from_lower_hex(ALL_ZERO_SEED).unwrap();
+        let mut state = RandomStateV1::new(seed);
+        let key = RandomStreamKeyV1::global(RandomStreamKindV1::LibraryShuffle);
+        assert_eq!(
+            state.add_stream(key, RandomStreamCursorV1::default()),
+            Err(RandomValidationError::ScopeNotAllowedForKind(3))
+        );
+        state.streams.insert(key, RandomStreamCursorV1::default());
+        assert_eq!(
+            state.validate(),
+            Err(RandomValidationError::ScopeNotAllowedForKind(3))
+        );
     }
 
     #[test]

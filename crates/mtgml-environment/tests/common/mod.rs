@@ -45,6 +45,7 @@ pub fn game_admission() -> ExecutableProfileAdmissionV1 {
         "rules/combat-phase",
         "rules/declare-attackers",
         "rules/draw-card",
+        "rules/game-start",
         "rules/land-play",
         "rules/mana-pool",
         "rules/state-based-actions-combat",
@@ -175,8 +176,33 @@ pub fn try_land_game(
     let mut state = land_game_state(libraries, hands, seed);
     let status = mtgml_model::EpisodeStatus::Running;
     mtgml_rules::install_basic_land_request(&admission, &mut state, P1, &status).unwrap();
-    let checkpoint = EnvironmentCheckpointV8::new_for_basic_land_profile(
+    controller_for(&admission, state)
+}
+
+/// A game from two deck lists, started as CR 103 prescribes.
+pub fn deck_game(decks: [Vec<CardDefinitionId>; 2], seed: u64) -> TrustedEnvironmentController {
+    let admission = game_admission();
+    let mut root_seed = [0_u8; 32];
+    root_seed[..8].copy_from_slice(&seed.to_le_bytes());
+    let [first, second] = decks;
+    let state = mtgml_rules::start_game(
         &admission,
+        [(P1, first), (P2, second)],
+        mtgml_random::RootSeed256(root_seed),
+    )
+    .unwrap();
+    controller_for(&admission, state).unwrap()
+}
+
+/// The production controller for `state`, with its initial checkpoint and
+/// replay manifest.
+fn controller_for(
+    admission: &ExecutableProfileAdmissionV1,
+    state: EngineState,
+) -> Result<TrustedEnvironmentController, mtgml_environment::ControllerError> {
+    let status = mtgml_model::EpisodeStatus::Running;
+    let checkpoint = EnvironmentCheckpointV8::new_for_basic_land_profile(
+        admission,
         state.clone(),
         status.clone(),
         Default::default(),
@@ -187,7 +213,7 @@ pub fn try_land_game(
         state,
         status,
         Default::default(),
-        replay_manifest(&admission, &checkpoint),
+        replay_manifest(admission, &checkpoint),
     )?;
     Ok(TrustedEnvironmentController::new(runtime))
 }

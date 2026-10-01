@@ -27,15 +27,17 @@ const PROFILE_REQUIREMENT_ROOTS: [(&str, &str); 3] = [
     ("rules/mana-pool", "0.1.0"),
 ];
 
-/// Rules every executable Magic game needs regardless of its cards: the turn
-/// sequence, priority, drawing (and losing on an empty library), the combat
-/// phase with attacker declaration, and cleanup. Card profiles add their own roots on top of these.
+/// Rules every executable Magic game needs regardless of its cards: the game
+/// start (CR 103), the turn sequence, priority, drawing (and losing on an
+/// empty library), the combat phase with attacker declaration, and cleanup.
+/// Card profiles add their own roots on top of these.
 pub const MAGIC_GAME_RULE_ROOTS: &[(&str, &str)] = &[
     ("rules/basic-priority", "0.1.0"),
     ("rules/cleanup-reset", "0.1.0"),
     ("rules/combat-phase", "0.1.0"),
     ("rules/declare-attackers", "0.1.0"),
     ("rules/draw-card", "0.1.0"),
+    ("rules/game-start", "0.1.0"),
     ("rules/state-based-actions-empty-library", "0.1.0"),
     ("rules/turn-structure", "0.1.0"),
 ];

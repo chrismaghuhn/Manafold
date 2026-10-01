@@ -38,6 +38,7 @@
 - **Project type:** independent greenfield MTG/ML rules and simulation engine
 - **Playable engine:** no
 - **Production turn loop:** the V8 runtime plays complete two-player turns with basic lands (untap, upkeep, draw, main phases, an empty combat, end step, cleanup with discard to hand size, turn change); a player who draws from an empty library loses and the game ends; proven through the production player endpoints (`crates/mtgml-environment/tests/production_turn.rs`); no creatures, combat damage, spells, or deck support.
+- **Game start:** a game starts from two deck lists as CR 103 prescribes for the first game of a two-player match: a random player chooses who goes first, libraries are shuffled, players start at 20 life with seven cards, and the starting player's first turn has no draw step (`crates/mtgml-environment/tests/game_start.rs`); a mulligan answer fails closed until London mulligans land.
 - **Real Magic semantics:** the native turn progression covers turn structure, priority, draw, the combat phase with an empty attack, cleanup, and zone incarnation; combat damage, blockers, damage and life, and combat state-based actions are specified only. This does not claim arbitrary Magic support, cards, decks, formats, or playability.
 - **Bounded executable real-card support:** Mountain + Plains under `basic-land@1.0.0`; no broader card/deck support is claimed.
 

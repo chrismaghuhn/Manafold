@@ -62,6 +62,7 @@ fn complete_closure() -> Vec<CapabilityRequirementV1> {
         "rules/combat-phase",
         "rules/declare-attackers",
         "rules/draw-card",
+        "rules/game-start",
         "rules/land-play",
         "rules/mana-pool",
         "rules/state-based-actions-combat",
@@ -142,6 +143,7 @@ fn mountain_plains_derive_the_closed_roots_and_recursive_registry_closure() {
             requirement("rules/combat-phase"),
             requirement("rules/declare-attackers"),
             requirement("rules/draw-card"),
+            requirement("rules/game-start"),
             requirement("rules/land-play"),
             requirement("rules/mana-pool"),
             requirement("rules/state-based-actions-empty-library"),
@@ -211,6 +213,7 @@ fn profile_roots_cannot_be_suppressed_and_transitive_requirements_are_mandatory(
         "rules/declare-attackers",
         "rules/cleanup-reset",
         "rules/state-based-actions-empty-library",
+        "rules/game-start",
     ] {
         let incomplete = complete_closure()
             .into_iter()
@@ -311,6 +314,7 @@ fn executable_admission_adds_game_rule_roots_to_card_roots() {
             "rules/declare-attackers",
             "rules/cleanup-reset",
             "rules/state-based-actions-empty-library",
+            "rules/game-start",
         ])
     );
     assert_eq!(admission.resolved_capabilities(), complete_closure());

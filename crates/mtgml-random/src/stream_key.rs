@@ -5,6 +5,10 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 #[serde(rename_all = "snake_case")]
 pub enum RandomStreamKindV1 {
     SyntheticM1 = 1,
+    /// The draw of the player who chooses who takes the first turn (CR 103.1).
+    GameStartChooser = 2,
+    /// Every shuffle of one player's library (CR 103.3, 701.24).
+    LibraryShuffle = 3,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -42,6 +46,18 @@ impl RandomStreamKeyV1 {
 
     pub fn scope(&self) -> RandomStreamScopeV1 {
         self.scope
+    }
+
+    /// The game-start chooser stream is global and a library-shuffle stream
+    /// belongs to one player; the synthetic stream may be either.
+    pub fn has_allowed_scope(&self) -> bool {
+        match self.kind {
+            RandomStreamKindV1::SyntheticM1 => true,
+            RandomStreamKindV1::GameStartChooser => self.scope == RandomStreamScopeV1::Global,
+            RandomStreamKindV1::LibraryShuffle => {
+                matches!(self.scope, RandomStreamScopeV1::Player(_))
+            }
+        }
     }
 
     pub fn player(&self) -> Option<u64> {
@@ -97,7 +113,11 @@ impl RandomStreamKeyV1 {
             _ => return Err(RandomValidationError::UnknownScopeTag(scope_tag)),
         };
         let scope = RandomStreamScopeV1::from_canonical_tag(scope_tag, player)?;
-        Ok(Self { kind, scope })
+        let key = Self { kind, scope };
+        if !key.has_allowed_scope() {
+            return Err(RandomValidationError::ScopeNotAllowedForKind(kind_u16));
+        }
+        Ok(key)
     }
 }
 
@@ -109,6 +129,8 @@ impl RandomStreamKindV1 {
     fn from_canonical_u16(u: u16) -> Result<Self, RandomValidationError> {
         match u {
             1 => Ok(Self::SyntheticM1),
+            2 => Ok(Self::GameStartChooser),
+            3 => Ok(Self::LibraryShuffle),
             0 => Err(RandomValidationError::ReservedKind(0)),
             _ => Err(RandomValidationError::UnknownKind(u)),
         }
@@ -223,6 +245,39 @@ mod tests {
         let parsed = RandomStreamKeyV1::from_canonical_bytes(&bytes).unwrap();
         assert_eq!(key, parsed);
         assert_eq!(bytes, parsed.to_canonical_bytes());
+    }
+
+    #[test]
+    fn game_start_kinds_round_trip_with_their_scope() {
+        let chooser = RandomStreamKeyV1::global(RandomStreamKindV1::GameStartChooser);
+        let shuffle = RandomStreamKeyV1::player_scoped(RandomStreamKindV1::LibraryShuffle, 7);
+        assert_eq!(chooser.to_canonical_bytes(), vec![1, 0, 2, 0]);
+        assert_eq!(shuffle.to_canonical_bytes()[..4], [1, 0, 3, 1]);
+        for key in [chooser, shuffle] {
+            assert!(key.has_allowed_scope());
+            let parsed = RandomStreamKeyV1::from_canonical_bytes(&key.to_canonical_bytes());
+            assert_eq!(parsed, Ok(key));
+        }
+    }
+
+    #[test]
+    fn game_start_kinds_reject_the_other_scope() {
+        for (key, code) in [
+            (
+                RandomStreamKeyV1::player_scoped(RandomStreamKindV1::GameStartChooser, 7),
+                2,
+            ),
+            (
+                RandomStreamKeyV1::global(RandomStreamKindV1::LibraryShuffle),
+                3,
+            ),
+        ] {
+            assert!(!key.has_allowed_scope());
+            assert_eq!(
+                RandomStreamKeyV1::from_canonical_bytes(&key.to_canonical_bytes()),
+                Err(RandomValidationError::ScopeNotAllowedForKind(code))
+            );
+        }
     }
 
     #[test]

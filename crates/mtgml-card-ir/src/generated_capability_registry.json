@@ -87,6 +87,17 @@
     },
     {
       "dependencies": [
+        "rules/draw-card",
+        "rules/turn-structure",
+        "rules/zone-incarnation"
+      ],
+      "key": "rules/game-start",
+      "lifecycle": "specified",
+      "lifecycle_rank": 1,
+      "version": "0.1.0"
+    },
+    {
+      "dependencies": [
         "rules/basic-priority",
         "rules/turn-structure",
         "rules/zone-incarnation"

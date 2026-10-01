@@ -316,7 +316,9 @@ fn requires_all_player_audience(
         Event::StackItemAdded { .. }
         | Event::TriggerPlaced { .. }
         | Event::StackItemRemoved { .. }
-        | Event::ManaPoolChanged { .. } => Ok(true),
+        | Event::ManaPoolChanged { .. }
+        | Event::StartingPlayerChosen { .. }
+        | Event::MulliganDeclared { .. } => Ok(true),
         Event::CounterChanged { object, .. } => {
             Ok(public_face_up_battlefield_object(*object, before, after))
         }
@@ -398,6 +400,17 @@ fn project_v4_public_source_event(
             )?
             .ok_or(SuccessorProjectionError::ObservationOccurrenceMismatch)
         }
+        Event::StartingPlayerChosen {
+            chooser,
+            starting_player,
+        } => Ok(ObservedEventKindV4::StartingPlayerChosen {
+            chooser: *chooser,
+            starting_player: *starting_player,
+        }),
+        Event::MulliganDeclared { player, mulligan } => Ok(ObservedEventKindV4::MulliganDeclared {
+            player: *player,
+            mulligan: *mulligan,
+        }),
         Event::ObjectTapped { object, to, .. } => Ok(ObservedEventKindV4::ObjectTapped {
             object: crate::player_projection::public_opaque_object(
                 after,

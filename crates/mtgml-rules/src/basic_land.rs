@@ -1206,6 +1206,7 @@ mod tests {
             "rules/combat-phase",
             "rules/declare-attackers",
             "rules/draw-card",
+            "rules/game-start",
             "rules/land-play",
             "rules/mana-pool",
             "rules/state-based-actions-combat",
