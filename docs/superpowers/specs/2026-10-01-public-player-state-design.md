@@ -18,14 +18,15 @@ status from its first step.
 
 ## 2. Rules basis
 
-All of these values are public game information. The subrule numbers are
-re-checked against the pinned text before merge.
-- **Hand size:** a player can't look at another player's hand but can see how
-  many cards are in it (CR 402.3).
+All of these values are public game information. The texts of 401.3, 402.3
+and 110.5 were checked overnight through the Academy Ruins rules API (current
+CR), but not against the hash of the pinned snapshot.
+- **Hand size:** a player can't look at the cards in another player's hand but
+  may count them at any time (CR 402.3).
 - **Library size:** any player may count the cards in any library (CR 401.3).
 - **Tapped:** this is a permanent's status (CR 110.5), and the battlefield is a
   public zone (CR 400.2). Face-down permanents show their status too.
-- **Life:** life totals are public (CR 119).
+- **Life:** CR 119 governs life totals; no rule hides them.
 
 ## 3. Format (changed in place)
 
@@ -42,8 +43,12 @@ two fields:
   battlefield (public or face down), strictly ascending.
 
 Schema strings stay the same (AGENTS.md §4). The JSON schemas, Python mirrors,
-schema examples and negative cases change in place. The wire goldens carry an
-opaque `{}` payload and do not change.
+schema examples and negative cases change in place.
+- The observation wire golden (`magic-shared-execution-observation.v1.json`)
+  and the five shared-observation wire negatives gain the fields.
+- The envelope goldens carry an opaque `{}` payload and do not change.
+- One new wire negative, on the basic-land contract, pins the new semantic
+  check in both languages: an active player missing from `players`.
 
 ## 4. Projection
 
@@ -58,9 +63,12 @@ opaque `{}` payload and do not change.
 **Information safety.**
 - Both perspectives see the same values; only the opaque ids differ.
 - No value depends on library order, hidden card identity or trusted ids.
-- The existing noninterference tests compare a player's complete bytes, and the
-  observation is part of those bytes. They keep proving that the opponent's
-  deck order changes nothing a player sees.
+- The existing deck-order noninterference test
+  (`a_player_learns_nothing_about_the_opponents_deck_order`) compares a
+  player's complete bytes, observation included. It stops after the mulligans,
+  so it covers `players` but never a non-empty `tapped`. `tapped` reads only
+  public battlefield objects through the perspective's own identity, and the
+  endpoint test pins that identity.
 
 ## 5. Evidence
 
@@ -75,14 +83,17 @@ opaque `{}` payload and do not change.
      both players, and library sizes of deck size minus seven.
    - The opponent's hand count is visible to a player during the mulligans.
    - A land tapped for mana appears in `tapped` for both perspectives, under
-     each one's own opaque id, and leaves it at the next untap step.
+     each one's own opaque id, and leaves it at its controller's next untap
+     step.
    - Playing a land lowers the hand count; the draw on turn 2 lowers the
      library count.
 3. **Python:** the mirror round-trips the example and rejects the same bad
    cases. The schema negatives are registered.
-4. **Smoke:** both fingerprints are re-pinned. The commit shows that the
-   responses and checkpoint digests of every game are identical before and
-   after; only what the players see changes.
+4. **Smoke:** both fingerprints are re-pinned. The commit message records a
+   comparison made with a scratch test, which is not committed: the responses
+   and checkpoint digests of the pinned games are identical before and after,
+   so only what the players see changes. The final reviewer reproduced it
+   independently.
 
 ## 6. Out of scope
 

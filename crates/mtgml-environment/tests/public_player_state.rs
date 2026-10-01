@@ -189,8 +189,20 @@ fn a_land_tapped_for_mana_is_tapped_for_both_players_until_it_untaps() {
     game.answer(play_land, pass);
     assert!(game.observation(P1).tapped.is_empty());
     game.answer(tap_for_mana, pass);
-    assert_eq!(game.observation(P1).tapped.len(), 1);
-    assert_eq!(game.observation(P2).tapped.len(), 1);
+    // Each player sees the land under their own opaque id.
+    let state = game.controller.checkpoint().unwrap().state;
+    let mut on_battlefield = state
+        .zones
+        .locations
+        .iter()
+        .filter(|(_, location)| location.zone == mtgml_model::ZoneKind::Battlefield)
+        .map(|(object, _)| *object);
+    let land = on_battlefield.next().unwrap();
+    assert!(on_battlefield.next().is_none());
+    for player in [P1, P2] {
+        let own = state.perspective_identities.players[&player].object_to_opaque[&land];
+        assert_eq!(game.observation(player).tapped, vec![own], "{player:?}");
+    }
     assert_eq!(game.players_seen(), vec![row(P1, 7, 5), row(P2, 6, 5)]);
 
     // P1 plays a land on turn 2 and keeps seven cards; P2 untaps on turn 3.
