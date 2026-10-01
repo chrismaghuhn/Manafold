@@ -73,6 +73,13 @@ succession opens the declare blockers step; the same in that step opens the
 combat damage step, which deals the damage in the same transition. A
 transition that cannot continue changes nothing.
 
+A restored or committed state is accepted only if its combat is one this slice
+could have produced: the combat exists from the declaration to the end of
+combat, its attackers are creatures on the battlefield that the active player
+controls, it attacks the other player, and from the declare blockers step on
+the defending player controls no untapped creature. Anything else fails closed,
+for priority requests too.
+
 ## Conformance, property, replay, and performance evidence
 
 - Rules cases in `crates/mtgml-rules/src/turn_progression.rs`:
@@ -81,6 +88,13 @@ transition that cannot continue changes nothing.
 - Event projection cases in `crates/mtgml-rules/src/events.rs`:
   `combat_damage_to_a_player_must_match_the_life_change`,
   `combat_damage_to_a_creature_fails_closed`, `the_damage_step_completes_once`.
+- Restore cases in `crates/mtgml-rules/src/turn_progression.rs`:
+  `a_restored_combat_with_a_possible_blocker_is_refused`,
+  `a_restored_combat_cannot_have_the_active_player_as_its_defender`,
+  `a_restored_combat_needs_attackers_the_active_player_controls`,
+  `a_restored_combat_is_in_a_combat_step_it_could_be_in`,
+  `every_boundary_of_an_attack_validates`.
 - Production-endpoint cases in `crates/mtgml-environment/tests/creature_game.rs`:
   `an_unblocked_attack_lowers_the_defenders_life`,
-  `a_defender_with_an_untapped_creature_fails_closed`.
+  `a_defender_with_an_untapped_creature_fails_closed`,
+  `a_restored_combat_the_game_could_not_reach_is_refused`.

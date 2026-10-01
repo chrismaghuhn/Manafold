@@ -174,8 +174,12 @@ pub fn validate_magic_pending_request(
     {
         return crate::game_start::validate_pregame_request(admission, state, request, status);
     }
+    // Priority windows are validated by the basic-land owner, which does not
+    // know combat: a restored combat is checked here, for every request and
+    // every status.
     if !hands_within_slice(state)
         || (matches!(status, EpisodeStatus::Running) && state_based_action_pending(state))
+        || crate::combat::validate_reachable_combat(admission, state).is_err()
     {
         return Err(BasicLandCandidateError::InvalidState);
     }
@@ -280,8 +284,9 @@ pub(crate) fn record_unobserved(facts: &mut Facts, event: AuthoritativeRuleEvent
 /// The slice this progression can evaluate (D13): exactly two players, only
 /// admitted lands and vanilla creatures on the battlefield, a stack that is
 /// empty or holds one creature spell, no continuation but the payment of that
-/// spell, a combat whose attackers are all unblocked, and none of the state
-/// no rule of this slice can evaluate. State-based actions are checked before
+/// spell, a combat that this slice could have produced (see
+/// `crate::combat::validate_reachable_combat`), and none of the state no rule
+/// of this slice can evaluate. State-based actions are checked before
 /// a player would receive priority (CR 704.3), so a decision is never pending
 /// while one applies: a player at 0 or less life who has not lost is not a
 /// state of this slice (CR 704.5a).
@@ -313,7 +318,7 @@ fn validate_slice(
     }
     crate::S1QueryAuthority::for_objects(admission, state, &battlefield_objects(state))
         .map_err(|_| Error::TurnProgressUnsupported)?;
-    Ok(())
+    crate::combat::validate_reachable_combat(admission, state)
 }
 
 /// CR 704.5a: a player who has not lost and is at 0 or less life loses the
@@ -2427,6 +2432,182 @@ mod tests {
             .unwrap();
         tapped.zones.objects.get_mut(&defender).unwrap().tapped = true;
         assert!(submit(&admission, &tapped, pass_answer(pending(&tapped))).is_ok());
+    }
+
+    /// `state` with its combat moved to `step`, as a restored checkpoint could
+    /// claim: an attack that has been declared, in a later step.
+    fn in_combat_step(state: &EngineState, step: CombatStep) -> EngineState {
+        let mut moved = state.clone();
+        moved.core.position = TurnPosition::Combat { step };
+        if step == CombatStep::EndOfCombat {
+            // An attack that reached the end of combat has dealt its damage.
+            moved.combat.as_mut().unwrap().damage_step_completed = true;
+        }
+        moved
+    }
+
+    /// A restored state is one the game could have reached: it validates as a
+    /// pending request, and answering it is not refused as unsupported.
+    fn is_refused(admission: &ExecutableProfileAdmissionV1, state: &EngineState) -> bool {
+        validate_magic_pending_request(admission, state, &EpisodeStatus::Running).is_err()
+            && submit(admission, state, pass_answer(pending(state)))
+                == Err(crate::BasicLandTransitionError::TurnProgressUnsupported)
+    }
+
+    #[test]
+    fn a_restored_combat_with_a_possible_blocker_is_refused() {
+        // CR 509.1a: P2 controls an untapped creature, so it could block, and
+        // blocks arrive with a later rule. The state is a reachable one while
+        // the attack is declared (the pass out of the step fails closed), but
+        // no state from the declare blockers step on is.
+        let (admission, state) = game_with_creatures(3, &[P1, P2]);
+        let declared = after_declaring_an_attacker(&admission, state);
+        validate_magic_pending_request(&admission, &declared, &EpisodeStatus::Running).unwrap();
+        for step in [
+            CombatStep::DeclareBlockers,
+            CombatStep::CombatDamage,
+            CombatStep::EndOfCombat,
+        ] {
+            let restored = in_combat_step(&declared, step);
+            assert!(is_refused(&admission, &restored), "{step:?}");
+        }
+
+        // The same combat against a defender whose creature is tapped could
+        // not be blocked, and validates in each of those steps.
+        let defender = *battlefield_creatures(&declared)
+            .iter()
+            .find(|creature| declared.zones.objects[creature].controller == P2)
+            .unwrap();
+        let mut tapped = declared.clone();
+        tapped.zones.objects.get_mut(&defender).unwrap().tapped = true;
+        for step in [
+            CombatStep::DeclareBlockers,
+            CombatStep::CombatDamage,
+            CombatStep::EndOfCombat,
+        ] {
+            let restored = in_combat_step(&tapped, step);
+            validate_magic_pending_request(&admission, &restored, &EpisodeStatus::Running)
+                .unwrap_or_else(|error| panic!("{step:?}: {error:?}"));
+        }
+    }
+
+    #[test]
+    fn a_restored_combat_without_attackers_may_have_a_defender_with_a_creature() {
+        // With no attackers the blockers step is skipped (CR 508.8): P2's
+        // untapped creature is no possible blocker of anything.
+        let (admission, state) = game_with_creatures(3, &[P2]);
+        let state = pass_until(&admission, state, at_attackers(1));
+        let declared = apply(&state, &declare(&admission, &state, 0).unwrap());
+        for step in [CombatStep::DeclareBlockers, CombatStep::EndOfCombat] {
+            let restored = in_combat_step(&declared, step);
+            validate_magic_pending_request(&admission, &restored, &EpisodeStatus::Running)
+                .unwrap_or_else(|error| panic!("{step:?}: {error:?}"));
+        }
+    }
+
+    #[test]
+    fn a_restored_combat_cannot_have_the_active_player_as_its_defender() {
+        // The attacker would damage its own controller.
+        let (admission, state) = game_with_creature(3, P1);
+        let declared = after_declaring_an_attacker(&admission, state);
+        let mut forged = declared.clone();
+        forged.combat.as_mut().unwrap().defending_player = P1;
+        for step in [
+            CombatStep::DeclareAttackers,
+            CombatStep::DeclareBlockers,
+            CombatStep::CombatDamage,
+        ] {
+            let restored = in_combat_step(&forged, step);
+            assert!(is_refused(&admission, &restored), "{step:?}");
+        }
+        assert!(!is_refused(&admission, &declared));
+    }
+
+    #[test]
+    fn a_restored_combat_needs_attackers_the_active_player_controls() {
+        let (admission, state) = game_with_creature(3, P1);
+        let declared = after_declaring_an_attacker(&admission, state);
+        let attacker = declared.combat.as_ref().unwrap().attackers[0];
+        let land = declared
+            .zones
+            .objects
+            .values()
+            .find(|object| {
+                object.controller == P1
+                    && object.id != attacker
+                    && declared.zones.locations[&object.id].zone == ZoneKind::Battlefield
+            })
+            .unwrap()
+            .id;
+
+        // An attacker the other player controls.
+        let mut other_players = declared.clone();
+        other_players
+            .zones
+            .objects
+            .get_mut(&attacker)
+            .unwrap()
+            .controller = P2;
+        // An attacker that is a land, not a creature.
+        let mut not_a_creature = declared.clone();
+        let combat = not_a_creature.combat.as_mut().unwrap();
+        combat.attackers = vec![land];
+        combat.blockers = std::collections::BTreeMap::from([(land, None)]);
+        // An attacker that is not on the battlefield.
+        let in_the_library = *declared
+            .zones
+            .locations
+            .iter()
+            .find(|(_, location)| location.zone == ZoneKind::Library)
+            .unwrap()
+            .0;
+        let mut not_on_the_battlefield = declared.clone();
+        let combat = not_on_the_battlefield.combat.as_mut().unwrap();
+        combat.attackers = vec![in_the_library];
+        combat.blockers = std::collections::BTreeMap::from([(in_the_library, None)]);
+
+        for (name, forged) in [
+            ("controlled by the other player", other_players),
+            ("a land", not_a_creature),
+            ("not on the battlefield", not_on_the_battlefield),
+        ] {
+            for step in [CombatStep::DeclareAttackers, CombatStep::CombatDamage] {
+                let restored = in_combat_step(&forged, step);
+                assert!(is_refused(&admission, &restored), "{name}, {step:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_restored_combat_is_in_a_combat_step_it_could_be_in() {
+        // Combat state exists from the declaration to the end of combat.
+        let (admission, state) = game_with_creature(3, P1);
+        let declared = after_declaring_an_attacker(&admission, state);
+        let restored = in_combat_step(&declared, CombatStep::BeginningOfCombat);
+        assert!(is_refused(&admission, &restored));
+    }
+
+    #[test]
+    fn every_boundary_of_an_attack_validates() {
+        // The game itself reaches states the check must accept: the
+        // declaration, the blockers step, the damage step, the end of combat.
+        let (admission, state) = game_with_creature(3, P1);
+        let mut state = after_declaring_an_attacker(&admission, state);
+        let status = EpisodeStatus::Running;
+        let mut steps = Vec::new();
+        while state.combat.is_some() {
+            validate_magic_pending_request(&admission, &state, &status).unwrap();
+            steps.push(state.core.position);
+            state = pass(&admission, &state).0;
+        }
+        for step in [
+            CombatStep::DeclareAttackers,
+            CombatStep::DeclareBlockers,
+            CombatStep::CombatDamage,
+            CombatStep::EndOfCombat,
+        ] {
+            assert!(steps.contains(&TurnPosition::Combat { step }), "{step:?}");
+        }
     }
 
     #[test]

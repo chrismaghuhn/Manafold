@@ -9,7 +9,9 @@
 use mtgml_card_ir::ExecutableProfileAdmissionV1;
 use mtgml_decision::{AuthoritativeCandidate, CandidateIntent, EngineCandidateBinding};
 use mtgml_model::{CandidateIdV1, GameObjectId, PlayerId};
-use mtgml_state::{CombatState, DamageAssignmentV1, DamageRecipientV1, EngineState};
+use mtgml_state::{
+    CombatState, CombatStep, DamageAssignmentV1, DamageRecipientV1, EngineState, TurnPosition,
+};
 
 use crate::turn_progression::{
     admits, battlefield_objects, observe_public, record_unobserved, Facts,
@@ -165,12 +167,17 @@ pub(crate) fn defender_could_block(
     admission: &ExecutableProfileAdmissionV1,
     state: &EngineState,
 ) -> Result<bool, Error> {
+    could_block(state, &battlefield_creatures(admission, state)?)
+}
+
+/// `defender_could_block` over the creatures already read.
+fn could_block(state: &EngineState, creatures: &[Creature]) -> Result<bool, Error> {
     let defender = state
         .combat
         .as_ref()
         .ok_or(Error::InvalidResult)?
         .defending_player;
-    for creature in battlefield_creatures(admission, state)? {
+    for creature in creatures {
         let tapped = state
             .zones
             .objects
@@ -182,6 +189,46 @@ pub(crate) fn defender_could_block(
         }
     }
     Ok(false)
+}
+
+/// A combat in a restored or committed state is one this slice could have
+/// produced; anything else fails closed:
+/// - it exists from the declaration to the end of combat;
+/// - the attackers are creatures on the battlefield that the active player
+///   controls (CR 508.1a), and they attack the other player (CR 506.2);
+/// - from the declare blockers step on, with attackers, the defending player
+///   controls no untapped creature (CR 509.1a): the game stops before that step
+///   when one could block, because blocks are not supported yet.
+pub(crate) fn validate_reachable_combat(
+    admission: &ExecutableProfileAdmissionV1,
+    state: &EngineState,
+) -> Result<(), Error> {
+    let Some(combat) = state.combat.as_ref() else {
+        return Ok(());
+    };
+    let TurnPosition::Combat { step } = state.core.position else {
+        return Err(Error::TurnProgressUnsupported);
+    };
+    let active = state.core.active_player;
+    if step == CombatStep::BeginningOfCombat || combat.defending_player == active {
+        return Err(Error::TurnProgressUnsupported);
+    }
+    let creatures = battlefield_creatures(admission, state)?;
+    if combat.attackers.iter().any(|attacker| {
+        !creatures
+            .iter()
+            .any(|creature| creature.object == *attacker && creature.controller == active)
+    }) {
+        return Err(Error::TurnProgressUnsupported);
+    }
+    let blocking_step = matches!(
+        step,
+        CombatStep::DeclareBlockers | CombatStep::CombatDamage | CombatStep::EndOfCombat
+    );
+    if blocking_step && !combat.attackers.is_empty() && could_block(state, &creatures)? {
+        return Err(Error::TurnProgressUnsupported);
+    }
+    Ok(())
 }
 
 /// CR 510.1a, 510.2, 120.3a: every attacking creature deals damage equal to
