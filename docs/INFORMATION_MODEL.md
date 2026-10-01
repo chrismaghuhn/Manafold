@@ -215,6 +215,8 @@ visible
 
 The same perspective-local opaque ID persists and is remapped to the new live incarnation. The opaque allocator does not advance solely because the authoritative object ID changed.
 
+Known deviation (game start, CR 103.5): a card a player puts from hand into their own library during a mulligan is retired from that player's knowledge rather than tracked in the library: with reason `Shuffle` when the hand is returned and shuffled, with reason `HiddenTransition` when the card is put on the bottom. The player keeps the retired record and its card definition but not the bottom position. A shuffle of a library in which a player still tracks a card fails closed.
+
 ### Invalidation after indistinguishability
 
 ```text

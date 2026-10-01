@@ -96,13 +96,19 @@ pub enum DecisionPurposeV4 {
     SyntheticAssembly {
         stage: SyntheticAssemblyStageV1,
     },
+    /// CR 103.1: the chosen player decides who takes the first turn.
+    StartingPlayer,
+    /// CR 103.5: keep the opening hand or take a mulligan.
+    MulliganDeclaration,
+    /// CR 103.5: the cards a mulligan puts on the bottom, top to bottom.
+    MulliganBottom,
 }
 
 impl DecisionPurposeV4 {
     fn allows_domain(&self, domain: &DecisionDomainV2) -> bool {
         // An exact, positive number of cards is discarded.
-        if let (Self::HandSizeDiscard, DecisionDomainV2::ChooseMany { minimum, maximum }) =
-            (self, domain)
+        if let (Self::HandSizeDiscard, DecisionDomainV2::ChooseMany { minimum, maximum })
+        | (Self::MulliganBottom, DecisionDomainV2::Order { minimum, maximum }) = (self, domain)
         {
             return minimum == maximum && *minimum >= 1;
         }
@@ -115,7 +121,9 @@ impl DecisionPurposeV4 {
                     | Self::ManaProductionChoice
                     | Self::ManaPayment
                     | Self::OptionalCostPayment { .. }
-                    | Self::AbilityAction,
+                    | Self::AbilityAction
+                    | Self::StartingPlayer
+                    | Self::MulliganDeclaration,
                 DecisionDomainV2::ChooseOne
             ) | (
                 Self::AttackerDeclaration,
@@ -164,12 +172,18 @@ impl DecisionPurposeV4 {
                     | CandidateIntent::CastSpell { .. }
                     | CandidateIntent::ActivateAbility { .. }
             ) | (
-                Self::AttackerDeclaration | Self::HandSizeDiscard,
+                Self::AttackerDeclaration | Self::HandSizeDiscard | Self::MulliganBottom,
                 CandidateIntent::SelectObject { .. }
-            ) | (
-                Self::SbaGraveyardOrder,
-                CandidateIntent::SelectObject { .. }
-            ) | (Self::CastCostRoute, CandidateIntent::SelectCostRoute { .. })
+            ) | (Self::StartingPlayer, CandidateIntent::SelectPlayer { .. })
+                | (
+                    Self::MulliganDeclaration,
+                    CandidateIntent::ChooseBoolean { .. }
+                )
+                | (
+                    Self::SbaGraveyardOrder,
+                    CandidateIntent::SelectObject { .. }
+                )
+                | (Self::CastCostRoute, CandidateIntent::SelectCostRoute { .. })
                 | (
                     Self::ModeSelection { .. },
                     CandidateIntent::SelectMode { .. }
@@ -211,8 +225,11 @@ impl DecisionPurposeV4 {
             | Self::HandSizeDiscard
             | Self::CastCostRoute
             | Self::SbaGraveyardOrder
-            | Self::TriggerOrder => visibility == DecisionVisibility::ActingPlayerOnly,
-            Self::SyntheticAssembly { .. } => visibility == DecisionVisibility::Public,
+            | Self::TriggerOrder
+            | Self::MulliganBottom => visibility == DecisionVisibility::ActingPlayerOnly,
+            Self::SyntheticAssembly { .. } | Self::StartingPlayer | Self::MulliganDeclaration => {
+                visibility == DecisionVisibility::Public
+            }
             _ => true,
         }
     }
@@ -1207,6 +1224,9 @@ impl DecisionPurposeV4 {
                 | Self::OptionalCostPayment { .. }
                 | Self::AbilityAction
                 | Self::TriggerTarget { .. }
+                | Self::StartingPlayer
+                | Self::MulliganDeclaration
+                | Self::MulliganBottom
         )
     }
 }
@@ -1953,6 +1973,54 @@ mod hand_size_discard_tests {
 
     const HAND_SIZE_DISCARD: &str =
         include_str!("../../../schemas/examples/player-decision-request-v4-hand-size-discard.json");
+
+    const STARTING_PLAYER: &str =
+        include_str!("../../../schemas/examples/player-decision-request-v4-starting-player.json");
+    const MULLIGAN_DECLARATION: &str = include_str!(
+        "../../../schemas/examples/player-decision-request-v4-mulligan-declaration.json"
+    );
+    const MULLIGAN_BOTTOM: &str =
+        include_str!("../../../schemas/examples/player-decision-request-v4-mulligan-bottom.json");
+
+    #[test]
+    fn game_start_purposes_require_their_domain_intent_and_visibility() {
+        let cases = [
+            (STARTING_PLAYER, DecisionPurposeV4::StartingPlayer),
+            (MULLIGAN_DECLARATION, DecisionPurposeV4::MulliganDeclaration),
+            (MULLIGAN_BOTTOM, DecisionPurposeV4::MulliganBottom),
+        ];
+        for (fixture, purpose) in cases {
+            let request: PlayerDecisionRequestV4 = serde_json::from_str(fixture).unwrap();
+            request.validate().unwrap();
+            assert_eq!(request.purpose, purpose);
+            assert!(purpose.is_profile_dependent());
+            let rejects = |edit: &dyn Fn(&mut PlayerDecisionRequestV4)| {
+                let mut edited = request.clone();
+                edit(&mut edited);
+                assert!(edited.validate().is_err(), "{purpose:?} accepted an edit");
+            };
+            rejects(&|request| request.candidates[0].intent = CandidateIntent::PassPriority);
+            rejects(&|request| {
+                request.decision_domain_v2 = DecisionDomainV2::ChooseMany {
+                    minimum: 1,
+                    maximum: 1,
+                }
+            });
+            rejects(&|request| {
+                request.visibility = if request.visibility == DecisionVisibility::Public {
+                    DecisionVisibility::ActingPlayerOnly
+                } else {
+                    DecisionVisibility::Public
+                }
+            });
+        }
+        let bottom: PlayerDecisionRequestV4 = serde_json::from_str(MULLIGAN_BOTTOM).unwrap();
+        for (minimum, maximum) in [(0, 0), (1, 2)] {
+            let mut edited = bottom.clone();
+            edited.decision_domain_v2 = DecisionDomainV2::Order { minimum, maximum };
+            assert!(edited.validate().is_err());
+        }
+    }
 
     #[test]
     fn hand_size_discard_requires_exact_choose_many_over_objects() {

@@ -68,6 +68,36 @@ class PlayerDecisionRequestV4Tests(unittest.TestCase):
             with self.assertRaises(WireError):
                 PlayerDecisionRequestV4.from_wire(edited)
 
+    def test_game_start_purposes_require_their_domain_intent_and_visibility(self) -> None:
+        for name, kind, other_visibility in (
+            ("starting-player", "starting_player", "acting_player_only"),
+            ("mulligan-declaration", "mulligan_declaration", "acting_player_only"),
+            ("mulligan-bottom", "mulligan_bottom", "public"),
+        ):
+            path = ROOT / f"schemas/examples/player-decision-request-v4-{name}.json"
+            value = json.loads(path.read_text(encoding="utf-8"))
+            request = PlayerDecisionRequestV4.from_wire(value)
+            self.assertEqual(request.purpose.kind, kind)
+            self.assertEqual(request.to_wire(), value)
+            for edit in (
+                lambda item, other=other_visibility: item.update(visibility=other),
+                lambda item: item["candidates"][0].update(intent={"kind": "pass_priority"}),
+                lambda item: item.update(
+                    decision_domain_v2={"kind": "choose_many", "minimum": 1, "maximum": 1}
+                ),
+            ):
+                edited = copy.deepcopy(value)
+                edit(edited)
+                with self.assertRaises(WireError, msg=kind):
+                    PlayerDecisionRequestV4.from_wire(edited)
+        path = ROOT / "schemas/examples/player-decision-request-v4-mulligan-bottom.json"
+        bottom = json.loads(path.read_text(encoding="utf-8"))
+        for minimum, maximum in ((0, 0), (1, 2)):
+            edited = copy.deepcopy(bottom)
+            edited["decision_domain_v2"].update(minimum=minimum, maximum=maximum)
+            with self.assertRaises(WireError):
+                PlayerDecisionRequestV4.from_wire(edited)
+
     def test_cost_route_request_must_be_actor_only(self) -> None:
         raw = json.loads(
             (ROOT / "schemas/examples/player-decision-request-v4-cost-route.json").read_text(

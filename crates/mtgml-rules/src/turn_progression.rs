@@ -58,6 +58,11 @@ pub fn execute_magic_response(
     if request.actor != actor || request.validate_response(response).is_err() {
         return Err(Error::InvalidSelection);
     }
+    if crate::game_start::is_pregame_purpose(&request.purpose) {
+        return crate::game_start::execute_pregame_response(
+            admission, state, request, response, status,
+        );
+    }
     validate_slice(admission, state)?;
     let answer = match request.purpose {
         DecisionPurposeV4::PriorityAction => {
@@ -118,6 +123,14 @@ pub fn validate_magic_pending_request(
     state: &EngineState,
     status: &EpisodeStatus,
 ) -> Result<(), BasicLandCandidateError> {
+    if let Some(request) = state
+        .execution
+        .pending_decision
+        .as_ref()
+        .filter(|request| crate::game_start::is_pregame_purpose(&request.purpose))
+    {
+        return crate::game_start::validate_pregame_request(admission, state, request, status);
+    }
     if !hands_within_slice(state) {
         return Err(BasicLandCandidateError::InvalidState);
     }
@@ -166,10 +179,12 @@ enum Answer {
     Discard(GameObjectId),
 }
 
-enum NextDecision {
+pub(crate) enum NextDecision {
     Priority(PlayerId),
     Attackers,
     Discard,
+    /// The next request of the start of the game (CR 103).
+    Pregame,
     /// The game ended: `loser` lost to a state-based action.
     GameOver {
         loser: PlayerId,
@@ -178,12 +193,50 @@ enum NextDecision {
 
 /// What changed during the transition beyond the endpoint fields.
 #[derive(Default)]
-struct Facts {
-    untapped: Option<Vec<GameObjectId>>,
+pub(crate) struct Facts {
+    pub(crate) untapped: Option<Vec<GameObjectId>>,
     attackers_declared: bool,
     combat_skipped: bool,
     combat_ended: bool,
-    zone_events: Vec<crate::zone_incarnation::ZoneMoveEvent>,
+    /// Zone moves, shuffles and public events in the order they happened,
+    /// each followed by the occurrences it caused.
+    pub(crate) zone_events: Vec<crate::zone_incarnation::ZoneMoveEvent>,
+}
+
+/// Records a public rule event where it happens: every player observes it,
+/// so each perspective's visible sequence advances now, before whatever
+/// happens next in the same transition.
+pub(crate) fn observe_public(
+    next: &mut EngineState,
+    facts: &mut Facts,
+    event: AuthoritativeRuleEventKind,
+) -> Result<(), Error> {
+    facts
+        .zone_events
+        .push(crate::zone_incarnation::ZoneMoveEvent::Public(Box::new(
+            event,
+        )));
+    let perspectives: Vec<PlayerId> = next.core.players.keys().copied().collect();
+    for perspective in perspectives {
+        let lifecycle = PerspectiveLifecycleAuditV1 {
+            perspective,
+            sequence: next
+                .knowledge
+                .players
+                .get(&perspective)
+                .ok_or(Error::InvalidResult)?
+                .next_visible_sequence,
+            mutation: Default::default(),
+        };
+        mtgml_state::apply_perspective_lifecycle(next, &lifecycle)
+            .map_err(|_| Error::InvalidResult)?;
+        facts
+            .zone_events
+            .push(crate::zone_incarnation::ZoneMoveEvent::Occurrence(
+                lifecycle,
+            ));
+    }
+    Ok(())
 }
 
 /// The land-only slice (D13): exactly two players, only admitted basic lands
@@ -413,22 +466,24 @@ fn advance(
                 step: BeginningStep::Draw,
             } => {
                 admits(admission, "rules/draw-card")?;
-                // CR 103.8a: the starting player skips the draw of turn 1.
-                if next.core.turn_number >= 2 {
-                    if library_top(next, active).is_none() {
-                        // CR 121.4, 704.5b: drawing from an empty library
-                        // loses the game when state-based actions are next
-                        // checked, before anyone receives priority (CR 117.5).
-                        admits(admission, "rules/state-based-actions-empty-library")?;
-                        next.core
-                            .players
-                            .get_mut(&active)
-                            .ok_or(Error::InvalidResult)?
-                            .has_lost = true;
-                        return Ok(NextDecision::GameOver { loser: active });
-                    }
-                    draw(next, active, facts)?;
+                // CR 103.8a, 500.11: the starting player skips the draw step
+                // of turn 1; the turn proceeds as though it did not exist.
+                if next.core.turn_number == 1 {
+                    continue;
                 }
+                if library_top(next, active).is_none() {
+                    // CR 121.4, 704.5b: drawing from an empty library
+                    // loses the game when state-based actions are next
+                    // checked, before anyone receives priority (CR 117.5).
+                    admits(admission, "rules/state-based-actions-empty-library")?;
+                    next.core
+                        .players
+                        .get_mut(&active)
+                        .ok_or(Error::InvalidResult)?
+                        .has_lost = true;
+                    return Ok(NextDecision::GameOver { loser: active });
+                }
+                draw(next, active, facts)?;
                 return Ok(open_priority(next));
             }
             // The beginning of combat is part of the turn structure every
@@ -479,7 +534,7 @@ fn advance(
     }
 }
 
-fn open_priority(next: &mut EngineState) -> NextDecision {
+pub(crate) fn open_priority(next: &mut EngineState) -> NextDecision {
     let active = next.core.active_player;
     next.core.priority = PriorityState::HeldBy {
         player: active,
@@ -540,7 +595,11 @@ fn library_top(state: &EngineState, owner: PlayerId) -> Option<GameObjectId> {
 
 /// CR 504.1: the active player draws the top card of their library. The
 /// caller handles an empty library.
-fn draw(next: &mut EngineState, owner: PlayerId, facts: &mut Facts) -> Result<(), Error> {
+pub(crate) fn draw(
+    next: &mut EngineState,
+    owner: PlayerId,
+    facts: &mut Facts,
+) -> Result<(), Error> {
     let top = library_top(next, owner).ok_or(Error::InvalidResult)?;
     move_card(
         next,
@@ -559,7 +618,7 @@ fn draw(next: &mut EngineState, owner: PlayerId, facts: &mut Facts) -> Result<()
 
 /// Moves one card through the shared zone-incarnation authority (new
 /// incarnation, knowledge and identity updates) and carries its face over.
-fn move_card(
+pub(crate) fn move_card(
     next: &mut EngineState,
     object: GameObjectId,
     kind: crate::zone_incarnation::SelectedZoneTransitionKind,
@@ -605,7 +664,7 @@ fn move_card(
 
 /// Emits one net event per changed aspect, installs the next decision and
 /// builds the validated V3 product.
-fn finish(
+pub(crate) fn finish(
     admission: &ExecutableProfileAdmissionV1,
     before: &EngineState,
     answered: &AuthoritativeDecisionRequest,
@@ -671,6 +730,28 @@ fn finish(
     let mut transition_index = None;
     for event in facts.zone_events {
         match event {
+            crate::zone_incarnation::ZoneMoveEvent::Public(event) => {
+                transition_index = Some(pending.len());
+                pending.push(Pending::Kind(event));
+            }
+            crate::zone_incarnation::ZoneMoveEvent::Shuffle(audit) => {
+                let crate::zone_incarnation::LibraryShuffleAudit {
+                    player,
+                    stream,
+                    cursor_before,
+                    cursor_after,
+                    raw_words_consumed,
+                    top_to_bottom,
+                } = *audit;
+                pending.push(kind(AuthoritativeRuleEventKind::LibraryShuffled {
+                    player,
+                    stream,
+                    cursor_before,
+                    cursor_after,
+                    raw_words_consumed,
+                    top_to_bottom,
+                }));
+            }
             crate::zone_incarnation::ZoneMoveEvent::Occurrence(lifecycle) => {
                 pending.push(Pending::Occurrence {
                     lifecycle,
@@ -734,6 +815,10 @@ fn finish(
             ),
         ),
         NextDecision::Attackers => (running, Some(install_attacker_request(&mut next)?)),
+        NextDecision::Pregame => (
+            running,
+            Some(crate::game_start::install_pregame_request(&mut next)?),
+        ),
         NextDecision::Discard => (running, Some(install_discard_request(&mut next)?)),
         // CR 104.2a: in a two-player game the other player wins.
         NextDecision::GameOver { loser } => {
@@ -801,6 +886,25 @@ fn finish(
         .iter()
         .flat_map(|event| event.event.semantic_operations())
         .collect();
+    // Continuations are private bookkeeping with no rule event of their own.
+    let continuations: std::collections::BTreeSet<_> = before
+        .execution
+        .continuations
+        .keys()
+        .chain(next.execution.continuations.keys())
+        .copied()
+        .collect();
+    for continuation in continuations {
+        let from = before.execution.continuations.get(&continuation);
+        let to = next.execution.continuations.get(&continuation);
+        if from != to {
+            operations.push(SemanticDeltaOperation::ContinuationChanged {
+                continuation,
+                from: from.map(|record| Box::new(record.payload.clone())),
+                to: to.map(|record| Box::new(record.payload.clone())),
+            });
+        }
+    }
     operations.push(SemanticDeltaOperation::PendingRequestChanged {
         from: Some(Box::new(answered.clone())),
         to: request.clone().map(Box::new),
@@ -954,8 +1058,45 @@ fn install_actor_only_request(
     decision_domain_v2: DecisionDomainV2,
     candidates: Vec<AuthoritativeCandidate>,
 ) -> Result<AuthoritativeDecisionRequest, Error> {
+    let actor = next.core.active_player;
+    install_request(
+        next,
+        RequestShape {
+            actor,
+            visibility: DecisionVisibility::ActingPlayerOnly,
+            continuation_id: None,
+            purpose,
+            decision_domain_v2,
+            candidates,
+        },
+    )
+}
+
+/// Everything about a request except the identities it is allocated.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RequestShape {
+    pub(crate) actor: PlayerId,
+    pub(crate) visibility: DecisionVisibility,
+    pub(crate) continuation_id: Option<mtgml_model::ContinuationId>,
+    pub(crate) purpose: DecisionPurposeV4,
+    pub(crate) decision_domain_v2: DecisionDomainV2,
+    pub(crate) candidates: Vec<AuthoritativeCandidate>,
+}
+
+/// Allocates the next decision identity (D5) and installs the request.
+pub(crate) fn install_request(
+    next: &mut EngineState,
+    shape: RequestShape,
+) -> Result<AuthoritativeDecisionRequest, Error> {
+    let RequestShape {
+        actor,
+        visibility,
+        continuation_id,
+        purpose,
+        decision_domain_v2,
+        candidates,
+    } = shape;
     let parts = &mut *next;
-    let actor = parts.core.active_player;
     let view_sequence = parts
         .knowledge
         .players
@@ -987,11 +1128,11 @@ fn install_actor_only_request(
         state_revision: parts.revision,
         view_sequence,
         actor,
-        visibility: DecisionVisibility::ActingPlayerOnly,
+        visibility,
         decision_domain_v2,
         purpose,
         parent_player_decision_id: None,
-        continuation_id: None,
+        continuation_id,
         candidates,
     };
     // A zero-candidate attacker declaration must be representable too.
@@ -1383,6 +1524,87 @@ mod tests {
         assert_eq!(request.actor, P2);
         assert_eq!(request.purpose, DecisionPurposeV4::PriorityAction);
         assert!(!has_play_land(&after));
+    }
+
+    /// One transition in which the active player draws `count` cards, built
+    /// the way `progress` builds every transition.
+    fn draw_in_one_transition(
+        admission: &ExecutableProfileAdmissionV1,
+        state: &EngineState,
+        count: usize,
+    ) -> Result<crate::BasicLandTransitionProduct, Error> {
+        let request = pending(state).clone();
+        let mut next = state.clone();
+        next.execution.pending_decision = None;
+        next.revision = StateRevision(state.revision.0 + 1);
+        let active = next.core.active_player;
+        let mut facts = Facts::default();
+        for _ in 0..count {
+            draw(&mut next, active, &mut facts)?;
+        }
+        finish(
+            admission,
+            state,
+            &request,
+            next,
+            facts,
+            NextDecision::Priority(active),
+        )
+    }
+
+    #[test]
+    fn two_draws_in_one_transition_validate() {
+        let (admission, state) = game(3);
+        let state = pass_until(&admission, state, at(UPKEEP, 2));
+        let hand_before = zone_count(&state, P2, ZoneKind::Hand);
+        let product = draw_in_one_transition(&admission, &state, 2).unwrap();
+        let after = apply(&state, &product);
+        assert_eq!(zone_count(&after, P2, ZoneKind::Hand), hand_before + 2);
+    }
+
+    #[test]
+    fn a_stale_second_draw_location_is_rejected() {
+        let (admission, state) = game(3);
+        let state = pass_until(&admission, state, at(UPKEEP, 2));
+        let mut product = draw_in_one_transition(&admission, &state, 2).unwrap();
+        // The second draw claims the card was where it lay before the first
+        // draw moved it up: true of `before`, false when the draw happened.
+        let second = product
+            .events
+            .iter()
+            .filter_map(|event| match &event.event {
+                AuthoritativeRuleEventKind::ZoneTransition { transition } => {
+                    Some(transition.old_object)
+                }
+                _ => None,
+            })
+            .nth(1)
+            .unwrap();
+        let stale = state.zones.locations[&second].clone();
+        assert_ne!(stale.position, ZonePosition::Top { offset: 0 });
+        for event in &mut product.events {
+            if let AuthoritativeRuleEventKind::ZoneTransition { transition } = &mut event.event {
+                if transition.old_object == second {
+                    transition.last_known.location = stale.clone();
+                    transition.from = stale.clone();
+                }
+            }
+        }
+        for operation in &mut product.delta.operations {
+            if let SemanticDeltaOperation::ZoneTransition { transition } = operation {
+                if transition.old_object == second {
+                    transition.last_known.location = stale.clone();
+                    transition.from = stale.clone();
+                }
+            }
+        }
+        assert!(crate::events::validate_events_for_built_delta_v3(
+            &state,
+            &product.next_state,
+            &product.events,
+            &product.delta,
+        )
+        .is_err());
     }
 
     #[test]

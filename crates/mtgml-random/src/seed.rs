@@ -20,6 +20,8 @@ pub enum RandomValidationError {
     UnknownScopeTag(u8),
     #[error("malformed stream key bytes")]
     MalformedStreamKey,
+    #[error("stream kind {0} does not allow this scope")]
+    ScopeNotAllowedForKind(u16),
     #[error("duplicate stream key")]
     DuplicateStreamKey,
     #[error("stream entries do not match stream map")]

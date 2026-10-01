@@ -59,6 +59,10 @@ SCHEMA_NEGATIVE_CASES = [
     ),
     (
         "player-decision-request.v4.schema.json",
+        "schemas/negative/player-decision-request-v4-mulligan-bottom-public.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
         "schemas/negative/player-decision-request-v4-cost-route-normal-with-ordinal.json",
     ),
     (
@@ -88,6 +92,10 @@ SCHEMA_NEGATIVE_CASES = [
     (
         "observed-event-envelope.v4.schema.json",
         "schemas/negative/observed-event-v4-trusted-stack-id.json",
+    ),
+    (
+        "observed-event-envelope.v4.schema.json",
+        "schemas/negative/observed-event-v4-mulligan-not-boolean.json",
     ),
     (
         "player-step.v4.schema.json",
@@ -247,6 +255,18 @@ SCHEMA_POSITIVE_CASES = [
     (
         "player-decision-request.v4.schema.json",
         "schemas/examples/player-decision-request-v4-hand-size-discard.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/examples/player-decision-request-v4-starting-player.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/examples/player-decision-request-v4-mulligan-declaration.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/examples/player-decision-request-v4-mulligan-bottom.json",
     ),
     (
         "player-step.v4.schema.json",

@@ -1,0 +1,39 @@
+{
+  "actor": "1",
+  "candidates": [
+    {
+      "candidate_id": 0,
+      "intent": {
+        "kind": "select_object",
+        "object": "4"
+      }
+    },
+    {
+      "candidate_id": 1,
+      "intent": {
+        "kind": "select_object",
+        "object": "7"
+      }
+    },
+    {
+      "candidate_id": 2,
+      "intent": {
+        "kind": "select_object",
+        "object": "9"
+      }
+    }
+  ],
+  "decision_domain_v2": {
+    "kind": "order",
+    "maximum": 2,
+    "minimum": 2
+  },
+  "parent_player_decision_id": null,
+  "player_decision_id": "3",
+  "purpose": {
+    "kind": "mulligan_bottom"
+  },
+  "schema_version": "player-decision-request.v4",
+  "view_sequence": "0",
+  "visibility": "public"
+}

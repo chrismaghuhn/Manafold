@@ -61,10 +61,13 @@ NEW_EVENT_KINDS_V1 = frozenset(
         "temporary_effect_expired",
     }
 )
-EVENT_KINDS_V4 = EVENT_KINDS_V3 | NEW_EVENT_KINDS_V1
+GAME_START_EVENT_KINDS = frozenset({"starting_player_chosen", "mulligan_declared"})
+EVENT_KINDS_V4 = EVENT_KINDS_V3 | NEW_EVENT_KINDS_V1 | GAME_START_EVENT_KINDS
 _UINT_FIELDS = frozenset(
     {
         "object",
+        "chooser",
+        "starting_player",
         "old_object",
         "new_object",
         "player",
@@ -212,6 +215,17 @@ class ObservedEventV4:
             }
             if kind == "stack_item_removed":
                 fields["cause"] = obj["cause"]
+        elif kind == "starting_player_chosen":
+            obj = require_exact_keys(value, {"kind", "chooser", "starting_player"})
+            fields = {
+                "chooser": parse_uint(obj["chooser"]),
+                "starting_player": parse_uint(obj["starting_player"]),
+            }
+        elif kind == "mulligan_declared":
+            obj = require_exact_keys(value, {"kind", "player", "mulligan"})
+            if not isinstance(obj["mulligan"], bool):
+                raise WireError("decode.invalid_json", "mulligan must be boolean")
+            fields = {"player": parse_uint(obj["player"]), "mulligan": obj["mulligan"]}
         elif kind in {"temporary_effect_created", "temporary_effect_expired"}:
             obj = require_exact_keys(value, {"kind", "effect"})
             fields = {"effect": PublicTemporaryEffectV1.from_wire(obj["effect"]).to_wire()}

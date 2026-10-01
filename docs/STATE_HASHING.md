@@ -548,6 +548,24 @@ Graveyard order candidate derivation. APNAP owner sequence and each selected
 top-to-bottom permutation preserve semantic order. Completed order entries
 are a prefix of the owner sequence.
 
+The game-start continuation payload (CR 103; it exists exactly while the turn
+number is 0) is:
+
+```text
+[
+  "game_start",
+  chooser,
+  starting_player_or_null,
+  stage,
+  mulligans_taken[[player, count]],
+  kept[player],
+  round_mulligans[player]
+]
+```
+
+`stage` is `["choosing_starting_player", null]`, `["declaring", player]` or
+`["bottoming", player]`. The player sets are ascending by `PlayerId`.
+
 ## `random_v1`
 
 ```text

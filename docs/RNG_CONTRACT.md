@@ -114,14 +114,16 @@ Global
 Player(PlayerId)
 ```
 
-Initial kind codes:
+Kind codes and the scopes each allows:
 
 ```text
 0x0000 = reserved / invalid
-0x0001 = SyntheticM1
+0x0001 = SyntheticM1        Global or Player
+0x0002 = GameStartChooser   Global only   (who chooses the first player, CR 103.1)
+0x0003 = LibraryShuffle     Player only   (every shuffle of that player's library, CR 103.3)
 ```
 
-`SyntheticM1` is only a synthetic development purpose. Real random semantics receive reviewed purpose-specific kind codes as later capabilities require them.
+`SyntheticM1` is only a synthetic development purpose. Real random semantics receive reviewed purpose-specific kind codes as later capabilities require them. A key whose scope its kind does not allow fails closed (`ScopeNotAllowedForKind`) when decoded, added or validated.
 
 The canonical `RandomStreamKeyV1` byte encoding is:
 

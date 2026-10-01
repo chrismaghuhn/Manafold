@@ -316,7 +316,9 @@ fn requires_all_player_audience(
         Event::StackItemAdded { .. }
         | Event::TriggerPlaced { .. }
         | Event::StackItemRemoved { .. }
-        | Event::ManaPoolChanged { .. } => Ok(true),
+        | Event::ManaPoolChanged { .. }
+        | Event::StartingPlayerChosen { .. }
+        | Event::MulliganDeclared { .. } => Ok(true),
         Event::CounterChanged { object, .. } => {
             Ok(public_face_up_battlefield_object(*object, before, after))
         }
@@ -359,6 +361,19 @@ pub(crate) fn public_face_up_battlefield_object(
         && !object_state.face_down
 }
 
+/// Whether a perspective sees the new incarnation of a moved card: always in
+/// a public destination (so a missing opaque identity fails closed), and in
+/// a hidden destination only when the perspective tracks it, as an owner who
+/// sees a card disappear into its own library does not.
+fn reveals_new_incarnation(
+    new_object: mtgml_model::GameObjectId,
+    to: &mtgml_state::ZoneLocation,
+    after_identity: &mtgml_state::PerspectiveIdentityRecordV2,
+) -> bool {
+    to.visibility == mtgml_state::VisibilityPartition::Public
+        || after_identity.object_to_opaque.contains_key(&new_object)
+}
+
 fn project_v4_public_source_event(
     source_event: &mtgml_rules::AuthoritativeRuleEvent,
     context: V4PublicSourceEventContext<'_>,
@@ -380,14 +395,16 @@ fn project_v4_public_source_event(
                 to_zone: transition.to.zone,
                 old_object: transition.old_object,
                 new_object: transition.new_object,
-                // Preserve the V7 Basic-Land projection rule: an old
-                // incarnation is visible only when this perspective had
-                // an opaque identity for it before the move. A newly
-                // public incarnation is allocated separately below.
+                // The old incarnation is visible exactly when this
+                // perspective had an opaque identity for it before the move.
                 reveals_old: before_identity
                     .object_to_opaque
                     .contains_key(&transition.old_object),
-                reveals_new: true,
+                reveals_new: reveals_new_incarnation(
+                    transition.new_object,
+                    &transition.to,
+                    after_identity,
+                ),
             };
             project_v4_legacy_observation_policy(
                 after,
@@ -398,6 +415,17 @@ fn project_v4_public_source_event(
             )?
             .ok_or(SuccessorProjectionError::ObservationOccurrenceMismatch)
         }
+        Event::StartingPlayerChosen {
+            chooser,
+            starting_player,
+        } => Ok(ObservedEventKindV4::StartingPlayerChosen {
+            chooser: *chooser,
+            starting_player: *starting_player,
+        }),
+        Event::MulliganDeclared { player, mulligan } => Ok(ObservedEventKindV4::MulliganDeclared {
+            player: *player,
+            mulligan: *mulligan,
+        }),
         Event::ObjectTapped { object, to, .. } => Ok(ObservedEventKindV4::ObjectTapped {
             object: crate::player_projection::public_opaque_object(
                 after,
@@ -847,4 +875,46 @@ pub fn project_successor_player_steps_v4(
         steps.insert(perspective, step);
     }
     Ok(steps)
+}
+
+#[cfg(test)]
+mod reveal_tests {
+    use super::reveals_new_incarnation;
+    use mtgml_model::{GameObjectId, OpaqueObjectId, PlayerId, ZoneKind};
+    use mtgml_state::{
+        PerspectiveIdentityRecordV2, VisibilityPartition, ZoneLocation, ZonePosition,
+    };
+
+    fn location(zone: ZoneKind, visibility: VisibilityPartition) -> ZoneLocation {
+        ZoneLocation {
+            zone,
+            player: Some(PlayerId(1)),
+            position: ZonePosition::Top { offset: 0 },
+            visibility,
+            partition: None,
+        }
+    }
+
+    #[test]
+    fn a_public_destination_always_reveals_and_a_hidden_one_only_when_tracked() {
+        let untracked = PerspectiveIdentityRecordV2::default();
+        let mut tracked = PerspectiveIdentityRecordV2::default();
+        tracked
+            .object_to_opaque
+            .insert(GameObjectId(2), OpaqueObjectId(1));
+        let graveyard = location(ZoneKind::Graveyard, VisibilityPartition::Public);
+        let library = location(ZoneKind::Library, VisibilityPartition::FaceDown);
+        // A missing identity in a public zone must surface, not vanish.
+        assert!(reveals_new_incarnation(
+            GameObjectId(2),
+            &graveyard,
+            &untracked
+        ));
+        assert!(!reveals_new_incarnation(
+            GameObjectId(2),
+            &library,
+            &untracked
+        ));
+        assert!(reveals_new_incarnation(GameObjectId(2), &library, &tracked));
+    }
 }

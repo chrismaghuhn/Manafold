@@ -228,6 +228,22 @@ pub enum SemanticDeltaOperation {
         from: Option<Box<TemporaryEffectRecord>>,
         to: Option<Box<TemporaryEffectRecord>>,
     },
+    StartingPlayerChosen {
+        chooser: PlayerId,
+        starting_player: PlayerId,
+    },
+    MulliganDeclared {
+        player: PlayerId,
+        mulligan: bool,
+    },
+    LibraryShuffled {
+        player: PlayerId,
+        stream: RandomStreamKeyV1,
+        cursor_before: u64,
+        cursor_after: u64,
+        raw_words_consumed: u64,
+        top_to_bottom: Vec<GameObjectId>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -645,16 +661,18 @@ fn validate_delta_operation_coverage(
             }
         }
     }
-    if old_before.zones.locations != old_after.zones.locations
-        && !has(&|operation| matches!(operation, V3::ObjectEntered { .. }))
-        && !has(&|operation| matches!(operation, V3::ZoneTransition { .. }))
-    {
+    let moves_or_shuffles = || {
+        has(&|operation| {
+            matches!(
+                operation,
+                V3::ObjectEntered { .. } | V3::ZoneTransition { .. } | V3::LibraryShuffled { .. }
+            )
+        })
+    };
+    if old_before.zones.locations != old_after.zones.locations && !moves_or_shuffles() {
         return uncovered();
     }
-    if old_before.zones.ordered_zones != old_after.zones.ordered_zones
-        && !has(&|operation| matches!(operation, V3::ObjectEntered { .. }))
-        && !has(&|operation| matches!(operation, V3::ZoneTransition { .. }))
-    {
+    if old_before.zones.ordered_zones != old_after.zones.ordered_zones && !moves_or_shuffles() {
         return uncovered();
     }
 
@@ -964,7 +982,12 @@ fn validate_delta_operation_coverage(
         }
     }
     if old_before.random != old_after.random
-        && !has(&|operation| matches!(operation, V3::RandomValueSampled { .. }))
+        && !has(&|operation| {
+            matches!(
+                operation,
+                V3::RandomValueSampled { .. } | V3::LibraryShuffled { .. }
+            )
+        })
         || old_before.knowledge != old_after.knowledge
             && !has(&|operation| matches!(operation, V3::PerspectiveLifecycle { .. }))
     {

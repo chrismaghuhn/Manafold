@@ -1014,6 +1014,137 @@
               "purpose": {
                 "properties": {
                   "kind": {
+                    "const": "starting_player"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            },
+            "required": [
+              "purpose"
+            ]
+          },
+          "then": {
+            "properties": {
+              "decision_domain_v2": {
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "choose_one"
+                    ]
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              },
+              "visibility": {
+                "const": "public"
+              }
+            },
+            "required": [
+              "decision_domain_v2",
+              "visibility"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "purpose": {
+                "properties": {
+                  "kind": {
+                    "const": "mulligan_declaration"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            },
+            "required": [
+              "purpose"
+            ]
+          },
+          "then": {
+            "properties": {
+              "decision_domain_v2": {
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "choose_one"
+                    ]
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              },
+              "visibility": {
+                "const": "public"
+              }
+            },
+            "required": [
+              "decision_domain_v2",
+              "visibility"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "purpose": {
+                "properties": {
+                  "kind": {
+                    "const": "mulligan_bottom"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            },
+            "required": [
+              "purpose"
+            ]
+          },
+          "then": {
+            "properties": {
+              "decision_domain_v2": {
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "order"
+                    ]
+                  },
+                  "minimum": {
+                    "minimum": 1
+                  }
+                },
+                "required": [
+                  "kind",
+                  "maximum",
+                  "minimum"
+                ]
+              },
+              "visibility": {
+                "const": "acting_player_only"
+              }
+            },
+            "required": [
+              "decision_domain_v2",
+              "visibility"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "purpose": {
+                "properties": {
+                  "kind": {
                     "const": "cast_cost_route"
                   }
                 },
@@ -1691,6 +1822,147 @@
                 "properties": {
                   "kind": {
                     "const": "hand_size_discard"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            },
+            "required": [
+              "purpose"
+            ]
+          },
+          "then": {
+            "properties": {
+              "candidates": {
+                "items": {
+                  "properties": {
+                    "intent": {
+                      "properties": {
+                        "kind": {
+                          "enum": [
+                            "select_object"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "intent"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "candidates"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "purpose": {
+                "properties": {
+                  "kind": {
+                    "const": "starting_player"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            },
+            "required": [
+              "purpose"
+            ]
+          },
+          "then": {
+            "properties": {
+              "candidates": {
+                "items": {
+                  "properties": {
+                    "intent": {
+                      "properties": {
+                        "kind": {
+                          "enum": [
+                            "select_player"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "intent"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "candidates"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "purpose": {
+                "properties": {
+                  "kind": {
+                    "const": "mulligan_declaration"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            },
+            "required": [
+              "purpose"
+            ]
+          },
+          "then": {
+            "properties": {
+              "candidates": {
+                "items": {
+                  "properties": {
+                    "intent": {
+                      "properties": {
+                        "kind": {
+                          "enum": [
+                            "choose_boolean"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "intent"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "candidates"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "purpose": {
+                "properties": {
+                  "kind": {
+                    "const": "mulligan_bottom"
                   }
                 },
                 "required": [
@@ -3033,6 +3305,42 @@
               "additionalProperties": false,
               "properties": {
                 "kind": {
+                  "const": "starting_player"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "mulligan_declaration"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "mulligan_bottom"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
                   "const": "synthetic_assembly"
                 },
                 "stage": {
@@ -3533,6 +3841,46 @@
               "required": [
                 "kind",
                 "effect"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "chooser": {
+                  "$ref": "#/$defs/uint"
+                },
+                "kind": {
+                  "const": "starting_player_chosen"
+                },
+                "starting_player": {
+                  "$ref": "#/$defs/uint"
+                }
+              },
+              "required": [
+                "kind",
+                "chooser",
+                "starting_player"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "mulligan_declared"
+                },
+                "mulligan": {
+                  "type": "boolean"
+                },
+                "player": {
+                  "$ref": "#/$defs/uint"
+                }
+              },
+              "required": [
+                "kind",
+                "player",
+                "mulligan"
               ],
               "type": "object"
             }

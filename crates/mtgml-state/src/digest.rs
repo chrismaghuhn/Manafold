@@ -440,6 +440,32 @@ fn stack_resolution_value(value: &StackResolutionContinuation) -> Value {
     ])
 }
 
+fn game_start_value(value: &crate::GameStartContinuation) -> Value {
+    let players = |players: &std::collections::BTreeSet<mtgml_model::PlayerId>| {
+        array(players.iter().map(|player| u(player.0)))
+    };
+    array([
+        text("game_start"),
+        u(value.chooser.0),
+        optional(value.starting_player.map(|player| u(player.0))),
+        match value.stage {
+            crate::GameStartStage::ChoosingStartingPlayer => {
+                array([text("choosing_starting_player"), Value::Null])
+            }
+            crate::GameStartStage::Declaring { player } => array([text("declaring"), u(player.0)]),
+            crate::GameStartStage::Bottoming { player } => array([text("bottoming"), u(player.0)]),
+        },
+        array(
+            value
+                .mulligans_taken
+                .iter()
+                .map(|(player, count)| array([u(player.0), u(u64::from(*count))])),
+        ),
+        players(&value.kept),
+        players(&value.round_mulligans),
+    ])
+}
+
 fn continuation_value(value: &ContinuationRecord) -> Result<Value, crate::StateDigestError> {
     let payload = match &value.payload {
         ContinuationPayload::SyntheticAssembly {
@@ -497,6 +523,7 @@ fn continuation_value(value: &ContinuationRecord) -> Result<Value, crate::StateD
         ContinuationPayload::NonManaActivation(value) => activation_continuation_value(value),
         ContinuationPayload::TriggerPlacement(value) => trigger_placement_value(value),
         ContinuationPayload::StackResolution(value) => stack_resolution_value(value),
+        ContinuationPayload::GameStart(value) => game_start_value(value),
     };
     Ok(array([
         u(value.id.0),
@@ -790,6 +817,9 @@ fn decision_purpose_value(value: &DecisionPurposeV4) -> Value {
             u(u64::from(*profile_local_cost_id)),
         ]),
         DecisionPurposeV4::AbilityAction => array([text("ability_action")]),
+        DecisionPurposeV4::StartingPlayer => array([text("starting_player")]),
+        DecisionPurposeV4::MulliganDeclaration => array([text("mulligan_declaration")]),
+        DecisionPurposeV4::MulliganBottom => array([text("mulligan_bottom")]),
         DecisionPurposeV4::TriggerOrder => array([text("trigger_order")]),
         DecisionPurposeV4::TriggerTarget { target_slot } => {
             array([text("trigger_target"), u(u64::from(*target_slot))])
