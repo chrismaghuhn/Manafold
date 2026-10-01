@@ -1,8 +1,9 @@
 //! Random-vs-random smoke games through the production player endpoints.
 //!
-//! Each game: two players with seed-chosen basic lands (twenty in each
-//! library, seven in hand) play until turn 31 begins. A uniform random
-//! policy answers every decision using only the request its player sees.
+//! Each game: two players with seed-chosen 27-card basic-land decks start
+//! the game as CR 103 prescribes (starting player, shuffles, seven-card
+//! hands, mulligans) and play until turn 31 begins. A uniform random policy
+//! answers every decision using only the request its player sees.
 //!
 //! Thirty-turn games need an optimized build: `scripts/run_checks.py`
 //! runs `cargo test --release -p mtgml-environment --test random_smoke`.
@@ -10,7 +11,7 @@
 
 mod common;
 
-use common::{two_player_land_game, SplitMix64, P1, P2};
+use common::{deck_game, random_lands, SplitMix64, P1, P2};
 use mtgml_decision::{
     DecisionAnswerV2, DecisionDomainV2, DecisionResponseV3, PlayerDecisionRequestV4,
     DECISION_RESPONSE_V3_SCHEMA,
@@ -22,8 +23,8 @@ use mtgml_observation::PlayerStepSubmissionV1;
 const FIRST_SEED: u64 = 0x4D41_4E41;
 const LAST_TURN: u64 = 30;
 const SHORT_LAST_TURN: u64 = 3;
-const SHORT_FINGERPRINT: &str = "350cf070471b7bcc386d2063d6316b4caa522437ecc2a64311febcf6f9051473";
-const LONG_FINGERPRINT: &str = "44b09d6547f86a37396c265ea5d91c8051b8491df8290bfa52dafc18df9ce387";
+const SHORT_FINGERPRINT: &str = "cfe58be0164ef6bb0cf8a38175122b9de24a5e08ade0f1c9a7b0d1eb396b6be9";
+const LONG_FINGERPRINT: &str = "3e12aca18381a2d1afcf7ece2d9a1747fe1154c594adfdf1c8c11f942a56259e";
 const MAX_DECISIONS: usize = 5_000;
 
 fn game_count() -> u64 {
@@ -66,12 +67,29 @@ fn random_answer(request: &PlayerDecisionRequestV4, rng: &mut SplitMix64) -> Dec
         DecisionDomainV2::ChooseOne => DecisionAnswerV2::SelectOne {
             candidate_id: ids[rng.below(ids.len())],
         },
+        // A uniformly random subset of an allowed size, in a uniformly
+        // random order.
+        DecisionDomainV2::Order { minimum, maximum } => {
+            let size = minimum as usize + rng.below((maximum - minimum) as usize + 1);
+            let mut pool = ids;
+            let mut chosen = Vec::with_capacity(size);
+            for _ in 0..size {
+                chosen.push(pool.remove(rng.below(pool.len())));
+            }
+            DecisionAnswerV2::Order {
+                candidate_ids: chosen,
+            }
+        }
         ref other => panic!("unexpected decision domain {other:?}"),
     }
 }
 
 fn play(seed: u64, last_turn: u64) -> (Vec<Entry>, TrustedEnvironmentController) {
-    let controller = two_player_land_game(20, 7, seed);
+    let mut decks = SplitMix64(seed);
+    let controller = deck_game(
+        [random_lands(27, &mut decks), random_lands(27, &mut decks)],
+        seed,
+    );
     let players: [PlayerEndpointHandle; 2] = [
         controller.bind_player(P1).unwrap(),
         controller.bind_player(P2).unwrap(),

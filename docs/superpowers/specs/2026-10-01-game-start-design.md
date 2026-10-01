@@ -1,9 +1,10 @@
 # Game Start Design
 
-**Status:** DRAFT — written overnight by the agent on the owner's standing
-instruction ("work on R1/W1, we will look at it"); revised after a review by a
-fresh review agent (approve with changes; its five blocking points are folded
-in below). NOT yet approved by the owner. Branch `feat/game-start`.
+**Status:** IMPLEMENTED on branch `feat/game-start`, 2026-10-01 — written and
+implemented overnight by the agent on the owner's standing instruction ("work
+on R1/W1, we will look at it"); revised after a review by a fresh review agent
+(approve with changes; its five blocking points are folded in below). NOT yet
+approved by the owner.
 
 ## 1. What the engine can do afterwards
 

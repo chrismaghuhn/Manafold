@@ -1,7 +1,7 @@
 # Game Start Implementation Plan
 
-**Status:** DRAFT — executed overnight by the agent from a spec that the owner
-has not yet approved; the owner reviews both in the morning.
+**Status:** IMPLEMENTED on branch `feat/game-start`, 2026-10-01, overnight by
+the agent from a spec the owner has not yet approved; the owner reviews both.
 
 **Spec:** `docs/superpowers/specs/2026-10-01-game-start-design.md` (binding; its
 §6 phasing is this plan's task order).
@@ -19,7 +19,7 @@ has not yet approved; the owner reviews both in the morning.
 
 ## Tasks
 
-1. **Chain validation of zone moves** — done (`e1356df4`).
+1. **Chain validation of zone moves** — done.
 2. **Start a game from two deck lists** (spec G1–G7, G11–G13; mulligan answers
    fail closed):
    1. `rules/game-start` capability (registry, generated projection,
