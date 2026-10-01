@@ -22,3 +22,7 @@ benchmarks/results/*
 !benchmarks/results/.gitkeep
 local/
 .env
+# Local copies of pinned sources that must not be redistributed (ADR 0051):
+# the Comprehensive Rules text and the Scryfall Oracle archive.
+/.rules/
+/.oracle/

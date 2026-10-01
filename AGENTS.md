@@ -16,6 +16,8 @@ In practice:
 - Every player choice is an explicit decision. Never fill in a choice
   heuristically or randomly.
 - Unsupported rules fail with a precise error. Never guess.
+- Every Magic rules question is answered from the pinned Comprehensive Rules
+  text, never from memory (see §8, "Rules text").
 
 ## 2. Progress = what the engine can play
 
@@ -101,6 +103,23 @@ intent; code and tests are what actually runs.
 | Replay, determinism | `docs/REPLAY_AND_DETERMINISM.md` |
 | Which Magic rules text is authoritative | `docs/rules/AUTHORITY_POLICY.md` |
 | Profiling (where time goes) | `docs/agents/profiling.md` |
+
+**Rules text.** Check every question about Magic rules against the pinned
+Comprehensive Rules TXT, not against memory or a website. Cite the rule
+number in specs, code comments and reviews. If the text, the code and the
+docs disagree, say so.
+
+- **Identity:** the repository pins the snapshot's identity and SHA-256
+  (`docs/rules/AUTHORITY_POLICY.md`, the capability docs). The current
+  snapshot is `MagicCompRules 20260925.txt`, SHA-256
+  `8d860e451f20f38865b725b42d82feb714c725373dd8f3b32b8652b3eeb070ca`.
+- **The text is not in the repository** (ADR 0051: no redistribution). Keep
+  a local copy at `.rules/MagicCompRules 20260925.txt`; `.rules/` is
+  git-ignored. Never commit it.
+- **Check the copy's SHA-256 before relying on it.** A copy with another
+  hash is a different edition and is not the authority.
+- **If the copy is missing,** ask the owner before downloading it from the
+  official URL in `docs/maintenance/SCHEMA_EVOLUTION.md`.
 
 ## 9. Workflow
 
