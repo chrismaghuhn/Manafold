@@ -1,21 +1,30 @@
 # Vanilla Creatures and Combat Design
 
-**Status:** DRAFT, revision 2. Written overnight by the agent and revised after
-an Opus spec review ("approve with changes"). NOT approved by the owner.
-Branch `feat/vanilla-creatures`.
+**Status:** revision 2, APPROVED by the owner on 2026-10-01 (after an Opus spec
+review, "approve with changes", whose points revision 2 addresses). Branch
+`feat/vanilla-creatures`.
 
-**Depends on:** `feat/game-start`. That branch brings deck lists, 20 starting
-life, London mulligans, `Order` answers in the smoke policy and the
-zone-transition chain validation. This branch rebases onto it before any code
-(step 0).
+**Depends on:** game start (#266, merged) and the public player state (#267).
+This branch is stacked on `feat/public-player-state` and rebases onto `master`
+once #267 merges.
 
-**Blocked on:** the owner's permission to download the pinned Scryfall bulk
-archive `oracle-cards-20260925210158.jsonl.gz`:
-- A headers-only request shows it is still served: 200, 24,561,309 bytes,
-  Last-Modified 2026-09-25 21:01:58.
-- It is not downloaded.
-- The witness definitions need its exact Oracle records, as
-  `basic-land@1.0.0` has.
+**Source archive:** `oracle-cards-20260925210158.jsonl.gz` was downloaded with
+the owner's OK on 2026-10-01:
+- 24,561,309 bytes; SHA-256 `c607300f…`, equal to the pin in
+  `cards/definitions/basic-land-v1/README.md`.
+- It is kept locally in the git-ignored `.oracle/` folder and is not
+  redistributed.
+
+Exact witness records (record SHA-256 over the JSONL line including its LF):
+
+| Card | Oracle UUID | Record SHA-256 |
+|---|---|---|
+| Savannah Lions | `60ba93eb-39e6-4af2-9c66-cd38f72daff2` | `84fce7b698d07816432dc2674941ffdc9e0ffe586793ad669310f1bbd438c4cf` |
+| Gray Ogre | `83c8a3a6-2e1a-4e26-8847-6d066f42d906` | `f07e4de80207bf5701840eb63bc8f35070e2e07dca93721d4fabb03c16fc79fa` |
+| Hill Giant | `342199e0-15b6-4824-83da-25caef2592b3` | `7278c29c3e7fe48fd5251930df1df553c5773e2199738a183d895ec3a0fc1952` |
+
+All three satisfy the vanilla profile: `layout` normal, no `card_faces`, empty
+`oracle_text` and `keywords`, and integer power and toughness ≥ 1.
 
 ## 1. What the engine can do afterwards
 
@@ -367,18 +376,14 @@ kind, the cleanup damage reset) is reference material, not code to restore.
 **Reported, not fixed here:** discarding a land card at cleanup never sets
 `permanent_card_to_graveyard` in the turn history.
 
-## 8. Open questions for the owner
+## 8. Owner decisions (2026-10-01)
 
-1. **Download.** May I download the pinned Scryfall archive (24.5 MB, not
-   stored in the repo)? Step 1 needs it.
-2. **Witnesses.** Are Savannah Lions, Gray Ogre and Hill Giant right? The
-   reviewer agrees; a fourth card is optional.
-3. **Paying from the pool.** Is casting only from a pool that already pays the
-   cost acceptable? The reviewer approves it as not a simplification for this
-   card pool.
-4. **Encodings.** Are the per-blocker `DeclareBlock` and per-blocker
-   `AssignCombatDamage` encodings, with partial choices in continuations,
-   right?
-5. **Observation.** Step 2 adds life, counts and battlefield. Should that
-   observation work land first as its own change on top of `feat/game-start`?
-   Lands already need tapped flags and counts.
+1. **Download:** yes; done, see the header.
+2. **Witnesses:** Savannah Lions, Gray Ogre and Hill Giant.
+3. **Paying from the pool:** accepted, as specified in §3.
+4. **Encodings:** per-blocker `DeclareBlock` and per-blocker
+   `AssignCombatDamage`, with partial choices in continuations, as specified
+   in §5.
+5. **Observation:** life, hand and library counts, and tapped permanents
+   landed first as their own change (#267). The creature work adds the
+   remaining battlefield fields of §6.
