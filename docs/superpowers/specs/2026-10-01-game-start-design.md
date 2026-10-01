@@ -31,7 +31,9 @@ definitions need.
 
 ## 2. Rules authority
 
-Comprehensive Rules effective 2026-09-25 (the pinned snapshot):
+Comprehensive Rules effective 2026-09-25 (the pinned snapshot). Every rule
+cited here was checked on 2026-10-01 against the pinned TXT (SHA-256 `8d860e45…`; kept locally in the
+git-ignored `.rules/` folder, never committed, per ADR 0051):
 
 - 103.1 — the players determine which one of them chooses who takes the first
   turn (first game of a match: any mutually agreeable method).
