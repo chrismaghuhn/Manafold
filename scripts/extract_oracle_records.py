@@ -124,7 +124,9 @@ def main() -> None:
         help="refuse any record that is not a vanilla creature",
     )
     parser.add_argument("--archive-sha256", default=PINNED_ARCHIVE_SHA256)
-    args = parser.parse_args()
+    # Card names may follow the options (Python 3.11's parse_args cannot
+    # match a nargs="*" positional after an option; CI runs 3.11).
+    args = parser.parse_intermixed_args()
     if not args.names and not args.oracle_id:
         parser.error("give at least one card name or --oracle-id")
     records = extract(
