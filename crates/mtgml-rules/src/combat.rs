@@ -1,5 +1,5 @@
-//! Attacking (CR 508.1), declaring blockers (CR 509.1) and combat damage
-//! (CR 510.1, 510.2).
+//! Attacking (CR 508.1), declaring blockers (CR 509.1), combat damage
+//! (CR 510.1, 510.2) and removal from combat (CR 506.4).
 //!
 //! The only creatures of this slice are vanilla creatures, so combat reads of
 //! a creature only its controller, whether it is tapped, since when it has
@@ -7,7 +7,9 @@
 //! defending player declares blocks one untapped creature at a time, in a
 //! continuation that only they can see. Combat damage is dealt to players and
 //! marked on creatures; an attacker with two or more blockers has to divide
-//! its damage among them, which is not supported yet.
+//! its damage among them, which is not supported yet. A creature dealt lethal
+//! damage is destroyed by the state-based actions that follow
+//! (`crate::state_based_actions`), which remove it from combat first.
 
 use std::collections::BTreeMap;
 
@@ -28,15 +30,15 @@ use crate::turn_progression::{
 use crate::{AuthoritativeRuleEventKind, BasicLandTransitionError as Error, S1QueryAuthority};
 
 /// A creature on the battlefield and what combat reads of it.
-struct Creature {
-    object: GameObjectId,
-    controller: PlayerId,
-    power: i64,
-    toughness: i64,
+pub(crate) struct Creature {
+    pub(crate) object: GameObjectId,
+    pub(crate) controller: PlayerId,
+    pub(crate) power: i64,
+    pub(crate) toughness: i64,
 }
 
 /// The creatures on the battlefield, in object order.
-fn battlefield_creatures(
+pub(crate) fn battlefield_creatures(
     admission: &ExecutableProfileAdmissionV1,
     state: &EngineState,
 ) -> Result<Vec<Creature>, Error> {
@@ -559,6 +561,25 @@ pub(crate) fn validate_reachable_combat(
     Ok(())
 }
 
+/// CR 506.4: the creature `object`, which leaves the battlefield, is removed
+/// from combat and stops being an attacking, blocking, blocked creature.
+/// - An attacker leaves `attackers` and `blocked_attackers`. The creatures that
+///   blocked it remain blocking creatures (CR 509.1g) with nothing to block,
+///   and a creature that blocks nothing assigns no combat damage (CR 510.1d)
+///   as one that never blocked does. The combat records a block as the
+///   attacker its blocker blocks, so they leave the blocks with it.
+/// - A blocker leaves the blocks. The attacker it blocked stays blocked with no
+///   blocker left (CR 509.1h): it stays in `blocked_attackers`.
+pub(crate) fn remove_from_combat(next: &mut EngineState, object: GameObjectId) {
+    let Some(combat) = next.combat.as_mut() else {
+        return;
+    };
+    combat.attackers.retain(|attacker| *attacker != object);
+    combat.blocked_attackers.remove(&object);
+    combat.blockers.remove(&object);
+    combat.blockers.retain(|_, attacker| *attacker != object);
+}
+
 /// CR 510.1, 510.2: every attacking and blocking creature deals combat damage
 /// equal to its power, all at once:
 /// - an unblocked attacker deals it to the defending player (CR 510.1b), who
@@ -571,7 +592,8 @@ pub(crate) fn validate_reachable_combat(
 /// would assign 0 or less damage assigns none (CR 510.1a). An attacker with two
 /// or more blockers divides its damage among them (CR 510.1c), which is not
 /// supported yet, so the step fails closed. Whether a creature has been dealt
-/// lethal damage is for the state-based actions (see `validate_marked_damage`).
+/// lethal damage is for the state-based actions that follow the step (see
+/// `crate::state_based_actions`).
 pub(crate) fn deal_combat_damage(
     admission: &ExecutableProfileAdmissionV1,
     next: &mut EngineState,
@@ -727,9 +749,9 @@ fn marked_damage_may_exist(state: &EngineState) -> bool {
 /// - only a creature has any (CR 120.3e);
 /// - no creature has been dealt lethal damage: marked damage at least equal to
 ///   its toughness (CR 704.5g; with toughness 0 or less it is destroyed as
-///   well, CR 704.5f). It would be destroyed before any player has priority
-///   (CR 704.3), which is not supported yet, so no game rests there and the
-///   damage step that would make one fails closed.
+///   well, CR 704.5f, which no card of this slice has). It is destroyed by the
+///   state-based actions before any player has priority (CR 704.3), so no
+///   game rests there.
 pub(crate) fn validate_marked_damage(
     admission: &ExecutableProfileAdmissionV1,
     state: &EngineState,
@@ -753,34 +775,4 @@ pub(crate) fn validate_marked_damage(
         }
     }
     Ok(())
-}
-
-/// CR 704.5a, 704.3: a player with 0 or less life loses the game. Returns the
-/// player who lost. Both players losing at once would be a draw (CR 104.4a),
-/// which this slice does not model.
-pub(crate) fn player_at_zero_life_loses(
-    admission: &ExecutableProfileAdmissionV1,
-    next: &mut EngineState,
-) -> Result<Option<PlayerId>, Error> {
-    let losing: Vec<PlayerId> = next
-        .core
-        .players
-        .iter()
-        .filter(|(_, player)| !player.has_lost && player.life <= 0)
-        .map(|(id, _)| *id)
-        .collect();
-    let [loser] = losing.as_slice() else {
-        return if losing.is_empty() {
-            Ok(None)
-        } else {
-            Err(Error::TurnProgressUnsupported)
-        };
-    };
-    admits(admission, "rules/state-based-actions-combat")?;
-    next.core
-        .players
-        .get_mut(loser)
-        .ok_or(Error::InvalidResult)?
-        .has_lost = true;
-    Ok(Some(*loser))
 }

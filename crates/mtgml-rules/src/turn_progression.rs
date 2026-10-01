@@ -673,6 +673,12 @@ fn advance(
                         .get_mut(&active)
                         .ok_or(Error::InvalidResult)?
                         .has_lost = true;
+                    record_unobserved(
+                        facts,
+                        AuthoritativeRuleEventKind::StateBasedActionsApplied {
+                            actions: vec![SbaSelectedActionV1::PlayerLoses { player: active }],
+                        },
+                    );
                     return Ok(NextDecision::GameOver { loser: active });
                 }
                 draw(next, active, facts)?;
@@ -717,12 +723,13 @@ fn advance(
                 admits(admission, "rules/damage-and-life")?;
                 crate::combat::deal_combat_damage(admission, next, facts)?;
                 // CR 704.3: state-based actions are checked before the active
-                // player gets priority (CR 510.3). A creature dealt lethal
-                // damage would be destroyed (CR 704.5g), which is not
-                // supported yet: the step fails closed.
-                crate::combat::validate_marked_damage(admission, next)?;
+                // player gets priority (CR 510.3): a creature dealt lethal
+                // damage is destroyed (CR 704.5g) and a player at 0 life
+                // loses (CR 704.5a).
                 return Ok(
-                    match crate::combat::player_at_zero_life_loses(admission, next)? {
+                    match crate::state_based_actions::perform_state_based_actions(
+                        admission, next, facts,
+                    )? {
                         Some(loser) => NextDecision::GameOver { loser },
                         None => open_priority(next),
                     },
@@ -1060,11 +1067,9 @@ pub(crate) fn finish(
             Some(crate::game_start::install_pregame_request(&mut next)?),
         ),
         NextDecision::Discard => (running, Some(install_discard_request(&mut next)?)),
-        // CR 104.2a: in a two-player game the other player wins.
+        // CR 104.2a: in a two-player game the other player wins. The state-based
+        // action that made `loser` lose is among the events already.
         NextDecision::GameOver { loser } => {
-            pending.push(kind(AuthoritativeRuleEventKind::StateBasedActionsApplied {
-                actions: vec![SbaSelectedActionV1::PlayerLoses { player: loser }],
-            }));
             let players = next
                 .core
                 .players
@@ -2118,7 +2123,7 @@ mod tests {
         // missing. Every step up to the beginning of combat still runs.
         let (admission, state) = game_with_creature(3, P1);
         let state = pass_until(&admission, state, at(BEGIN_COMBAT, 1));
-        assert_eq!(zone_count(&state, P1, ZoneKind::Battlefield), 2);
+        assert_eq!(battlefield_creatures(&state).len(), 1);
     }
 
     /// The battlefield creatures of the fixtures (Savannah Lions), in object order.
@@ -2736,6 +2741,14 @@ mod tests {
         identity.object_to_opaque.insert(second, low);
         identity.opaque_to_object.insert(low, second);
         identity.opaque_to_object.insert(high, first);
+        // P2 knows each opaque id as the card it is.
+        let knowledge = &mut swapped.knowledge.players.get_mut(&P2).unwrap().active;
+        let (low_card, high_card) = (
+            knowledge[&low].physical_card,
+            knowledge[&high].physical_card,
+        );
+        knowledge.get_mut(&low).unwrap().physical_card = high_card;
+        knowledge.get_mut(&high).unwrap().physical_card = low_card;
         let asked = ask(&swapped);
         assert_eq!(
             block_declaration(&asked),
@@ -3436,12 +3449,13 @@ mod tests {
         assert_eq!(after.core.turn_number, 4);
     }
 
-    // Combat damage with blocks (CR 510.1, 510.2). The vanilla creatures are
-    // Savannah Lions (2/1), Gray Ogre (2/2) and Hill Giant (3/3), so every
-    // fight between two of them is lethal for at least one of the two. The
-    // damage step runs up to the state-based actions (`damage_step`), where
-    // the marks and events of a fight can be seen; the whole step, which does
-    // not support lethal damage yet, is run by `submit`.
+    // Combat damage with blocks (CR 510.1, 510.2) and the state-based actions
+    // that follow it (CR 704.3). The vanilla creatures are Savannah Lions
+    // (2/1), Gray Ogre (2/2) and Hill Giant (3/3), so every fight between two
+    // of them is lethal for at least one of the two: the creature dealt
+    // lethal damage is destroyed in the same transition (CR 704.5g), and its
+    // marks are in the events of the step, not in the state after it. Every
+    // fight below is the whole step, as `pass` runs it.
     use crate::basic_land::{GRAY_OGRE, HILL_GIANT, SAVANNAH_LIONS};
 
     /// As `game_with_creatures`, with each creature made from the definition
@@ -3532,26 +3546,6 @@ mod tests {
         state
     }
 
-    /// The combat damage step that P2's pass opens in `before`, without the
-    /// state-based actions that follow it: the damage is dealt and the
-    /// transition is finished and validated as `progress` does.
-    fn damage_step(
-        admission: &ExecutableProfileAdmissionV1,
-        before: &EngineState,
-    ) -> Result<crate::BasicLandTransitionProduct, crate::BasicLandTransitionError> {
-        let mut next = before.clone();
-        next.execution.pending_decision = None;
-        next.revision = StateRevision(before.revision.0 + 1);
-        next.core.priority = PriorityState::None;
-        next.core.position = TurnPosition::Combat {
-            step: CombatStep::CombatDamage,
-        };
-        let mut facts = Facts::default();
-        crate::combat::deal_combat_damage(admission, &mut next, &mut facts)?;
-        let decision = open_priority(&mut next);
-        finish(admission, before, pending(before), next, facts, decision)
-    }
-
     /// The marked damage of `object` in `state`.
     fn marked(state: &EngineState, object: GameObjectId) -> u64 {
         state.card_rules.permanents.permanents[&object].marked_damage
@@ -3619,6 +3613,69 @@ mod tests {
             .collect()
     }
 
+    /// The zone moves the product's events make, in order: the object that
+    /// moved, the object it became, and the zones it moved between.
+    fn moves(
+        product: &crate::BasicLandTransitionProduct,
+    ) -> Vec<(GameObjectId, GameObjectId, ZoneKind, ZoneKind)> {
+        product
+            .events
+            .iter()
+            .filter_map(|event| match &event.event {
+                AuthoritativeRuleEventKind::ZoneTransition { transition } => Some((
+                    transition.old_object,
+                    transition.new_object,
+                    transition.from.zone,
+                    transition.to.zone,
+                )),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The state-based actions the product's events say were performed: one
+    /// entry for each time they were performed (CR 704.3).
+    fn state_based_actions(
+        product: &crate::BasicLandTransitionProduct,
+    ) -> Vec<Vec<mtgml_state::SbaSelectedActionV1>> {
+        product
+            .events
+            .iter()
+            .filter_map(|event| match &event.event {
+                AuthoritativeRuleEventKind::StateBasedActionsApplied { actions } => {
+                    Some(actions.clone())
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The action that destroys `object`, which was dealt lethal damage.
+    fn destroyed(object: GameObjectId) -> mtgml_state::SbaSelectedActionV1 {
+        mtgml_state::SbaSelectedActionV1::ObjectToOwnerGraveyard {
+            object,
+            causes: vec![mtgml_state::SbaObjectCauseV1::LethalDamage],
+        }
+    }
+
+    /// The objects in `owner`'s graveyard, top first.
+    fn graveyard_of(state: &EngineState, owner: PlayerId) -> Vec<GameObjectId> {
+        let key = ZoneLocation {
+            zone: ZoneKind::Graveyard,
+            player: Some(owner),
+            position: ZonePosition::Top { offset: 0 },
+            visibility: VisibilityPartition::Public,
+            partition: None,
+        }
+        .key();
+        state
+            .zones
+            .ordered_zones
+            .get(&key)
+            .cloned()
+            .unwrap_or_default()
+    }
+
     #[test]
     fn the_vanilla_creatures_have_the_powers_and_toughnesses_the_fights_assume() {
         let (admission, state, creatures) =
@@ -3635,7 +3692,9 @@ mod tests {
     fn a_blocked_attacker_and_its_blocker_damage_each_other() {
         // CR 510.1c, 510.1d, 510.2: Gray Ogre (2/2) is blocked by Savannah
         // Lions (2/1). Each deals its power to the other at once, and the
-        // damage is marked (CR 120.3e). The defending player is not damaged.
+        // damage is marked (CR 120.3e). It is lethal to both (CR 704.5g), so
+        // both are destroyed in the same transition, and the defending player
+        // is not damaged.
         let (admission, state, creatures) =
             game_with_creature_cards(&[(P1, GRAY_OGRE), (P2, SAVANNAH_LIONS)]);
         let [ogre, lions] = creatures[..] else {
@@ -3644,9 +3703,7 @@ mod tests {
         let before = blocks_declared(&admission, state, &[ogre], &[(lions, ogre)]);
         let life = (before.core.players[&P1].life, before.core.players[&P2].life);
 
-        let product = damage_step(&admission, &before).unwrap();
-        let after = apply(&before, &product);
-        assert_eq!((marked(&after, ogre), marked(&after, lions)), (2, 2));
+        let (after, product) = pass(&admission, &before);
         assert_eq!(
             (after.core.players[&P1].life, after.core.players[&P2].life),
             life
@@ -3663,24 +3720,61 @@ mod tests {
                 "completed".to_owned(),
             ]
         );
-        // The blocks stay: the creatures are still blocking and blocked.
-        let combat = after.combat.as_ref().unwrap();
+        // Both were dealt lethal damage: one state-based action performed
+        // both destructions at once (CR 704.3), each to the graveyard of its
+        // owner as a new object (CR 400.7).
         assert_eq!(
-            combat.blockers,
-            std::collections::BTreeMap::from([(lions, ogre)])
+            state_based_actions(&product),
+            [vec![destroyed(ogre), destroyed(lions)]]
         );
-        // Marked damage is shown to no player yet, and nothing else of the
-        // step is public: no life changed.
+        let moves = moves(&product);
         assert_eq!(
-            observed_events(&product),
-            Vec::<&AuthoritativeRuleEventKind>::new()
+            moves
+                .iter()
+                .map(|(old, _, from, to)| (*old, *from, *to))
+                .collect::<Vec<_>>(),
+            [
+                (ogre, ZoneKind::Battlefield, ZoneKind::Graveyard),
+                (lions, ZoneKind::Battlefield, ZoneKind::Graveyard)
+            ]
+        );
+        assert_eq!(graveyard_of(&after, P1), [moves[0].1]);
+        assert_eq!(graveyard_of(&after, P2), [moves[1].1]);
+        for dead in [ogre, lions] {
+            assert!(!after.zones.objects.contains_key(&dead));
+        }
+        // Nothing is left of them in combat, and the marks went with them.
+        let combat = after.combat.as_ref().unwrap();
+        assert!(combat.attackers.is_empty() && combat.blockers.is_empty());
+        assert!(combat.blocked_attackers.is_empty());
+        assert!(!crate::combat::damage_is_marked(&after));
+        // Each owner has a permanent card in its graveyard this turn.
+        for owner in [P1, P2] {
+            assert!(after.card_rules.turn_history.players[&owner].permanent_card_to_graveyard);
+        }
+        // The deaths are public, in the order they were performed, and nothing
+        // else of the step is: the damage and the marks are shown to no player
+        // yet.
+        assert_eq!(
+            observed_events(&product)
+                .iter()
+                .map(|event| match event {
+                    AuthoritativeRuleEventKind::ZoneTransition { transition } => {
+                        (transition.old_object, transition.to.zone)
+                    }
+                    other => panic!("{other:?}"),
+                })
+                .collect::<Vec<_>>(),
+            [(ogre, ZoneKind::Graveyard), (lions, ZoneKind::Graveyard)]
         );
     }
 
     #[test]
     fn an_unblocked_attacker_still_hits_the_player_while_another_is_blocked() {
         // Hill Giant (3/3) is blocked by Savannah Lions; P1's other Savannah
-        // Lions is not, and deals its 2 damage to P2 (CR 510.1b).
+        // Lions is not, and deals its 2 damage to P2 (CR 510.1b). The Giant
+        // survives its blocker's 2 damage (CR 704.5g needs 3) and kills the
+        // blocker.
         let (admission, state, creatures) = game_with_creature_cards(&[
             (P1, HILL_GIANT),
             (P1, SAVANNAH_LIONS),
@@ -3692,19 +3786,12 @@ mod tests {
         let before = blocks_declared(&admission, state, &[giant, free], &[(blocker, giant)]);
         let p2_life = before.core.players[&P2].life;
 
-        let product = damage_step(&admission, &before).unwrap();
-        let after = apply(&before, &product);
+        let (after, product) = pass(&admission, &before);
         assert_eq!(after.core.players[&P2].life, p2_life - 2);
         assert_eq!(after.core.players[&P1].life, before.core.players[&P1].life);
         assert!(after.card_rules.turn_history.players[&P2].lost_life_this_turn);
-        assert_eq!(
-            (
-                marked(&after, giant),
-                marked(&after, free),
-                marked(&after, blocker)
-            ),
-            (2, 0, 3)
-        );
+        assert_eq!((marked(&after, giant), marked(&after, free)), (2, 0));
+        assert!(!after.zones.objects.contains_key(&blocker));
         assert_eq!(
             damage_events(&product),
             [
@@ -3718,15 +3805,22 @@ mod tests {
                 "completed".to_owned(),
             ]
         );
-        // The life lost is public and the marked damage is not shown yet.
+        assert_eq!(state_based_actions(&product), [vec![destroyed(blocker)]]);
+        // The life lost and the death are public; the marked damage is not
+        // shown yet.
+        let observed = observed_events(&product);
+        assert_eq!(observed.len(), 2);
         assert_eq!(
-            observed_events(&product),
-            [&AuthoritativeRuleEventKind::LifeChanged {
+            observed[0],
+            &AuthoritativeRuleEventKind::LifeChanged {
                 player: P2,
                 from: p2_life,
                 to: p2_life - 2
-            }]
+            }
         );
+        assert!(matches!(observed[1],
+            AuthoritativeRuleEventKind::ZoneTransition { transition }
+                if transition.old_object == blocker));
     }
 
     #[test]
@@ -3785,10 +3879,6 @@ mod tests {
         );
         assert_eq!(before.combat.as_ref().unwrap().blockers.len(), 2);
         assert_eq!(
-            damage_step(&admission, &before),
-            Err(crate::BasicLandTransitionError::TurnProgressUnsupported)
-        );
-        assert_eq!(
             submit(&admission, &before, pass_answer(pending(&before))),
             Err(crate::BasicLandTransitionError::TurnProgressUnsupported)
         );
@@ -3796,60 +3886,268 @@ mod tests {
         // With one of them blocking, the same fight is supported: it is the
         // two blockers that fail closed, not the damage.
         let one = blocks_declared(&admission, state, &[giant], &[(first, giant)]);
-        assert!(damage_step(&admission, &one).is_ok());
+        assert!(submit(&admission, &one, pass_answer(pending(&one))).is_ok());
     }
 
     #[test]
-    fn lethal_damage_fails_closed_until_creatures_can_die() {
-        // CR 704.5g: Gray Ogre (2/2) and Savannah Lions (2/1) kill each
-        // other. Death is not supported yet, so the damage step is refused
-        // and the state it was asked about is unchanged.
-        let (admission, state, creatures) =
-            game_with_creature_cards(&[(P1, GRAY_OGRE), (P2, SAVANNAH_LIONS)]);
-        let [ogre, lions] = creatures[..] else {
-            panic!("two creatures")
-        };
-        let before = blocks_declared(&admission, state, &[ogre], &[(lions, ogre)]);
-        let kept = before.clone();
-        assert_eq!(
-            submit(&admission, &before, pass_answer(pending(&before))),
-            Err(crate::BasicLandTransitionError::TurnProgressUnsupported)
-        );
-        assert_eq!(before, kept);
-        // The same step without a block is supported: it is the lethal
-        // damage that is not.
-        let (_, unblocked_state, creatures) = game_with_creature_cards(&[(P1, GRAY_OGRE)]);
-        let unblocked = blocks_declared(&admission, unblocked_state, &[creatures[0]], &[]);
-        assert!(submit(&admission, &unblocked, pass_answer(pending(&unblocked))).is_ok());
-    }
-
-    #[test]
-    fn a_restored_combat_after_damage_with_a_block_is_accepted() {
-        // Hill Giant (3/3) blocked by Savannah Lions: the Giant has 2 damage
-        // marked, which is not lethal. The Lions' 3 would be, so the state
-        // restored has only the Giant's damage.
+    fn a_restored_combat_after_a_blocker_died_is_accepted() {
+        // CR 509.1h, 506.4: Hill Giant (3/3) is blocked by Savannah Lions,
+        // which the Giant destroys. The Giant stays blocked with no blocker
+        // left, and has 2 damage marked, which is not lethal. Every state
+        // from the damage step to the end step, as the game reaches them, is
+        // one a restore accepts.
         let (admission, state, creatures) =
             game_with_creature_cards(&[(P1, HILL_GIANT), (P2, SAVANNAH_LIONS)]);
         let [giant, lions] = creatures[..] else {
             panic!("two creatures")
         };
         let before = blocks_declared(&admission, state, &[giant], &[(lions, giant)]);
-        let mut restored = apply(&before, &damage_step(&admission, &before).unwrap());
-        assert_eq!((marked(&restored, giant), marked(&restored, lions)), (2, 3));
-        restored
-            .card_rules
-            .permanents
-            .permanents
-            .get_mut(&lions)
-            .unwrap()
-            .marked_damage = 0;
+        let (damaged, _) = pass(&admission, &before);
         let running = EpisodeStatus::Running;
-        for step in [CombatStep::CombatDamage, CombatStep::EndOfCombat] {
-            let mut restored = restored.clone();
-            restored.core.position = TurnPosition::Combat { step };
-            validate_magic_pending_request(&admission, &restored, &running)
-                .unwrap_or_else(|error| panic!("{step:?}: {error:?}"));
+        let combat = |step| TurnPosition::Combat { step };
+        for position in [
+            combat(CombatStep::CombatDamage),
+            combat(CombatStep::EndOfCombat),
+            TurnPosition::PostcombatMain,
+            END_STEP,
+        ] {
+            let reached = pass_until(&admission, damaged.clone(), at(position, 3));
+            assert_eq!(marked(&reached, giant), 2, "{position:?}");
+            assert!(!reached.zones.objects.contains_key(&lions));
+            if let Some(combat) = &reached.combat {
+                assert_eq!(
+                    (
+                        combat.attackers.clone(),
+                        combat.blocked_attackers.clone(),
+                        combat.blockers.clone()
+                    ),
+                    (vec![giant], [giant].into(), Default::default()),
+                    "{position:?}"
+                );
+            }
+            validate_magic_pending_request(&admission, &reached, &running)
+                .unwrap_or_else(|error| panic!("{position:?}: {error:?}"));
         }
+    }
+
+    #[test]
+    fn a_creature_that_dies_is_removed_from_combat_but_its_attacker_stays_blocked() {
+        // CR 506.4: a creature that leaves the battlefield is removed from
+        // combat, and stops being an attacking, blocking, blocked creature.
+        // CR 509.1h: an attacker stays blocked when all its blockers are
+        // removed from combat.
+        // P1 attacks with Savannah Lions and Hill Giant; P2 blocks the Lions
+        // with its Hill Giant and P1's Giant with its Savannah Lions. P1's Lions
+        // is destroyed (3 damage), and so is P2's (3 damage); both Giants
+        // survive with 2 marked.
+        let (admission, state, creatures) = game_with_creature_cards(&[
+            (P1, SAVANNAH_LIONS),
+            (P1, HILL_GIANT),
+            (P2, HILL_GIANT),
+            (P2, SAVANNAH_LIONS),
+        ]);
+        let [lions, giant, blocking_giant, blocking_lions] = creatures[..] else {
+            panic!("four creatures")
+        };
+        let before = blocks_declared(
+            &admission,
+            state,
+            &[lions, giant],
+            &[(blocking_giant, lions), (blocking_lions, giant)],
+        );
+        let combat = before.combat.as_ref().unwrap();
+        assert_eq!(combat.attackers, [lions, giant]);
+        assert_eq!(combat.blocked_attackers, [lions, giant].into());
+
+        let (after, product) = pass(&admission, &before);
+        assert_eq!(
+            state_based_actions(&product),
+            [vec![destroyed(lions), destroyed(blocking_lions)]]
+        );
+        let combat = after.combat.as_ref().unwrap();
+        // The attacker that died is no longer attacking or blocked, and the
+        // creature that blocked it blocks nothing: nothing of it is left.
+        // The blocker that died is gone, and the Giant it blocked is still
+        // attacking, and still blocked.
+        assert_eq!(combat.attackers, [giant]);
+        assert_eq!(combat.blocked_attackers, [giant].into());
+        assert!(combat.blockers.is_empty());
+        for survivor in [giant, blocking_giant] {
+            assert_eq!(marked(&after, survivor), 2);
+        }
+    }
+
+    #[test]
+    fn the_prune_removes_a_departed_permanent() {
+        // CR 400.7: a permanent that leaves the battlefield becomes a new
+        // object with no memory of its previous existence. What the game
+        // kept of the permanent, since when its controller controls it and the
+        // damage marked on it, goes with it, and the new object, in the
+        // graveyard, is not a permanent. The other permanents keep theirs.
+        let (_, mut state, creatures) =
+            game_with_creature_cards(&[(P1, HILL_GIANT), (P2, SAVANNAH_LIONS)]);
+        let [giant, lions] = creatures[..] else {
+            panic!("two creatures")
+        };
+        state.card_rules.permanents.mark_damage(giant, 2).unwrap();
+        let kept = state.card_rules.permanents.permanents[&lions];
+        assert_eq!(
+            state.card_rules.permanents.permanents[&giant].marked_damage,
+            2
+        );
+
+        let mut facts = Facts::default();
+        let new = move_card(
+            &mut state,
+            giant,
+            crate::zone_incarnation::SelectedZoneTransitionKind::BattlefieldToOwnerGraveyard,
+            ZoneLocation {
+                zone: ZoneKind::Graveyard,
+                player: Some(P1),
+                position: ZonePosition::Top { offset: 0 },
+                visibility: VisibilityPartition::Public,
+                partition: None,
+            },
+            &mut facts,
+        )
+        .unwrap();
+
+        assert_ne!(new, giant);
+        assert!(!state.zones.objects.contains_key(&giant));
+        assert_eq!(state.zones.locations[&new].zone, ZoneKind::Graveyard);
+        assert_eq!(graveyard_of(&state, P1), [new]);
+        let permanents = &state.card_rules.permanents.permanents;
+        assert!(!permanents.contains_key(&giant) && !permanents.contains_key(&new));
+        assert_eq!(permanents.get(&lions), Some(&kept));
+        // The face goes to the new incarnation, which shows what the card shows.
+        assert!(!state.card_rules.faces.faces.contains_key(&giant));
+        assert_eq!(state.card_rules.faces.faces.get(&new), Some(&0));
+        mtgml_state::validate_engine_state(&state).unwrap();
+    }
+
+    #[test]
+    fn both_players_losing_at_once_fails_closed() {
+        // CR 104.4a: if all the players remaining in a game lose
+        // simultaneously, the game is a draw, which is not modelled. This is
+        // a synthetic state: no game rests with a player at 0 life who has not
+        // lost, so this cannot be reached by playing.
+        let (admission, mut state, _) = game_with_creature_cards(&[(P1, SAVANNAH_LIONS)]);
+        let perform = |state: &EngineState, facts: &mut Facts| {
+            let mut next = state.clone();
+            crate::state_based_actions::perform_state_based_actions(&admission, &mut next, facts)
+                .map(|loser| (loser, next))
+        };
+
+        // One player at 0 or less life loses (CR 704.5a), whichever it is.
+        for (player, life) in [(P1, 0), (P2, -4)] {
+            let mut one = state.clone();
+            one.core.players.get_mut(&player).unwrap().life = life;
+            let (loser, next) = perform(&one, &mut Facts::default()).unwrap();
+            assert_eq!(loser, Some(player));
+            assert!(next.core.players[&player].has_lost);
+        }
+        // Nobody loses with nobody at 0 or less life.
+        let (loser, next) = perform(&state, &mut Facts::default()).unwrap();
+        assert_eq!((loser, &next), (None, &state));
+
+        state.core.players.get_mut(&P1).unwrap().life = 0;
+        state.core.players.get_mut(&P2).unwrap().life = -3;
+        let mut facts = Facts::default();
+        assert_eq!(
+            perform(&state, &mut facts).map(|(loser, _)| loser),
+            Err(crate::BasicLandTransitionError::TurnProgressUnsupported)
+        );
+        assert!(facts.zone_events.is_empty());
+    }
+
+    #[test]
+    fn two_creatures_of_one_owner_dying_together_fail_closed_until_the_owner_can_order_them() {
+        // CR 404.3: two cards put into one graveyard at the same time are
+        // arranged by their owner, which is a decision this slice does not
+        // offer yet. P1 attacks with two Savannah Lions; P2's two Hill Giants
+        // block one each, and both Lions are destroyed.
+        let (admission, state, creatures) = game_with_creature_cards(&[
+            (P1, SAVANNAH_LIONS),
+            (P1, SAVANNAH_LIONS),
+            (P2, HILL_GIANT),
+            (P2, HILL_GIANT),
+        ]);
+        let [first, second, first_giant, second_giant] = creatures[..] else {
+            panic!("four creatures")
+        };
+        let before = blocks_declared(
+            &admission,
+            state.clone(),
+            &[first, second],
+            &[(first_giant, first), (second_giant, second)],
+        );
+        assert_eq!(
+            submit(&admission, &before, pass_answer(pending(&before))),
+            Err(crate::BasicLandTransitionError::TurnProgressUnsupported)
+        );
+
+        // With one of them blocked, one creature of each owner at most dies
+        // (the other Lions hits P2), and the step is supported.
+        let one = blocks_declared(&admission, state, &[first, second], &[(first_giant, first)]);
+        let (after, product) = pass(&admission, &one);
+        assert_eq!(state_based_actions(&product), [vec![destroyed(first)]]);
+        assert_eq!(graveyard_of(&after, P1).len(), 1);
+        assert!(after.zones.objects.contains_key(&second));
+    }
+
+    #[test]
+    fn a_player_losing_in_the_same_pass_as_a_dying_creature_loses_with_it() {
+        // CR 704.3, 704.5a, 704.5g: state-based actions are performed
+        // simultaneously as a single event. P2 is at 2 life. P1's free Savannah
+        // Lions deals it 2 damage; P1's Gray Ogre and P2's Savannah Lions
+        // destroy each other. P2 loses and both creatures are destroyed, in the
+        // same step (CR 104.2a: P1 wins).
+        let (admission, mut state, creatures) = game_with_creature_cards(&[
+            (P1, GRAY_OGRE),
+            (P1, SAVANNAH_LIONS),
+            (P2, SAVANNAH_LIONS),
+        ]);
+        let [ogre, free, lions] = creatures[..] else {
+            panic!("three creatures")
+        };
+        state.core.players.get_mut(&P2).unwrap().life = 2;
+        let before = blocks_declared(&admission, state, &[ogre, free], &[(lions, ogre)]);
+
+        let product = submit(&admission, &before, pass_answer(pending(&before))).unwrap();
+        let after = apply(&before, &product);
+        assert!(after.core.players[&P2].has_lost && !after.core.players[&P1].has_lost);
+        assert_eq!(after.core.players[&P2].life, 0);
+        assert_eq!(
+            product.status,
+            EpisodeStatus::Terminal {
+                reason: mtgml_model::TerminalReason::RulesLoss,
+                players: vec![
+                    mtgml_model::PlayerOutcome {
+                        player: P1,
+                        result: mtgml_model::PlayerResult::Win,
+                    },
+                    mtgml_model::PlayerOutcome {
+                        player: P2,
+                        result: mtgml_model::PlayerResult::Loss,
+                    },
+                ],
+            }
+        );
+        // One event for the whole batch: the loss first, then the
+        // destructions in object order.
+        assert_eq!(
+            state_based_actions(&product),
+            [vec![
+                mtgml_state::SbaSelectedActionV1::PlayerLoses { player: P2 },
+                destroyed(ogre),
+                destroyed(lions)
+            ]]
+        );
+        assert_eq!(graveyard_of(&after, P1).len(), 1);
+        assert_eq!(graveyard_of(&after, P2).len(), 1);
+        assert!(after.zones.objects.contains_key(&free));
+        assert_eq!(product.next_decision, None);
+        validate_magic_pending_request(&admission, &after, &product.status).unwrap();
     }
 
     #[test]

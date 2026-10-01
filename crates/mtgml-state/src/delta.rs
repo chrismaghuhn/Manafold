@@ -1328,10 +1328,25 @@ fn validate_turn_history_delta(
         {
             return false;
         }
-        // G0e operation vocabulary has no typed red-source or permanent-card
-        // graveyard fact; fail closed until a sufficient operation exists.
-        if old_history.red_noncombat_damage_dealt != new_history.red_noncombat_damage_dealt
-            || old_history.permanent_card_to_graveyard != new_history.permanent_card_to_graveyard
+        // G0e operation vocabulary has no typed red-source fact; fail closed
+        // until a sufficient operation exists.
+        if old_history.red_noncombat_damage_dealt != new_history.red_noncombat_damage_dealt {
+            return false;
+        }
+        // A permanent card put into this player's graveyard from the battlefield
+        // (a creature destroyed by lethal damage) is the zone transition of
+        // that card, which leaves the fact true for the rest of the turn. No
+        // other move of this slice sets it, and nothing clears it.
+        let permanent_card_put_into_the_graveyard = operations.iter().any(|operation| {
+            matches!(operation,
+                V3::ZoneTransition { transition }
+                    if transition.from.zone == mtgml_model::ZoneKind::Battlefield
+                        && transition.to.zone == mtgml_model::ZoneKind::Graveyard
+                        && transition.to.player == Some(*player)
+                        && transition.physical_card.is_some())
+        });
+        if new_history.permanent_card_to_graveyard
+            != (old_history.permanent_card_to_graveyard || permanent_card_put_into_the_graveyard)
         {
             return false;
         }

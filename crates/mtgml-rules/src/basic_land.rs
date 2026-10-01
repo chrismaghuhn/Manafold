@@ -1391,9 +1391,55 @@ mod tests {
         owner: PlayerId,
         definition: CardDefinitionId,
     ) -> mtgml_model::GameObjectId {
+        use mtgml_state::{VisibilityPartition, ZoneLocation, ZonePosition};
         // Each creature has its own opaque identity.
         let opaque_id = 40 + state.allocators.next_object_id.0;
         let object = add_object(state, definition, owner, ZoneKind::Battlefield, opaque_id);
+        // A permanent a game made (a resolved spell or a played land) is in
+        // the one unordered public battlefield, which belongs to no player:
+        // put the creature where the game does.
+        let synthetic = state.zones.locations[&object].key();
+        let members = state.zones.ordered_zones.get_mut(&synthetic).unwrap();
+        members.retain(|member| *member != object);
+        if members.is_empty() {
+            state.zones.ordered_zones.remove(&synthetic);
+        }
+        let battlefield = ZoneLocation {
+            zone: ZoneKind::Battlefield,
+            player: None,
+            position: ZonePosition::Unordered,
+            visibility: VisibilityPartition::Public,
+            partition: None,
+        };
+        state.zones.locations.insert(object, battlefield.clone());
+        // A creature a game made is a physical card, which every player knows
+        // is there: it is public.
+        let physical_card = Some(mtgml_model::PhysicalCardId(3_000 + object.0));
+        state.zones.objects.get_mut(&object).unwrap().physical_card = physical_card;
+        for (player, identity) in &state.perspective_identities.players {
+            let opaque = identity.object_to_opaque[&object];
+            state
+                .knowledge
+                .players
+                .get_mut(player)
+                .unwrap()
+                .active
+                .insert(
+                    opaque,
+                    mtgml_state::KnowledgeRecordV2 {
+                        opaque_object: opaque,
+                        physical_card,
+                        card_definition: Some(definition),
+                        known_location: Some(mtgml_state::KnownLocationFactV2 {
+                            location: battlefield.clone(),
+                            provenance:
+                                mtgml_state::KnowledgeAcquisitionReason::InitialConfiguration,
+                        }),
+                        acquisition: mtgml_state::KnowledgeAcquisitionReason::InitialConfiguration,
+                        historical_locations: Vec::new(),
+                    },
+                );
+        }
         state.card_rules.faces.faces.insert(object, 0);
         state
             .card_rules

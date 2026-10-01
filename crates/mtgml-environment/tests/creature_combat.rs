@@ -19,7 +19,8 @@ use mtgml_model::{
     PlayerDecisionIdV1, PlayerId, TruncationReason, VisibleSequence, ZoneKind,
 };
 use mtgml_observation::{
-    MagicSharedExecutionObservationV1, PlayerStepSubmissionV1, PlayerStepV4, SyntheticPriority,
+    MagicSharedExecutionObservationV1, ObservedEventEnvelopeV4, ObservedEventKindV4,
+    PlayerStepSubmissionV1, PlayerStepV4, SyntheticPriority,
 };
 use mtgml_rules::{AuthoritativeRuleEventKind, BasicLandTransitionProduct};
 use mtgml_state::{
@@ -272,33 +273,50 @@ fn at_attackers(turn: u64) -> impl Fn(&EngineState) -> bool {
     }
 }
 
-/// The active player plays a land, taps its oldest mana source and casts a
-/// Savannah Lions (which costs {W}); the spell resolves.
-fn cast_lions(game: &Game) {
+/// The active player plays a land, taps `mana` of its mana sources and casts
+/// the creature in its hand, which costs that much; the spell resolves.
+fn cast_creature(game: &Game, mana: usize) {
     game.answer(play_land, pass);
-    game.answer(tap_for_mana, pass);
+    for _ in 0..mana {
+        game.answer(tap_for_mana, pass);
+    }
     game.answer(cast_spell, pass);
     game.answer(pass, pass);
     game.answer(pass, pass);
+}
+
+/// As `cast_creature`, for a Savannah Lions (which costs {W}).
+fn cast_lions(game: &Game) {
+    cast_creature(game, 1);
 }
 
 fn lions() -> CardDefinitionId {
     creature_definitions()[0]
 }
 
-/// The Savannah Lions `owner` controls on the battlefield, in object order.
-fn lions_of(state: &EngineState, owner: PlayerId) -> Vec<GameObjectId> {
+/// The creatures made from `definition` that `owner` controls on the
+/// battlefield, in object order.
+fn creatures_of(
+    state: &EngineState,
+    owner: PlayerId,
+    definition: CardDefinitionId,
+) -> Vec<GameObjectId> {
     state
         .zones
         .objects
         .values()
         .filter(|object| {
-            object.card_definition == lions()
+            object.card_definition == definition
                 && object.controller == owner
                 && state.zones.locations[&object.id].zone == ZoneKind::Battlefield
         })
         .map(|object| object.id)
         .collect()
+}
+
+/// The Savannah Lions `owner` controls on the battlefield, in object order.
+fn lions_of(state: &EngineState, owner: PlayerId) -> Vec<GameObjectId> {
+    creatures_of(state, owner, lions())
 }
 
 /// The opaque id `player` has for `object`.
@@ -349,6 +367,50 @@ fn attack_with_both_lions(game: &Game) -> ([GameObjectId; 2], [GameObjectId; 2])
     game.answer(pass, pass);
     game.answer(pass, pass);
     (attackers, blockers)
+}
+
+/// P2 casts a Savannah Lions on its first turn. P1 casts `attacker`, a creature
+/// that costs `cost` mana and which it pays for with that many Mountains, on
+/// its `cost`th turn, and is at its attacker declaration of the turn after,
+/// where the creature can attack and the Lions is untapped. Returns the game,
+/// the creature and the Lions.
+fn attacker_against_a_lions(
+    attacker: CardDefinitionId,
+    cost: usize,
+) -> (Game, GameObjectId, GameObjectId) {
+    let (mountain, plains) = land_definitions();
+    let hand = [vec![mountain; cost], vec![attacker]].concat();
+    let game = Game::with_hands([hand, vec![plains, lions()]]);
+    game.run_until(start_of_main_phase(2));
+    cast_lions(&game);
+    let turn = 2 * cost as u64 - 1;
+    game.run_until(start_of_main_phase(turn));
+    cast_creature(&game, cost);
+    game.run_until(at_attackers(turn + 2));
+    let state = game.state();
+    let [creature]: [GameObjectId; 1] = creatures_of(&state, P1, attacker).try_into().unwrap();
+    let [blocker]: [GameObjectId; 1] = lions_of(&state, P2).try_into().unwrap();
+    (game, creature, blocker)
+}
+
+/// P1 attacks with `attacker`, P2 blocks it with its Lions, and both players
+/// pass until P2, who holds priority in the declare blockers step, would open
+/// the combat damage step by passing.
+fn attack_and_block(game: &Game, attacker: GameObjectId) {
+    let state = game.state();
+    game.declare_attackers(&[opaque_of(&state, P1, attacker)]);
+    game.answer(pass, pass);
+    game.answer(pass, pass);
+    game.declare_block(Some(opaque_of(&state, P2, attacker)));
+    game.answer(pass, pass);
+    let state = game.state();
+    assert_eq!(
+        state.core.position,
+        TurnPosition::Combat {
+            step: CombatStep::DeclareBlockers
+        }
+    );
+    assert_eq!(game.pending().0, P2);
 }
 
 /// The block candidates P2 is offered for `blocker`: "no block" first, then
@@ -404,6 +466,70 @@ fn block_in(state: &EngineState, attacker: Option<GameObjectId>) -> DecisionAnsw
     DecisionAnswerV2::SelectOne {
         candidate_id: candidate.candidate_id,
     }
+}
+
+/// The answer that passes priority in `state`'s pending request.
+fn pass_in(state: &EngineState) -> DecisionAnswerV2 {
+    let request = state.execution.pending_decision.as_ref().unwrap();
+    DecisionAnswerV2::SelectOne {
+        candidate_id: request
+            .candidates
+            .iter()
+            .find(|candidate| candidate.visible_intent == CandidateIntent::PassPriority)
+            .expect("no pass")
+            .candidate_id,
+    }
+}
+
+/// What `execute_magic_response` makes of `answer` by the deciding player,
+/// and what each player observes of it: the same entry points the controller
+/// runs, with every perspective's events, not only the actor's.
+fn product_and_observations(
+    state: &EngineState,
+    answer: DecisionAnswerV2,
+) -> (
+    BasicLandTransitionProduct,
+    BTreeMap<PlayerId, Vec<ObservedEventEnvelopeV4>>,
+) {
+    let admission = creature_game_admission();
+    let product = product_of(state, answer);
+    let observed =
+        mtgml_environment::successor_projection::project_successor_events_v4_for_basic_land_profile(
+            &admission,
+            state,
+            &EpisodeStatus::Running,
+            &product.next_state,
+            &product.status,
+            &product.events,
+            Some(&product.delta),
+        )
+        .unwrap();
+    (product, observed)
+}
+
+/// The zone moves of the events `player` observes: the opaque ids of the
+/// object before and after, and the zones.
+fn observed_moves(
+    events: &[ObservedEventEnvelopeV4],
+) -> Vec<(
+    Option<OpaqueObjectId>,
+    Option<OpaqueObjectId>,
+    ZoneKind,
+    ZoneKind,
+)> {
+    events
+        .iter()
+        .filter_map(|envelope| match &envelope.event {
+            ObservedEventKindV4::ObjectMoved {
+                old_object,
+                new_object,
+                from,
+                to,
+                ..
+            } => Some((*old_object, *new_object, *from, *to)),
+            _ => None,
+        })
+        .collect()
 }
 
 /// The block declarations the product's events make, with their assignments.
@@ -1082,42 +1208,6 @@ fn a_restored_block_declaration_the_game_could_not_have_reached_is_refused() {
 }
 
 #[test]
-fn lethal_combat_damage_fails_closed_until_creatures_can_die() {
-    // CR 704.5g: a Savannah Lions (2/1) blocked by a Savannah Lions is dealt
-    // lethal damage, as is its blocker. Creatures are not destroyed yet, so the
-    // combat damage step must not leave them on the battlefield with their
-    // damage marked: it is refused, and the game is where it was.
-    let game = two_lions_each();
-    let (attackers, _) = attack_with_both_lions(&game);
-    let state = game.state();
-    game.declare_block(Some(opaque_of(&state, P2, attackers[0])));
-    game.declare_block(None);
-    assert_eq!(game.state().combat.as_ref().unwrap().blockers.len(), 1);
-    game.answer(pass, pass);
-
-    // P2's pass would open the combat damage step.
-    let before = game.checkpoint();
-    let (actor, request) = game.pending();
-    assert_eq!(actor, P2);
-    let outcome = game.endpoint(P2).submit(DecisionResponseV3 {
-        schema_version: DECISION_RESPONSE_V3_SCHEMA.to_owned(),
-        player_decision_id: request.player_decision_id,
-        view_sequence: request.view_sequence,
-        answer: DecisionAnswerV2::SelectOne {
-            candidate_id: request
-                .candidates
-                .iter()
-                .find(|candidate| pass(&candidate.intent))
-                .unwrap()
-                .candidate_id,
-        },
-    });
-    assert_eq!(outcome, Err(PlayerEndpointError::ServiceUnavailable));
-    assert_eq!(game.checkpoint(), before);
-    assert_eq!(game.pending().1, request);
-}
-
-#[test]
 fn the_completing_block_answer_shows_nothing_about_blocks_to_either_player() {
     // Blocks are shown to no player until the observation step (INFORMATION_MODEL):
     // not the first answer, and not the one that completes the declaration and
@@ -1144,8 +1234,10 @@ fn the_completing_block_answer_shows_nothing_about_blocks_to_either_player() {
     assert_eq!(game.pending().0, P2);
 
     // The first answer shows nothing, and neither does the last.
+    let before_first = game.seen_by_both();
     game.declare_block(own(attackers[0]));
     let before = game.seen_by_both();
+    assert_eq!(before_first, before);
     assert!(game.state().combat.as_ref().unwrap().blockers.is_empty());
     let (_, step) = game.declare_block(own(attackers[1]));
     let after = game.seen_by_both();
@@ -1188,4 +1280,330 @@ fn two_creatures_may_block_one_attacker() {
     assert!(declared.execution.continuations.is_empty());
     assert_eq!(game.pending().0, P1);
     game.controller.restore(game.checkpoint()).unwrap();
+}
+
+#[test]
+fn a_3_3_blocked_by_a_2_1_kills_it_and_survives() {
+    // CR 510.1c, 510.1d, 510.2, 704.5g: P1's Hill Giant (3/3) attacks and P2's
+    // Savannah Lions (2/1) blocks it. The Giant deals 3 damage to the Lions,
+    // which is lethal; the Lions deals 2 to the Giant, which is not. The Lions
+    // is destroyed and goes to P2's graveyard as a new object (CR 400.7), and
+    // both players see it move. The Giant survives with 2 damage marked, and
+    // stays an attacking, blocked creature until combat ends (CR 509.1h).
+    let [_, _, giant] = creature_definitions();
+    let (game, giant_object, lions_object) = attacker_against_a_lions(giant, 4);
+    attack_and_block(&game, giant_object);
+    let before = game.state();
+    let blocked = before.combat.clone().unwrap();
+    assert_eq!(
+        blocked.blockers,
+        BTreeMap::from([(lions_object, giant_object)])
+    );
+    let card = before.zones.objects[&lions_object].physical_card;
+    let lives = before.core.players.clone();
+
+    let (product, observed) = product_and_observations(&before, pass_in(&before));
+    let (actor, step) = game.answer(pass, pass);
+    assert_eq!(actor, P2);
+    assert_eq!(step.observed_events, observed[&P2]);
+    let after = game.state();
+    assert_eq!(after, product.next_state);
+
+    // The Lions is gone, and its card is in P2's graveyard as another object.
+    assert!(!after.zones.objects.contains_key(&lions_object));
+    let graveyard: Vec<_> = after
+        .zones
+        .locations
+        .iter()
+        .filter(|(_, location)| location.zone == ZoneKind::Graveyard)
+        .map(|(object, location)| (*object, location.player))
+        .collect();
+    let [(dead, Some(owner))] = graveyard[..] else {
+        panic!("one card in a graveyard: {graveyard:?}")
+    };
+    assert_eq!(owner, P2);
+    assert_ne!(dead, lions_object);
+    assert_eq!(after.zones.objects[&dead].card_definition, lions());
+    assert_eq!(after.zones.objects[&dead].physical_card, card);
+    assert!(after.card_rules.turn_history.players[&P2].permanent_card_to_graveyard);
+    assert!(!after.card_rules.turn_history.players[&P1].permanent_card_to_graveyard);
+    // The new object is not a permanent, and has no damage marked.
+    let permanents = &after.card_rules.permanents.permanents;
+    assert!(!permanents.contains_key(&lions_object) && !permanents.contains_key(&dead));
+
+    // The Giant survives with the Lions' 2 damage marked on it, and neither
+    // player lost life.
+    assert_eq!(
+        after.zones.locations[&giant_object].zone,
+        ZoneKind::Battlefield
+    );
+    assert_eq!(permanents[&giant_object].marked_damage, 2);
+    assert_eq!(after.core.players, lives);
+    // It is still attacking, and still blocked, with its blocker gone.
+    let combat = after.combat.clone().unwrap();
+    assert!(combat.damage_step_completed);
+    assert_eq!(combat.attackers, vec![giant_object]);
+    assert_eq!(combat.blocked_attackers, BTreeSet::from([giant_object]));
+    assert!(combat.blockers.is_empty());
+
+    // Both players see the Lions go from the battlefield to the graveyard, and
+    // follow it: it keeps the opaque id they knew it by. They see nothing
+    // else of the step: the damage and the blocks are not shown yet.
+    for player in [P1, P2] {
+        let opaque = opaque_of(&before, player, lions_object);
+        assert_eq!(opaque_of(&after, player, dead), opaque, "{player:?}");
+        assert_eq!(
+            observed_moves(&observed[&player]),
+            [(
+                Some(opaque),
+                Some(opaque),
+                ZoneKind::Battlefield,
+                ZoneKind::Graveyard
+            )],
+            "{player:?}"
+        );
+        assert_eq!(observed[&player].len(), 1, "{player:?}");
+    }
+
+    // CR 510.3: the active player has priority in the combat damage step.
+    assert_eq!(
+        after.core.position,
+        TurnPosition::Combat {
+            step: CombatStep::CombatDamage
+        }
+    );
+    assert_eq!(game.pending().0, P1);
+
+    // Combat ends with the end of combat step (CR 511.3): the Giant is still
+    // attacking and still has its damage until then, and the damage until the
+    // cleanup step (CR 120.6), which the game does not reach here.
+    let still_in_combat = |state: &EngineState| state.combat == after.combat;
+    game.answer(pass, pass);
+    game.answer(pass, pass);
+    let end_of_combat = game.state();
+    assert_eq!(
+        end_of_combat.core.position,
+        TurnPosition::Combat {
+            step: CombatStep::EndOfCombat
+        }
+    );
+    assert!(still_in_combat(&end_of_combat));
+    game.answer(pass, pass);
+    game.answer(pass, pass);
+    let postcombat = game.state();
+    assert_eq!(postcombat.core.position, TurnPosition::PostcombatMain);
+    assert!(postcombat.combat.is_none());
+    for state in [&end_of_combat, &postcombat] {
+        assert_eq!(
+            state.card_rules.permanents.permanents[&giant_object].marked_damage,
+            2
+        );
+    }
+
+    // The whole game, the death included, replays to the same checkpoint.
+    let checkpoint = game.checkpoint();
+    let report = game
+        .controller
+        .execute_replay(game.controller.export_replay().unwrap())
+        .unwrap();
+    assert_eq!(report.final_checkpoint, checkpoint);
+}
+
+#[test]
+fn a_2_2_and_a_2_1_that_block_each_other_both_die_one_to_each_graveyard() {
+    // CR 510.2, 704.3, 704.5g: P1's Gray Ogre (2/2) attacks and P2's Savannah
+    // Lions (2/1) blocks it. Each deals 2 damage to the other, which is lethal
+    // to both (the Ogre has exactly 2 damage on a toughness of 2). Both are
+    // destroyed as one state-based action, each to its owner's graveyard.
+    let [_, ogre, _] = creature_definitions();
+    let (game, ogre_object, lions_object) = attacker_against_a_lions(ogre, 3);
+    attack_and_block(&game, ogre_object);
+    let before = game.state();
+    let (product, observed) = product_and_observations(&before, pass_in(&before));
+    game.answer(pass, pass);
+    let after = game.state();
+    assert_eq!(after, product.next_state);
+
+    for dead in [ogre_object, lions_object] {
+        assert!(!after.zones.objects.contains_key(&dead));
+    }
+    let in_graveyard = |owner: PlayerId| -> Vec<GameObjectId> {
+        after
+            .zones
+            .locations
+            .iter()
+            .filter(|(_, location)| {
+                location.zone == ZoneKind::Graveyard && location.player == Some(owner)
+            })
+            .map(|(object, _)| *object)
+            .collect()
+    };
+    let [ogre_card] = in_graveyard(P1)[..] else {
+        panic!("P1's graveyard holds the Ogre")
+    };
+    let [lions_card] = in_graveyard(P2)[..] else {
+        panic!("P2's graveyard holds the Lions")
+    };
+    assert_eq!(after.zones.objects[&ogre_card].card_definition, ogre);
+    assert_eq!(after.zones.objects[&lions_card].card_definition, lions());
+    for owner in [P1, P2] {
+        assert!(after.card_rules.turn_history.players[&owner].permanent_card_to_graveyard);
+    }
+    // Neither the objects that died nor the new ones are permanents.
+    for object in [ogre_object, lions_object, ogre_card, lions_card] {
+        assert!(!after.card_rules.permanents.permanents.contains_key(&object));
+    }
+    // Nothing of them is left in combat.
+    let combat = after.combat.clone().unwrap();
+    assert!(combat.attackers.is_empty() && combat.blockers.is_empty());
+    assert!(combat.blocked_attackers.is_empty() && combat.damage_step_completed);
+
+    // One state-based action: both, in object order, each for lethal damage.
+    let mut in_object_order = [ogre_object, lions_object];
+    in_object_order.sort();
+    let destroyed = |object| mtgml_state::SbaSelectedActionV1::ObjectToOwnerGraveyard {
+        object,
+        causes: vec![mtgml_state::SbaObjectCauseV1::LethalDamage],
+    };
+    let performed: Vec<_> = product
+        .events
+        .iter()
+        .filter_map(|event| match &event.event {
+            AuthoritativeRuleEventKind::StateBasedActionsApplied { actions } => Some(actions),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(performed, [&in_object_order.map(destroyed).to_vec()]);
+    // Both players see both deaths, in that order, and follow each card.
+    for player in [P1, P2] {
+        let opaque = |object| Some(opaque_of(&before, player, object));
+        assert_eq!(
+            observed_moves(&observed[&player]),
+            in_object_order.map(|object| (
+                opaque(object),
+                opaque(object),
+                ZoneKind::Battlefield,
+                ZoneKind::Graveyard
+            )),
+            "{player:?}"
+        );
+    }
+    assert_eq!(game.pending().0, P1);
+    // A combat with nobody left in it restores (CR 506.4).
+    game.controller.restore(game.checkpoint()).unwrap();
+}
+
+#[test]
+fn two_creatures_of_one_owner_dying_together_fail_closed_until_the_owner_can_order_them() {
+    // CR 404.3: cards put into one graveyard at the same time are arranged by
+    // their owner, a decision the game does not offer yet. Both of P1's Lions
+    // attack, and each is blocked by one of P2's: all four are destroyed, two
+    // of them for each owner. The step is refused and the game is where it was.
+    let game = two_lions_each();
+    let (attackers, _) = attack_with_both_lions(&game);
+    let declared = game.checkpoint();
+    let state = game.state();
+    game.declare_block(Some(opaque_of(&state, P2, attackers[0])));
+    game.declare_block(Some(opaque_of(&state, P2, attackers[1])));
+    game.answer(pass, pass);
+    assert_eq!(game.state().combat.as_ref().unwrap().blockers.len(), 2);
+
+    let before = game.checkpoint();
+    let (actor, request) = game.pending();
+    assert_eq!(actor, P2);
+    let outcome = game.endpoint(P2).submit(DecisionResponseV3 {
+        schema_version: DECISION_RESPONSE_V3_SCHEMA.to_owned(),
+        player_decision_id: request.player_decision_id,
+        view_sequence: request.view_sequence,
+        answer: DecisionAnswerV2::SelectOne {
+            candidate_id: request
+                .candidates
+                .iter()
+                .find(|candidate| pass(&candidate.intent))
+                .unwrap()
+                .candidate_id,
+        },
+    });
+    assert_eq!(outcome, Err(PlayerEndpointError::ServiceUnavailable));
+    assert_eq!(game.checkpoint(), before);
+    assert_eq!(game.pending().1, request);
+
+    // With one of the attackers blocked, only one creature of each owner is
+    // destroyed (the other Lions hits P2), and the same step is supported.
+    game.controller.restore(declared).unwrap();
+    game.declare_block(Some(opaque_of(&state, P2, attackers[0])));
+    game.declare_block(None);
+    game.answer(pass, pass);
+    game.answer(pass, pass);
+    let after = game.state();
+    assert_eq!(
+        after
+            .zones
+            .locations
+            .values()
+            .filter(|location| location.zone == ZoneKind::Graveyard)
+            .count(),
+        2
+    );
+    assert_eq!(
+        after.core.players[&P2].life,
+        before.state.core.players[&P2].life - 2
+    );
+}
+
+#[test]
+fn a_restored_combat_after_a_blocker_died_continues_identically() {
+    // CR 509.1h: the Hill Giant stays blocked after the Savannah Lions that
+    // blocked it was destroyed. A checkpoint taken from the damage step to the
+    // end step restores, and the same answers lead to the same checkpoints.
+    let [_, _, giant] = creature_definitions();
+    let (game, giant_object, lions_object) = attacker_against_a_lions(giant, 4);
+    attack_and_block(&game, giant_object);
+    let mut checkpoints = Vec::new();
+    // P2 passes, and the damage step begins; then each step ends by two passes.
+    game.answer(pass, pass);
+    for _ in 0..3 {
+        checkpoints.push(game.checkpoint());
+        game.answer(pass, pass);
+        game.answer(pass, pass);
+    }
+    checkpoints.push(game.checkpoint());
+    let positions: Vec<_> = checkpoints
+        .iter()
+        .map(|checkpoint| checkpoint.state.core.position)
+        .collect();
+    assert_eq!(
+        positions,
+        [
+            TurnPosition::Combat {
+                step: CombatStep::CombatDamage
+            },
+            TurnPosition::Combat {
+                step: CombatStep::EndOfCombat
+            },
+            TurnPosition::PostcombatMain,
+            TurnPosition::Ending {
+                step: mtgml_state::EndingStep::EndStep
+            },
+        ]
+    );
+    for checkpoint in &checkpoints {
+        let state = &checkpoint.state;
+        assert!(!state.zones.objects.contains_key(&lions_object));
+        assert_eq!(
+            state.card_rules.permanents.permanents[&giant_object].marked_damage,
+            2
+        );
+    }
+    let last = game.checkpoint();
+
+    // Each restores, and the answers that followed it lead to the next one.
+    for window in checkpoints.windows(2) {
+        game.controller.restore(window[0].clone()).unwrap();
+        assert_eq!(game.checkpoint(), window[0]);
+        game.answer(pass, pass);
+        game.answer(pass, pass);
+        assert_eq!(game.checkpoint(), window[1]);
+    }
+    assert_eq!(game.checkpoint(), last);
 }

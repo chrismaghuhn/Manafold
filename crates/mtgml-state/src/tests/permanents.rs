@@ -460,3 +460,215 @@ fn delta_rejects_a_permanent_that_enters_damaged() {
         DeltaApplicationError::UncoveredMutation
     );
 }
+
+/// The graveyard `owner` has: where a card put into it is, on top.
+fn graveyard_top(owner: PlayerId) -> ZoneLocation {
+    ZoneLocation {
+        zone: ZoneKind::Graveyard,
+        player: Some(owner),
+        position: ZonePosition::Top { offset: 0 },
+        visibility: VisibilityPartition::Public,
+        partition: None,
+    }
+}
+
+/// The state with P1's card, the object 3, on the battlefield, where nobody
+/// tracks it.
+fn state_with_a_permanent_to_destroy() -> EngineState {
+    let before = state_with_content_authority();
+    let mut state = with_object_on_the_battlefield(&before, Some(before.core.turn_number));
+    state.revision = before.revision;
+    state.validate().unwrap();
+    state
+}
+
+/// The zone transition of the battlefield object 3 into `to`, where it is the
+/// object 4: from `from_zone`, with a physical card if `card`.
+fn departure(from_zone: ZoneKind, to: ZoneLocation, card: bool) -> SemanticDeltaOperation {
+    let owner = PlayerId(1);
+    let physical_card = card.then_some(PhysicalCardId(3));
+    let snapshot = |object: u64, location: ZoneLocation| ObjectSnapshot {
+        object: GameObjectId(object),
+        physical_card,
+        card_definition: CardDefinitionId(1),
+        owner,
+        controller: owner,
+        tapped: false,
+        face_down: false,
+        location,
+    };
+    let origin = ZoneLocation {
+        zone: from_zone,
+        ..public_location()
+    };
+    SemanticDeltaOperation::ZoneTransition {
+        transition: Box::new(ZoneTransition {
+            old_object: GameObjectId(3),
+            new_object: GameObjectId(4),
+            physical_card,
+            from: origin.clone(),
+            to: to.clone(),
+            last_known: snapshot(3, origin),
+            new_snapshot: snapshot(4, to),
+        }),
+    }
+}
+
+/// `before` one revision later, in which the battlefield object 3 has died:
+/// it is the new object 4 on top of its owner's graveyard, its entry is gone
+/// and its face is the new object's. The turn history of the owner, P1, says
+/// that a permanent card was put into the graveyard if `recorded`.
+fn after_the_permanent_dies(before: &EngineState, recorded: bool) -> EngineState {
+    let mut after = before.clone();
+    after.revision = StateRevision(before.revision.0 + 1);
+    let old = after.zones.objects.remove(&GameObjectId(3)).unwrap();
+    after.zones.locations.remove(&GameObjectId(3));
+    let graveyard = graveyard_top(old.owner);
+    after.zones.objects.insert(
+        GameObjectId(4),
+        GameObject {
+            id: GameObjectId(4),
+            tapped: false,
+            ..old
+        },
+    );
+    after
+        .zones
+        .locations
+        .insert(GameObjectId(4), graveyard.clone());
+    after
+        .zones
+        .ordered_zones
+        .insert(graveyard.key(), vec![GameObjectId(4)]);
+    after.allocators.next_object_id = GameObjectId(5);
+    after.card_rules.faces.faces.remove(&GameObjectId(3));
+    after.card_rules.faces.faces.insert(GameObjectId(4), 0);
+    after
+        .card_rules
+        .permanents
+        .permanents
+        .remove(&GameObjectId(3));
+    after
+        .card_rules
+        .turn_history
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap()
+        .permanent_card_to_graveyard = recorded;
+    after
+}
+
+#[test]
+fn delta_accepts_a_permanent_card_put_into_a_graveyard_from_the_battlefield() {
+    // CR 400.7, 704.5g: a creature that dies becomes a new object in its
+    // owner's graveyard, its entry goes, and the turn history says that a
+    // permanent card was put into that player's graveyard.
+    let before = state_with_a_permanent_to_destroy();
+    let after = after_the_permanent_dies(&before, true);
+    let delta = StateDelta::between_structural_only(
+        &before,
+        &after,
+        vec![departure(
+            ZoneKind::Battlefield,
+            graveyard_top(PlayerId(1)),
+            true,
+        )],
+    )
+    .expect("the move names the new object and the fact");
+    assert_eq!(delta.apply_structural_only(&before).unwrap(), after);
+    // Only the owner's history says it.
+    assert!(!after.card_rules.turn_history.players[&PlayerId(2)].permanent_card_to_graveyard);
+}
+
+#[test]
+fn delta_needs_the_permanent_card_fact_exactly_when_a_permanent_card_is_put_into_a_graveyard() {
+    let before = state_with_a_permanent_to_destroy();
+    let unrecorded = after_the_permanent_dies(&before, false);
+    let recorded = after_the_permanent_dies(&before, true);
+    let uncovered = DeltaApplicationError::UncoveredMutation;
+    let died = |from_zone, to, card| vec![departure(from_zone, to, card)];
+    let owner_graveyard = graveyard_top(PlayerId(1));
+
+    // The move without the fact.
+    assert_eq!(
+        StateDelta::between_structural_only(
+            &before,
+            &unrecorded,
+            died(ZoneKind::Battlefield, owner_graveyard.clone(), true)
+        )
+        .unwrap_err(),
+        uncovered
+    );
+    // The fact for a move that is not a permanent card put into the owner's
+    // graveyard from the battlefield: from another zone, into another
+    // player's graveyard, or of an object that is no card (CR 111.1: a token
+    // is a marker for a permanent no card represents).
+    for (what, operations) in [
+        (
+            "from the hand",
+            died(ZoneKind::Hand, owner_graveyard.clone(), true),
+        ),
+        (
+            "into another graveyard",
+            died(ZoneKind::Battlefield, graveyard_top(PlayerId(2)), true),
+        ),
+        (
+            "of a token",
+            died(ZoneKind::Battlefield, owner_graveyard.clone(), false),
+        ),
+    ] {
+        assert_eq!(
+            StateDelta::between_structural_only(&before, &recorded, operations).unwrap_err(),
+            uncovered,
+            "{what}"
+        );
+    }
+    // The fact without any move, or for the other player.
+    let mut alone = before.clone();
+    alone.revision = StateRevision(before.revision.0 + 1);
+    alone
+        .card_rules
+        .turn_history
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap()
+        .permanent_card_to_graveyard = true;
+    assert_eq!(
+        StateDelta::between_structural_only(&before, &alone, Vec::new()).unwrap_err(),
+        uncovered
+    );
+    let mut wrong = recorded.clone();
+    for (player, history) in &mut wrong.card_rules.turn_history.players {
+        history.permanent_card_to_graveyard = *player == PlayerId(2);
+    }
+    assert_eq!(
+        StateDelta::between_structural_only(
+            &before,
+            &wrong,
+            died(ZoneKind::Battlefield, owner_graveyard, true)
+        )
+        .unwrap_err(),
+        uncovered
+    );
+}
+
+#[test]
+fn delta_does_not_clear_the_permanent_card_fact_within_a_turn() {
+    // The fact outlasts the card (it stays when the card leaves the
+    // graveyard); only the turn clears it.
+    let before = state_with_a_permanent_to_destroy();
+    let recorded = after_the_permanent_dies(&before, true);
+    let mut cleared = recorded.clone();
+    cleared.revision = StateRevision(recorded.revision.0 + 1);
+    cleared
+        .card_rules
+        .turn_history
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap()
+        .permanent_card_to_graveyard = false;
+    assert_eq!(
+        StateDelta::between_structural_only(&recorded, &cleared, Vec::new()).unwrap_err(),
+        DeltaApplicationError::UncoveredMutation
+    );
+}

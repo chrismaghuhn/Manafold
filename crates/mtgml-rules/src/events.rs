@@ -1228,7 +1228,10 @@ fn combat_damage_may_be_assigned(
 /// what it does, all at once (CR 510.2): the defending player lost as much
 /// life as the damage dealt to them (CR 120.3a), and each permanent has as much
 /// more damage marked on it as the damage dealt to it (CR 120.3e), which is
-/// none for a permanent no damage was dealt to.
+/// none for a permanent no damage was dealt to. A creature dealt lethal damage
+/// is destroyed in the same transition (CR 704.5g): it is not in `after`, so
+/// the damage dealt to it is all its marks leave of evidence. Only a creature
+/// that was dealt damage can have left.
 fn combat_damage_matches_the_states(
     before: &EngineState,
     after: &EngineState,
@@ -1270,15 +1273,15 @@ fn combat_damage_matches_the_states(
             .keys()
             .all(|creature| permanents_before.contains_key(creature))
         && permanents_before.iter().all(|(object, was)| {
-            after
-                .card_rules
-                .permanents
-                .permanents
-                .get(object)
-                .is_some_and(|now| {
+            match after.card_rules.permanents.permanents.get(object) {
+                Some(now) => {
                     now.marked_damage.checked_sub(was.marked_damage)
                         == Some(to_creatures.get(object).copied().unwrap_or(0))
-                })
+                }
+                None => {
+                    to_creatures.contains_key(object) && !after.zones.objects.contains_key(object)
+                }
+            }
         })
 }
 
@@ -1336,11 +1339,16 @@ fn validate_event_projection_v3(
                     .is_some_and(|state| state.life == *to)
         }
         // CR 120.3e, 120.6: the damage marked on a creature goes from `from`
-        // to `to`, as the states show.
+        // to `to`, as the states show. A creature that is destroyed in the same
+        // transition (CR 704.5g) is gone from the after state: what the event
+        // says of it is that it had `from` before and that damage was added.
         AuthoritativeRuleEventKind::MarkedDamageChanged { creature, from, to } => {
             from != to
                 && marked_damage_of(before, *creature) == Some(*from)
-                && marked_damage_of(after, *creature) == Some(*to)
+                && match marked_damage_of(after, *creature) {
+                    Some(now) => now == *to,
+                    None => from < to && !after.zones.objects.contains_key(creature),
+                }
         }
         AuthoritativeRuleEventKind::ObjectTapped { object, from, to } => {
             from != to
@@ -1432,8 +1440,14 @@ fn validate_event_projection_v3(
                     .players
                     .get(player)
                     .is_some_and(|state| state.has_lost),
+                // A battlefield object that is gone afterwards.
                 mtgml_state::SbaSelectedActionV1::ObjectToOwnerGraveyard { object, .. } => {
-                    !after.zones.objects.contains_key(object)
+                    before
+                        .zones
+                        .locations
+                        .get(object)
+                        .is_some_and(|location| location.zone == ZoneKind::Battlefield)
+                        && !after.zones.objects.contains_key(object)
                 }
             })
         }
@@ -3563,6 +3577,142 @@ mod tests {
         // The object is a permanent.
         assert_eq!(valid(&marked(1, 0, 0)), Err(EventDeltaError::Mismatch));
         assert_eq!(valid(&marked(99, 0, 2)), Err(EventDeltaError::Mismatch));
+    }
+
+    /// The states of `fight_states`, with the blocker 5 destroyed (CR 704.5g)
+    /// in the same transition: it is no longer on the battlefield, and the
+    /// combat no longer has it.
+    fn fight_states_with_the_blocker_destroyed() -> (EngineState, EngineState) {
+        let (before, mut after) = fight_states();
+        after.zones.objects.remove(&GameObjectId(5));
+        after.zones.locations.remove(&GameObjectId(5));
+        after
+            .card_rules
+            .permanents
+            .permanents
+            .remove(&GameObjectId(5));
+        after.card_rules.faces.faces.remove(&GameObjectId(5));
+        after.combat.as_mut().unwrap().blockers.clear();
+        (before, after)
+    }
+
+    #[test]
+    fn combat_damage_to_a_creature_that_is_destroyed_in_the_same_transition_is_valid() {
+        // Its marks are no longer in the after state: the damage dealt to it
+        // is the evidence (CR 120.3e, 704.5g).
+        let (before, after) = fight_states_with_the_blocker_destroyed();
+        assert!(combat_damage_matches_the_states(
+            &before,
+            &after,
+            &the_fight()
+        ));
+        // The creatures that stay are still held to the damage dealt to them.
+        let mut wrong = after.clone();
+        wrong
+            .card_rules
+            .permanents
+            .mark_damage(GameObjectId(3), 1)
+            .unwrap();
+        assert!(!combat_damage_matches_the_states(
+            &before,
+            &wrong,
+            &the_fight()
+        ));
+        // Only a creature that was dealt damage is destroyed in the step.
+        let mut other = after.clone();
+        other.zones.objects.remove(&GameObjectId(4));
+        other.zones.locations.remove(&GameObjectId(4));
+        other
+            .card_rules
+            .permanents
+            .permanents
+            .remove(&GameObjectId(4));
+        assert!(!combat_damage_matches_the_states(
+            &before,
+            &other,
+            &the_fight()
+        ));
+    }
+
+    #[test]
+    fn marked_damage_changed_of_a_creature_destroyed_in_the_same_transition_is_valid() {
+        // The creature is gone, so the event cannot be checked against what it
+        // has marked after: it is the damage it had before, and it rose.
+        let (before, after) = fight_states_with_the_blocker_destroyed();
+        let valid = |event: &AuthoritativeRuleEventKind| {
+            validate_event_projection_v3(&before, &after, event)
+        };
+        assert_eq!(valid(&marked(5, 0, 3)), Ok(()));
+        assert_eq!(valid(&marked(3, 0, 2)), Ok(()));
+        for wrong in [
+            marked(5, 1, 3),
+            marked(5, 3, 3),
+            marked(5, 3, 0),
+            marked(99, 0, 3),
+        ] {
+            assert_eq!(valid(&wrong), Err(EventDeltaError::Mismatch), "{wrong:?}");
+        }
+        // Damage only rises: a creature with 2 marked that has fewer marked
+        // after the event, or the same, was not damaged by it.
+        let mut marked_before = before.clone();
+        marked_before
+            .card_rules
+            .permanents
+            .mark_damage(GameObjectId(5), 2)
+            .unwrap();
+        for wrong in [marked(5, 2, 1), marked(5, 2, 2)] {
+            assert_eq!(
+                validate_event_projection_v3(&marked_before, &after, &wrong),
+                Err(EventDeltaError::Mismatch),
+                "{wrong:?}"
+            );
+        }
+        assert_eq!(
+            validate_event_projection_v3(&marked_before, &after, &marked(5, 2, 3)),
+            Ok(())
+        );
+        // A permanent that is gone but whose object is not did not leave the
+        // battlefield by being destroyed.
+        let mut object_kept = after.clone();
+        object_kept.zones.objects.insert(
+            GameObjectId(5),
+            before.zones.objects[&GameObjectId(5)].clone(),
+        );
+        assert_eq!(
+            validate_event_projection_v3(&before, &object_kept, &marked(5, 0, 3)),
+            Err(EventDeltaError::Mismatch)
+        );
+    }
+
+    #[test]
+    fn destroyed_objects_were_on_the_battlefield_and_are_gone() {
+        let (before, after) = fight_states_with_the_blocker_destroyed();
+        let destroyed = |object: u64| AuthoritativeRuleEventKind::StateBasedActionsApplied {
+            actions: vec![mtgml_state::SbaSelectedActionV1::ObjectToOwnerGraveyard {
+                object: GameObjectId(object),
+                causes: vec![mtgml_state::SbaObjectCauseV1::LethalDamage],
+            }],
+        };
+        let valid = |event: &AuthoritativeRuleEventKind| {
+            validate_event_projection_v3(&before, &after, event)
+        };
+        assert_eq!(valid(&destroyed(5)), Ok(()));
+        // A creature still on the battlefield was not destroyed, and nor was
+        // an object that was not there.
+        assert_eq!(valid(&destroyed(3)), Err(EventDeltaError::Mismatch));
+        assert_eq!(valid(&destroyed(99)), Err(EventDeltaError::Mismatch));
+        // An object that was not on the battlefield before is not destroyed.
+        let mut elsewhere = before.clone();
+        elsewhere
+            .zones
+            .locations
+            .get_mut(&GameObjectId(5))
+            .unwrap()
+            .zone = mtgml_model::ZoneKind::Hand;
+        assert_eq!(
+            validate_event_projection_v3(&elsewhere, &after, &destroyed(5)),
+            Err(EventDeltaError::Mismatch)
+        );
     }
 
     /// P1's creatures 3 and 4 attack P2, who controls the creatures 5 and
