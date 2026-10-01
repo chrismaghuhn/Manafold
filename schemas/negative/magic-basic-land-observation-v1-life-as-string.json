@@ -12,7 +12,7 @@
   "players": [
     {
       "player": "0",
-      "life": 20,
+      "life": "20",
       "hand_count": 6,
       "library_count": 33
     },

@@ -293,6 +293,49 @@
         "type": "object"
       },
       "type": "array"
+    },
+    "players": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "player": {
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string"
+          },
+          "life": {
+            "maximum": 9223372036854775807,
+            "minimum": -9223372036854775808,
+            "type": "integer"
+          },
+          "hand_count": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "library_count": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "player",
+          "life",
+          "hand_count",
+          "library_count"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "tapped": {
+      "items": {
+        "pattern": "^(0|[1-9][0-9]*)$",
+        "type": "string"
+      },
+      "type": "array",
+      "uniqueItems": true
     }
   },
   "required": [
@@ -301,11 +344,13 @@
     "turn_number",
     "turn_position",
     "priority",
+    "players",
     "pending_sba_ordering",
     "mana_pools",
     "counters",
     "attachments",
-    "faces"
+    "faces",
+    "tapped"
   ],
   "title": "Magic Basic Land Observation V1",
   "type": "object"

@@ -107,3 +107,57 @@ fn observation_digest_known_value_binds_exact_payload_bytes() {
     );
     assert_ne!(digest, ObservationDigest::from_canonical_bytes(b"e30="));
 }
+
+#[test]
+fn basic_land_observation_v1_shows_life_card_counts_and_tapped_permanents() {
+    let example: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../schemas/examples/magic-basic-land-observation-v1.json"
+    ))
+    .unwrap();
+    let observation: MagicBasicLandObservationV1 = serde_json::from_value(example.clone()).unwrap();
+    observation.validate().unwrap();
+    assert_eq!(
+        observation.players,
+        vec![
+            PlayerObservationV1 {
+                player: PlayerId(0),
+                life: 20,
+                hand_count: 6,
+                library_count: 33,
+            },
+            PlayerObservationV1 {
+                player: PlayerId(1),
+                life: -2,
+                hand_count: 7,
+                library_count: 33,
+            },
+        ]
+    );
+    assert_eq!(observation.tapped, vec![mtgml_model::OpaqueObjectId(7)]);
+
+    let broken = |edit: &dyn Fn(&mut serde_json::Value)| {
+        let mut value = example.clone();
+        edit(&mut value);
+        serde_json::from_value::<MagicBasicLandObservationV1>(value)
+            .map_err(|_| ())
+            .and_then(|observation| observation.validate().map_err(|_| ()))
+    };
+    // Players are listed once each, in ascending order, and include the
+    // active player.
+    assert!(broken(&|value| value["players"].as_array_mut().unwrap().reverse()).is_err());
+    assert!(broken(&|value| {
+        let first = value["players"][0].clone();
+        value["players"][1] = first;
+    })
+    .is_err());
+    assert!(broken(&|value| value["active_player"] = serde_json::json!("2")).is_err());
+    // Tapped permanents are listed once each, in ascending order.
+    assert!(broken(&|value| value["tapped"] = serde_json::json!(["7", "7"])).is_err());
+    assert!(broken(&|value| value["tapped"] = serde_json::json!(["8", "7"])).is_err());
+    // Counts are numbers, not strings; both fields are required.
+    assert!(broken(&|value| value["players"][0]["hand_count"] = serde_json::json!("6")).is_err());
+    assert!(broken(&|value| {
+        value.as_object_mut().unwrap().remove("tapped");
+    })
+    .is_err());
+}

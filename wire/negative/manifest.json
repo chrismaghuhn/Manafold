@@ -161,6 +161,12 @@
       "expected_error_code": "semantic.decision",
       "expected_reject_layer": "rust-python-semantic-or-decode",
       "path": "player-decision-request-v4-sba-graveyard-order-wrong-candidate.json"
+    },
+    {
+      "contract": "magic-basic-land-observation.v1",
+      "expected_error_code": "semantic.magic_basic_land_observation_v1",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "magic-basic-land-observation-v1-active-player-missing.json"
     }
   ]
 }

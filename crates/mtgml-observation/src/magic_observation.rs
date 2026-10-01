@@ -29,6 +29,17 @@ pub struct ManaPoolObservationV1 {
     pub creature_spell_only: [u32; 6],
 }
 
+/// A player's public totals: life (CR 119), hand size (CR 402.3) and
+/// library size (CR 401.3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlayerObservationV1 {
+    pub player: PlayerId,
+    pub life: i64,
+    pub hand_count: u32,
+    pub library_count: u32,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CounterObservationV1 {
@@ -59,12 +70,15 @@ pub struct MagicBasicLandObservationV1 {
     pub turn_number: String,
     pub turn_position: SyntheticTurnPosition,
     pub priority: SyntheticPriority,
+    pub players: Vec<PlayerObservationV1>,
     #[serde(deserialize_with = "deserialize_required_pending_ordering")]
     pub pending_sba_ordering: Option<MagicPendingSbaOrdering>,
     pub mana_pools: Vec<ManaPoolObservationV1>,
     pub counters: Vec<CounterObservationV1>,
     pub attachments: Vec<AttachmentObservationV1>,
     pub faces: Vec<FaceObservationV1>,
+    /// Tapped permanents on the battlefield (CR 110.5), by opaque id.
+    pub tapped: Vec<OpaqueObjectId>,
 }
 
 impl MagicBasicLandObservationV1 {
@@ -75,9 +89,18 @@ impl MagicBasicLandObservationV1 {
             return Err(ObservationValidationError::ObservationPayload);
         }
         if self
-            .mana_pools
+            .players
             .windows(2)
             .any(|pair| pair[0].player >= pair[1].player)
+            || !self
+                .players
+                .iter()
+                .any(|entry| entry.player == self.active_player)
+            || self.tapped.windows(2).any(|pair| pair[0] >= pair[1])
+            || self
+                .mana_pools
+                .windows(2)
+                .any(|pair| pair[0].player >= pair[1].player)
             || self.counters.windows(2).any(|pair| {
                 (pair[0].object, pair[0].counter_kind) >= (pair[1].object, pair[1].counter_kind)
             })

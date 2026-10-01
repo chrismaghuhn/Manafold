@@ -32,6 +32,7 @@
       "object": "7"
     }
   ],
+  "tapped": [],
   "mana_pools": [
     {
       "creature_spell_only": [
@@ -72,6 +73,7 @@
       ]
     }
   ],
+  "players": [{"player": "0", "life": 20, "hand_count": 7, "library_count": 33}, {"player": "1", "life": 20, "hand_count": 7, "library_count": 33}],
   "pending_sba_ordering": null,
   "priority": {
     "kind": "held_by",

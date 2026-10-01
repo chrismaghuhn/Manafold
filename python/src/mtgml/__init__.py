@@ -40,6 +40,7 @@ from .observation import (
     ObservedEventEnvelopeV4,
     ObservedEventV4,
     PlayerInformationState,
+    PlayerObservationV1,
     PlayerStepV4,
 )
 from .persistence import (
@@ -93,6 +94,7 @@ __all__ = [
     "PlayerClient",
     "PlayerDecisionRequestV4",
     "PlayerInformationState",
+    "PlayerObservationV1",
     "PlayerOutcome",
     "PlayerResult",
     "PlayerStepV4",
