@@ -6,10 +6,13 @@
 The immutable content envelope, content identity, provenance separation,
 validation, and non-authorizing preflight are owned by the normative
 [Card Definition and Content Contract V1](contracts/CARD_DEFINITION_CONTRACT.md).
-The M4.1 foundation does not make executable Card-IR vocabulary stable. The
-M4.2 profiled-content prerequisite adds structural validation and immutable
-identity for exactly `basic-land@1.0.0`; it does not authorize that profile for
-gameplay or make a general executable Card-IR vocabulary stable.
+The M4.1 foundation does not make executable Card-IR vocabulary stable. Two
+closed profiles exist: `basic-land@1.0.0` and `vanilla-creature@1.0.0` (a
+creature with a printed cost and power/toughness and nothing else). Content is
+admitted for execution only when every definition is bound to a pinned Oracle
+record and says what that record pins; see "Executable profiles and pinned
+records" in the contract. Neither profile makes a general executable Card-IR
+vocabulary stable, and a profile is not a card-support claim.
 
 ## Required properties
 
@@ -56,11 +59,11 @@ M4.1 freezes only the closed immutable content foundation. It does not
 execute content or define a general Magic semantic language. The former
 `ExperimentalEffect` scaffold had no compatibility entitlement and has been
 removed; its variants were not promoted or renamed. The first executable
-profile and first real selected content belong to M4.2. The narrow
-profiled-content prerequisite recognizes the closed Mountain/Plains body for
-canonical content validation and identity only. Requirement closure,
-provenance verification, executable admission, and rules execution remain
-separate later work; a typed profile is not a card-support claim.
+profile and first real selected content belong to M4.2. The profiled-content
+prerequisite recognizes the closed Mountain/Plains body and the vanilla-creature
+body for canonical content validation and identity. Requirement closure and
+pinned-record admission are in the contract; rules execution of the creature
+profile is separate later work, and a typed profile is not a card-support claim.
 
 ## Maintainer rule
 

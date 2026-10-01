@@ -57,6 +57,32 @@
     },
     {
       "authority_refs": [
+        "docs/superpowers/specs/2026-10-01-vanilla-creatures-design.md",
+        "wotc-cr-2026-09-25-txt-20260925-sha256-8d860e451f20f38865b725b42d82feb714c725373dd8f3b32b8652b3eeb070ca"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/basic-priority",
+        "rules/mana-pool",
+        "rules/stack-resolution",
+        "rules/zone-incarnation"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/cast-creature-spell",
+      "lifecycle": "specified",
+      "notes": "Specified only: nothing implements it yet. Instants, targets, X costs, cost changes and responses are excluded and fail closed. No certification, card, deck, format, or playability support is claimed.",
+      "owners": [
+        "casting"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/cast-creature-spell.md",
+      "summary": "Casting a creature spell with no rules text: timing, the move from hand to stack, and payment of its printed mana cost from the mana pool.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
         "docs/adr/0054-m3-pre-t0-hardening.md",
         "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
         "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f",
@@ -89,7 +115,9 @@
       "authority_refs": [
         "docs/adr/0054-m3-pre-t0-hardening.md",
         "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
-        "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f"
+        "docs/superpowers/specs/2026-10-01-vanilla-creatures-design.md",
+        "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f",
+        "wotc-cr-2026-09-25-txt-20260925-sha256-8d860e451f20f38865b725b42d82feb714c725373dd8f3b32b8652b3eeb070ca"
       ],
       "benchmark_scenarios": [],
       "category": "core_rule",
@@ -103,12 +131,12 @@
       "information_risk": "high",
       "key": "rules/combat-damage",
       "lifecycle": "specified",
-      "notes": "Specified only: the implementation was removed with the old rules kernel on 2026-09-30; see git history. No certification, card, deck, format, or playability support is claimed.",
+      "notes": "Specified only: nothing implements it yet; the implementation was removed with the old rules kernel on 2026-09-30; see git history. The multi-blocker kernel it now describes is specified in docs/superpowers/specs/2026-10-01-vanilla-creatures-design.md. No certification, card, deck, format, or playability support is claimed.",
       "owners": [
         "combat"
       ],
       "spec_path": "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
-      "summary": "One bounded normal combat-damage step.",
+      "summary": "One normal combat-damage step: unblocked attackers damage the defending player, each blocker damages the attacker it blocks, and a blocked attacker's damage is divided among its blockers as its controller chooses.",
       "version": "0.1.0"
     },
     {
@@ -146,7 +174,9 @@
       "authority_refs": [
         "docs/adr/0054-m3-pre-t0-hardening.md",
         "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
-        "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f"
+        "docs/superpowers/specs/2026-10-01-vanilla-creatures-design.md",
+        "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f",
+        "wotc-cr-2026-09-25-txt-20260925-sha256-8d860e451f20f38865b725b42d82feb714c725373dd8f3b32b8652b3eeb070ca"
       ],
       "benchmark_scenarios": [],
       "category": "core_rule",
@@ -156,12 +186,12 @@
       "information_risk": "high",
       "key": "rules/damage-and-life",
       "lifecycle": "specified",
-      "notes": "Specified only: the implementation was removed with the old rules kernel on 2026-09-30; see git history. No certification, card, deck, format, or playability support is claimed.",
+      "notes": "Specified only: nothing implements it yet; the implementation was removed with the old rules kernel on 2026-09-30; see git history. The multi-blocker kernel it now describes is specified in docs/superpowers/specs/2026-10-01-vanilla-creatures-design.md. No certification, card, deck, format, or playability support is claimed.",
       "owners": [
         "damage"
       ],
       "spec_path": "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
-      "summary": "Basic combat-damage results for life and marked creature damage.",
+      "summary": "Combat damage results: life loss for a player and damage marked on a creature.",
       "version": "0.1.0"
     },
     {
@@ -196,7 +226,9 @@
       "authority_refs": [
         "docs/adr/0054-m3-pre-t0-hardening.md",
         "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
-        "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f"
+        "docs/superpowers/specs/2026-10-01-vanilla-creatures-design.md",
+        "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f",
+        "wotc-cr-2026-09-25-txt-20260925-sha256-8d860e451f20f38865b725b42d82feb714c725373dd8f3b32b8652b3eeb070ca"
       ],
       "benchmark_scenarios": [],
       "category": "core_rule",
@@ -208,12 +240,12 @@
       "information_risk": "high",
       "key": "rules/declare-blockers",
       "lifecycle": "specified",
-      "notes": "Specified only: the implementation was removed with the old rules kernel on 2026-09-30; see git history. No certification, card, deck, format, or playability support is claimed.",
+      "notes": "Specified only: nothing implements it yet; the implementation was removed with the old rules kernel on 2026-09-30; see git history. The multi-blocker kernel it now describes is specified in docs/superpowers/specs/2026-10-01-vanilla-creatures-design.md. No certification, card, deck, format, or playability support is claimed.",
       "owners": [
         "combat"
       ],
       "spec_path": "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
-      "summary": "Bounded blocker assignment with at most one relevant blocker.",
+      "summary": "Blocker declaration for any number of blockers: each untapped creature of the defending player blocks at most one attacker, and an attacker may be blocked by several.",
       "version": "0.1.0"
     },
     {
@@ -345,6 +377,30 @@
     },
     {
       "authority_refs": [
+        "docs/superpowers/specs/2026-10-01-vanilla-creatures-design.md",
+        "wotc-cr-2026-09-25-txt-20260925-sha256-8d860e451f20f38865b725b42d82feb714c725373dd8f3b32b8652b3eeb070ca"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/basic-priority",
+        "rules/zone-incarnation"
+      ],
+      "implementation_paths": [],
+      "information_risk": "medium",
+      "key": "rules/stack-resolution",
+      "lifecycle": "specified",
+      "notes": "Specified only: nothing implements it yet. More than one stack object, abilities and responses are excluded and fail closed. No certification, card, deck, format, or playability support is claimed.",
+      "owners": [
+        "stack"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/stack-resolution.md",
+      "summary": "A stack of one creature spell resolves when both players pass in succession: the creature enters the battlefield under its caster's control.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
         "docs/adr/0054-m3-pre-t0-hardening.md",
         "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
         "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f",
@@ -394,6 +450,30 @@
       ],
       "spec_path": "docs/rules/capabilities/rules/state-based-actions-empty-library.md",
       "summary": "A player who draws from an empty library in the draw step loses the game.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "docs/superpowers/specs/2026-10-01-vanilla-creatures-design.md",
+        "wotc-cr-2026-09-25-txt-20260925-sha256-8d860e451f20f38865b725b42d82feb714c725373dd8f3b32b8652b3eeb070ca"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/declare-attackers",
+        "rules/turn-structure"
+      ],
+      "implementation_paths": [],
+      "information_risk": "low",
+      "key": "rules/summoning-sickness",
+      "lifecycle": "specified",
+      "notes": "Specified only: nothing implements it yet. Haste, other keywords and change of control are excluded and fail closed. No certification, card, deck, format, or playability support is claimed.",
+      "owners": [
+        "combat"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/summoning-sickness.md",
+      "summary": "A creature can attack only if its controller has controlled it continuously since their most recent turn began.",
       "version": "0.1.0"
     },
     {

@@ -6,13 +6,23 @@ from pathlib import Path
 
 from mtgml.content_contract_v1 import decode_content_contract_manifest_v1
 from mtgml.errors import WireError
-from mtgml.persistence import PersistenceValue, encode_canonical
+from mtgml.persistence import (
+    PersistenceValue,
+    calculate_content_contract_id_v1,
+    encode_canonical,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 PARITY_FIXTURE = (
     ROOT / "crates/mtgml-card-ir/tests/fixtures/content_contract_manifest_parity.v1.json"
 )
 BASIC_LAND_CONTENT = ROOT / "cards/definitions/basic-land-v1/content-contract.v1.cbor"
+COMBINED_CONTENT = (
+    ROOT / "cards/definitions/basic-land-and-vanilla-creature-v1/content-contract.v1.cbor"
+)
+COMBINED_KAT = (
+    ROOT / "persistence/golden/content-contract-basic-land-and-vanilla-creature-v1-kat.v1.json"
+)
 
 
 def savannah_lions(**overrides: PersistenceValue) -> bytes:
@@ -97,6 +107,19 @@ class VanillaCreatureProfileTests(unittest.TestCase):
     def test_the_basic_land_content_is_still_accepted_unchanged(self) -> None:
         payload = BASIC_LAND_CONTENT.read_bytes()
         self.assertEqual(decode_content_contract_manifest_v1(payload), payload)
+
+    def test_the_combined_catalog_matches_its_known_answer(self) -> None:
+        payload = COMBINED_CONTENT.read_bytes()
+        self.assertEqual(decode_content_contract_manifest_v1(payload), payload)
+        kat = json.loads(COMBINED_KAT.read_text(encoding="utf-8"))
+        self.assertEqual(kat["definition_ids"], [1, 2, 3, 4, 5])
+        self.assertEqual(bytes.fromhex(kat["canonical_payload_hex"]), payload)
+        self.assertEqual(
+            encode_canonical(kat["content_manifest_value"]),
+            payload,
+            "the typed value in the known answer encodes to the committed bytes",
+        )
+        self.assertEqual(calculate_content_contract_id_v1(payload), kat["content_contract_id"])
 
     def test_acceptance_equals_the_rust_parity_fixture(self) -> None:
         fixture = json.loads(PARITY_FIXTURE.read_text(encoding="utf-8"))

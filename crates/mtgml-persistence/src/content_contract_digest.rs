@@ -171,6 +171,20 @@ mod tests {
     }
 
     #[test]
+    fn combined_catalog_content_id_matches_frozen_known_answer() {
+        let fixture: serde_json::Value = serde_json::from_slice(include_bytes!(
+            "../../../persistence/golden/content-contract-basic-land-and-vanilla-creature-v1-kat.v1.json"
+        ))
+        .unwrap();
+        let payload = decode_hex(fixture["canonical_payload_hex"].as_str().unwrap());
+        let id = calculate_content_contract_id_v1(&payload).unwrap();
+        assert_eq!(
+            id.as_str(),
+            fixture["content_contract_id"].as_str().unwrap()
+        );
+    }
+
+    #[test]
     fn unsupported_or_malformed_profile_content_is_rejected_before_hashing() {
         let fixture = basic_land_fixture();
         let original = decode_hex(fixture["canonical_payload_hex"].as_str().unwrap());
