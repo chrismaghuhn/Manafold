@@ -29,6 +29,12 @@ The following are not supported and fail closed:
 - multiplayer rules, including the free mulligan (CR 103.5c);
 - decks with fewer than seven cards.
 
+Not offered, by the owner's decision: the optional shuffle or cut of an
+opponent's deck (CR 103.3, second sentence). The library is already in a random
+order that no player knows. Neither action can change what any player knows or
+the distribution of the game, so offering it would only add decisions without
+content.
+
 ## State and identity model
 
 Until turn 1 begins the turn number is 0 and exactly one `GameStart`

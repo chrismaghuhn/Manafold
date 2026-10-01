@@ -63,6 +63,13 @@ profile has no pregame semantics (today: `basic-land@1.0.0`) and fails closed
 on any other (`UnsupportedDefinition`), so a future card with an opening-hand
 action cannot slip past 103.6.
 
+Not offered, by the owner's decision (2026-10-01): the optional shuffle or cut
+of an opponent's deck (103.3, "Each player may then shuffle or cut their
+opponents' decks"). After the owner's own shuffle the library is in a uniformly
+random order that no player knows. Neither a shuffle nor a cut can change what
+any player knows or the distribution of the game. Offering it would add
+decisions with no content, which for ML training data is pure noise.
+
 ## 3. Decisions
 
 - **G1 — Entry point.** `mtgml_rules::start_game(admission, decks, root_seed)

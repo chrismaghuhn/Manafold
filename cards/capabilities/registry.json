@@ -289,7 +289,7 @@
       "information_risk": "high",
       "key": "rules/game-start",
       "lifecycle": "covered",
-      "notes": "Covered for the first game of a two-player match with admitted basic-land decks by the listed rules and production-endpoint cases. The owner does not retain the positions of cards put on the bottom of the library. Sideboards, companions, commanders, opening-hand actions, later games of a match and variants are excluded and fail closed.",
+      "notes": "Covered for the first game of a two-player match with admitted basic-land decks by the listed rules and production-endpoint cases. The owner does not retain the positions of cards put on the bottom of the library. Sideboards, companions, commanders, opening-hand actions, later games of a match and variants are excluded and fail closed. The optional shuffle or cut of an opponent's deck (CR 103.3) is not offered: it cannot change what any player knows.",
       "owners": [
         "turn"
       ],
