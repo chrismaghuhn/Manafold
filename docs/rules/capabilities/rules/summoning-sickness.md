@@ -69,6 +69,5 @@ from 0 to 0).
 - Production-endpoint case in `crates/mtgml-environment/tests/creature_game.rs`:
   `a_creature_cannot_attack_the_turn_it_arrives_but_can_on_its_controllers_next_turn`.
 - Random smoke games in `crates/mtgml-environment/tests/random_smoke.rs`:
-  `asymmetric_games_cast_attack_and_end_at_zero_life` plays ten seeded games of a
-  creature deck against a land deck, in which the creatures that are offered
-  attack.
+  `creature_games_fight_to_a_winner` plays fifteen seeded games of two creature
+  decks, in which the creatures that are offered attack.

@@ -278,15 +278,20 @@ creature it asks about in each of its candidates: one
 `DeclareBlock { blocker, attacker: Some(a) }` for each attacker, in ascending
 order of the actor's opaque ids, and `DeclareBlock { blocker, attacker: None }`
 for no block, which comes first. The partial answers live in a BlockDeclaration
-continuation that only the defender's request refers to, and nothing of them
-reaches another player. After the last answer one `BlockersDeclared` follows
-(also when no creature blocks), the attackers with a blocker become blocked
-(CR 509.1h), the continuation ends and the active player receives priority.
-The rules kernel rederives the request and the continuation from the state, so
-a restored checkpoint with the declaration pending continues identically. Every
-combination of answers is legal for the creatures of the current slice; menace
-and block requirements would need a check over the whole declaration (CR
-509.1b, 509.1c).
+continuation that only the defender's request refers to. The defender sees them
+in their own observation (`pending_blocks`); no other player does. After the
+last answer one `BlockersDeclared` follows, which both players observe: the
+chosen creatures become blocking creatures (CR 509.1g), the attackers with a
+blocker become blocked (CR 509.1h), the continuation ends and the active player
+receives priority. `BlockersDeclared` is emitted whenever there are attackers
+(CR 508.8), so also when no creature blocks, and also when the defending player
+controls no untapped creature: nothing is asked then, one empty
+`BlockersDeclared` follows on entering the step, and the active player receives
+priority. The rules kernel rederives the request and the continuation from the
+state, so a restored checkpoint with the declaration pending continues
+identically. Every combination of answers is legal for the creatures of the
+current slice; menace and block requirements would need a check over the whole
+declaration (CR 509.1b, 509.1c).
 
 The CombatDamageAssignment request is `ChooseOne` and `acting_player_only`, and
 the attacking player (the active player) is its actor. An attacking creature
@@ -303,11 +308,14 @@ the attacker have no amount and damage is left. Otherwise the last blocker is
 assigned what is left, and when nothing is left every blocker still without an
 amount is assigned none; nobody is asked about those. The answers live in a
 CombatDamageAssignment continuation that only the attacking player's request
-refers to, and nothing of them reaches another player. After the last answer the
-damage of every creature is dealt at once, in one `CombatDamageDealt` (CR 510.2),
-the continuation ends and the state-based actions are checked. The rules kernel
-rederives the request and the continuation from the state, so a restored
-checkpoint with the division pending continues identically.
+refers to. The attacking player sees them in their own observation
+(`pending_damage_assignment`), without the amounts the rules force; no other
+player does. After the last answer the damage of every creature is dealt at
+once, in one `CombatDamageDealt` (CR 510.2), which both players observe, the
+continuation ends and the state-based actions are checked. With no such
+attacker nobody is asked: the damage is dealt on entering the step, in the same
+one event. The rules kernel rederives the request and the continuation from the
+state, so a restored checkpoint with the division pending continues identically.
 
 The SbaGraveyardOrder request is `Order { minimum: n, maximum: n }` and
 `acting_player_only`. Its actor is an owner of cards that are put into their

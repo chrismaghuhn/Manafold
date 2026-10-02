@@ -87,7 +87,8 @@
         "a_restored_checkpoint_with_a_spell_on_the_stack_continues_identically",
         "a_game_with_a_cast_replays_to_the_same_checkpoint",
         "a_closed_episode_may_hold_a_creature_spell_on_the_stack",
-        "asymmetric_games_cast_attack_and_end_at_zero_life"
+        "creature_games_fight_to_a_winner",
+        "creature_short_game_matches_its_pinned_fingerprint"
       ],
       "dependencies": [
         "rules/basic-priority",
@@ -186,7 +187,22 @@
         "a_restored_partial_division_continues_identically",
         "a_forged_partial_division_is_refused",
         "a_half_divided_damage_is_invisible_to_the_defender",
-        "asymmetric_games_cast_attack_and_end_at_zero_life"
+        "creature_games_fight_to_a_winner",
+        "both_players_see_combat_damage_and_marks",
+        "the_attacking_player_sees_its_own_partial_division",
+        "a_restored_partial_division_gives_the_same_observation",
+        "the_partial_division_is_listed_in_the_order_of_the_attackers_opaque_ids",
+        "the_combat_damage_assignment_digest_binds_every_field",
+        "an_amount_of_combat_damage_has_its_own_purpose_and_candidate_forms",
+        "a_combat_damage_assignment_names_the_attacking_player_and_the_blockers_of_its_attacker",
+        "a_combat_damage_request_asks_about_the_next_blocker_and_an_amount_each",
+        "combat_damage_assignment_requires_one_answer_an_amount_intent_and_its_actor_only",
+        "combat_damage_dealt_round_trips_as_a_public_wire_value",
+        "a_malformed_combat_damage_is_rejected",
+        "basic_land_observation_v1_shows_blocks_and_marked_damage",
+        "test_combat_damage_assignment_offers_each_amount_for_one_blocker_to_its_actor_only",
+        "test_combat_damage_dealt_round_trips",
+        "creature_short_game_matches_its_pinned_fingerprint"
       ],
       "dependencies": [
         "rules/declare-blockers",
@@ -201,7 +217,7 @@
       "information_risk": "high",
       "key": "rules/combat-damage",
       "lifecycle": "covered",
-      "notes": "Covered for unblocked attackers and attackers blocked by one or more creatures, in two-player games of admitted lands and vanilla creatures, by the listed rules and production-endpoint cases. Damage dealt to a creature is marked on it (rules/damage-and-life). An attacker blocked by two or more creatures divides its damage among them as its controller chooses (CR 510.1c): the controller is asked, one blocker at a time, in a CombatDamageAssignment decision. First strike, trample, every other keyword and damage prevention are excluded and fail closed. No player observes blocks, combat damage to creatures or marked damage until the observation of combat is extended. No certification, card, deck, format, or playability support is claimed.",
+      "notes": "Covered for unblocked attackers and attackers blocked by one or more creatures, in two-player games of admitted lands and vanilla creatures, by the listed rules and production-endpoint cases. Damage dealt to a creature is marked on it (rules/damage-and-life). An attacker blocked by two or more creatures divides its damage among them as its controller chooses (CR 510.1c): the controller is asked, one blocker at a time, in a CombatDamageAssignment decision. First strike, trample, every other keyword and damage prevention are excluded and fail closed. Both players observe the blocks, the combat damage and the damage marked on each creature; the attacking player alone sees the amounts they have given so far in a division (pending_damage_assignment). No certification, card, deck, format, or playability support is claimed.",
       "owners": [
         "combat"
       ],
@@ -272,7 +288,12 @@
         "overkill_damage_shows_negative_life_and_ends_the_game",
         "a_3_3_blocked_by_a_2_1_kills_it_and_survives",
         "a_creature_that_survived_a_block_has_no_damage_marked_in_the_next_turn",
-        "asymmetric_games_cast_attack_and_end_at_zero_life"
+        "creature_games_fight_to_a_winner",
+        "both_players_see_combat_damage_and_marks",
+        "basic_land_observation_v1_shows_blocks_and_marked_damage",
+        "test_observation_shows_the_blocks_and_marked_damage",
+        "test_malformed_blocks_and_marked_damage_are_rejected",
+        "creature_short_game_matches_its_pinned_fingerprint"
       ],
       "dependencies": [],
       "implementation_paths": [
@@ -283,7 +304,7 @@
       "information_risk": "high",
       "key": "rules/damage-and-life",
       "lifecycle": "covered",
-      "notes": "Covered for combat damage dealt to a player or to a creature in two-player games of admitted lands and vanilla creatures, by the listed rules and production-endpoint cases. Damage dealt to a creature is marked on it (CR 120.3e) and stays until the cleanup step removes it (CR 120.6, 514.2); what lethal damage does is rules/state-based-actions-combat. No player observes marked damage until the observation of combat is extended. Damage that is not combat damage, prevention, replacement and every other result of damage are excluded and fail closed. No certification, card, deck, format, or playability support is claimed.",
+      "notes": "Covered for combat damage dealt to a player or to a creature in two-player games of admitted lands and vanilla creatures, by the listed rules and production-endpoint cases. Damage dealt to a creature is marked on it (CR 120.3e) and stays until the cleanup step removes it (CR 120.6, 514.2); what lethal damage does is rules/state-based-actions-combat. Both players observe the damage marked on every permanent, which is 0 for a permanent that is not a creature in this card pool (CR 120.6 would keep damage on a creature that stopped being one). Damage that is not combat damage, prevention, replacement and every other result of damage are excluded and fail closed. No certification, card, deck, format, or playability support is claimed.",
       "owners": [
         "damage"
       ],
@@ -309,7 +330,7 @@
         "nine_attackers_are_a_valid_combat",
         "attackers_tap_and_both_players_see_the_attack",
         "an_empty_attack_declaration_is_public",
-        "asymmetric_games_cast_attack_and_end_at_zero_life"
+        "creature_games_fight_to_a_winner"
       ],
       "dependencies": [
         "rules/combat-phase"
@@ -369,7 +390,24 @@
         "a_blocker_without_an_attacker_needs_the_damage_dealt",
         "the_combat_digest_binds_a_blocker_without_an_attacker",
         "a_blocker_whose_attacker_is_destroyed_keeps_blocking_nothing",
-        "a_blocker_whose_attacker_died_is_still_blocking_until_combat_ends"
+        "a_blocker_whose_attacker_died_is_still_blocking_until_combat_ends",
+        "the_defender_sees_its_own_partial_blocks",
+        "a_restored_partial_block_gives_the_same_observation",
+        "the_partial_blocks_are_listed_in_the_order_of_the_defenders_opaque_ids",
+        "both_players_see_a_blocker_whose_attacker_died_blocking_nothing",
+        "an_attack_nobody_can_block_shows_an_empty_block_declaration",
+        "a_player_learns_nothing_of_the_opponents_hidden_cards_through_a_fight",
+        "blockers_declared_round_trips_as_a_public_wire_value",
+        "a_malformed_block_declaration_is_rejected",
+        "basic_land_observation_v1_shows_blocks_and_marked_damage",
+        "the_pending_answers_of_a_block_or_a_division_have_a_shape_and_are_null_by_default",
+        "the_pending_answers_are_listed_in_ascending_order",
+        "test_blockers_declared_round_trips",
+        "test_observation_shows_the_blocks_and_marked_damage",
+        "test_a_blocker_whose_attacker_left_combat_blocks_nothing",
+        "test_the_pending_answers_have_a_shape",
+        "creature_games_fight_to_a_winner",
+        "creature_short_game_matches_its_pinned_fingerprint"
       ],
       "dependencies": [
         "rules/declare-attackers"
@@ -382,7 +420,7 @@
       "information_risk": "high",
       "key": "rules/declare-blockers",
       "lifecycle": "covered",
-      "notes": "Covered for two-player games of admitted lands and vanilla creatures by the listed rules and production-endpoint cases. A blocker whose attacker has died stays a blocking creature that blocks nothing until the end of combat (CR 509.1g). The defending player is asked, one untapped creature at a time, which attacker it blocks or no block, and any number of creatures may block one attacker, whose controller then divides its combat damage among them (rules/combat-damage). Blocking restrictions and requirements (CR 509.1b, 509.1c) and costs to block are excluded and fail closed. No player observes blocks until the observation of combat is extended. No certification, card, deck, format, or playability support is claimed.",
+      "notes": "Covered for two-player games of admitted lands and vanilla creatures by the listed rules and production-endpoint cases. A blocker whose attacker has died stays a blocking creature that blocks nothing until the end of combat (CR 509.1g). The defending player is asked, one untapped creature at a time, which attacker it blocks or no block, and any number of creatures may block one attacker, whose controller then divides its combat damage among them (rules/combat-damage). Blocking restrictions and requirements (CR 509.1b, 509.1c) and costs to block are excluded and fail closed. Both players observe the declared blocks (BlockersDeclared, which is emitted whenever there are attackers, also when no creature blocks); the defending player alone sees the answers they have given so far (pending_blocks). No certification, card, deck, format, or playability support is claimed.",
       "owners": [
         "combat"
       ],
@@ -531,7 +569,7 @@
         "a_game_with_a_cast_replays_to_the_same_checkpoint",
         "a_closed_episode_may_hold_a_creature_spell_on_the_stack",
         "delta_accepts_an_entry_made_by_a_zone_transition_into_the_battlefield",
-        "asymmetric_games_cast_attack_and_end_at_zero_life"
+        "creature_games_fight_to_a_winner"
       ],
       "dependencies": [
         "rules/basic-priority",
@@ -595,7 +633,8 @@
         "two_creatures_dying_together_ask_their_owner_for_the_order",
         "owners_order_in_turn_order_and_the_second_sees_the_first",
         "a_restored_graveyard_order_checkpoint_continues_identically",
-        "asymmetric_games_cast_attack_and_end_at_zero_life"
+        "creature_games_fight_to_a_winner",
+        "both_players_see_a_blocker_whose_attacker_died_blocking_nothing"
       ],
       "dependencies": [
         "rules/zone-incarnation"
@@ -658,7 +697,7 @@
         "a_creature_is_offered_only_to_its_controller_on_their_own_turn",
         "a_wrong_candidate_set_for_the_declaration_is_refused",
         "a_creature_cannot_attack_the_turn_it_arrives_but_can_on_its_controllers_next_turn",
-        "asymmetric_games_cast_attack_and_end_at_zero_life"
+        "creature_games_fight_to_a_winner"
       ],
       "dependencies": [
         "rules/declare-attackers",

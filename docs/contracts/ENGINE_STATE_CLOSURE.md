@@ -132,7 +132,11 @@ blocks, the attackers that became blocked independently of live blocker
 references, and a flag recording that the combat-damage turn-based action
 completed. The blockers are a map from blocker to attacker, so an attacker may
 have any number of blockers and the state carries no order among them. A blocked
-attacker remains blocked when its last blocker has left (CR 509.1h).
+attacker remains blocked when its last blocker has left (CR 509.1h). A blocking
+creature remains a blocking creature when its attacker has left combat (CR 509.1g,
+506.4): it maps to no attacker (`None`), which a state holds only once the combat
+damage turn-based action has completed, because an attacker leaves combat by
+dying in the state-based actions after that step.
 
 ## Card-rules state families
 

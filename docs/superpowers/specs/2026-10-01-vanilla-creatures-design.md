@@ -4,6 +4,10 @@
 review, "approve with changes", whose points revision 2 addresses). Branch
 `feat/vanilla-creatures`.
 
+**Progress:** steps 1 and 2 were merged in #270 and step 3a in #272. Step 3b
+(creature decks fight) is done, on branch `feat/creature-decks-fight`: §7 says
+what each step delivered.
+
 **Depends on:** game start (#266, merged) and the public player state (#267).
 This branch is stacked on `feat/public-player-state` and rebases onto `master`
 once #267 merges.
@@ -357,7 +361,8 @@ that show the behaviour in a real game flow (AGENTS.md §5).
    - the block declaration fails closed if the defender has an untapped
      creature;
    - asymmetric smoke games: creatures and lands against lands only, so the
-     defender never has a blocker. They end at 0 life.
+     defender never has a blocker. They end at 0 life. Step 3b replaced them
+     with creature decks on both sides.
    - *Engine can:* a creature deck kills a land-only opponent.
    - Red tests:
      - a creature cast in a main phase resolves onto the battlefield;
@@ -376,13 +381,13 @@ that show the behaviour in a real game flow (AGENTS.md §5).
        - two creatures dying together ask their owner for the graveyard
          order;
        - a half-declared block is invisible to the attacker.
-   - **3b.** Damage division, observation of blocks and damage, and symmetric
-     creature smoke decks. The smoke games switch only at 3b.
-     - The blockers record must express "blocking, attacker gone" before blocks
-       are observed (CR 509.1g). 3a drops a surviving blocker whose attacker
-       died, a known divergence that nothing reads yet
-       (`docs/rules/capabilities/rules/declare-blockers.md`, "Known
-       divergence").
+   - **3b (done).** Damage division, observation of blocks and damage, and
+     symmetric creature smoke decks. The smoke games switch only at 3b.
+     - The blockers record had to express "blocking, attacker gone" before
+       blocks were observed (CR 509.1g). 3a dropped a surviving blocker whose
+       attacker died, a divergence that nothing read. 3b fixed it first:
+       `CombatState.blockers` maps each blocker to an optional attacker, and
+       `None` exists only once the damage is dealt.
      - Red tests:
        - Hill Giant blocked by Lions and Ogre can assign 0/3, 1/2, 2/1 and
          3/0;

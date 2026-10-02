@@ -86,12 +86,15 @@ class ManaPoolObservationV1:
 class PermanentObservationV1:
     """A permanent on the battlefield: who controls it, the turn since which
     that player has controlled it and, for a creature, its power and toughness
-    (null for any other permanent). It also shows the damage marked on it, which
-    is 0 for a permanent that is not a creature.
+    (null for any other permanent). It also shows the damage marked on it (CR
+    120.3e), which is 0 for a permanent that is not a creature in this card pool.
 
     A creature's power and toughness are its printed ones, which are also its
     current ones: no observation is made for a creature that an effect or a
-    +1/+1 or -1/-1 counter could change.
+    +1/+1 or -1/-1 counter could change. That is what makes a permanent without
+    a power one that never was a creature, and so one with no damage: CR 120.6
+    keeps damage marked on a creature until the cleanup step even if the
+    permanent stops being a creature, so with such effects this would not hold.
     """
 
     object: int
@@ -450,6 +453,10 @@ class MagicBasicLandObservationV1:
                 "semantic.magic_basic_land_observation_v1",
                 "pending damage rows are not ordered",
             )
+        # Damage is marked on creatures (CR 120.3e). This holds for a permanent that
+        # is not a creature only in this card pool: `is_creature` reads the printed
+        # power, and no effect can make a creature stop being one (CR 120.6 would
+        # keep its damage).
         if any(item.marked_damage != 0 and not item.is_creature for item in self.permanents):
             raise WireError(
                 "semantic.magic_basic_land_observation_v1",

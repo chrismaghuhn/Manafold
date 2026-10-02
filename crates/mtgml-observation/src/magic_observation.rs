@@ -66,11 +66,15 @@ pub struct PlayerObservationV1 {
 /// that player has controlled it (CR 302.6) and, for a creature, its power
 /// and toughness (CR 208.1); both are null for any other permanent. Every
 /// permanent shows the damage marked on it (CR 120.3e), which is 0 for a
-/// permanent that is not a creature.
+/// permanent that is not a creature in this card pool (see below).
 ///
 /// A creature's power and toughness are its printed ones, which are also its
 /// current ones: the projection is not made for a creature that an effect or a
-/// +1/+1 or -1/-1 counter could change.
+/// +1/+1 or -1/-1 counter could change. That is what makes a permanent without
+/// a power a permanent that never was a creature, and so one with no damage:
+/// CR 120.6 keeps damage marked on a creature until the cleanup step even if
+/// the permanent stops being a creature, so with such effects this rule would
+/// not hold.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PermanentObservationV1 {
@@ -254,6 +258,10 @@ impl MagicBasicLandObservationV1 {
                     (pair[0].attacker, pair[0].blocker) >= (pair[1].attacker, pair[1].blocker)
                 })
             })
+            // Damage is marked on creatures (CR 120.3e). This holds for a
+            // permanent that is not a creature only in this card pool:
+            // `is_creature` reads the printed power, and no effect can make a
+            // creature stop being one (CR 120.6 would keep its damage).
             || self
                 .permanents
                 .iter()

@@ -94,14 +94,26 @@ declaration's.
 
 ## Information and opaque identities
 
-The attack is public. `AttackersDeclared` (every declaration, including an
-empty one) and the life change are observed by both players, with attackers
-listed by the perspective's ascending opaque ids. `CombatDamageDealt`,
-`MarkedDamageChanged` and `CombatDamageStepCompleted` are observed by neither
-player, and neither are the blocks that decide where the damage goes; they
-become observable with the observation of combat (owner decision 2026-10-01).
-The deaths the damage causes are public: both players see the creature go from
-the battlefield to its owner's graveyard.
+The attack, the blocks and the damage are public. `AttackersDeclared` (every
+declaration, including an empty one), `BlockersDeclared` (see
+`rules/declare-blockers`), `CombatDamageDealt` and the life change are observed
+by both players, with the creatures listed by the perspective's ascending opaque
+ids. `CombatDamageDealt` is one event for the whole combat (CR 510.2): each
+assignment has its source, its recipient (the defending player or a creature)
+and an amount of 1 or more, sorted by the perspective's opaque ids, and it is
+not emitted when no creature assigns damage. It comes before the `LifeChanged`
+and before the deaths. The damage dealt to a creature is also shown as the
+`marked_damage` of its permanent in the observation (see `rules/damage-and-life`),
+so `MarkedDamageChanged` and `CombatDamageStepCompleted` are observed by neither
+player. The deaths the damage causes are public: both players see the creature go
+from the battlefield to its owner's graveyard.
+
+The division is private to the attacking player while it is made: its answers so
+far are in the `pending_damage_assignment` of that player's observation (one row
+for each blocker answered, with its attacker and amount, ascending by attacker
+and then blocker; an amount the rules force is not listed), and in no other
+player's. Nothing else the other player sees changes with an answer. See
+`docs/INFORMATION_MODEL.md`.
 
 ## Transition/continuation behavior
 
@@ -168,11 +180,37 @@ and the damage undealt. Anything else fails closed, for priority requests too.
   `each_division_gives_the_expected_deaths`,
   `a_division_that_runs_out_asks_for_no_more`,
   `a_restored_partial_division_continues_identically`,
-  `a_forged_partial_division_is_refused` and
-  `a_half_divided_damage_is_invisible_to_the_defender`.
+  `a_forged_partial_division_is_refused`,
+  `a_half_divided_damage_is_invisible_to_the_defender`,
+  `both_players_see_combat_damage_and_marks`,
+  `the_attacking_player_sees_its_own_partial_division`,
+  `a_restored_partial_division_gives_the_same_observation` and
+  `the_partial_division_is_listed_in_the_order_of_the_attackers_opaque_ids`.
+- State and decision cases for the division:
+  `the_combat_damage_assignment_digest_binds_every_field` and
+  `an_amount_of_combat_damage_has_its_own_purpose_and_candidate_forms` in
+  `crates/mtgml-state/src/digest.rs`;
+  `a_combat_damage_assignment_names_the_attacking_player_and_the_blockers_of_its_attacker`
+  and `a_combat_damage_request_asks_about_the_next_blocker_and_an_amount_each` in
+  `crates/mtgml-state/tests/g0d_state_authority.rs`;
+  `combat_damage_assignment_requires_one_answer_an_amount_intent_and_its_actor_only`
+  in `crates/mtgml-decision/src/v4.rs`.
+- Observation and wire cases:
+  `combat_damage_dealt_round_trips_as_a_public_wire_value` and
+  `a_malformed_combat_damage_is_rejected` in
+  `crates/mtgml-observation/src/observed_event_v4.rs`;
+  `basic_land_observation_v1_shows_blocks_and_marked_damage` in
+  `crates/mtgml-observation/src/tests.rs`; and in Python,
+  `test_combat_damage_assignment_offers_each_amount_for_one_blocker_to_its_actor_only`
+  in `python/tests/test_decision_v4.py` and `test_combat_damage_dealt_round_trips`
+  in `python/tests/test_g0c_observed_event_v4.py`.
 - Random smoke games in `crates/mtgml-environment/tests/random_smoke.rs`:
-  `asymmetric_games_cast_attack_and_end_at_zero_life` plays ten seeded games of a
-  creature deck against a land deck, in which creatures attack and unblocked
-  combat damage is dealt; every game repeats and replays to the same
-  checkpoint. No smoke game reaches a block: the land player has no creatures. A
-  game of two creature decks is not run yet.
+  `creature_games_fight_to_a_winner` plays fifteen seeded games of two creature
+  decks, which cast creatures, attack, block (several creatures may block one
+  attacker), divide combat damage among blockers, lose creatures to damage and
+  can end at 0 life. It asserts that across the games creatures blocked, an
+  attacker was blocked by two creatures, combat damage was divided, a creature
+  died, and at least one game ended with a winner; every game repeats and replays
+  to the same checkpoint.
+  `creature_short_game_matches_its_pinned_fingerprint` pins a short game that
+  declares a block. The same file also plays two basic-land decks.

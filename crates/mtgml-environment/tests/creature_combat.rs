@@ -1652,12 +1652,13 @@ fn a_restored_block_declaration_the_game_could_not_have_reached_is_refused() {
 
 #[test]
 fn both_players_see_the_blocks_once_declared() {
-    // CR 509.1g, 509.1h: a block is told to nobody while the declaration is
-    // made: not by the first answer. The answer that completes it is public:
-    // both players observe one `BlockersDeclared`, and the observation lists
-    // the blocked attackers and each blocking creature with its attacker, in
-    // the player's own opaque ids. Priority passing to the attacker is public
-    // turn structure.
+    // CR 509.1g, 509.1h: no block is public while the declaration is made. The
+    // first answer has no event and the attacker sees no change; the defender
+    // sees it in its own `pending_blocks`, and in nothing else. The answer that
+    // completes the declaration is public: both players observe one
+    // `BlockersDeclared`, and the observation lists the blocked attackers and
+    // each blocking creature with its attacker, in the player's own opaque ids.
+    // Priority passing to the attacker is public turn structure.
     let game = two_lions_each();
     let state = game.state();
     let attackers: [GameObjectId; 2] = lions_of(&state, P1).try_into().unwrap();

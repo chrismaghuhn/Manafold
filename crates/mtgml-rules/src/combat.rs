@@ -1283,7 +1283,10 @@ fn marked_damage_may_exist(state: &EngineState) -> bool {
 ///   beginning phase, the precombat main phase, the combat steps before the
 ///   damage is dealt, or the cleanup step but for the discard that comes
 ///   before the damage is removed;
-/// - only a creature has any (CR 120.3e);
+/// - only a creature has any (CR 120.3e). That a permanent that is not a
+///   creature has none holds in this card pool only: CR 120.6 keeps damage on
+///   a creature that stops being one, and nothing here makes a creature stop
+///   being one;
 /// - no creature has been dealt lethal damage: marked damage at least equal to
 ///   its toughness (CR 704.5g; with toughness 0 or less it is destroyed as
 ///   well, CR 704.5f, which no card of this slice has). It is destroyed by the

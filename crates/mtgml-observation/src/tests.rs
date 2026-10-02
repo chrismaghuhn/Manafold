@@ -401,7 +401,8 @@ fn basic_land_observation_v1_shows_blocks_and_marked_damage() {
     assert!(broken(
         &|value| value["blocking"][0]["blocker"] = serde_json::json!("9")
     ));
-    // Marked damage exists on creatures only (CR 120.3e).
+    // Marked damage exists on creatures only (CR 120.3e), which holds for a
+    // permanent that is not a creature in this card pool (CR 120.6).
     assert!(!broken(
         &|value| value["permanents"][1]["marked_damage"] = serde_json::json!("0")
     ));

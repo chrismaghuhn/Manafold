@@ -475,7 +475,7 @@ fn project_pending_damage_assignment(
     let mut rows = assigned
         .iter()
         .map(|(blocker, amount)| {
-            // Each blocker blocks one attacker (CR 509.1g).
+            // Each blocker blocks one attacker (CR 509.1a).
             let attacker = combat
                 .blockers
                 .get(blocker)
