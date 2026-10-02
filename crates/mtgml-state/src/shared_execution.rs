@@ -1,8 +1,9 @@
 //! Closed values of the execution state: continuations, stack items, waiting
-//! triggers and temporary effects. The rules crate writes three continuations:
-//! the start of the game, a Cast whose payment is a choice, and the defending
-//! player's block declaration. The others are validated and digested, but
-//! nothing creates them yet.
+//! triggers and temporary effects. The rules crate writes four continuations:
+//! the start of the game, a Cast whose payment is a choice, the defending
+//! player's block declaration, and an owner's graveyard order for creatures
+//! that die together. The others are validated and digested, but nothing
+//! creates them yet.
 
 use std::collections::{BTreeMap, BTreeSet};
 

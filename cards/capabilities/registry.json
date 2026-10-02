@@ -128,6 +128,7 @@
         "a_restored_cleanup_accepts_marked_damage_only_while_the_discard_is_pending",
         "a_state_based_action_in_cleanup_fails_closed_instead_of_granting_priority",
         "a_creature_that_survived_a_block_has_no_damage_marked_in_the_next_turn",
+        "a_blocker_that_survives_keeps_its_damage_until_the_cleanup_of_the_attackers_turn",
         "a_discard_in_the_cleanup_step_comes_before_the_damage_is_removed"
       ],
       "dependencies": [
@@ -337,7 +338,7 @@
         "a_restored_combat_has_no_blocks_before_the_declare_blockers_step",
         "a_restored_blocker_is_a_creature_the_defending_player_controls",
         "a_restored_tapped_blocker_is_refused",
-        "a_restored_blocked_attacker_without_a_blocker_is_accepted",
+        "a_restored_blocked_attacker_without_a_blocker_is_accepted_only_after_the_damage",
         "two_blockers_on_one_attacker_validate",
         "a_blocked_attacker_stays_blocked_without_a_blocker",
         "a_block_makes_its_attacker_blocked",
@@ -354,7 +355,9 @@
         "the_completing_block_answer_shows_nothing_about_blocks_to_either_player",
         "a_restored_half_declared_block_continues_identically",
         "a_rejected_block_answer_changes_nothing",
-        "a_restored_block_declaration_the_game_could_not_have_reached_is_refused"
+        "a_restored_block_declaration_the_game_could_not_have_reached_is_refused",
+        "a_restored_block_declaration_made_at_another_revision_is_refused",
+        "a_restored_blocked_attacker_has_its_blocker_until_the_damage_is_dealt"
       ],
       "dependencies": [
         "rules/declare-attackers"

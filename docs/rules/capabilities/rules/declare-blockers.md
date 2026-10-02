@@ -75,7 +75,15 @@ blocking creature that blocks nothing. The reverse case follows the rule: a
 blocker that dies leaves its attacker blocked. The divergence is pinned by
 `a_creature_that_dies_is_removed_from_combat_but_its_attacker_stays_blocked` in
 `crates/mtgml-rules/src/turn_progression.rs`, whose assertion that no blocker is
-left is the divergence: a fix has to change it.
+left is the divergence: a fix has to change it. It also has to change two
+validators, each of which refuses the combat that keeping those blockers
+leaves:
+- `validate_event_projection_v3` in `crates/mtgml-rules/src/events.rs`: the
+  projection of `StateBasedActionsApplied` accepts a destroyed attacker only
+  when no blocker still names it;
+- `validate_combat` in `crates/mtgml-state/src/validation/core.rs`: the attacker
+  each blocker blocks has to be in `blocked_attackers`, which has to be a
+  subset of `attackers`.
 
 ## State and identity model
 
@@ -90,14 +98,20 @@ While the declaration is made, one BlockDeclaration continuation holds the
 defending player, the creatures still to ask in order, and the answers given
 (a map from creature to the attacker it blocks, or to none). It exists from the
 beginning of the step to the last answer, and the combat holds no block until
-then. A block is made only by the last answer.
+then. A block is made only by the last answer. The continuation is created by
+the transition that opens the step and gains one answer with each revision
+after it, so its `created_at_revision` is the state's revision less the number
+of answers given.
 
 A restored or committed state is accepted only if its blocks are ones this slice
 could have produced: before the declare blockers step there are none, a
-blocker is an untapped creature the defending player controls, a blocked
-attacker may have no blocker left, and a block declaration in progress is the
-one the battlefield calls for. A defender's untapped creature that blocks
-nothing is legal once the declaration is complete.
+blocker is an untapped creature the defending player controls, and a block
+declaration in progress is the one the battlefield calls for, with the revision
+it was created at. A blocked attacker may have no blocker left only once the
+combat damage is dealt: a blocker leaves combat only by dying in the
+state-based actions after the damage step, so until then the blocked attackers
+are exactly the ones a blocker names. A defender's untapped creature that
+blocks nothing is legal once the declaration is complete.
 
 ## Events and replacement points
 
@@ -146,7 +160,7 @@ was.
   `a_restored_combat_has_no_blocks_before_the_declare_blockers_step`,
   `a_restored_blocker_is_a_creature_the_defending_player_controls`,
   `a_restored_tapped_blocker_is_refused`,
-  `a_restored_blocked_attacker_without_a_blocker_is_accepted`.
+  `a_restored_blocked_attacker_without_a_blocker_is_accepted_only_after_the_damage`.
 - State cases in `crates/mtgml-state/src/tests/validation.rs`:
   `two_blockers_on_one_attacker_validate`,
   `a_blocked_attacker_stays_blocked_without_a_blocker`,
@@ -169,6 +183,8 @@ was.
   `the_completing_block_answer_shows_nothing_about_blocks_to_either_player`,
   `a_restored_half_declared_block_continues_identically`,
   `a_rejected_block_answer_changes_nothing`,
-  `a_restored_block_declaration_the_game_could_not_have_reached_is_refused`.
+  `a_restored_block_declaration_the_game_could_not_have_reached_is_refused`,
+  `a_restored_block_declaration_made_at_another_revision_is_refused`,
+  `a_restored_blocked_attacker_has_its_blocker_until_the_damage_is_dealt`.
 - The random smoke games do not reach a block: they pit a creature deck against
   a land deck. Games of two creature decks come with damage division.

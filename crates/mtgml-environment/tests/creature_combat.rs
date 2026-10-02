@@ -1029,6 +1029,77 @@ fn forged(
     forged
 }
 
+/// Restores into `game` a checkpoint of `state` with the status, limits and
+/// execution identity of `reached`, a checkpoint of the same game: the
+/// checkpoint is made from the state and then restored, as a stored one is. An
+/// error is a refusal of either step; a refused restore leaves the game as it
+/// was.
+fn restore_state(
+    game: &Game,
+    reached: &EnvironmentCheckpointV8,
+    state: EngineState,
+) -> Result<(), String> {
+    let checkpoint = EnvironmentCheckpointV8::new_for_basic_land_profile(
+        &creature_game_admission(),
+        state,
+        reached.status.clone(),
+        reached.limit_counters.clone(),
+        reached.execution_identity.clone(),
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    game.controller
+        .restore(checkpoint)
+        .map_err(|error| format!("{error:?}"))
+}
+
+#[test]
+fn a_restored_block_declaration_made_at_another_revision_is_refused() {
+    // The declaration is made by the transition that opens the declare blockers
+    // step and gains one answer with each revision after it, so the revision it
+    // was created at is the state's, less the creatures answered. Another value
+    // is a record no game makes: it would restore, and go on with a different
+    // digest than the game that was played.
+    let game = two_lions_each();
+    let (attackers, _) = attack_with_both_lions(&game);
+    let at_first = game.checkpoint();
+    game.declare_block(Some(opaque_of(&at_first.state, P2, attackers[0])));
+    let half = game.checkpoint();
+
+    for (checkpoint, answered) in [(&at_first, 0), (&half, 1)] {
+        let state = &checkpoint.state;
+        let created = |state: &EngineState| {
+            state
+                .execution
+                .continuations
+                .values()
+                .next()
+                .unwrap()
+                .created_at_revision
+        };
+        assert_eq!(created(state).0, state.revision.0 - answered);
+        // The state as played restores.
+        restore_state(&game, checkpoint, state.clone()).unwrap();
+        assert_eq!(&game.checkpoint(), checkpoint);
+        // Each other revision up to the state's own is refused: the check that
+        // a record is not newer than the state does not see these.
+        for revision in (0..=state.revision.0).filter(|revision| *revision != created(state).0) {
+            let mut forged = state.clone();
+            forged
+                .execution
+                .continuations
+                .values_mut()
+                .next()
+                .unwrap()
+                .created_at_revision = StateRevision(revision);
+            assert!(
+                restore_state(&game, checkpoint, forged).is_err(),
+                "{answered} answered, created at revision {revision}"
+            );
+            assert_eq!(&game.checkpoint(), checkpoint);
+        }
+    }
+}
+
 #[test]
 fn a_restored_block_declaration_the_game_could_not_have_reached_is_refused() {
     let admission = creature_game_admission();
@@ -1564,6 +1635,42 @@ fn a_restored_combat_after_a_blocker_died_continues_identically() {
 }
 
 #[test]
+fn a_restored_blocked_attacker_has_its_blocker_until_the_damage_is_dealt() {
+    // CR 509.1h: an attacker is blocked by the creature that blocks it. The
+    // only way a blocker leaves combat is to die in the state-based actions
+    // after the combat damage step (CR 704.5g, 506.4), and no instant can
+    // remove one before: with the damage still to be dealt, a blocked attacker
+    // whose blocker is gone is a state no game rests in, and restore refuses
+    // it. After the damage it is the state of the Hill Giant that killed its
+    // blocker.
+    let [_, _, giant] = creature_definitions();
+    let (game, giant_object, lions_object) = attacker_against_a_lions(giant, 4);
+    attack_and_block(&game, giant_object);
+    let blocked = game.checkpoint();
+    let combat = blocked.state.combat.as_ref().unwrap();
+    assert_eq!(combat.blockers.get(&lions_object), Some(&giant_object));
+    assert!(combat.blocked_attackers.contains(&giant_object) && !combat.damage_step_completed);
+    restore_state(&game, &blocked, blocked.state.clone()).unwrap();
+    assert_eq!(game.checkpoint(), blocked);
+
+    // The blocker is gone before the damage: refused, and the game is as it was.
+    let mut lost = blocked.state.clone();
+    lost.combat.as_mut().unwrap().blockers.clear();
+    assert!(restore_state(&game, &blocked, lost).is_err());
+    assert_eq!(game.checkpoint(), blocked);
+
+    // The damage is dealt, and the Lions is destroyed: the Giant stays blocked
+    // with no blocker left, and that restores.
+    game.answer(pass, pass);
+    let damaged = game.checkpoint();
+    let combat = damaged.state.combat.as_ref().unwrap();
+    assert!(combat.blockers.is_empty() && combat.damage_step_completed);
+    assert!(combat.blocked_attackers.contains(&giant_object));
+    restore_state(&game, &damaged, damaged.state.clone()).unwrap();
+    assert_eq!(game.checkpoint(), damaged);
+}
+
+#[test]
 fn a_restored_end_of_combat_has_dealt_the_damage_of_its_attackers() {
     // CR 508.8, 510.1, 510.2: with attackers declared the combat damage step
     // always runs, so a combat that reaches the end of combat step with
@@ -1621,8 +1728,8 @@ fn a_restored_end_of_combat_has_dealt_the_damage_of_its_attackers() {
     assert!(restore(&game, undealt).is_err());
     assert_eq!(game.checkpoint(), reached);
 
-    // Both attackers of a fight die: the combat has none left, and its damage
-    // was dealt.
+    // Both creatures of a fight die: the combat has no attacker left, and its
+    // damage was dealt.
     let [_, ogre, _] = creature_definitions();
     let (game, ogre_object, _) = attacker_against_a_lions(ogre, 3);
     attack_and_block(&game, ogre_object);
@@ -2229,6 +2336,91 @@ fn a_creature_that_survived_a_block_has_no_damage_marked_in_the_next_turn() {
         .execute_replay(game.controller.export_replay().unwrap())
         .unwrap();
     assert_eq!(report.final_checkpoint, checkpoint);
+}
+
+#[test]
+fn a_blocker_that_survives_keeps_its_damage_until_the_cleanup_of_the_attackers_turn() {
+    // CR 120.6, 514.2: P1's Savannah Lions (2/1) attacks, and P2's Hill Giant
+    // (3/3) blocks it. The Lions dies, and the Giant, which P2 controls and
+    // which is not the active player's creature, survives with 2 damage
+    // marked. The damage stays through P1's end of combat, postcombat main
+    // phase and end step, and the cleanup step of P1's turn removes it: P2's
+    // turn begins with the Giant undamaged.
+    let (mountain, plains) = land_definitions();
+    let [_, _, giant] = creature_definitions();
+    let hand = [vec![mountain; 4], vec![giant]].concat();
+    let game = Game::with_hands([vec![plains, lions()], hand]);
+    cast_lions(&game);
+    game.run_until(start_of_main_phase(8));
+    cast_creature(&game, 4);
+    game.run_until(at_attackers(9));
+    let state = game.state();
+    let [lions_object]: [GameObjectId; 1] = lions_of(&state, P1).try_into().unwrap();
+    let [giant_object]: [GameObjectId; 1] = creatures_of(&state, P2, giant).try_into().unwrap();
+    assert_eq!(marked(&state, giant_object), 0);
+
+    attack_and_block(&game, lions_object);
+    game.answer(pass, pass);
+    // The combat damage step: the Lions is destroyed, and the Giant, which
+    // P2 controls, has the damage the Lions dealt marked on it.
+    let at_damage = game.state();
+    assert_eq!(
+        at_damage.core.position,
+        TurnPosition::Combat {
+            step: CombatStep::CombatDamage
+        }
+    );
+    assert!(!at_damage.zones.objects.contains_key(&lions_object));
+    assert_eq!(
+        at_damage.zones.locations[&giant_object].zone,
+        ZoneKind::Battlefield
+    );
+    assert_eq!(marked(&at_damage, giant_object), 2);
+
+    // It stays through each step of P1's turn that follows, with P1 active.
+    for position in [
+        TurnPosition::Combat {
+            step: CombatStep::EndOfCombat,
+        },
+        TurnPosition::PostcombatMain,
+        TurnPosition::Ending {
+            step: EndingStep::EndStep,
+        },
+    ] {
+        game.pass_until(move |state| state.core.position == position);
+        let state = game.state();
+        assert_eq!((state.core.turn_number, state.core.active_player), (9, P1));
+        assert_eq!(marked(&state, giant_object), 2, "{position:?}");
+    }
+    game.pass_until(at_the_end_of_the_end_step);
+    let before = game.state();
+    assert_eq!((before.core.turn_number, game.pending().0), (9, P2));
+    assert_eq!(marked(&before, giant_object), 2);
+
+    // The pass that ends the end step begins the cleanup step, which removes
+    // the damage from P2's creature, and P2's turn begins. Nothing of this is
+    // observed.
+    let answer = pass_in(&before);
+    let (product, observed) = product_and_observations(&before, answer.clone());
+    assert_eq!(damage_changes(&product), [(giant_object, 2, 0)]);
+    observed_the_same_without_the_damage(&before, &answer);
+    let (actor, step) = game.answer(pass, pass);
+    assert_eq!(actor, P2);
+    assert_eq!(step.observed_events, observed[&P2]);
+    let after = game.state();
+    assert_eq!(after, product.next_state);
+    assert_eq!((after.core.turn_number, after.core.active_player), (10, P2));
+    assert_eq!(
+        after.zones.locations[&giant_object].zone,
+        ZoneKind::Battlefield
+    );
+    assert_eq!(marked(&after, giant_object), 0);
+    assert!(after
+        .card_rules
+        .permanents
+        .permanents
+        .values()
+        .all(|permanent| permanent.marked_damage == 0));
 }
 
 /// P2 casts a Savannah Lions on its first turn, and P1 a Hill Giant on its

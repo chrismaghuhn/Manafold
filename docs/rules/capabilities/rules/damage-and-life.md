@@ -123,7 +123,9 @@ this slice does not support: the transition fails closed.
 - Production-endpoint cases in `crates/mtgml-environment/tests/creature_combat.rs`:
   `a_3_3_blocked_by_a_2_1_kills_it_and_survives` (the survivor has 2 damage
   marked and no player observes it),
-  `a_creature_that_survived_a_block_has_no_damage_marked_in_the_next_turn` and
+  `a_creature_that_survived_a_block_has_no_damage_marked_in_the_next_turn`,
+  `a_blocker_that_survives_keeps_its_damage_until_the_cleanup_of_the_attackers_turn`
+  (the defender's survivor, in the turn of the attacker) and
   `a_discard_in_the_cleanup_step_comes_before_the_damage_is_removed`.
 - Random smoke games in `crates/mtgml-environment/tests/random_smoke.rs`:
   `asymmetric_games_cast_attack_and_end_at_zero_life` plays ten seeded games of a

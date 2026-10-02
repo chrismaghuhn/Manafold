@@ -12,14 +12,14 @@
 //! (`crate::state_based_actions`), which remove it from combat first. The damage
 //! that stays marked is removed in the cleanup step (CR 514.2).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use mtgml_card_ir::ExecutableProfileAdmissionV1;
 use mtgml_decision::{
     AuthoritativeCandidate, CandidateIntent, CandidateOrdering, DecisionDomainV2,
     DecisionPurposeV4, DecisionVisibility, EngineCandidateBinding,
 };
-use mtgml_model::{CandidateIdV1, ContinuationId, GameObjectId, PlayerId};
+use mtgml_model::{CandidateIdV1, ContinuationId, GameObjectId, PlayerId, StateRevision};
 use mtgml_state::{
     CombatBlockerAssignmentV1, CombatState, CombatStep, ContinuationPayload, ContinuationRecord,
     DamageAssignmentV1, DamageRecipientV1, EndingStep, EngineState, PriorityState, TurnPosition,
@@ -258,6 +258,7 @@ pub(crate) fn begin_block_declaration(
 /// The block declaration in `state`'s one continuation, as written.
 struct BlockDeclaration<'a> {
     continuation: ContinuationId,
+    created_at_revision: StateRevision,
     defender: PlayerId,
     pending_blockers: &'a [GameObjectId],
     declared: &'a BTreeMap<GameObjectId, Option<GameObjectId>>,
@@ -278,6 +279,7 @@ fn block_declaration_of(state: &EngineState) -> Result<BlockDeclaration<'_>, Err
     };
     Ok(BlockDeclaration {
         continuation: *continuation,
+        created_at_revision: record.created_at_revision,
         defender: *defender,
         pending_blockers,
         declared,
@@ -287,7 +289,10 @@ fn block_declaration_of(state: &EngineState) -> Result<BlockDeclaration<'_>, Err
 /// Whether the block declaration `state` waits on is the one the battlefield
 /// calls for: exactly one BlockDeclaration continuation, for the defending
 /// player in the declare blockers step of an attack, before any block is
-/// recorded and while no player has priority (CR 509.1, 509.2). Its creatures
+/// recorded and while no player has priority (CR 509.1, 509.2). It was created
+/// by the transition that opened the step and gained one answer with each
+/// revision since, so its `created_at_revision` is the state's less the
+/// creatures answered. Its creatures
 /// are all the untapped creatures the defender controls (CR 509.1a), in the
 /// order of the defender's opaque identities: the answered ones first, then the
 /// ones still to ask, with at least one of those. Each answered creature
@@ -300,12 +305,17 @@ pub(crate) fn validate_pending_block_declaration(
     let combat = state.combat.as_ref().ok_or(Error::InvalidResult)?;
     let expected = possible_blockers(state, &battlefield_creatures(admission, state)?)?;
     let answered = declaration.declared.len();
+    let created_when_it_was_opened = u64::try_from(answered)
+        .ok()
+        .and_then(|answered| state.revision.0.checked_sub(answered))
+        == Some(declaration.created_at_revision.0);
     let in_order = expected.len() == answered + declaration.pending_blockers.len()
         && expected[answered..] == *declaration.pending_blockers
         && expected[..answered]
             .iter()
             .all(|blocker| declaration.declared.contains_key(blocker));
     if !in_order
+        || !created_when_it_was_opened
         || declaration.pending_blockers.is_empty()
         || declaration.defender != combat.defending_player
         || state.core.position
@@ -475,14 +485,16 @@ pub(crate) fn declare_block(
 ///   (CR 508.8, 510.1, 510.3): the turn-based action runs on entering the step,
 ///   so no game rests there before it, and the end of combat step is reached
 ///   only through it. The damage step is checked here. The end of combat step
-///   is checked by the state's structural validation (`validate_combat` in
-///   `mtgml-state`), which a restored or committed state passes before this
-///   function runs. With no attackers the step is skipped (CR 508.8) and the
-///   flag stays false;
+///   is checked by `validate_combat` in `mtgml-state`, which every restore and
+///   every commit runs. With no attackers the step is skipped (CR 508.8) and
+///   the flag stays false;
 /// - no attacker is blocked while attackers are still being declared
 ///   (CR 509.1, 508.2), and every blocker is an untapped creature the defending
 ///   player controls (CR 509.1a): nothing taps a blocker once it blocks. An
-///   attacker may be blocked with no blocker left (CR 509.1h);
+///   attacker may be blocked with no blocker left (CR 509.1h), but only once
+///   the damage is dealt: a blocker leaves combat only by dying in the
+///   state-based actions after the damage step (CR 704.5g, 506.4), so before
+///   it the blocked attackers are exactly the ones a blocker names;
 /// - a block declaration in progress is the one the battlefield calls for (see
 ///   `validate_pending_block_declaration`). Once the declaration is complete, in the
 ///   declare blockers step with priority or in a later step, an untapped
@@ -547,6 +559,14 @@ pub(crate) fn validate_reachable_combat(
     }
     if step == CombatStep::DeclareAttackers
         && (!combat.blockers.is_empty() || !combat.blocked_attackers.is_empty())
+    {
+        return Err(Error::TurnProgressUnsupported);
+    }
+    // A blocker leaves combat only by dying in the state-based actions after
+    // the combat damage step, so until the damage is dealt every blocked
+    // attacker has a blocker, and every blocker's attacker is blocked.
+    if !combat.damage_step_completed
+        && combat.blocked_attackers != combat.blockers.values().copied().collect::<BTreeSet<_>>()
     {
         return Err(Error::TurnProgressUnsupported);
     }

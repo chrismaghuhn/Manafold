@@ -436,7 +436,8 @@ pub(crate) fn battlefield_objects(state: &EngineState) -> Vec<GameObjectId> {
 /// cleanup (CR 514.1) keep the non-active player at seven cards or fewer and
 /// the active player at seven before their draw and eight after it. A larger
 /// hand could only reach a cleanup with several simultaneous discards, which
-/// need the owner's graveyard order that this slice does not offer.
+/// need the owner's graveyard order, that this slice offers for deaths but not
+/// for discards.
 fn hands_within_slice(state: &EngineState) -> bool {
     let core = &state.core;
     let before_draw = matches!(
@@ -820,7 +821,8 @@ fn advance(
                     None | Some(0) => {}
                     Some(1) => return Ok(NextDecision::Discard),
                     // Two or more simultaneous discards need the owner's
-                    // graveyard order, which this slice does not offer.
+                    // graveyard order, which this slice does not offer for
+                    // discards (it does for deaths).
                     Some(_) => return Err(Error::TurnProgressUnsupported),
                 }
             }
@@ -3448,7 +3450,8 @@ mod tests {
     #[test]
     fn hands_the_slice_cannot_reach_are_rejected_before_play() {
         // Discarding two or more cards at once needs the owner's graveyard
-        // order, which this slice does not offer. One draw per turn and the
+        // order, which this slice does not offer for discards (it does for
+        // deaths). One draw per turn and the
         // discard to seven keep every reachable cleanup at one discard, so
         // larger hands are rejected before any step instead of mid-game.
         let admission = crate::basic_land::basic_land_admission_fixture();
@@ -3930,36 +3933,41 @@ mod tests {
     fn an_attacker_whose_blocker_is_gone_deals_no_damage() {
         // CR 510.1c, 509.1h: a creature stays blocked when its blockers are
         // gone, and then assigns no combat damage. It does not hit the player.
+        // This is a synthetic state, like the one of `perform_state_based_actions`
+        // below: a blocker leaves combat only by dying after the damage, so no
+        // game has a blocked attacker without a blocker before it. The step
+        // is run directly.
         let (admission, state, creatures) =
             game_with_creature_cards(&[(P1, SAVANNAH_LIONS), (P2, SAVANNAH_LIONS)]);
         let [attacker, blocker] = creatures[..] else {
             panic!("two creatures")
         };
         let mut before = blocks_declared(&admission, state, &[attacker], &[(blocker, attacker)]);
-        // The blocker leaves combat (a state only a death could make).
         before.combat.as_mut().unwrap().blockers.clear();
+        before.core.position = TurnPosition::Combat {
+            step: CombatStep::CombatDamage,
+        };
         assert!(before
             .combat
             .as_ref()
             .unwrap()
             .blocked_attackers
             .contains(&attacker));
-        validate_magic_pending_request(&admission, &before, &EpisodeStatus::Running).unwrap();
 
-        // The whole step, through the production path.
-        let product = submit(&admission, &before, pass_answer(pending(&before))).unwrap();
-        let after = apply(&before, &product);
-        assert_eq!(
-            after.core.position,
-            TurnPosition::Combat {
-                step: CombatStep::CombatDamage
-            }
-        );
+        let mut after = before.clone();
+        let mut facts = Facts::default();
+        crate::combat::deal_combat_damage(&admission, &mut after, &mut facts).unwrap();
         assert_eq!(after.core.players, before.core.players);
         assert_eq!((marked(&after, attacker), marked(&after, blocker)), (0, 0));
         assert!(after.combat.as_ref().unwrap().damage_step_completed);
-        assert_eq!(damage_events(&product), ["completed"]);
         assert!(!after.card_rules.turn_history.players[&P2].lost_life_this_turn);
+        // Nothing is dealt, lost or marked: the step only completes.
+        assert_eq!(
+            facts.zone_events,
+            [crate::zone_incarnation::ZoneMoveEvent::Public(Box::new(
+                AuthoritativeRuleEventKind::CombatDamageStepCompleted
+            ))]
+        );
     }
 
     #[test]
@@ -4906,20 +4914,38 @@ mod tests {
     }
 
     #[test]
-    fn a_restored_blocked_attacker_without_a_blocker_is_accepted() {
+    fn a_restored_blocked_attacker_without_a_blocker_is_accepted_only_after_the_damage() {
         // CR 509.1h: the attacker stays blocked after its blockers are gone.
+        // A blocker leaves combat only by dying in the state-based actions that
+        // follow the combat damage step (CR 704.5g, 506.4), so before the
+        // damage every blocked attacker has a blocker (CR 509.1h): a blocked
+        // attacker without one is not a state the game reaches there.
         let (admission, state, creatures) =
             game_with_creature_cards(&[(P1, SAVANNAH_LIONS), (P2, SAVANNAH_LIONS)]);
         let [attacker, blocker] = creatures[..] else {
             panic!("two creatures")
         };
         let mut restored = blocks_declared(&admission, state, &[attacker], &[(blocker, attacker)]);
+        // With its blocker, before the damage, the combat is one the game makes.
+        validate_magic_pending_request(&admission, &restored, &EpisodeStatus::Running).unwrap();
         restored.combat.as_mut().unwrap().blockers.clear();
-        for step in [
-            CombatStep::DeclareBlockers,
-            CombatStep::CombatDamage,
-            CombatStep::EndOfCombat,
-        ] {
+        assert!(restored
+            .combat
+            .as_ref()
+            .unwrap()
+            .blocked_attackers
+            .contains(&attacker));
+
+        // Without it, in the declare blockers step, it is refused.
+        let declare_blockers = in_combat_step(&restored, CombatStep::DeclareBlockers);
+        assert!(is_refused(&admission, &declare_blockers));
+        // So is the combat damage step before the damage is dealt.
+        let mut undealt = in_combat_step(&restored, CombatStep::CombatDamage);
+        undealt.combat.as_mut().unwrap().damage_step_completed = false;
+        assert!(is_refused(&admission, &undealt));
+
+        // From the damage on, it is the state of an attacker whose blocker died.
+        for step in [CombatStep::CombatDamage, CombatStep::EndOfCombat] {
             let restored = in_combat_step(&restored, step);
             validate_magic_pending_request(&admission, &restored, &EpisodeStatus::Running)
                 .unwrap_or_else(|error| panic!("{step:?}: {error:?}"));
