@@ -273,7 +273,19 @@ class MagicBasicLandObservationV1:
     priority: SyntheticPriority
     players: tuple[PlayerObservationV1, ...]
     pending_sba_ordering: MagicPendingSbaOrdering | None
+    # The blocks the viewer has declared so far while the viewer's block
+    # declaration is in progress (CR 509.1a): one row for each creature
+    # answered, ascending by blocker. An empty tuple is a declaration that has
+    # begun with no creature answered yet. None when no declaration is in
+    # progress, and always None for the player who is not declaring.
     pending_blocks: tuple[DeclaredBlockObservationV1, ...] | None
+    # The damage the viewer has divided so far while the division of the
+    # viewer's combat damage is in progress (CR 510.1c): one row for each
+    # blocker answered, ascending by attacker and then blocker. An amount the
+    # rules force is not an answer and is not listed. An empty tuple is a
+    # division that has begun with no blocker answered yet. None when no
+    # division is in progress, and always None for the player who is not
+    # dividing.
     pending_damage_assignment: tuple[AssignedDamageObservationV1, ...] | None
     mana_pools: tuple[ManaPoolObservationV1, ...]
     counters: tuple[CounterObservationV1, ...]
@@ -423,6 +435,20 @@ class MagicBasicLandObservationV1:
             raise WireError(
                 "semantic.magic_basic_land_observation_v1",
                 "a block does not name an attacking, blocked attacker and a creature",
+            )
+        if self.pending_blocks is not None and any(
+            a.blocker >= b.blocker for a, b in pairwise(self.pending_blocks)
+        ):
+            raise WireError(
+                "semantic.magic_basic_land_observation_v1", "pending block rows are not ordered"
+            )
+        if self.pending_damage_assignment is not None and any(
+            (a.attacker, a.blocker) >= (b.attacker, b.blocker)
+            for a, b in pairwise(self.pending_damage_assignment)
+        ):
+            raise WireError(
+                "semantic.magic_basic_land_observation_v1",
+                "pending damage rows are not ordered",
             )
         if any(item.marked_damage != 0 and not item.is_creature for item in self.permanents):
             raise WireError(

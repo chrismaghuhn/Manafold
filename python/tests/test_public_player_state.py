@@ -230,7 +230,8 @@ class BlockObservationTests(unittest.TestCase):
         self.assertEqual(observation.attacking, (7,))
         self.assertEqual(observation.blocked, (7,))
         self.assertEqual(observation.blocking, (BlockObservationV1(blocker=6, attacker=7),))
-        # The partial answers are not told yet: the keys are there, and null.
+        # The example has no block declaration or division in progress: the keys
+        # are there, and null.
         self.assertIsNone(observation.pending_blocks)
         self.assertIsNone(observation.pending_damage_assignment)
         self.assertIsNone(value["pending_blocks"])
@@ -298,6 +299,53 @@ class BlockObservationTests(unittest.TestCase):
             broken[key] = replacement
             with self.assertRaises(WireError):
                 MagicBasicLandObservationV1.from_wire(broken)
+
+    def test_the_pending_answers_are_listed_in_ascending_order(self) -> None:
+        # A block row is for one creature, ascending by blocker; a damage row is
+        # for one blocker of an attacker, ascending by attacker and then
+        # blocker. Both lists may be empty: the declaration or division has
+        # begun and nothing is answered yet, which is not null.
+        example = _example("magic-basic-land-observation-v1.json")
+
+        def blocks_are_accepted(rows: list[tuple[str, str | None]]) -> bool:
+            value = copy.deepcopy(example)
+            value["pending_blocks"] = [{"blocker": b, "attacker": a} for b, a in rows]
+            try:
+                MagicBasicLandObservationV1.from_wire(value)
+            except WireError:
+                return False
+            return True
+
+        def damage_is_accepted(rows: list[tuple[str, str, str]]) -> bool:
+            value = copy.deepcopy(example)
+            value["pending_damage_assignment"] = [
+                {"attacker": a, "blocker": b, "amount": n} for a, b, n in rows
+            ]
+            try:
+                MagicBasicLandObservationV1.from_wire(value)
+            except WireError:
+                return False
+            return True
+
+        self.assertTrue(blocks_are_accepted([]))
+        self.assertTrue(blocks_are_accepted([("6", "7")]))
+        self.assertTrue(blocks_are_accepted([("6", "7"), ("7", None)]))
+        self.assertFalse(blocks_are_accepted([("7", None), ("6", "7")]))
+        self.assertFalse(blocks_are_accepted([("6", "7"), ("6", None)]))
+        self.assertFalse(blocks_are_accepted([("6", "7"), ("6", "7")]))
+        # The order is by the number, not the text.
+        self.assertTrue(blocks_are_accepted([("9", None), ("10", None)]))
+        self.assertFalse(blocks_are_accepted([("10", None), ("9", None)]))
+
+        self.assertTrue(damage_is_accepted([]))
+        self.assertTrue(damage_is_accepted([("7", "6", "2")]))
+        self.assertTrue(damage_is_accepted([("7", "6", "2"), ("7", "7", "0")]))
+        self.assertTrue(damage_is_accepted([("7", "7", "0"), ("8", "6", "1")]))
+        self.assertFalse(damage_is_accepted([("7", "7", "0"), ("7", "6", "2")]))
+        self.assertFalse(damage_is_accepted([("8", "6", "1"), ("7", "7", "0")]))
+        self.assertFalse(damage_is_accepted([("7", "6", "2"), ("7", "6", "1")]))
+        self.assertTrue(damage_is_accepted([("9", "6", "1"), ("10", "6", "1")]))
+        self.assertFalse(damage_is_accepted([("10", "6", "1"), ("9", "6", "1")]))
 
     def test_malformed_blocks_and_marked_damage_are_rejected(self) -> None:
         value = _example("magic-basic-land-observation-v1.json")

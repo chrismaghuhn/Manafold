@@ -157,13 +157,20 @@ pub struct MagicBasicLandObservationV1 {
     pub players: Vec<PlayerObservationV1>,
     #[serde(deserialize_with = "deserialize_required_pending_ordering")]
     pub pending_sba_ordering: Option<MagicPendingSbaOrdering>,
-    /// The blocks the viewer has declared so far while a declaration is in
-    /// progress, ascending by blocker; null when nothing is pending, and for
-    /// the other player.
+    /// The blocks the viewer has declared so far while the viewer's block
+    /// declaration is in progress (CR 509.1a): one row for each creature
+    /// answered, ascending by blocker. An empty list is a declaration that has
+    /// begun with no creature answered yet. Null when no declaration is in
+    /// progress, and always null for the player who is not declaring.
     #[serde(deserialize_with = "deserialize_required_option")]
     pub pending_blocks: Option<Vec<DeclaredBlockObservationV1>>,
-    /// The damage the viewer has divided so far while a division is in
-    /// progress; null when nothing is pending, and for the other player.
+    /// The damage the viewer has divided so far while the division of the
+    /// viewer's combat damage is in progress (CR 510.1c): one row for each
+    /// blocker answered, ascending by attacker and then blocker. An amount the
+    /// rules force is not an answer and is not listed. An empty list is a
+    /// division that has begun with no blocker answered yet. Null when no
+    /// division is in progress, and always null for the player who is not
+    /// dividing.
     #[serde(deserialize_with = "deserialize_required_option")]
     pub pending_damage_assignment: Option<Vec<AssignedDamageObservationV1>>,
     pub mana_pools: Vec<ManaPoolObservationV1>,
@@ -237,6 +244,15 @@ impl MagicBasicLandObservationV1 {
                         self.attacking.binary_search(&attacker).is_err()
                             || self.blocked.binary_search(&attacker).is_err()
                     })
+            })
+            || self.pending_blocks.as_ref().is_some_and(|rows| {
+                rows.windows(2)
+                    .any(|pair| pair[0].blocker >= pair[1].blocker)
+            })
+            || self.pending_damage_assignment.as_ref().is_some_and(|rows| {
+                rows.windows(2).any(|pair| {
+                    (pair[0].attacker, pair[0].blocker) >= (pair[1].attacker, pair[1].blocker)
+                })
             })
             || self
                 .permanents

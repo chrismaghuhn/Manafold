@@ -326,7 +326,7 @@ fn basic_land_observation_v1_shows_blocks_and_marked_damage() {
             attacker: Some(opaque(7)),
         }]
     );
-    // The partial answers are not told in this slice of the format: the keys
+    // The example has no block declaration or division in progress: the keys
     // are there, and null.
     assert_eq!(observation.pending_blocks, None);
     assert_eq!(observation.pending_damage_assignment, None);
@@ -515,4 +515,57 @@ fn the_pending_answers_of_a_block_or_a_division_have_a_shape_and_are_null_by_def
         value["pending_blocks"] = serde_json::json!([{"blocker": "6"}]);
     })
     .is_err());
+}
+
+#[test]
+fn the_pending_answers_are_listed_in_ascending_order() {
+    // A block row is for one creature, ascending by blocker; a damage row is
+    // for one blocker of an attacker, ascending by attacker and then blocker.
+    // Both lists may be empty: the declaration or division has begun and
+    // nothing is answered yet, which is not null.
+    let example: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../schemas/examples/magic-basic-land-observation-v1.json"
+    ))
+    .unwrap();
+    let blocks = |rows: &[(&str, Option<&str>)]| {
+        edited_basic(&example, &|value| {
+            value["pending_blocks"] = rows
+                .iter()
+                .map(|(blocker, attacker)| {
+                    serde_json::json!({"blocker": blocker, "attacker": attacker})
+                })
+                .collect();
+        })
+        .is_ok()
+    };
+    assert!(blocks(&[]));
+    assert!(blocks(&[("6", Some("7"))]));
+    assert!(blocks(&[("6", Some("7")), ("7", None)]));
+    assert!(!blocks(&[("7", None), ("6", Some("7"))]));
+    assert!(!blocks(&[("6", Some("7")), ("6", None)]));
+    assert!(!blocks(&[("6", Some("7")), ("6", Some("7"))]));
+    // Order is by the number, not the text.
+    assert!(blocks(&[("9", None), ("10", None)]));
+    assert!(!blocks(&[("10", None), ("9", None)]));
+
+    let damage = |rows: &[(&str, &str, &str)]| {
+        edited_basic(&example, &|value| {
+            value["pending_damage_assignment"] = rows
+                .iter()
+                .map(|(attacker, blocker, amount)| {
+                    serde_json::json!({"attacker": attacker, "blocker": blocker, "amount": amount})
+                })
+                .collect();
+        })
+        .is_ok()
+    };
+    assert!(damage(&[]));
+    assert!(damage(&[("7", "6", "2")]));
+    assert!(damage(&[("7", "6", "2"), ("7", "7", "0")]));
+    assert!(damage(&[("7", "7", "0"), ("8", "6", "1")]));
+    assert!(!damage(&[("7", "7", "0"), ("7", "6", "2")]));
+    assert!(!damage(&[("8", "6", "1"), ("7", "7", "0")]));
+    assert!(!damage(&[("7", "6", "2"), ("7", "6", "1")]));
+    assert!(damage(&[("9", "6", "1"), ("10", "6", "1")]));
+    assert!(!damage(&[("10", "6", "1"), ("9", "6", "1")]));
 }
