@@ -56,10 +56,12 @@ _CANDIDATE_RANK = {
     "finalize_mana_production": 12,
     "select_mana_payment": 13,
     "select_trigger": 14,
+    "declare_block": 15,
 }
 _PURPOSE_CANDIDATES = {
     "priority_action": {"pass_priority", "play_land", "cast_spell", "activate_ability"},
     "attacker_declaration": {"select_object"},
+    "blocker_declaration": {"declare_block"},
     "hand_size_discard": {"select_object"},
     "sba_graveyard_order": {"select_object"},
     "cast_cost_route": {"select_cost_route"},
@@ -80,6 +82,7 @@ _PURPOSE_CANDIDATES = {
 _PURPOSE_DOMAINS = {
     "priority_action": {"choose_one"},
     "attacker_declaration": {"choose_many"},
+    "blocker_declaration": {"choose_one"},
     "hand_size_discard": {"choose_many"},
     "sba_graveyard_order": {"order"},
     "cast_cost_route": {"choose_one"},
@@ -862,6 +865,8 @@ class CandidateIntent:
     produced_buckets: tuple[int, ...] | None = None
     spent_buckets: tuple[int, ...] | None = None
     trigger: SafeTriggerDescriptorV1 | None = None
+    blocker_id: int | None = None
+    attacker_id: int | None = None
 
     @classmethod
     def from_wire(cls, value: object) -> CandidateIntent:
@@ -888,6 +893,7 @@ class CandidateIntent:
             "finalize_mana_production": set(),
             "select_mana_payment": {"spent_buckets"},
             "select_trigger": {"trigger"},
+            "declare_block": {"blocker", "attacker"},
         }[kind]
         obj = require_exact_keys(value, {"kind", *fields})
         if kind in {"play_land", "cast_spell", "select_object"}:
@@ -932,6 +938,12 @@ class CandidateIntent:
             return cls(kind, spent_buckets=buckets)
         if kind == "select_trigger":
             return cls(kind, trigger=SafeTriggerDescriptorV1.from_wire(obj["trigger"]))
+        if kind == "declare_block":
+            return cls(
+                kind,
+                blocker_id=parse_uint(obj["blocker"]),
+                attacker_id=_nullable_u64(obj["attacker"], "attacker"),
+            )
         return cls(kind)
 
     def to_wire(self) -> dict[str, object]:
@@ -971,6 +983,11 @@ class CandidateIntent:
             if self.trigger is None:
                 raise WireError("encode.serialization", "trigger descriptor is absent")
             result["trigger"] = self.trigger.to_wire()
+        elif self.kind == "declare_block":
+            if self.blocker_id is None:
+                raise WireError("encode.serialization", "blocker is absent")
+            result["blocker"] = uint_wire(self.blocker_id)
+            result["attacker"] = _nullable_wire(self.attacker_id)
         self.from_wire(result)
         return result
 
@@ -1018,6 +1035,10 @@ class CandidateIntent:
             if self.trigger is None:
                 raise WireError("semantic.decision", "trigger descriptor is absent")
             value = self.trigger.ordering_key()
+        elif self.kind == "declare_block":
+            if self.blocker_id is None:
+                raise WireError("semantic.decision", "blocker is absent")
+            value = (self.blocker_id, _opt_key(self.attacker_id))
         return rank, value
 
 
@@ -1057,6 +1078,7 @@ class DecisionPurposeV4:
         fields: dict[str, set[str]] = {
             "priority_action": set(),
             "attacker_declaration": set(),
+            "blocker_declaration": set(),
             "hand_size_discard": set(),
             "starting_player": set(),
             "mulligan_declaration": set(),
@@ -1137,6 +1159,7 @@ class DecisionPurposeV4:
         allowed_fields = {
             "priority_action": set(),
             "attacker_declaration": set(),
+            "blocker_declaration": set(),
             "hand_size_discard": set(),
             "starting_player": set(),
             "mulligan_declaration": set(),
@@ -1255,6 +1278,7 @@ class PlayerDecisionRequestV4:
             in {
                 "trigger_order",
                 "attacker_declaration",
+                "blocker_declaration",
                 "hand_size_discard",
                 "sba_graveyard_order",
                 "cast_cost_route",

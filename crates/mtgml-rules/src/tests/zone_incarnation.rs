@@ -175,3 +175,187 @@ fn workspace_composes_two_moves_at_one_revision_and_reverse_inserts_order() {
     assert_eq!(events, events_before_failure);
     assert_eq!(state, authoritative_before);
 }
+
+/// As `hand_state_with_existing_graveyard`, with P1's tapped card 7 on the
+/// battlefield, where a game puts permanents: the one unordered public zone.
+fn state_with_a_permanent() -> EngineState {
+    let mut state = hand_state_with_existing_graveyard();
+    state.zones.objects.insert(
+        GameObjectId(7),
+        GameObject {
+            tapped: true,
+            ..owned_card(GameObjectId(7))
+        },
+    );
+    state.zones.locations.insert(
+        GameObjectId(7),
+        zone_location(
+            ZoneKind::Battlefield,
+            None,
+            ZonePosition::Unordered,
+            VisibilityPartition::Public,
+        ),
+    );
+    state.allocators.next_object_id = GameObjectId(8);
+    mtgml_state::validate_engine_state(&state).unwrap();
+    state
+}
+
+fn battlefield_to_graveyard(
+    object: GameObjectId,
+    graveyard_of: PlayerId,
+) -> SelectedZoneTransitionRequest {
+    SelectedZoneTransitionRequest {
+        object,
+        kind: SelectedZoneTransitionKind::BattlefieldToOwnerGraveyard,
+        claimed_from: zone_location(
+            ZoneKind::Battlefield,
+            None,
+            ZonePosition::Unordered,
+            VisibilityPartition::Public,
+        ),
+        claimed_to: zone_location(
+            ZoneKind::Graveyard,
+            Some(graveyard_of),
+            ZonePosition::Top { offset: 0 },
+            VisibilityPartition::Public,
+        ),
+    }
+}
+
+#[test]
+fn a_permanent_goes_to_the_top_of_its_owners_graveyard_as_a_new_untapped_object() {
+    // CR 400.7: the permanent that leaves the battlefield becomes a new
+    // object, with no memory of its previous existence: it is not tapped.
+    let state = state_with_a_permanent();
+    let mut scratch = state.clone();
+    scratch.revision = StateRevision(state.revision.0 + 1);
+    let mut events = Vec::new();
+
+    let transition = apply_selected_zone_transition_in_workspace(
+        &mut scratch,
+        &battlefield_to_graveyard(GameObjectId(7), PlayerId(1)),
+        &mut events,
+    )
+    .unwrap();
+
+    assert_eq!(transition.old_object, GameObjectId(7));
+    assert_eq!(transition.new_object, GameObjectId(8));
+    assert_eq!(transition.from.zone, ZoneKind::Battlefield);
+    assert_eq!(transition.last_known.object, GameObjectId(7));
+    assert!(transition.last_known.tapped && !transition.new_snapshot.tapped);
+    assert_eq!(transition.physical_card, Some(PhysicalCardId(7)));
+    assert!(!scratch.zones.objects.contains_key(&GameObjectId(7)));
+    assert!(!scratch.zones.objects[&GameObjectId(8)].tapped);
+    assert_eq!(
+        scratch.zones.objects[&GameObjectId(8)].controller,
+        PlayerId(1)
+    );
+    assert_eq!(
+        scratch.zones.ordered_zones[&graveyard_key()],
+        vec![GameObjectId(8), GameObjectId(3), GameObjectId(4)]
+    );
+    // The transition, then each perspective's occurrence of it.
+    assert_eq!(events.len(), 3);
+    assert!(matches!(
+        events.first(),
+        Some(crate::zone_incarnation::ZoneMoveEvent::Transition(_))
+    ));
+    mtgml_state::validate_engine_state(&scratch).unwrap();
+}
+
+#[test]
+fn a_move_from_the_battlefield_is_refused_unless_it_is_one() {
+    let state = state_with_a_permanent();
+    let mut scratch = state.clone();
+    scratch.revision = StateRevision(state.revision.0 + 1);
+    let mut events = Vec::new();
+    let mut refused = |scratch: &mut EngineState, request: SelectedZoneTransitionRequest| {
+        let before = (scratch.clone(), events.clone());
+        let failure = apply_selected_zone_transition_in_workspace(scratch, &request, &mut events)
+            .unwrap_err();
+        // A refused move changes nothing.
+        assert_eq!((scratch.clone(), events.clone()), before);
+        failure
+    };
+
+    // The graveyard is the owner's.
+    assert!(matches!(
+        refused(
+            &mut scratch,
+            battlefield_to_graveyard(GameObjectId(7), PlayerId(2))
+        ),
+        KernelExecutionError::ZoneIncarnation(ZoneIncarnationError::DestinationMismatch)
+    ));
+    // The source is the battlefield: not a hand card (the claim is right)...
+    assert!(matches!(
+        refused(
+            &mut scratch,
+            SelectedZoneTransitionRequest {
+                kind: SelectedZoneTransitionKind::BattlefieldToOwnerGraveyard,
+                ..hand_to_graveyard(GameObjectId(5))
+            }
+        ),
+        KernelExecutionError::ZoneIncarnation(ZoneIncarnationError::UnadmittedSourceFamily)
+    ));
+    // ...and a hand move does not take a permanent.
+    assert!(matches!(
+        refused(
+            &mut scratch,
+            SelectedZoneTransitionRequest {
+                object: GameObjectId(7),
+                claimed_from: zone_location(
+                    ZoneKind::Battlefield,
+                    None,
+                    ZonePosition::Unordered,
+                    VisibilityPartition::Public,
+                ),
+                ..hand_to_graveyard(GameObjectId(7))
+            }
+        ),
+        KernelExecutionError::ZoneIncarnation(ZoneIncarnationError::UnadmittedSourceFamily)
+    ));
+    // A battlefield that belongs to a player is not the one a game has.
+    let mut elsewhere = scratch.clone();
+    let location = elsewhere.zones.locations.get_mut(&GameObjectId(7)).unwrap();
+    location.player = Some(PlayerId(1));
+    let request = SelectedZoneTransitionRequest {
+        claimed_from: location.clone(),
+        ..battlefield_to_graveyard(GameObjectId(7), PlayerId(1))
+    };
+    assert!(matches!(
+        refused(&mut elsewhere, request),
+        KernelExecutionError::ZoneIncarnation(ZoneIncarnationError::UnadmittedSourceFamily)
+    ));
+    // A permanent in combat is removed from it first (CR 506.4).
+    let mut attacking = scratch.clone();
+    attacking.combat = Some(mtgml_state::CombatState {
+        defending_player: PlayerId(2),
+        attackers: vec![GameObjectId(7)],
+        damage_step_completed: false,
+        blocked_attackers: Default::default(),
+        blockers: Default::default(),
+    });
+    assert!(matches!(
+        refused(
+            &mut attacking,
+            battlefield_to_graveyard(GameObjectId(7), PlayerId(1))
+        ),
+        KernelExecutionError::ZoneIncarnation(ZoneIncarnationError::CombatReference)
+    ));
+    // A graveyard with a face-down card is not one this move can order.
+    let mut face_down = scratch.clone();
+    face_down
+        .zones
+        .objects
+        .get_mut(&GameObjectId(3))
+        .unwrap()
+        .face_down = true;
+    assert!(matches!(
+        refused(
+            &mut face_down,
+            battlefield_to_graveyard(GameObjectId(7), PlayerId(1))
+        ),
+        KernelExecutionError::ZoneIncarnation(ZoneIncarnationError::UnsupportedSourceProfile)
+    ));
+}

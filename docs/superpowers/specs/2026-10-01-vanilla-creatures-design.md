@@ -163,18 +163,21 @@ git-ignored `.rules/` folder, never committed, per ADR 0051).
     assignment order, and 0 to some blockers is allowed.
 - **Removal from combat (506.4).** A creature that leaves the battlefield is
   removed from combat before the zone move. `zone_incarnation` refuses to move
-  objects that combat still references, so lethal-damage destruction fails
-  today.
+  objects that combat still references, so the removal comes first.
 - **State-based actions.**
   - 704.5a: a player at 0 or less life loses.
   - 704.5g: a creature with lethal damage marked on it is destroyed.
   - When several creatures go to one graveyard at once, their owner orders
-    them (404.3) through the existing `SbaGraveyardOrder` contract. That
-    contract already puts `PlayerLoses` in the same ordered batch, so owners
-    order before the loss applies.
-  - Only the contract exists. State shape, validation and projection are in
-    place, but nothing in `mtgml-rules` produces or executes it; that is new
-    runtime work.
+    them (404.3) through the existing `SbaGraveyardOrder` contract. Owners
+    order only when no player loses in the batch. When a player loses, the
+    game ends (104.2a) and the cards go to their graveyards in object order
+    without a decision (owner decision 2026-10-01: a decision with no
+    consequence is noise, as with the excluded 103.3 cut).
+  - `crates/mtgml-rules/src/state_based_actions.rs` produces and executes the
+    contract. Only an owner of two or more of the cards is asked, in APNAP
+    order (101.4), and each later owner knows the earlier orders (101.4b). The
+    batch waits in a continuation, with its creatures still on the battlefield,
+    and applies with the last answer. The request reaches only its actor.
   - Both players losing at once (104.4a) cannot happen with this card pool and
     fails closed.
 - **Cleanup (514.2).** All marked damage is removed after the 514.1 discard
@@ -375,6 +378,11 @@ that show the behaviour in a real game flow (AGENTS.md §5).
        - a half-declared block is invisible to the attacker.
    - **3b.** Damage division, observation of blocks and damage, and symmetric
      creature smoke decks. The smoke games switch only at 3b.
+     - The blockers record must express "blocking, attacker gone" before blocks
+       are observed (CR 509.1g). 3a drops a surviving blocker whose attacker
+       died, a known divergence that nothing reads yet
+       (`docs/rules/capabilities/rules/declare-blockers.md`, "Known
+       divergence").
      - Red tests:
        - Hill Giant blocked by Lions and Ogre can assign 0/3, 1/2, 2/1 and
          3/0;

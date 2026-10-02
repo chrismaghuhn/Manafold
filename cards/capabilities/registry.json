@@ -122,7 +122,14 @@
       "category": "core_rule",
       "conformance_cases": [
         "cleanup_with_eight_cards_asks_active_player_to_discard_one",
-        "discard_moves_chosen_card_then_next_turn_starts"
+        "discard_moves_chosen_card_then_next_turn_starts",
+        "marked_damage_is_removed_at_cleanup_with_and_without_a_discard",
+        "cleanup_removes_the_damage_of_every_creature_that_had_any_in_object_order",
+        "a_restored_cleanup_accepts_marked_damage_only_while_the_discard_is_pending",
+        "a_state_based_action_in_cleanup_fails_closed_instead_of_granting_priority",
+        "a_creature_that_survived_a_block_has_no_damage_marked_in_the_next_turn",
+        "a_blocker_that_survives_keeps_its_damage_until_the_cleanup_of_the_attackers_turn",
+        "a_discard_in_the_cleanup_step_comes_before_the_damage_is_removed"
       ],
       "dependencies": [
         "rules/turn-structure"
@@ -133,7 +140,7 @@
       "information_risk": "high",
       "key": "rules/cleanup-reset",
       "lifecycle": "covered",
-      "notes": "Covered for two-player basic-land games on the native turn progression by the listed rules and production-endpoint cases. Discard of one card to maximum hand size; there is no damage to reset in this slice. No certification, card, deck, format, or playability support is claimed.",
+      "notes": "Covered for two-player games of admitted lands and vanilla creatures on the native turn progression by the listed rules and production-endpoint cases. Discard of one card to maximum hand size (CR 514.1), then all damage marked on permanents is removed at once (CR 514.2), in the same transition as the discard or, with no discard, the one that ends the end step. A state-based action or waiting trigger after that (CR 514.3a) and two or more discards fail closed. No certification, card, deck, format, or playability support is claimed.",
       "owners": [
         "turn"
       ],
@@ -153,17 +160,25 @@
       "category": "core_rule",
       "conformance_cases": [
         "unblocked_attackers_deal_combat_damage_to_the_defending_player",
-        "a_defender_with_an_untapped_creature_fails_closed",
+        "a_blocked_attacker_and_its_blocker_damage_each_other",
+        "an_unblocked_attacker_still_hits_the_player_while_another_is_blocked",
+        "an_attacker_whose_blocker_is_gone_deals_no_damage",
+        "two_blockers_on_one_attacker_fail_closed_until_damage_can_be_divided",
         "combat_damage_to_a_player_must_match_the_life_change",
-        "combat_damage_to_a_creature_fails_closed",
+        "combat_damage_to_creatures_must_match_the_blocks_and_the_marked_damage",
+        "combat_damage_goes_where_the_combat_sends_it",
         "the_damage_step_completes_once",
-        "an_unblocked_attack_lowers_the_defenders_life",
-        "a_restored_combat_with_a_possible_blocker_is_refused",
+        "a_restored_damage_step_has_dealt_its_damage",
         "a_restored_combat_cannot_have_the_active_player_as_its_defender",
         "a_restored_combat_needs_attackers_the_active_player_controls",
         "a_restored_combat_is_in_a_combat_step_it_could_be_in",
         "every_boundary_of_an_attack_validates",
+        "an_end_of_combat_with_attackers_has_dealt_their_damage",
         "a_restored_combat_the_game_could_not_reach_is_refused",
+        "a_restored_end_of_combat_has_dealt_the_damage_of_its_attackers",
+        "an_unblocked_attack_lowers_the_defenders_life",
+        "a_3_3_blocked_by_a_2_1_kills_it_and_survives",
+        "a_2_2_and_a_2_1_that_block_each_other_both_die_one_to_each_graveyard",
         "asymmetric_games_cast_attack_and_end_at_zero_life"
       ],
       "dependencies": [
@@ -179,12 +194,12 @@
       "information_risk": "high",
       "key": "rules/combat-damage",
       "lifecycle": "covered",
-      "notes": "Covered for unblocked attackers in two-player games of admitted lands and vanilla creatures by the listed rules and production-endpoint cases. A defending player who controls an untapped creature, blocked attackers and damage to creatures are specified in docs/superpowers/specs/2026-10-01-vanilla-creatures-design.md and fail closed. No certification, card, deck, format, or playability support is claimed.",
+      "notes": "Covered for attackers that are unblocked or blocked by at most one creature, in two-player games of admitted lands and vanilla creatures, by the listed rules and production-endpoint cases. Damage dealt to a creature is marked on it (rules/damage-and-life). An attacker blocked by two or more creatures has to divide its damage (CR 510.1c): that division is specified in docs/superpowers/specs/2026-10-01-vanilla-creatures-design.md, is not implemented, and fails closed with TurnProgressUnsupported. First strike, trample, every other keyword and damage prevention are excluded and fail closed. No player observes blocks, combat damage to creatures or marked damage until the observation of combat is extended. No certification, card, deck, format, or playability support is claimed.",
       "owners": [
         "combat"
       ],
       "spec_path": "docs/rules/capabilities/rules/combat-damage.md",
-      "summary": "One normal combat-damage step: each unblocked attacker deals damage equal to its power to the defending player.",
+      "summary": "One normal combat-damage step: every attacker and blocker assigns damage equal to its power, an unblocked attacker to the defending player, an attacker with one blocker to that blocker, and a blocker to its attacker. Division among two or more blockers is not implemented.",
       "version": "0.1.0"
     },
     {
@@ -211,7 +226,7 @@
       "information_risk": "medium",
       "key": "rules/combat-phase",
       "lifecycle": "covered",
-      "notes": "Covered for two-player games on the native turn progression by the listed rules and production-endpoint cases. Beginning of combat to end of combat; with no attackers the blockers and damage steps are skipped, with attackers they run as described by rules/combat-damage. No certification, card, deck, format, or playability support is claimed.",
+      "notes": "Covered for two-player games on the native turn progression by the listed rules and production-endpoint cases. Beginning of combat to end of combat; with no attackers the blockers and damage steps are skipped, with attackers they run as described by rules/declare-blockers and rules/combat-damage. No certification, card, deck, format, or playability support is claimed.",
       "owners": [
         "combat"
       ],
@@ -231,25 +246,42 @@
       "category": "core_rule",
       "conformance_cases": [
         "unblocked_attackers_deal_combat_damage_to_the_defending_player",
+        "a_blocked_attacker_and_its_blocker_damage_each_other",
         "combat_damage_to_a_player_must_match_the_life_change",
+        "combat_damage_to_creatures_must_match_the_blocks_and_the_marked_damage",
+        "marked_damage_changed_must_match_the_states",
+        "marked_damage_falls_only_when_the_cleanup_step_ends",
+        "the_digest_binds_the_marked_damage_of_each_permanent",
+        "marking_damage_adds_to_the_damage_marked_and_fails_without_a_permanent",
+        "removing_marked_damage_clears_every_permanent_and_reports_those_that_had_some",
+        "delta_accepts_marked_damage_with_its_event",
+        "delta_rejects_marked_damage_without_the_event",
+        "delta_rejects_marked_damage_that_its_event_does_not_name",
+        "delta_rejects_a_permanent_that_enters_damaged",
+        "a_restored_creature_with_lethal_damage_is_refused",
+        "a_restored_land_with_marked_damage_is_refused",
+        "a_restored_combat_that_dealt_no_damage_has_no_marked_damage",
         "an_unblocked_attack_lowers_the_defenders_life",
         "overkill_damage_shows_negative_life_and_ends_the_game",
+        "a_3_3_blocked_by_a_2_1_kills_it_and_survives",
+        "a_creature_that_survived_a_block_has_no_damage_marked_in_the_next_turn",
         "asymmetric_games_cast_attack_and_end_at_zero_life"
       ],
       "dependencies": [],
       "implementation_paths": [
         "crates/mtgml-rules/src/combat.rs",
-        "crates/mtgml-rules/src/events.rs"
+        "crates/mtgml-rules/src/events.rs",
+        "crates/mtgml-rules/src/turn_progression.rs"
       ],
       "information_risk": "high",
       "key": "rules/damage-and-life",
       "lifecycle": "covered",
-      "notes": "Covered for combat damage dealt to a player in two-player games of admitted lands and vanilla creatures by the listed rules and production-endpoint cases. Damage marked on a creature is specified in docs/superpowers/specs/2026-10-01-vanilla-creatures-design.md and fails closed. No certification, card, deck, format, or playability support is claimed.",
+      "notes": "Covered for combat damage dealt to a player or to a creature in two-player games of admitted lands and vanilla creatures, by the listed rules and production-endpoint cases. Damage dealt to a creature is marked on it (CR 120.3e) and stays until the cleanup step removes it (CR 120.6, 514.2); what lethal damage does is rules/state-based-actions-combat. No player observes marked damage until the observation of combat is extended. Damage that is not combat damage, prevention, replacement and every other result of damage are excluded and fail closed. No certification, card, deck, format, or playability support is claimed.",
       "owners": [
         "damage"
       ],
       "spec_path": "docs/rules/capabilities/rules/damage-and-life.md",
-      "summary": "Combat damage results: life loss for a player. Damage marked on a creature is specified and not implemented.",
+      "summary": "Combat damage results: life loss for a player, and damage marked on a creature until the cleanup step removes it.",
       "version": "0.1.0"
     },
     {
@@ -299,20 +331,51 @@
       ],
       "benchmark_scenarios": [],
       "category": "core_rule",
-      "conformance_cases": [],
+      "conformance_cases": [
+        "a_defender_with_an_untapped_creature_is_asked_to_block",
+        "creatures_are_asked_in_the_order_of_the_defenders_opaque_ids",
+        "a_restored_state_after_blocks_were_declared_may_hold_an_unblocking_creature",
+        "a_restored_combat_has_no_blocks_before_the_declare_blockers_step",
+        "a_restored_blocker_is_a_creature_the_defending_player_controls",
+        "a_restored_tapped_blocker_is_refused",
+        "a_restored_blocked_attacker_without_a_blocker_is_accepted_only_after_the_damage",
+        "two_blockers_on_one_attacker_validate",
+        "a_blocked_attacker_stays_blocked_without_a_blocker",
+        "a_block_makes_its_attacker_blocked",
+        "the_combat_digest_binds_blockers_and_blocked_attackers",
+        "the_block_declaration_digest_binds_every_field",
+        "declared_blockers_must_match_the_blocks_in_the_combat",
+        "test_blocker_declaration_offers_each_attacker_and_no_block_to_its_actor_only",
+        "the_defender_declares_blocks_one_creature_at_a_time",
+        "declaring_no_block_declares_an_empty_block_and_the_attack_stays_unblocked",
+        "a_defender_without_an_untapped_creature_is_not_asked",
+        "a_tapped_creature_is_not_asked_to_block",
+        "two_creatures_may_block_one_attacker",
+        "a_half_declared_block_is_invisible_to_the_attacker",
+        "the_completing_block_answer_shows_nothing_about_blocks_to_either_player",
+        "a_restored_half_declared_block_continues_identically",
+        "a_rejected_block_answer_changes_nothing",
+        "a_restored_block_declaration_the_game_could_not_have_reached_is_refused",
+        "a_restored_block_declaration_made_at_another_revision_is_refused",
+        "a_restored_blocked_attacker_has_its_blocker_until_the_damage_is_dealt"
+      ],
       "dependencies": [
         "rules/declare-attackers"
       ],
-      "implementation_paths": [],
+      "implementation_paths": [
+        "crates/mtgml-rules/src/combat.rs",
+        "crates/mtgml-rules/src/events.rs",
+        "crates/mtgml-rules/src/turn_progression.rs"
+      ],
       "information_risk": "high",
       "key": "rules/declare-blockers",
-      "lifecycle": "specified",
-      "notes": "Specified only: no block is declared yet. The declare blockers step runs when the defending player controls no untapped creature (there is nothing to declare) and fails closed otherwise. The multi-blocker rule is specified in docs/superpowers/specs/2026-10-01-vanilla-creatures-design.md. No certification, card, deck, format, or playability support is claimed.",
+      "lifecycle": "covered",
+      "notes": "Covered for two-player games of admitted lands and vanilla creatures by the listed rules and production-endpoint cases, with one known divergence from CR 509.1g that nothing in this slice can reach: a surviving blocker whose attacker has died is dropped from the combat's record of blockers instead of staying a blocking creature until the end of combat (docs/rules/capabilities/rules/declare-blockers.md). The defending player is asked, one untapped creature at a time, which attacker it blocks or no block, and any number of creatures may block one attacker; the combat damage of an attacker with two or more blockers fails closed (rules/combat-damage). Blocking restrictions and requirements (CR 509.1b, 509.1c) and costs to block are excluded and fail closed. No player observes blocks until the observation of combat is extended. No certification, card, deck, format, or playability support is claimed.",
       "owners": [
         "combat"
       ],
-      "spec_path": "docs/superpowers/specs/2026-10-01-vanilla-creatures-design.md",
-      "summary": "Blocker declaration for any number of blockers: each untapped creature of the defending player blocks at most one attacker, and an attacker may be blocked by several.",
+      "spec_path": "docs/rules/capabilities/rules/declare-blockers.md",
+      "summary": "Blocker declaration: the defending player decides for each untapped creature which attacker it blocks, or none, one creature at a time; an attacker may be blocked by several creatures and stays blocked when they leave combat.",
       "version": "0.1.0"
     },
     {
@@ -491,8 +554,32 @@
       "conformance_cases": [
         "lethal_combat_damage_ends_the_game_before_anyone_receives_priority",
         "a_decision_state_with_a_player_at_zero_life_who_has_not_lost_is_rejected",
+        "a_creature_that_dies_is_removed_from_combat_but_its_attacker_stays_blocked",
+        "the_prune_removes_a_departed_permanent",
+        "both_players_losing_at_once_fails_closed",
+        "the_owner_of_two_dying_cards_alone_is_asked_for_the_order",
+        "an_owner_is_offered_their_cards_in_the_order_of_their_opaque_ids",
+        "owners_are_asked_in_turn_order_and_the_batch_waits_for_the_last",
+        "a_player_losing_in_the_same_batch_skips_the_graveyard_order",
+        "a_player_losing_in_the_same_pass_as_a_dying_creature_loses_with_it",
+        "a_graveyard_order_whose_batch_holds_a_loss_fails_closed",
+        "a_pending_graveyard_order_may_hold_the_lethal_damage_of_its_own_batch_only",
+        "a_restored_graveyard_order_the_game_could_not_have_reached_is_refused",
+        "a_restored_creature_with_lethal_damage_is_refused",
+        "a_state_based_action_in_cleanup_fails_closed_instead_of_granting_priority",
+        "destroyed_objects_were_on_the_battlefield_and_are_gone",
+        "the_last_graveyard_order_is_applied_with_its_batch",
+        "combat_damage_to_a_creature_that_is_destroyed_in_the_same_transition_is_valid",
+        "delta_accepts_a_permanent_card_put_into_a_graveyard_from_the_battlefield",
+        "delta_needs_the_permanent_card_fact_exactly_when_a_permanent_card_is_put_into_a_graveyard",
         "zero_life_ends_the_game",
         "overkill_damage_shows_negative_life_and_ends_the_game",
+        "a_3_3_blocked_by_a_2_1_kills_it_and_survives",
+        "a_2_2_and_a_2_1_that_block_each_other_both_die_one_to_each_graveyard",
+        "a_restored_combat_after_a_blocker_died_continues_identically",
+        "two_creatures_dying_together_ask_their_owner_for_the_order",
+        "owners_order_in_turn_order_and_the_second_sees_the_first",
+        "a_restored_graveyard_order_checkpoint_continues_identically",
         "asymmetric_games_cast_attack_and_end_at_zero_life"
       ],
       "dependencies": [
@@ -500,17 +587,18 @@
       ],
       "implementation_paths": [
         "crates/mtgml-rules/src/combat.rs",
+        "crates/mtgml-rules/src/state_based_actions.rs",
         "crates/mtgml-rules/src/turn_progression.rs"
       ],
       "information_risk": "high",
       "key": "rules/state-based-actions-combat",
       "lifecycle": "covered",
-      "notes": "Covered for the loss of a player at 0 or less life in two-player games of admitted lands and vanilla creatures by the listed rules and production-endpoint cases. Lethal damage to a creature, the graveyard order and simultaneous losses are specified in docs/superpowers/specs/2026-10-01-vanilla-creatures-design.md and fail closed. No certification, card, deck, format, or playability support is claimed.",
+      "notes": "Covered for the loss of a player at 0 or less life (CR 704.5a) and the destruction of a creature dealt lethal damage (CR 704.5g), in two-player games of admitted lands and vanilla creatures, by the listed rules and production-endpoint cases. A destroyed creature leaves combat (CR 506.4) and goes to its owner's graveyard; an attacker whose last blocker has left stays blocked (CR 509.1h). When two or more cards of one owner die together the owner orders them (CR 404.3), owners in APNAP order; when a player loses in the same batch nobody is asked, the game ends and the cards go to their graveyards in object order (owner decision 2026-10-01). Both players losing at once (CR 104.4a), a state-based action or waiting trigger in the cleanup step (CR 514.3a) and every other state-based action fail closed. Players see a death as the public zone move to the graveyard, and the order request reaches only its actor. No certification, card, deck, format, or playability support is claimed.",
       "owners": [
         "state_based_actions"
       ],
       "spec_path": "docs/rules/capabilities/rules/state-based-actions-combat.md",
-      "summary": "A player at 0 or less life loses the game after combat damage. Other state-based actions are specified and fail closed.",
+      "summary": "A player at 0 or less life loses the game, and a creature dealt lethal damage is destroyed after combat damage; owners order cards that die together unless a player loses in the batch. Other state-based actions are not implemented.",
       "version": "0.1.0"
     },
     {
@@ -615,7 +703,9 @@
       "conformance_cases": [
         "workspace_composes_two_moves_at_one_revision_and_reverse_inserts_order",
         "second_discard_shifts_the_known_graveyard_card",
-        "upkeep_passes_draw_one_card_for_the_active_player"
+        "upkeep_passes_draw_one_card_for_the_active_player",
+        "a_permanent_goes_to_the_top_of_its_owners_graveyard_as_a_new_untapped_object",
+        "a_move_from_the_battlefield_is_refused_unless_it_is_one"
       ],
       "dependencies": [],
       "implementation_paths": [
@@ -625,7 +715,7 @@
       "information_risk": "high",
       "key": "rules/zone-incarnation",
       "lifecycle": "covered",
-      "notes": "Covered for two-player basic-land games on the native turn progression by the listed rules and production-endpoint cases. Library top to hand (draw) and hand to graveyard (discard); land play moves through the basic-land path. No certification, card, deck, format, or playability support is claimed.",
+      "notes": "Covered for two-player games of admitted lands and vanilla creatures on the native turn progression by the listed rules and production-endpoint cases. Library top to hand (draw), hand to graveyard (discard), hand to stack and stack to battlefield (casting and resolution), and battlefield to the top of the owner's graveyard (a creature destroyed by the state-based actions); land play moves through the basic-land path. No certification, card, deck, format, or playability support is claimed.",
       "owners": [
         "zones_identity"
       ],

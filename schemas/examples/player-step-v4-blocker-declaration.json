@@ -1,0 +1,91 @@
+{
+  "information_state": {
+    "current_observation": {
+      "digest": "90845308617867fd703c6c4f37ede7908da24420053821f89190ad36236dfca3",
+      "payload_base64": "e30=",
+      "payload_codec": "magic-shared-execution-observation.v1",
+      "perspective": "2",
+      "schema_version": "observation-envelope.v2",
+      "view_sequence": "5"
+    },
+    "digest": "e7a22f029e23c07e445d4ae8b5320ad9fdd1ef0b378407ee3e8b52d568c5020b",
+    "next_visible_sequence": "5",
+    "perspective": "2",
+    "retained_knowledge": [],
+    "schema_version": "information-state-envelope.v3"
+  },
+  "next_decision": {
+    "actor": "2",
+    "candidates": [
+      {
+        "candidate_id": 0,
+        "intent": {
+          "attacker": null,
+          "blocker": "7",
+          "kind": "declare_block"
+        }
+      },
+      {
+        "candidate_id": 1,
+        "intent": {
+          "attacker": "3",
+          "blocker": "7",
+          "kind": "declare_block"
+        }
+      },
+      {
+        "candidate_id": 2,
+        "intent": {
+          "attacker": "9",
+          "blocker": "7",
+          "kind": "declare_block"
+        }
+      }
+    ],
+    "decision_domain_v2": {
+      "kind": "choose_one"
+    },
+    "parent_player_decision_id": null,
+    "player_decision_id": "32",
+    "purpose": {
+      "kind": "blocker_declaration"
+    },
+    "schema_version": "player-decision-request.v4",
+    "view_sequence": "5",
+    "visibility": "acting_player_only"
+  },
+  "observed_events": [
+    {
+      "event": {
+        "item": {
+          "controller": "1",
+          "cost_facts": {
+            "paid_additional_cost_ids": [],
+            "selected_route": null
+          },
+          "kind": "activated_ability",
+          "modes": [
+            {
+              "mode_slot": 0,
+              "selected_mode": 1
+            }
+          ],
+          "source_ability": "8",
+          "source_object": "5",
+          "targets": []
+        },
+        "kind": "stack_item_added",
+        "stack_position_from_top": 0
+      },
+      "schema_version": "observed-event-envelope.v4",
+      "sequence": "3"
+    }
+  ],
+  "schema_version": "player-step.v4",
+  "status": {
+    "kind": "running"
+  },
+  "submission": {
+    "kind": "accepted"
+  }
+}

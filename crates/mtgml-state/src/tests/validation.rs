@@ -273,8 +273,170 @@ fn nine_attackers_are_a_valid_combat() {
         attackers: attackers.clone(),
         damage_step_completed: false,
         blocked_attackers: BTreeSet::new(),
-        blockers: attackers.iter().map(|attacker| (*attacker, None)).collect(),
+        blockers: BTreeMap::new(),
     });
     assert_eq!(attackers.len(), 9);
     validate_engine_state(&state).unwrap();
+}
+
+/// A permanent on the battlefield under `controller`'s control.
+fn put_on_battlefield(state: &mut EngineState, id: u64, controller: PlayerId) {
+    let id = GameObjectId(id);
+    state.zones.objects.insert(
+        id,
+        GameObject {
+            id,
+            physical_card: Some(PhysicalCardId(id.0)),
+            card_definition: CardDefinitionId(1),
+            owner: controller,
+            controller,
+            tapped: false,
+            face_down: false,
+        },
+    );
+    state.zones.locations.insert(id, public_location());
+    state.allocators.next_object_id = GameObjectId(state.allocators.next_object_id.0.max(id.0 + 1));
+}
+
+/// Player 1 attacks player 2 with objects 3 and 4 and player 2 controls
+/// objects 5 and 6, in the declare blockers step before any block.
+fn combat_before_blocks() -> EngineState {
+    let mut state = synthetic_state();
+    for (id, controller) in [(3, 1), (4, 1), (5, 2), (6, 2)] {
+        put_on_battlefield(&mut state, id, PlayerId(controller));
+    }
+    state.core.position = TurnPosition::Combat {
+        step: crate::CombatStep::DeclareBlockers,
+    };
+    state.combat = Some(CombatState {
+        defending_player: PlayerId(2),
+        attackers: vec![GameObjectId(3), GameObjectId(4)],
+        damage_step_completed: false,
+        blocked_attackers: BTreeSet::new(),
+        blockers: BTreeMap::new(),
+    });
+    state
+}
+
+/// `blocker` blocks `attacker`, which becomes blocked (CR 509.1g, 509.1h).
+fn block(state: &mut EngineState, blocker: u64, attacker: u64) {
+    let combat = state.combat.as_mut().unwrap();
+    combat
+        .blockers
+        .insert(GameObjectId(blocker), GameObjectId(attacker));
+    combat.blocked_attackers.insert(GameObjectId(attacker));
+}
+
+#[test]
+fn two_blockers_on_one_attacker_validate() {
+    // CR 509.1a, 509.1g: any number of creatures may block one attacker, and
+    // the state has no cap.
+    let mut state = combat_before_blocks();
+    block(&mut state, 5, 3);
+    block(&mut state, 6, 3);
+    validate_engine_state(&state).unwrap();
+
+    // One blocker on each attacker validates as well.
+    let mut state = combat_before_blocks();
+    block(&mut state, 5, 3);
+    block(&mut state, 6, 4);
+    validate_engine_state(&state).unwrap();
+}
+
+#[test]
+fn a_blocked_attacker_stays_blocked_without_a_blocker() {
+    // CR 509.1h: the attacker remains blocked when every blocker has left.
+    let mut state = combat_before_blocks();
+    state
+        .combat
+        .as_mut()
+        .unwrap()
+        .blocked_attackers
+        .insert(GameObjectId(3));
+    validate_engine_state(&state).unwrap();
+}
+
+#[test]
+fn an_end_of_combat_with_attackers_has_dealt_their_damage() {
+    // CR 508.8, 510.1, 510.2: with attackers declared the combat damage step
+    // always runs, so the end of combat step is reached with its damage dealt.
+    // Without attackers the step is skipped and the flag stays false.
+    let mut state = combat_before_blocks();
+    state.core.position = TurnPosition::Combat {
+        step: crate::CombatStep::EndOfCombat,
+    };
+    assert_eq!(
+        validate_engine_state(&state),
+        Err(EngineStateViolation::CombatState)
+    );
+
+    state.combat.as_mut().unwrap().damage_step_completed = true;
+    validate_engine_state(&state).unwrap();
+
+    // Every attacker died in the damage step: none is left, and its damage
+    // was dealt.
+    state.combat.as_mut().unwrap().attackers.clear();
+    validate_engine_state(&state).unwrap();
+
+    // Nobody attacked: no damage step, and its damage was never dealt.
+    state.combat.as_mut().unwrap().damage_step_completed = false;
+    validate_engine_state(&state).unwrap();
+}
+
+#[test]
+fn a_blocker_of_the_attacking_player_is_rejected() {
+    // CR 509.1a: the defending player chooses the blockers.
+    let mut state = combat_before_blocks();
+    put_on_battlefield(&mut state, 7, PlayerId(1));
+    block(&mut state, 7, 3);
+    assert_eq!(
+        validate_engine_state(&state),
+        Err(EngineStateViolation::CombatState)
+    );
+}
+
+#[test]
+fn a_blocker_for_a_non_attacker_is_rejected() {
+    // Object 7 is a creature that did not attack.
+    let mut state = combat_before_blocks();
+    put_on_battlefield(&mut state, 7, PlayerId(1));
+    let mut blocked = state.clone();
+    block(&mut blocked, 5, 7);
+    assert_eq!(
+        validate_engine_state(&blocked),
+        Err(EngineStateViolation::CombatState)
+    );
+    // Not even without recording the attacker as blocked.
+    state
+        .combat
+        .as_mut()
+        .unwrap()
+        .blockers
+        .insert(GameObjectId(5), GameObjectId(7));
+    assert_eq!(
+        validate_engine_state(&state),
+        Err(EngineStateViolation::CombatState)
+    );
+}
+
+#[test]
+fn a_blocker_is_on_the_battlefield() {
+    // Object 2 is a card in player 2's library; object 99 does not exist.
+    for blocker in [2, 99] {
+        let mut state = combat_before_blocks();
+        block(&mut state, blocker, 3);
+        assert!(validate_engine_state(&state).is_err(), "blocker {blocker}");
+    }
+}
+
+#[test]
+fn a_block_makes_its_attacker_blocked() {
+    // CR 509.1h: an attacker with a blocker is a blocked attacker.
+    let mut state = combat_before_blocks();
+    block(&mut state, 5, 3);
+    state.combat.as_mut().unwrap().blocked_attackers.clear();
+    assert_eq!(
+        validate_engine_state(&state),
+        Err(EngineStateViolation::CombatState)
+    );
 }

@@ -114,6 +114,7 @@ The visible-intent variant rank is exactly:
 12 finalize_mana_production
 13 select_mana_payment
 14 select_trigger
+15 declare_block
 ```
 
 Within one variant, compare the authorized payload as follows:
@@ -130,6 +131,7 @@ select_cost_route                        the route descriptor's ordering key
 select_mana_source                       (source, ability, produced buckets), lexicographic
 select_mana_payment                      spent buckets, lexicographic
 select_trigger                           the safe trigger descriptor's comparator
+declare_block                            (blocker, attacker), the opaque ids numeric ascending, no attacker first
 ```
 
 The complete ordering key is the lexicographic semantic tuple `(variant_rank, payload_value)`. Implementations MUST NOT obtain this order by serializing the payload to JSON/Base64/text, by using Rust enum order, or by comparing trusted bindings. Thus `OpaqueObjectId(2) < OpaqueObjectId(10)` numerically regardless of their textual wire rendering.
@@ -264,3 +266,44 @@ legal answer, and the request is asked even when there is no candidate. The
 number of attackers is not limited. The rules kernel rederives the request from
 the state, so a restored checkpoint with the declaration pending continues
 identically.
+
+The BlockerDeclaration request is `ChooseOne` and `acting_player_only`, and the
+defending player (not the active player) is its actor. When the defending
+player controls an untapped creature at the start of the declare blockers step
+(CR 509.1a), they are asked once for each such creature, in the order of their
+opaque ids, and nobody has priority meanwhile (CR 509.2). The request names the
+creature it asks about in each of its candidates: one
+`DeclareBlock { blocker, attacker: Some(a) }` for each attacker, in ascending
+order of the actor's opaque ids, and `DeclareBlock { blocker, attacker: None }`
+for no block, which comes first. The partial answers live in a BlockDeclaration
+continuation that only the defender's request refers to, and nothing of them
+reaches another player. After the last answer one `BlockersDeclared` follows
+(also when no creature blocks), the attackers with a blocker become blocked
+(CR 509.1h), the continuation ends and the active player receives priority.
+The rules kernel rederives the request and the continuation from the state, so
+a restored checkpoint with the declaration pending continues identically. Every
+combination of answers is legal for the creatures of the current slice; menace
+and block requirements would need a check over the whole declaration (CR
+509.1b, 509.1c).
+
+The SbaGraveyardOrder request is `Order { minimum: n, maximum: n }` and
+`acting_player_only`. Its actor is an owner of cards that are put into their
+graveyard together by the state-based actions (CR 404.3, 704.3), who need not be
+the active player, and `n` is the number of that owner's cards in the batch.
+Only an owner of two or more is asked. It has one `SelectObject` candidate for
+each of those cards, in ascending order of the actor's opaque ids; the answer
+lists all of them, top to bottom, and the first is the topmost card. The owners
+are asked one after another in APNAP order (CR 101.4). Each answer is its own
+transition and is recorded in the MagicSbaGraveyardOrderV1 continuation; the
+batch applies with the last answer, and the state-based actions are checked
+again. The creatures stay on the battlefield, with their lethal damage, until
+then. The rules kernel rederives the request and the continuation from the
+state, so a restored checkpoint with an order pending continues identically.
+
+A batch in which a player loses asks nobody (owner decision 2026-10-01). The
+game ends with the loss (CR 104.2a), so an order could never change an outcome,
+and a decision with no consequence is noise in the data. The batch applies at
+once, and its cards go to their graveyards in object order, the card with the
+higher object id on top. A state with a pending graveyard order whose batch holds
+a loss is not one the game makes, and is refused. Every player losing at once
+(CR 104.4a) is not supported and fails closed.

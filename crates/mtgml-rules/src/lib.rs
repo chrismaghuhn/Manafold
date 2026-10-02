@@ -1,6 +1,6 @@
 //! Magic rules: the native turn progression, basic-land actions, casting,
-//! combat, zone incarnation, characteristic queries, and authoritative V3
-//! events.
+//! combat, state-based actions, zone incarnation, characteristic queries, and
+//! authoritative V3 events.
 
 mod basic_land;
 mod casting;
@@ -11,6 +11,7 @@ mod events;
 mod game_start;
 pub use game_start::{start_game, GameStartError, STARTING_LIFE};
 mod snapshots;
+mod state_based_actions;
 mod turn_progression;
 mod turn_structure;
 mod validation;

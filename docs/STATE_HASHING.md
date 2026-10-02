@@ -47,7 +47,7 @@ The preimage is a fixed 14-element array:
 | 7 | random | [`random_v1`](#random_v1) |
 | 8 | knowledge | [`knowledge_v2`](#knowledge_v2) |
 | 9 | perspective identities | [`perspective_identities_v2`](#perspective_identities_v2) |
-| 10 | combat | [`combat`](#combat): `null`, or the 3- or 5-element form |
+| 10 | combat | [`combat`](#combat): `null`, or the five-element form |
 | 11 | foundation sources | always the empty array `[]` |
 | 12 | format | [`format_v1`](#format_v1) |
 | 13 | card-rules record | [card-rules record](#card-rules-record), tagged `"card-rules-authoritative-state.v1"` |
@@ -566,6 +566,22 @@ number is 0) is:
 `stage` is `["choosing_starting_player", null]`, `["declaring", player]` or
 `["bottoming", player]`. The player sets are ascending by `PlayerId`.
 
+The block-declaration continuation payload (CR 509.1a; it exists while the
+defending player is asked about their untapped creatures one at a time) is:
+
+```text
+[
+  "block_declaration",
+  defender,
+  pending_blockers[game_object_id],
+  declared[[blocker, attacker_or_null]]
+]
+```
+
+`pending_blockers` keeps the order the creatures are asked in, which is the
+order of the defender's opaque identities, so it is not sorted. `declared` is
+ascending by blocker `GameObjectId`; an answer of no block is `null`.
+
 ## `random_v1`
 
 ```text
@@ -742,16 +758,8 @@ The presence of this historical structural field does not claim executable Comma
 
 ## `combat`
 
-`null` when no combat is in progress. Otherwise the three-element form
-
-```text
-[defending_player, attackers[], blockers[]]
-```
-
-is used whenever `damage_step_completed` is false and `blocked_attackers`
-exactly equals the attacker keys with a live blocker. In every other case the
-five-element form binds CR 509.1h blocked history and whether the mandatory
-damage action has already run:
+`null` when no combat is in progress. Otherwise one form, whatever the combat
+holds:
 
 ```text
 [
@@ -763,8 +771,14 @@ damage action has already run:
 ]
 ```
 
-`blocked_attackers` is sorted by `GameObjectId` and duplicate-free;
-`damage_step_completed` is a CBOR boolean.
+`attackers` is ascending by `GameObjectId` and duplicate-free. `blockers` lists
+`[blocker, attacker]` pairs, one for each blocking creature (CR 509.1a), sorted
+by blocker and duplicate-free: the map goes from blocker to attacker, so
+several blockers of one attacker have no order of their own that two digests
+could disagree on. `blocked_attackers` is sorted by `GameObjectId` and
+duplicate-free; it binds CR 509.1h blocked history, so an attacker whose
+blockers have all left is still listed. `damage_step_completed` is a CBOR
+boolean recording whether the mandatory combat damage action has already run.
 
 ## Card-rules record
 
@@ -783,8 +797,10 @@ damage action has already run:
 
 The record contains typed Mana, TurnHistory, Counter, Attachment, Face,
 AbilityAuthority, and Permanents state. `permanents` is a list of
-`[object, controlled_since_turn]` pairs sorted by `GameObjectId`: the turn since
-which the permanent's controller has controlled it (CR 302.6).
+`[object, controlled_since_turn, marked_damage]` triples sorted by
+`GameObjectId`: the turn since which the permanent's controller has controlled
+it (CR 302.6), and the damage marked on it (CR 120.3e). A permanent enters with
+none; only a creature is dealt damage.
 `CardRulesAuthoritativeStateV1::validate` rejects
 noncanonical ordering, duplicates, malformed records, integer range/domain
 errors, and any `land_plays_used` value outside `{0,1}`; `EngineState`

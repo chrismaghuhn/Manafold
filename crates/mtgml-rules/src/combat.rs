@@ -1,32 +1,45 @@
-//! Attacking (CR 508.1) and unblocked combat damage (CR 510.1, 510.2).
+//! Attacking (CR 508.1), declaring blockers (CR 509.1), combat damage
+//! (CR 510.1, 510.2) and removal from combat (CR 506.4).
 //!
 //! The only creatures of this slice are vanilla creatures, so combat reads of
 //! a creature only its controller, whether it is tapped, since when it has
-//! been under its controller's control and its power. A defender who controls
-//! an untapped creature could block (CR 509.1); blocking arrives with a later
-//! rule, so such a combat fails closed before the declare blockers step.
+//! been under its controller's control, its power and its toughness. The
+//! defending player declares blocks one untapped creature at a time, in a
+//! continuation that only they can see. Combat damage is dealt to players and
+//! marked on creatures; an attacker with two or more blockers has to divide
+//! its damage among them, which is not supported yet. A creature dealt lethal
+//! damage is destroyed by the state-based actions that follow
+//! (`crate::state_based_actions`), which remove it from combat first. The damage
+//! that stays marked is removed in the cleanup step (CR 514.2).
+
+use std::collections::{BTreeMap, BTreeSet};
 
 use mtgml_card_ir::ExecutableProfileAdmissionV1;
-use mtgml_decision::{AuthoritativeCandidate, CandidateIntent, EngineCandidateBinding};
-use mtgml_model::{CandidateIdV1, GameObjectId, PlayerId};
+use mtgml_decision::{
+    AuthoritativeCandidate, CandidateIntent, CandidateOrdering, DecisionDomainV2,
+    DecisionPurposeV4, DecisionVisibility, EngineCandidateBinding,
+};
+use mtgml_model::{CandidateIdV1, ContinuationId, GameObjectId, PlayerId, StateRevision};
 use mtgml_state::{
-    CombatState, CombatStep, DamageAssignmentV1, DamageRecipientV1, EngineState, TurnPosition,
+    CombatBlockerAssignmentV1, CombatState, CombatStep, ContinuationPayload, ContinuationRecord,
+    DamageAssignmentV1, DamageRecipientV1, EndingStep, EngineState, PriorityState, TurnPosition,
 };
 
 use crate::turn_progression::{
-    admits, battlefield_objects, observe_public, record_unobserved, Facts,
+    admits, battlefield_objects, observe_public, record_unobserved, Facts, RequestShape,
 };
 use crate::{AuthoritativeRuleEventKind, BasicLandTransitionError as Error, S1QueryAuthority};
 
 /// A creature on the battlefield and what combat reads of it.
-struct Creature {
-    object: GameObjectId,
-    controller: PlayerId,
-    power: i64,
+pub(crate) struct Creature {
+    pub(crate) object: GameObjectId,
+    pub(crate) controller: PlayerId,
+    pub(crate) power: i64,
+    pub(crate) toughness: i64,
 }
 
 /// The creatures on the battlefield, in object order.
-fn battlefield_creatures(
+pub(crate) fn battlefield_creatures(
     admission: &ExecutableProfileAdmissionV1,
     state: &EngineState,
 ) -> Result<Vec<Creature>, Error> {
@@ -43,13 +56,14 @@ fn battlefield_creatures(
             continue;
         }
         // Every creature has a power and a toughness (CR 208.1).
-        let (power, _) = base
+        let (power, toughness) = base
             .base_power_toughness
             .ok_or(Error::TurnProgressUnsupported)?;
         creatures.push(Creature {
             object: base.queried.object,
             controller: base.queried.controller,
             power,
+            toughness,
         });
     }
     Ok(creatures)
@@ -146,10 +160,10 @@ pub(crate) fn declare_attackers(
     }
     next.combat = Some(CombatState {
         defending_player,
-        blockers: attackers.iter().map(|object| (*object, None)).collect(),
         attackers: attackers.clone(),
         damage_step_completed: false,
         blocked_attackers: Default::default(),
+        blockers: Default::default(),
     });
     observe_public(
         next,
@@ -161,22 +175,25 @@ pub(crate) fn declare_attackers(
     )
 }
 
-/// CR 509.1a: whether the defending player controls an untapped creature,
-/// which could block.
-pub(crate) fn defender_could_block(
-    admission: &ExecutableProfileAdmissionV1,
+/// CR 509.1a: the untapped creatures the defending player controls, which can
+/// block, in the order of the defending player's opaque identities. That order
+/// is the order they are asked in: it means something to the player, where the
+/// engine's object order does not.
+fn possible_blockers(
     state: &EngineState,
-) -> Result<bool, Error> {
-    could_block(state, &battlefield_creatures(admission, state)?)
-}
-
-/// `defender_could_block` over the creatures already read.
-fn could_block(state: &EngineState, creatures: &[Creature]) -> Result<bool, Error> {
+    creatures: &[Creature],
+) -> Result<Vec<GameObjectId>, Error> {
     let defender = state
         .combat
         .as_ref()
         .ok_or(Error::InvalidResult)?
         .defending_player;
+    let identity = state
+        .perspective_identities
+        .players
+        .get(&defender)
+        .ok_or(Error::InvalidResult)?;
+    let mut able = Vec::new();
     for creature in creatures {
         let tapped = state
             .zones
@@ -185,10 +202,276 @@ fn could_block(state: &EngineState, creatures: &[Creature]) -> Result<bool, Erro
             .ok_or(Error::InvalidResult)?
             .tapped;
         if creature.controller == defender && !tapped {
-            return Ok(true);
+            let opaque = identity
+                .object_to_opaque
+                .get(&creature.object)
+                .copied()
+                .ok_or(Error::InvalidResult)?;
+            able.push((opaque, creature.object));
         }
     }
-    Ok(false)
+    able.sort();
+    Ok(able.into_iter().map(|(_, object)| object).collect())
+}
+
+/// CR 509.1a: the declare blockers step begins. When the defending player
+/// controls an untapped creature, a block declaration starts: the creatures are
+/// asked about one at a time, and the caller asks about the first
+/// (`install_block_request`). Returns whether there is such a declaration;
+/// without one, nothing is asked.
+pub(crate) fn begin_block_declaration(
+    admission: &ExecutableProfileAdmissionV1,
+    next: &mut EngineState,
+) -> Result<bool, Error> {
+    let creatures = battlefield_creatures(admission, next)?;
+    let pending_blockers = possible_blockers(next, &creatures)?;
+    if pending_blockers.is_empty() {
+        return Ok(false);
+    }
+    let defender = next
+        .combat
+        .as_ref()
+        .ok_or(Error::InvalidResult)?
+        .defending_player;
+    let continuation = next.allocators.next_continuation_id;
+    next.allocators.next_continuation_id = ContinuationId(
+        continuation
+            .0
+            .checked_add(1)
+            .ok_or(Error::IdentityExhausted)?,
+    );
+    next.execution.continuations.insert(
+        continuation,
+        ContinuationRecord {
+            id: continuation,
+            created_at_revision: next.revision,
+            payload: ContinuationPayload::BlockDeclaration {
+                defender,
+                pending_blockers,
+                declared: Default::default(),
+            },
+        },
+    );
+    Ok(true)
+}
+
+/// The block declaration in `state`'s one continuation, as written.
+struct BlockDeclaration<'a> {
+    continuation: ContinuationId,
+    created_at_revision: StateRevision,
+    defender: PlayerId,
+    pending_blockers: &'a [GameObjectId],
+    declared: &'a BTreeMap<GameObjectId, Option<GameObjectId>>,
+}
+
+fn block_declaration_of(state: &EngineState) -> Result<BlockDeclaration<'_>, Error> {
+    let [(continuation, record)] = state.execution.continuations.iter().collect::<Vec<_>>()[..]
+    else {
+        return Err(Error::InvalidResult);
+    };
+    let ContinuationPayload::BlockDeclaration {
+        defender,
+        pending_blockers,
+        declared,
+    } = &record.payload
+    else {
+        return Err(Error::InvalidResult);
+    };
+    Ok(BlockDeclaration {
+        continuation: *continuation,
+        created_at_revision: record.created_at_revision,
+        defender: *defender,
+        pending_blockers,
+        declared,
+    })
+}
+
+/// Whether the block declaration `state` waits on is the one the battlefield
+/// calls for: exactly one BlockDeclaration continuation, for the defending
+/// player in the declare blockers step of an attack, before any block is
+/// recorded and while no player has priority (CR 509.1, 509.2). It was created
+/// by the transition that opened the step and gained one answer with each
+/// revision since, so its `created_at_revision` is the state's less the
+/// creatures answered. Its creatures
+/// are all the untapped creatures the defender controls (CR 509.1a), in the
+/// order of the defender's opaque identities: the answered ones first, then the
+/// ones still to ask, with at least one of those. Each answered creature
+/// blocks one of the attackers or none.
+pub(crate) fn validate_pending_block_declaration(
+    admission: &ExecutableProfileAdmissionV1,
+    state: &EngineState,
+) -> Result<(), Error> {
+    let declaration = block_declaration_of(state)?;
+    let combat = state.combat.as_ref().ok_or(Error::InvalidResult)?;
+    let expected = possible_blockers(state, &battlefield_creatures(admission, state)?)?;
+    let answered = declaration.declared.len();
+    let created_when_it_was_opened = u64::try_from(answered)
+        .ok()
+        .and_then(|answered| state.revision.0.checked_sub(answered))
+        == Some(declaration.created_at_revision.0);
+    let in_order = expected.len() == answered + declaration.pending_blockers.len()
+        && expected[answered..] == *declaration.pending_blockers
+        && expected[..answered]
+            .iter()
+            .all(|blocker| declaration.declared.contains_key(blocker));
+    if !in_order
+        || !created_when_it_was_opened
+        || declaration.pending_blockers.is_empty()
+        || declaration.defender != combat.defending_player
+        || state.core.position
+            != (TurnPosition::Combat {
+                step: CombatStep::DeclareBlockers,
+            })
+        || state.core.priority != PriorityState::None
+        || combat.attackers.is_empty()
+        || !combat.blockers.is_empty()
+        || !combat.blocked_attackers.is_empty()
+        || declaration
+            .declared
+            .values()
+            .flatten()
+            .any(|attacker| !combat.attackers.contains(attacker))
+    {
+        return Err(Error::InvalidResult);
+    }
+    Ok(())
+}
+
+/// The request that asks the defending player whether the next creature of the
+/// pending declaration blocks (CR 509.1a): one candidate for each attacker it
+/// could block, and one for no block, which comes first. It follows from the
+/// continuation alone; `validate_pending_block_declaration` is what says the
+/// continuation is right.
+pub(crate) fn block_request_shape(state: &EngineState) -> Result<RequestShape, Error> {
+    let declaration = block_declaration_of(state)?;
+    let blocker = *declaration
+        .pending_blockers
+        .first()
+        .ok_or(Error::InvalidResult)?;
+    let combat = state.combat.as_ref().ok_or(Error::InvalidResult)?;
+    let identity = state
+        .perspective_identities
+        .players
+        .get(&declaration.defender)
+        .ok_or(Error::InvalidResult)?;
+    let opaque = |object: &GameObjectId| {
+        identity
+            .object_to_opaque
+            .get(object)
+            .copied()
+            .ok_or(Error::InvalidResult)
+    };
+    let visible_blocker = opaque(&blocker)?;
+    let mut raw = vec![(
+        CandidateIntent::DeclareBlock {
+            blocker: visible_blocker,
+            attacker: None,
+        },
+        EngineCandidateBinding::DeclareBlock {
+            blocker,
+            attacker: None,
+        },
+    )];
+    for attacker in &combat.attackers {
+        raw.push((
+            CandidateIntent::DeclareBlock {
+                blocker: visible_blocker,
+                attacker: Some(opaque(attacker)?),
+            },
+            EngineCandidateBinding::DeclareBlock {
+                blocker,
+                attacker: Some(*attacker),
+            },
+        ));
+    }
+    Ok(RequestShape {
+        actor: declaration.defender,
+        visibility: DecisionVisibility::ActingPlayerOnly,
+        continuation_id: Some(declaration.continuation),
+        purpose: DecisionPurposeV4::BlockerDeclaration,
+        decision_domain_v2: DecisionDomainV2::ChooseOne,
+        candidates: CandidateOrdering::assign_dense(raw).map_err(|_| Error::InvalidResult)?,
+    })
+}
+
+/// Installs the request that asks the defending player about the next creature.
+pub(crate) fn install_block_request(
+    next: &mut EngineState,
+) -> Result<mtgml_decision::AuthoritativeDecisionRequest, Error> {
+    let shape = block_request_shape(next)?;
+    crate::turn_progression::install_request(next, shape)
+}
+
+/// CR 509.1a: the creature the pending declaration asks about, `blocker`,
+/// blocks `attacker`, or nothing. With creatures still to ask, the declaration
+/// goes on and this returns `false`. After the last answer the declaration is
+/// complete: every chosen creature becomes a blocking creature and each
+/// attacker with a blocker becomes blocked (CR 509.1g, 509.1h), in one
+/// `BlockersDeclared`, which is emitted even when no creature blocks. The
+/// continuation ends and this returns `true`; the caller gives the active
+/// player priority (CR 509.2).
+///
+/// Every combination of answers is a legal declaration for vanilla creatures:
+/// no restriction or requirement applies to blocking (CR 509.1b, 509.1c).
+/// Evasion and block requirements would need a check over the whole
+/// declaration before it is applied.
+pub(crate) fn declare_block(
+    next: &mut EngineState,
+    facts: &mut Facts,
+    blocker: GameObjectId,
+    attacker: Option<GameObjectId>,
+) -> Result<bool, Error> {
+    if next.execution.continuations.len() != 1 {
+        return Err(Error::InvalidResult);
+    }
+    let (continuation, record) = next
+        .execution
+        .continuations
+        .iter_mut()
+        .next()
+        .ok_or(Error::InvalidResult)?;
+    let continuation = *continuation;
+    let ContinuationPayload::BlockDeclaration {
+        pending_blockers,
+        declared,
+        ..
+    } = &mut record.payload
+    else {
+        return Err(Error::InvalidResult);
+    };
+    if pending_blockers.first() != Some(&blocker) {
+        return Err(Error::InvalidResult);
+    }
+    pending_blockers.remove(0);
+    declared.insert(blocker, attacker);
+    if !pending_blockers.is_empty() {
+        return Ok(false);
+    }
+    // The assignments are in order of blocker: the map is.
+    let assignments: Vec<CombatBlockerAssignmentV1> = declared
+        .iter()
+        .filter_map(|(blocker, attacker)| {
+            attacker.map(|attacker| CombatBlockerAssignmentV1 {
+                blocker: *blocker,
+                attacker,
+            })
+        })
+        .collect();
+    next.execution.continuations.remove(&continuation);
+    let combat = next.combat.as_mut().ok_or(Error::InvalidResult)?;
+    for assignment in &assignments {
+        combat
+            .blockers
+            .insert(assignment.blocker, assignment.attacker);
+        combat.blocked_attackers.insert(assignment.attacker);
+    }
+    // No observed event or observation field shows blocks yet, so no player
+    // observes this rule event.
+    record_unobserved(
+        facts,
+        AuthoritativeRuleEventKind::BlockersDeclared { assignments },
+    );
+    Ok(true)
 }
 
 /// A combat in a restored or committed state is one this slice could have
@@ -198,15 +481,40 @@ fn could_block(state: &EngineState, creatures: &[Creature]) -> Result<bool, Erro
 ///   controls (CR 508.1a), and they attack the other player (CR 506.2);
 /// - each attacker is tapped (CR 508.1f) and has been under its controller's
 ///   control since the turn began (CR 302.6, 508.1a);
-/// - from the declare blockers step on, with attackers, the defending player
-///   controls no untapped creature (CR 509.1a): the game stops before that step
-///   when one could block, because blocks are not supported yet.
+/// - a combat with attackers has dealt its damage from the damage step on
+///   (CR 508.8, 510.1, 510.3): the turn-based action runs on entering the step,
+///   so no game rests there before it, and the end of combat step is reached
+///   only through it. The damage step is checked here. The end of combat step
+///   is checked by `validate_combat` in `mtgml-state`, which every restore and
+///   every commit runs. With no attackers the step is skipped (CR 508.8) and
+///   the flag stays false;
+/// - no attacker is blocked while attackers are still being declared
+///   (CR 509.1, 508.2), and every blocker is an untapped creature the defending
+///   player controls (CR 509.1a): nothing taps a blocker once it blocks. An
+///   attacker may be blocked with no blocker left (CR 509.1h), but only once
+///   the damage is dealt: a blocker leaves combat only by dying in the
+///   state-based actions after the damage step (CR 704.5g, 506.4), so before
+///   it the blocked attackers are exactly the ones a blocker names;
+/// - a block declaration in progress is the one the battlefield calls for (see
+///   `validate_pending_block_declaration`). Once the declaration is complete, in the
+///   declare blockers step with priority or in a later step, an untapped
+///   creature of the defending player that does not block is legal: blocking is
+///   a choice (CR 509.1a).
 pub(crate) fn validate_reachable_combat(
     admission: &ExecutableProfileAdmissionV1,
     state: &EngineState,
 ) -> Result<(), Error> {
+    let declaring = state
+        .execution
+        .continuations
+        .values()
+        .any(|record| matches!(record.payload, ContinuationPayload::BlockDeclaration { .. }));
     let Some(combat) = state.combat.as_ref() else {
-        return Ok(());
+        return if declaring {
+            Err(Error::TurnProgressUnsupported)
+        } else {
+            Ok(())
+        };
     };
     let TurnPosition::Combat { step } = state.core.position else {
         return Err(Error::TurnProgressUnsupported);
@@ -243,56 +551,147 @@ pub(crate) fn validate_reachable_combat(
             return Err(Error::TurnProgressUnsupported);
         }
     }
-    let blocking_step = matches!(
-        step,
-        CombatStep::DeclareBlockers | CombatStep::CombatDamage | CombatStep::EndOfCombat
-    );
-    if blocking_step && !combat.attackers.is_empty() && could_block(state, &creatures)? {
+    if step == CombatStep::CombatDamage
+        && !combat.attackers.is_empty()
+        && !combat.damage_step_completed
+    {
+        return Err(Error::TurnProgressUnsupported);
+    }
+    if step == CombatStep::DeclareAttackers
+        && (!combat.blockers.is_empty() || !combat.blocked_attackers.is_empty())
+    {
+        return Err(Error::TurnProgressUnsupported);
+    }
+    // A blocker leaves combat only by dying in the state-based actions after
+    // the combat damage step, so until the damage is dealt every blocked
+    // attacker has a blocker, and every blocker's attacker is blocked.
+    if !combat.damage_step_completed
+        && combat.blocked_attackers != combat.blockers.values().copied().collect::<BTreeSet<_>>()
+    {
+        return Err(Error::TurnProgressUnsupported);
+    }
+    if combat.blockers.keys().any(|blocker| {
+        !creatures.iter().any(|creature| {
+            creature.object == *blocker && creature.controller == combat.defending_player
+        }) || state
+            .zones
+            .objects
+            .get(blocker)
+            .is_none_or(|object| object.tapped)
+    }) {
+        return Err(Error::TurnProgressUnsupported);
+    }
+    if declaring && validate_pending_block_declaration(admission, state).is_err() {
         return Err(Error::TurnProgressUnsupported);
     }
     Ok(())
 }
 
-/// CR 510.1a, 510.2, 120.3a: every attacking creature deals damage equal to
-/// its power to the defending player, simultaneously, and the player loses
-/// that much life. A creature that would assign 0 or less damage assigns none.
-/// No creature is blocked in this slice.
-pub(crate) fn deal_unblocked_combat_damage(
+/// CR 506.4: the creature `object`, which leaves the battlefield, is removed
+/// from combat and stops being an attacking, blocking, blocked creature.
+/// - An attacker leaves `attackers` and `blocked_attackers`, and the entries of
+///   the creatures that blocked it are dropped from `blockers`. That is a known
+///   divergence from CR 509.1g, which keeps them blocking creatures until combat
+///   ends: the combat records a block as the attacker its blocker blocks, so a
+///   blocker whose attacker is gone has no record (see "Known divergence" in
+///   `docs/rules/capabilities/rules/declare-blockers.md`). Nothing of this slice
+///   reads them afterwards.
+/// - A blocker leaves the blocks. The attacker it blocked stays blocked with no
+///   blocker left (CR 509.1h): it stays in `blocked_attackers`.
+pub(crate) fn remove_from_combat(next: &mut EngineState, object: GameObjectId) {
+    let Some(combat) = next.combat.as_mut() else {
+        return;
+    };
+    combat.attackers.retain(|attacker| *attacker != object);
+    combat.blocked_attackers.remove(&object);
+    combat.blockers.remove(&object);
+    combat.blockers.retain(|_, attacker| *attacker != object);
+}
+
+/// CR 510.1, 510.2: every attacking and blocking creature deals combat damage
+/// equal to its power, all at once:
+/// - an unblocked attacker deals it to the defending player (CR 510.1b), who
+///   loses that much life (CR 120.3a);
+/// - an attacker with exactly one blocker deals all of it to that blocker; one
+///   that is blocked with no blocker left deals none (CR 510.1c, 509.1h);
+/// - a blocker deals it to the attacker it blocks (CR 510.1d).
+///
+/// Damage dealt to a creature is marked on it (CR 120.3e). A creature that
+/// would assign 0 or less damage assigns none (CR 510.1a). An attacker with two
+/// or more blockers divides its damage among them (CR 510.1c), which is not
+/// supported yet, so the step fails closed. Whether a creature has been dealt
+/// lethal damage is for the state-based actions that follow the step (see
+/// `crate::state_based_actions`).
+pub(crate) fn deal_combat_damage(
     admission: &ExecutableProfileAdmissionV1,
     next: &mut EngineState,
     facts: &mut Facts,
 ) -> Result<(), Error> {
     let combat = next.combat.clone().ok_or(Error::InvalidResult)?;
-    if combat.damage_step_completed
-        || !combat.blocked_attackers.is_empty()
-        || combat.blockers.values().any(Option::is_some)
-    {
+    if combat.damage_step_completed {
         return Err(Error::TurnProgressUnsupported);
     }
     let creatures = battlefield_creatures(admission, next)?;
-    let mut assignments = Vec::new();
-    let mut total: u64 = 0;
-    for attacker in &combat.attackers {
-        let creature = creatures
+    // The damage `object`, a creature `controller` controls, assigns (CR 510.1a).
+    let assigned = |object: &GameObjectId, controller: PlayerId| {
+        creatures
             .iter()
-            .find(|creature| {
-                creature.object == *attacker && creature.controller == next.core.active_player
-            })
-            .ok_or(Error::TurnProgressUnsupported)?;
-        let amount = u64::try_from(creature.power).unwrap_or(0);
-        if amount == 0 {
-            continue;
-        }
-        total = total.checked_add(amount).ok_or(Error::InvalidResult)?;
-        assignments.push(DamageAssignmentV1 {
-            source: *attacker,
-            recipient: DamageRecipientV1::Player {
+            .find(|creature| creature.object == *object && creature.controller == controller)
+            .map(|creature| u64::try_from(creature.power).unwrap_or(0))
+            .ok_or(Error::TurnProgressUnsupported)
+    };
+    let mut assignments = Vec::new();
+    for attacker in &combat.attackers {
+        let amount = assigned(attacker, next.core.active_player)?;
+        let mut blockers = combat
+            .blockers
+            .iter()
+            .filter(|(_, blocked)| *blocked == attacker)
+            .map(|(blocker, _)| *blocker);
+        let recipient = match (blockers.next(), blockers.next()) {
+            (None, _) if combat.blocked_attackers.contains(attacker) => continue,
+            (None, _) => DamageRecipientV1::Player {
                 player: combat.defending_player,
             },
-            amount,
-        });
+            (Some(blocker), None) => DamageRecipientV1::Creature { object: blocker },
+            (Some(_), Some(_)) => return Err(Error::TurnProgressUnsupported),
+        };
+        if amount > 0 {
+            assignments.push(DamageAssignmentV1 {
+                source: *attacker,
+                recipient,
+                amount,
+            });
+        }
+    }
+    for (blocker, attacker) in &combat.blockers {
+        let amount = assigned(blocker, combat.defending_player)?;
+        if amount > 0 {
+            assignments.push(DamageAssignmentV1 {
+                source: *blocker,
+                recipient: DamageRecipientV1::Creature { object: *attacker },
+                amount,
+            });
+        }
+    }
+    let mut to_player: u64 = 0;
+    let mut to_creatures: BTreeMap<GameObjectId, u64> = BTreeMap::new();
+    for assignment in &assignments {
+        let total = match assignment.recipient {
+            DamageRecipientV1::Player { .. } => &mut to_player,
+            DamageRecipientV1::Creature { object } => to_creatures.entry(object).or_default(),
+        };
+        *total = total
+            .checked_add(assignment.amount)
+            .ok_or(Error::InvalidResult)?;
     }
     if !assignments.is_empty() {
+        record_unobserved(
+            facts,
+            AuthoritativeRuleEventKind::CombatDamageDealt { assignments },
+        );
+    }
+    if to_player > 0 {
         let player = combat.defending_player;
         let from = next
             .core
@@ -300,14 +699,10 @@ pub(crate) fn deal_unblocked_combat_damage(
             .get(&player)
             .ok_or(Error::InvalidResult)?
             .life;
-        let to = i64::try_from(total)
+        let to = i64::try_from(to_player)
             .ok()
             .and_then(|total| from.checked_sub(total))
             .ok_or(Error::InvalidResult)?;
-        record_unobserved(
-            facts,
-            AuthoritativeRuleEventKind::CombatDamageDealt { assignments },
-        );
         next.core
             .players
             .get_mut(&player)
@@ -323,6 +718,19 @@ pub(crate) fn deal_unblocked_combat_damage(
             AuthoritativeRuleEventKind::LifeChanged { player, from, to },
         )?;
     }
+    // No observed event or observation field shows marked damage yet, so no
+    // player observes these rule events.
+    for (creature, amount) in to_creatures {
+        let (from, to) = next
+            .card_rules
+            .permanents
+            .mark_damage(creature, amount)
+            .map_err(|_| Error::InvalidResult)?;
+        record_unobserved(
+            facts,
+            AuthoritativeRuleEventKind::MarkedDamageChanged { creature, from, to },
+        );
+    }
     next.combat
         .as_mut()
         .ok_or(Error::InvalidResult)?
@@ -331,32 +739,103 @@ pub(crate) fn deal_unblocked_combat_damage(
     Ok(())
 }
 
-/// CR 704.5a, 704.3: a player with 0 or less life loses the game. Returns the
-/// player who lost. Both players losing at once would be a draw (CR 104.4a),
-/// which this slice does not model.
-pub(crate) fn player_at_zero_life_loses(
+/// Whether damage is marked on any permanent.
+pub(crate) fn damage_is_marked(state: &EngineState) -> bool {
+    state
+        .card_rules
+        .permanents
+        .permanents
+        .values()
+        .any(|permanent| permanent.marked_damage != 0)
+}
+
+/// CR 514.2, 120.6: all damage marked on permanents is removed, all at once,
+/// in the cleanup step. Each creature that had some has one
+/// `MarkedDamageChanged` to 0, in object order. No player observes it, as no
+/// player observes the marking.
+pub(crate) fn remove_marked_damage(next: &mut EngineState, facts: &mut Facts) {
+    for (creature, from) in next.card_rules.permanents.remove_marked_damage() {
+        record_unobserved(
+            facts,
+            AuthoritativeRuleEventKind::MarkedDamageChanged {
+                creature,
+                from,
+                to: 0,
+            },
+        );
+    }
+}
+
+/// CR 120.6, 514.2: damage is marked by combat damage and stays marked until
+/// the cleanup step removes it, so some can exist from the combat damage step,
+/// once its damage is dealt, through the end of combat, the postcombat main
+/// phase and the end step. The cleanup step first has the player discard to
+/// their maximum hand size (CR 514.1), and only then removes the damage
+/// (CR 514.2): while that discard is asked it is still marked. The cleanup
+/// step has no other decision, so damage is nowhere else in it.
+fn marked_damage_may_exist(state: &EngineState) -> bool {
+    match state.core.position {
+        TurnPosition::Combat {
+            step: CombatStep::CombatDamage | CombatStep::EndOfCombat,
+        } => state
+            .combat
+            .as_ref()
+            .is_some_and(|combat| combat.damage_step_completed),
+        TurnPosition::PostcombatMain
+        | TurnPosition::Ending {
+            step: EndingStep::EndStep,
+        } => true,
+        TurnPosition::Ending {
+            step: EndingStep::Cleanup,
+        } => state
+            .execution
+            .pending_decision
+            .as_ref()
+            .is_some_and(|request| request.purpose == DecisionPurposeV4::HandSizeDiscard),
+        _ => false,
+    }
+}
+
+/// The damage marked on the permanents is damage this slice can have made:
+/// - it is marked only in the window of `marked_damage_may_exist`: none in the
+///   beginning phase, the precombat main phase, the combat steps before the
+///   damage is dealt, or the cleanup step but for the discard that comes
+///   before the damage is removed;
+/// - only a creature has any (CR 120.3e);
+/// - no creature has been dealt lethal damage: marked damage at least equal to
+///   its toughness (CR 704.5g; with toughness 0 or less it is destroyed as
+///   well, CR 704.5f, which no card of this slice has). It is destroyed by the
+///   state-based actions before any player has priority (CR 704.3), so no
+///   game rests there. The one exception is a decision made in the middle of
+///   those actions: while an owner is asked for the order of their cards
+///   (CR 404.3), the creatures that die with that order are still on the
+///   battlefield with their lethal damage (see
+///   `crate::state_based_actions::creatures_awaiting_the_order`), and only
+///   those.
+pub(crate) fn validate_marked_damage(
     admission: &ExecutableProfileAdmissionV1,
-    next: &mut EngineState,
-) -> Result<Option<PlayerId>, Error> {
-    let losing: Vec<PlayerId> = next
-        .core
-        .players
-        .iter()
-        .filter(|(_, player)| !player.has_lost && player.life <= 0)
-        .map(|(id, _)| *id)
-        .collect();
-    let [loser] = losing.as_slice() else {
-        return if losing.is_empty() {
-            Ok(None)
-        } else {
-            Err(Error::TurnProgressUnsupported)
-        };
-    };
-    admits(admission, "rules/state-based-actions-combat")?;
-    next.core
-        .players
-        .get_mut(loser)
-        .ok_or(Error::InvalidResult)?
-        .has_lost = true;
-    Ok(Some(*loser))
+    state: &EngineState,
+) -> Result<(), Error> {
+    if damage_is_marked(state) && !marked_damage_may_exist(state) {
+        return Err(Error::TurnProgressUnsupported);
+    }
+    let creatures = battlefield_creatures(admission, state)?;
+    let permanents = &state.card_rules.permanents.permanents;
+    if permanents.iter().any(|(object, permanent)| {
+        permanent.marked_damage != 0 && !creatures.iter().any(|creature| creature.object == *object)
+    }) {
+        return Err(Error::TurnProgressUnsupported);
+    }
+    let dying = crate::state_based_actions::creatures_awaiting_the_order(state);
+    for creature in &creatures {
+        let permanent = permanents
+            .get(&creature.object)
+            .ok_or(Error::InvalidResult)?;
+        if i128::from(permanent.marked_damage) >= i128::from(creature.toughness)
+            && !dying.contains(&creature.object)
+        {
+            return Err(Error::TurnProgressUnsupported);
+        }
+    }
+    Ok(())
 }

@@ -1,0 +1,40 @@
+{
+  "actor": "2",
+  "candidates": [
+    {
+      "candidate_id": 0,
+      "intent": {
+        "attacker": null,
+        "blocker": "7",
+        "kind": "declare_block"
+      }
+    },
+    {
+      "candidate_id": 1,
+      "intent": {
+        "attacker": "3",
+        "blocker": "7",
+        "kind": "declare_block"
+      }
+    },
+    {
+      "candidate_id": 2,
+      "intent": {
+        "attacker": "9",
+        "blocker": "7",
+        "kind": "declare_block"
+      }
+    }
+  ],
+  "decision_domain_v2": {
+    "kind": "choose_one"
+  },
+  "parent_player_decision_id": null,
+  "player_decision_id": "32",
+  "purpose": {
+    "kind": "blocker_declaration"
+  },
+  "schema_version": "player-decision-request.v4",
+  "view_sequence": "0",
+  "visibility": "public"
+}

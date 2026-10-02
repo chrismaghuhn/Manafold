@@ -298,6 +298,46 @@ and for a face-down permanent.
 None of these values depends on library order, hidden card identity or
 trusted ids.
 
+### Blocks, combat damage and deaths
+
+The payload shows who attacks (`attacking`), the life totals and the creatures
+on the battlefield. For everything that follows the attack the current slice
+observes the following, and nothing more (owner decision 2026-10-01: blocks and
+marked damage become observable together with the observation of combat, and
+until then players see deaths but not blocks or marked damage):
+
+- **Blocks are observed by no player, for the whole slice.** Not the answers
+  while the defending player declares blockers, and not the complete
+  declaration. The declare-blockers request is `acting_player_only` and its
+  actor is the defending player; the partial answers live in a continuation
+  that no projection reads, so a half-declared block changes nothing the
+  attacker can see, and neither does the answer that completes it.
+  `BlockersDeclared` is not observed by either perspective, and the observation
+  has no field for a blocked or blocking creature.
+- **Combat damage to creatures and marked damage are observed by no player.**
+  `CombatDamageDealt`, `MarkedDamageChanged` and `CombatDamageStepCompleted` are
+  not observed, and a permanent row has no damage. Damage dealt to a player is
+  seen as before: `LifeChanged` is public. Blocks and marked damage show only
+  through their results, the life lost and the creatures that die.
+- **Deaths are public.** A creature destroyed by lethal damage is observed by
+  both players as the zone move from the battlefield to its owner's graveyard;
+  both follow the card and keep the opaque id they knew the creature by.
+  `StateBasedActionsApplied` itself is not observed.
+- **The graveyard order request reaches only its actor.** When two or more cards
+  of one owner die together, that owner is asked for their order in a request
+  that is `acting_player_only` (the owner need not be the active player), and
+  owners are asked in APNAP order (CR 101.4). While an order is pending the
+  observation of each player tells the completed orders (each owner, with that
+  owner's cards top to bottom in the player's own opaque ids) and the owner asked
+  next, so a later owner knows the earlier owners' orders when they answer
+  (CR 101.4b). That reveals nothing hidden: the creatures are still on the
+  battlefield, public to both players. `SbaGraveyardOrderChosen` is not
+  observed.
+- **A batch with a player loss asks nobody** (owner decision 2026-10-01). The
+  game ends (CR 104.2a), so no order could matter, and the cards go to their
+  graveyards in object order without a request, so there is nothing to
+  observe about an order.
+
 ## Noninterference
 
 For perspective `P`, two valid authoritative states that differ only in unauthorized information must produce byte-identical:

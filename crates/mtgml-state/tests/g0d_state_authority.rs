@@ -1389,3 +1389,408 @@ fn a_cast_continuation_names_a_spell_on_the_stack() {
         Err(mtgml_state::EngineStateError::ContinuationRecord)
     );
 }
+
+/// P1 attacks P2 with object 3 in the declare blockers step. P2 controls the
+/// untapped objects 5 and 6 and is asked about 5 first (CR 509.1a); object 4
+/// is P1's, and did not attack. P2 knows all four by opaque identities.
+fn blocks_being_declared() -> EngineState {
+    let mut state = root();
+    for (object, controller) in [(3, 1), (4, 1), (5, 2), (6, 2)] {
+        let id = GameObjectId(object);
+        state.zones.objects.insert(
+            id,
+            mtgml_state::GameObject {
+                id,
+                physical_card: Some(PhysicalCardId(object)),
+                card_definition: CardDefinitionId(3),
+                owner: PlayerId(controller),
+                controller: PlayerId(controller),
+                tapped: object == 3,
+                face_down: false,
+            },
+        );
+        state.zones.locations.insert(
+            id,
+            ZoneLocation {
+                zone: ZoneKind::Battlefield,
+                player: None,
+                position: ZonePosition::Unordered,
+                visibility: VisibilityPartition::Public,
+                partition: None,
+            },
+        );
+    }
+    state.allocators.next_object_id = GameObjectId(7);
+    for object in state.zones.objects.keys().copied().collect::<Vec<_>>() {
+        state.card_rules.faces.faces.insert(object, 0);
+        if state.zones.locations[&object].zone == ZoneKind::Battlefield {
+            state.card_rules.permanents.enter(object, 1).unwrap();
+        }
+    }
+    for object in 3..=6 {
+        let (id, opaque) = (
+            GameObjectId(object),
+            mtgml_model::OpaqueObjectId(object + 10),
+        );
+        let location = state.zones.locations[&id].clone();
+        let identity = state
+            .perspective_identities
+            .players
+            .get_mut(&PlayerId(2))
+            .unwrap();
+        identity.object_to_opaque.insert(id, opaque);
+        identity.opaque_to_object.insert(opaque, id);
+        identity.next_opaque_object_id = mtgml_model::OpaqueObjectId(opaque.0 + 1);
+        state
+            .knowledge
+            .players
+            .get_mut(&PlayerId(2))
+            .unwrap()
+            .active
+            .insert(
+                opaque,
+                mtgml_state::KnowledgeRecordV2 {
+                    opaque_object: opaque,
+                    physical_card: Some(PhysicalCardId(object)),
+                    card_definition: Some(CardDefinitionId(3)),
+                    known_location: Some(mtgml_state::KnownLocationFactV2 {
+                        location,
+                        provenance: mtgml_state::KnowledgeAcquisitionReason::InitialConfiguration,
+                    }),
+                    acquisition: mtgml_state::KnowledgeAcquisitionReason::InitialConfiguration,
+                    historical_locations: vec![],
+                },
+            );
+    }
+    state.core.position = mtgml_state::TurnPosition::Combat {
+        step: mtgml_state::CombatStep::DeclareBlockers,
+    };
+    state.core.priority = mtgml_state::PriorityState::None;
+    state.combat = Some(mtgml_state::CombatState {
+        defending_player: PlayerId(2),
+        attackers: vec![GameObjectId(3)],
+        damage_step_completed: false,
+        blocked_attackers: Default::default(),
+        blockers: Default::default(),
+    });
+    state.allocators.next_continuation_id = ContinuationId(2);
+    state.allocators.next_decision_id = DecisionId(3);
+    state.execution.continuations.insert(
+        ContinuationId(1),
+        mtgml_state::ContinuationRecord {
+            id: ContinuationId(1),
+            created_at_revision: state.revision,
+            payload: mtgml_state::ContinuationPayload::BlockDeclaration {
+                defender: PlayerId(2),
+                pending_blockers: vec![GameObjectId(5), GameObjectId(6)],
+                declared: Default::default(),
+            },
+        },
+    );
+    let view_sequence = state.knowledge.players[&PlayerId(2)].next_visible_sequence;
+    let candidate = |index, attacker: Option<u64>| mtgml_decision::AuthoritativeCandidate {
+        candidate_id: CandidateIdV1(index),
+        visible_intent: mtgml_decision::CandidateIntent::DeclareBlock {
+            blocker: mtgml_model::OpaqueObjectId(15),
+            attacker: attacker.map(|attacker| mtgml_model::OpaqueObjectId(attacker + 10)),
+        },
+        trusted_binding: mtgml_decision::EngineCandidateBinding::DeclareBlock {
+            blocker: GameObjectId(5),
+            attacker: attacker.map(GameObjectId),
+        },
+    };
+    state.execution.pending_decision = Some(mtgml_decision::AuthoritativeDecisionRequest {
+        decision_id: DecisionId(2),
+        player_decision_id: PlayerDecisionIdV1(1),
+        state_revision: state.revision,
+        view_sequence,
+        actor: PlayerId(2),
+        visibility: mtgml_decision::DecisionVisibility::ActingPlayerOnly,
+        decision_domain_v2: mtgml_decision::DecisionDomainV2::ChooseOne,
+        purpose: mtgml_decision::DecisionPurposeV4::BlockerDeclaration,
+        parent_player_decision_id: None,
+        continuation_id: Some(ContinuationId(1)),
+        candidates: vec![candidate(0, None), candidate(1, Some(3))],
+    });
+    state
+}
+
+fn block_declaration(
+    state: &mut EngineState,
+) -> (
+    &mut PlayerId,
+    &mut Vec<GameObjectId>,
+    &mut std::collections::BTreeMap<GameObjectId, Option<GameObjectId>>,
+) {
+    let record = state
+        .execution
+        .continuations
+        .get_mut(&ContinuationId(1))
+        .unwrap();
+    match &mut record.payload {
+        mtgml_state::ContinuationPayload::BlockDeclaration {
+            defender,
+            pending_blockers,
+            declared,
+        } => (defender, pending_blockers, declared),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn a_block_declaration_names_the_defender_and_the_untapped_creatures_it_controls() {
+    use mtgml_state::EngineStateError::BlockDeclaration;
+    let state = blocks_being_declared();
+    state.validate_structure().unwrap();
+    // The request names a creature of its own, which the G0 runtime boundary
+    // does not admit.
+    assert_eq!(
+        state.validate(),
+        Err(mtgml_state::EngineStateError::ProfileDependentDecisionNotAdmitted)
+    );
+
+    let refused = |what: &str, edit: &dyn Fn(&mut EngineState)| {
+        let mut forged = state.clone();
+        edit(&mut forged);
+        assert_eq!(forged.validate_structure(), Err(BlockDeclaration), "{what}");
+    };
+    // CR 509.1a: the defending player declares the blockers.
+    refused("the attacking player", &|state| {
+        *block_declaration(state).0 = PlayerId(1);
+    });
+    refused("nobody asked", &|state| block_declaration(state).1.clear());
+    // The creatures are permanents that player controls, and they are untapped.
+    refused("a creature of the attacking player", &|state| {
+        block_declaration(state).1[1] = GameObjectId(4);
+    });
+    refused("a tapped creature that is also the attacker", &|state| {
+        block_declaration(state).1[1] = GameObjectId(3);
+    });
+    refused("a tapped creature of the defender", &|state| {
+        state
+            .zones
+            .objects
+            .get_mut(&GameObjectId(6))
+            .unwrap()
+            .tapped = true;
+    });
+    // Object 2 is a card in P2s library.
+    refused("a card that is not on the battlefield", &|state| {
+        block_declaration(state).1[1] = GameObjectId(2);
+    });
+    refused("a creature asked twice", &|state| {
+        block_declaration(state).1[1] = GameObjectId(5);
+    });
+    refused("a creature that is asked and answered", &|state| {
+        block_declaration(state).2.insert(GameObjectId(5), None);
+    });
+    // Every answered creature blocks a real attacker, or nothing.
+    refused("a block of a creature that did not attack", &|state| {
+        let (_, pending, declared) = block_declaration(state);
+        declared.insert(pending.remove(0), Some(GameObjectId(4)));
+    });
+    refused("a block of the defenders own creature", &|state| {
+        let (_, pending, declared) = block_declaration(state);
+        declared.insert(pending.remove(0), Some(GameObjectId(6)));
+    });
+    // It belongs to the declare blockers step of an attack, before any block,
+    // and nobody has priority.
+    refused("another step", &|state| {
+        state.core.position = mtgml_state::TurnPosition::Combat {
+            step: mtgml_state::CombatStep::DeclareAttackers,
+        };
+    });
+    refused("priority", &|state| {
+        state.core.priority = mtgml_state::PriorityState::HeldBy {
+            player: PlayerId(1),
+            consecutive_passes: 0,
+        };
+    });
+    refused("no combat", &|state| state.combat = None);
+    refused("a recorded block", &|state| {
+        let combat = state.combat.as_mut().unwrap();
+        combat.blockers.insert(GameObjectId(5), GameObjectId(3));
+        combat.blocked_attackers.insert(GameObjectId(3));
+    });
+    refused("blocked attackers", &|state| {
+        state
+            .combat
+            .as_mut()
+            .unwrap()
+            .blocked_attackers
+            .insert(GameObjectId(3));
+    });
+    refused("no attackers", &|state| {
+        state.combat.as_mut().unwrap().attackers.clear();
+    });
+
+    // A half-declared block: the answered creature blocks the attacker, and
+    // the other is asked next.
+    let mut half = state.clone();
+    let (_, pending, declared) = block_declaration(&mut half);
+    declared.insert(pending.remove(0), Some(GameObjectId(3)));
+    let request = half.execution.pending_decision.as_mut().unwrap();
+    for candidate in &mut request.candidates {
+        let mtgml_decision::CandidateIntent::DeclareBlock { blocker, .. } =
+            &mut candidate.visible_intent
+        else {
+            unreachable!()
+        };
+        *blocker = mtgml_model::OpaqueObjectId(16);
+        let mtgml_decision::EngineCandidateBinding::DeclareBlock { blocker, .. } =
+            &mut candidate.trusted_binding
+        else {
+            unreachable!()
+        };
+        *blocker = GameObjectId(6);
+    }
+    half.validate_structure().unwrap();
+}
+
+#[test]
+fn a_block_request_asks_about_the_next_creature_and_the_real_attackers() {
+    use mtgml_decision::{CandidateIntent as Intent, EngineCandidateBinding as Binding};
+    use mtgml_state::EngineStateError::{ContinuationRequestMismatch, PendingCandidateBinding};
+    let state = blocks_being_declared();
+    let refused =
+        |what: &str, error, edit: &dyn Fn(&mut mtgml_decision::AuthoritativeDecisionRequest)| {
+            let mut forged = state.clone();
+            edit(forged.execution.pending_decision.as_mut().unwrap());
+            assert_eq!(forged.validate_structure(), Err(error), "{what}");
+        };
+    // The request is the continuations: the defenders, one answer.
+    refused("another purpose", ContinuationRequestMismatch, &|request| {
+        request.purpose = mtgml_decision::DecisionPurposeV4::PriorityAction;
+        request.candidates = vec![mtgml_decision::AuthoritativeCandidate {
+            candidate_id: CandidateIdV1(0),
+            visible_intent: Intent::PassPriority,
+            trusted_binding: Binding::PassPriority,
+        }];
+    });
+    // The request itself does not allow several answers.
+    refused(
+        "several answers",
+        mtgml_state::EngineStateError::PendingDecision,
+        &|request| {
+            request.decision_domain_v2 = mtgml_decision::DecisionDomainV2::ChooseMany {
+                minimum: 0,
+                maximum: 2,
+            };
+        },
+    );
+    refused(
+        "the attacking player",
+        ContinuationRequestMismatch,
+        &|request| {
+            request.actor = PlayerId(1);
+        },
+    );
+    // The candidates are the next creature blocking a real attacker, or nothing.
+    refused(
+        "another creature of the declaration",
+        PendingCandidateBinding,
+        &|request| {
+            for candidate in &mut request.candidates {
+                candidate.visible_intent = Intent::DeclareBlock {
+                    blocker: mtgml_model::OpaqueObjectId(16),
+                    attacker: match candidate.visible_intent {
+                        Intent::DeclareBlock { attacker, .. } => attacker,
+                        _ => unreachable!(),
+                    },
+                };
+                candidate.trusted_binding = Binding::DeclareBlock {
+                    blocker: GameObjectId(6),
+                    attacker: match candidate.trusted_binding {
+                        Binding::DeclareBlock { attacker, .. } => attacker,
+                        _ => unreachable!(),
+                    },
+                };
+            }
+        },
+    );
+    refused(
+        "a creature of the attacking player",
+        PendingCandidateBinding,
+        &|request| {
+            request.candidates[0].visible_intent = Intent::DeclareBlock {
+                blocker: mtgml_model::OpaqueObjectId(14),
+                attacker: None,
+            };
+            request.candidates[0].trusted_binding = Binding::DeclareBlock {
+                blocker: GameObjectId(4),
+                attacker: None,
+            };
+        },
+    );
+    refused(
+        "a block of a creature that did not attack",
+        PendingCandidateBinding,
+        &|request| {
+            request.candidates[1].visible_intent = Intent::DeclareBlock {
+                blocker: mtgml_model::OpaqueObjectId(15),
+                attacker: Some(mtgml_model::OpaqueObjectId(14)),
+            };
+            request.candidates[1].trusted_binding = Binding::DeclareBlock {
+                blocker: GameObjectId(5),
+                attacker: Some(GameObjectId(4)),
+            };
+        },
+    );
+    refused(
+        "an attacker the identities do not bind",
+        PendingCandidateBinding,
+        &|request| {
+            request.candidates[1].visible_intent = Intent::DeclareBlock {
+                blocker: mtgml_model::OpaqueObjectId(15),
+                attacker: Some(mtgml_model::OpaqueObjectId(16)),
+            };
+        },
+    );
+    refused(
+        "a block of an attacker, with no attacker visible",
+        PendingCandidateBinding,
+        &|request| {
+            request.candidates.remove(0);
+            request.candidates[0].candidate_id = CandidateIdV1(0);
+            request.candidates[0].visible_intent = Intent::DeclareBlock {
+                blocker: mtgml_model::OpaqueObjectId(15),
+                attacker: None,
+            };
+        },
+    );
+    refused(
+        "no block, with an attacker bound",
+        PendingCandidateBinding,
+        &|request| {
+            request.candidates[0].trusted_binding = Binding::DeclareBlock {
+                blocker: GameObjectId(5),
+                attacker: Some(GameObjectId(3)),
+            };
+        },
+    );
+    refused(
+        "an opaque identity that is not the blockers",
+        PendingCandidateBinding,
+        &|request| {
+            for candidate in &mut request.candidates {
+                candidate.visible_intent = Intent::DeclareBlock {
+                    blocker: mtgml_model::OpaqueObjectId(16),
+                    attacker: match candidate.visible_intent {
+                        Intent::DeclareBlock { attacker, .. } => attacker,
+                        _ => unreachable!(),
+                    },
+                };
+            }
+        },
+    );
+    // A request about no declaration at all.
+    let mut orphan = state.clone();
+    orphan.execution.continuations.clear();
+    orphan
+        .execution
+        .pending_decision
+        .as_mut()
+        .unwrap()
+        .continuation_id = None;
+    assert_eq!(orphan.validate_structure(), Err(PendingCandidateBinding));
+}

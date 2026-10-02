@@ -63,6 +63,18 @@ SCHEMA_NEGATIVE_CASES = [
     ),
     (
         "player-decision-request.v4.schema.json",
+        "schemas/negative/player-decision-request-v4-blocker-declaration-public.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/negative/player-decision-request-v4-blocker-declaration-attacker-missing.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/negative/player-decision-request-v4-blocker-declaration-wrong-candidate.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
         "schemas/negative/player-decision-request-v4-cost-route-normal-with-ordinal.json",
     ),
     (
@@ -301,8 +313,16 @@ SCHEMA_POSITIVE_CASES = [
         "schemas/examples/player-decision-request-v4-mulligan-bottom.json",
     ),
     (
+        "player-decision-request.v4.schema.json",
+        "schemas/examples/player-decision-request-v4-blocker-declaration.json",
+    ),
+    (
         "player-step.v4.schema.json",
         "schemas/examples/player-step-v4-hand-size-discard.json",
+    ),
+    (
+        "player-step.v4.schema.json",
+        "schemas/examples/player-step-v4-blocker-declaration.json",
     ),
     (
         "player-decision-request.v4.schema.json",

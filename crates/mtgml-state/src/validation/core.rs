@@ -3,7 +3,7 @@
 
 use std::collections::BTreeSet;
 
-use mtgml_model::{GameObjectId, PlayerId};
+use mtgml_model::{GameObjectId, PlayerId, ZoneKind};
 
 use super::EngineStateViolation;
 use crate::core::{PriorityState, TurnPosition};
@@ -65,19 +65,33 @@ fn validate_combat(
     }
     let attacker_ids: BTreeSet<GameObjectId> = combat.attackers.iter().copied().collect();
     if attacker_ids.len() != combat.attackers.len()
-        || attacker_ids != combat.blockers.keys().copied().collect()
         || !combat.blocked_attackers.is_subset(&attacker_ids)
     {
         return Err(EngineStateViolation::CombatState);
     }
-    let mut blockers = BTreeSet::new();
-    for (attacker, blocker) in &combat.blockers {
-        if blocker.is_some() && !combat.blocked_attackers.contains(attacker) {
-            return Err(EngineStateViolation::CombatState);
-        }
-        if blocker.is_some_and(|blocker| {
-            !state.zones.objects.contains_key(&blocker) || !blockers.insert(blocker)
-        }) {
+    // CR 509.1a: the defending player chooses which creatures they control
+    // block, and for each the one attacker it blocks. CR 509.1h, 510.1c: an
+    // attacker may have several blockers, so there is no cap. A state holds
+    // only that a blocker is a permanent on the battlefield under the defending
+    // player's control; that it is a creature is a rule of the card pool.
+    for (blocker, attacker) in &combat.blockers {
+        let controlled_by_the_defender = state
+            .zones
+            .objects
+            .get(blocker)
+            .is_some_and(|object| object.controller == combat.defending_player);
+        let on_the_battlefield = state
+            .zones
+            .locations
+            .get(blocker)
+            .is_some_and(|location| location.zone == ZoneKind::Battlefield);
+        // CR 509.1h: the attacker is blocked, and stays so without a blocker.
+        // Every blocked attacker is one of `attackers` (checked above), so the
+        // blocker blocks an attacker.
+        if !controlled_by_the_defender
+            || !on_the_battlefield
+            || !combat.blocked_attackers.contains(attacker)
+        {
             return Err(EngineStateViolation::CombatState);
         }
     }

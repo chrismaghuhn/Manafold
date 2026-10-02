@@ -1,11 +1,11 @@
 //! Native turn progression for the slice of lands and vanilla creatures.
 //!
 //! Passing priority and every turn-based action run directly on V3 state:
-//! step changes, untap, draw, attackers and unblocked combat damage, cleanup
-//! and the turn change. One response is one transition (`StateRevision` +1, one
-//! `StateDelta`). V3 validates turn-position, priority, active-player and
-//! turn-number events against the transition's endpoints, so each changed
-//! aspect gets exactly one net event.
+//! step changes, untap, draw, attackers, blockers and combat damage, cleanup
+//! and the turn change. One response is one transition
+//! (`StateRevision` +1, one `StateDelta`). V3 validates turn-position,
+//! priority, active-player and turn-number events against the transition's
+//! endpoints, so each changed aspect gets exactly one net event.
 //!
 //! What a step reports, and what it does not:
 //! - A step that crosses several positions reports one
@@ -43,7 +43,7 @@ use crate::{
 
 /// Executes one V4 response. Land plays and mana abilities use the
 /// basic-land path; passing priority, casting a spell, paying for it and
-/// declaring attackers run the turn progression.
+/// declaring attackers and blockers run the turn progression.
 pub fn execute_magic_response(
     admission: &ExecutableProfileAdmissionV1,
     state: &EngineState,
@@ -131,6 +131,50 @@ pub fn execute_magic_response(
             attackers.sort();
             Answer::Attackers(attackers)
         }
+        // CR 509.1a: the defending player chose, for one creature, which
+        // attacker it blocks, or none.
+        DecisionPurposeV4::BlockerDeclaration => {
+            validate_magic_pending_request(admission, state, status)
+                .map_err(|_| Error::InvalidSelection)?;
+            let DecisionAnswerV2::SelectOne { candidate_id } = &response.answer else {
+                return Err(Error::InvalidSelection);
+            };
+            let Some(EngineCandidateBinding::DeclareBlock { blocker, attacker }) = request
+                .candidates
+                .iter()
+                .find(|candidate| candidate.candidate_id == *candidate_id)
+                .map(|candidate| &candidate.trusted_binding)
+            else {
+                return Err(Error::InvalidSelection);
+            };
+            Answer::Block {
+                blocker: *blocker,
+                attacker: *attacker,
+            }
+        }
+        // CR 404.3: an owner chose the order of their cards, top to bottom.
+        DecisionPurposeV4::SbaGraveyardOrder => {
+            validate_magic_pending_request(admission, state, status)
+                .map_err(|_| Error::InvalidSelection)?;
+            let DecisionAnswerV2::Order { candidate_ids } = &response.answer else {
+                return Err(Error::InvalidSelection);
+            };
+            let top_to_bottom = candidate_ids
+                .iter()
+                .map(|chosen| {
+                    match request
+                        .candidates
+                        .iter()
+                        .find(|candidate| candidate.candidate_id == *chosen)
+                        .map(|candidate| &candidate.trusted_binding)
+                    {
+                        Some(EngineCandidateBinding::SelectObject { object }) => Ok(*object),
+                        _ => Err(Error::InvalidSelection),
+                    }
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Answer::GraveyardOrder(top_to_bottom)
+        }
         DecisionPurposeV4::HandSizeDiscard => {
             validate_magic_pending_request(admission, state, status)
                 .map_err(|_| Error::InvalidSelection)?;
@@ -181,6 +225,7 @@ pub fn validate_magic_pending_request(
         || !permanents_controlled_by_their_owners(state)
         || (matches!(status, EpisodeStatus::Running) && state_based_action_pending(state))
         || crate::combat::validate_reachable_combat(admission, state).is_err()
+        || crate::combat::validate_marked_damage(admission, state).is_err()
     {
         return Err(BasicLandCandidateError::InvalidState);
     }
@@ -188,6 +233,8 @@ pub fn validate_magic_pending_request(
         matches!(
             request.purpose,
             DecisionPurposeV4::AttackerDeclaration
+                | DecisionPurposeV4::BlockerDeclaration
+                | DecisionPurposeV4::SbaGraveyardOrder
                 | DecisionPurposeV4::HandSizeDiscard
                 | DecisionPurposeV4::ManaPayment
         )
@@ -196,6 +243,12 @@ pub fn validate_magic_pending_request(
     };
     if request.purpose == DecisionPurposeV4::HandSizeDiscard {
         return validate_discard_request(admission, state, request, status);
+    }
+    if request.purpose == DecisionPurposeV4::BlockerDeclaration {
+        return validate_block_request(admission, state, request, status);
+    }
+    if request.purpose == DecisionPurposeV4::SbaGraveyardOrder {
+        return validate_graveyard_order_request(admission, state, request, status);
     }
     if request.purpose == DecisionPurposeV4::ManaPayment {
         return validate_payment_request(admission, state, request, status);
@@ -207,7 +260,15 @@ enum Answer {
     Pass,
     /// The creatures the active player declares as attackers, in object order.
     Attackers(Vec<GameObjectId>),
+    /// The defending player's choice for one creature: it blocks `attacker`,
+    /// or nothing.
+    Block {
+        blocker: GameObjectId,
+        attacker: Option<GameObjectId>,
+    },
     Discard(GameObjectId),
+    /// The owner's order for their cards that die together, top to bottom.
+    GraveyardOrder(Vec<GameObjectId>),
 }
 
 pub(crate) enum NextDecision {
@@ -215,6 +276,12 @@ pub(crate) enum NextDecision {
     /// The caster of the spell on the stack chooses how to pay for it.
     Payment,
     Attackers,
+    /// The defending player is asked about the next creature of a block
+    /// declaration.
+    Blockers,
+    /// The next owner is asked for the order of their cards that die together
+    /// (CR 404.3).
+    GraveyardOrder,
     Discard,
     /// The next request of the start of the game (CR 103).
     Pregame,
@@ -286,12 +353,17 @@ pub(crate) fn record_unobserved(facts: &mut Facts, event: AuthoritativeRuleEvent
 /// admitted lands and vanilla creatures on the battlefield, each controlled by
 /// its owner, a stack that is empty or holds one creature spell that the active
 /// player cast in a main phase (see `crate::casting::stack_within_profile`), no
-/// continuation but the payment of that spell, a combat that this slice could
-/// have produced (see `crate::combat::validate_reachable_combat`), and none of
-/// the state no rule of this slice can evaluate. State-based actions are checked before
-/// a player would receive priority (CR 704.3), so a decision is never pending
-/// while one applies: a player at 0 or less life who has not lost is not a
-/// state of this slice (CR 704.5a).
+/// continuation but the payment of that spell, the defending player's block
+/// declaration (see `crate::combat::validate_pending_block_declaration`) or an
+/// owner's graveyard order (see
+/// `crate::state_based_actions::validate_pending_graveyard_order`), a combat that
+/// this slice could have produced (see `crate::combat::validate_reachable_combat`),
+/// and none of the state no rule of this slice can evaluate. State-based actions
+/// are checked before a player would receive priority (CR 704.3), so a decision
+/// is never pending while one applies: a player at 0 or less life who has not
+/// lost is not a state of this slice (CR 704.5a), nor is a creature with lethal
+/// damage marked on it (CR 704.5g; see `crate::combat::validate_marked_damage`),
+/// except for the creatures that die with a pending graveyard order.
 fn validate_slice(
     admission: &ExecutableProfileAdmissionV1,
     state: &EngineState,
@@ -303,14 +375,14 @@ fn validate_slice(
         || cards.counters != Default::default()
         || cards.attachments != Default::default()
         || (!execution.continuations.is_empty()
-            && crate::casting::pending_payment(admission, state).is_err())
+            && crate::casting::pending_payment(admission, state).is_err()
+            && crate::combat::validate_pending_block_declaration(admission, state).is_err()
+            && crate::state_based_actions::validate_pending_graveyard_order(admission, state)
+                .is_err())
         || !execution.effects.is_empty()
         || !execution.waiting_triggers.is_empty()
         || !execution.delayed_effects.is_empty()
         || !crate::casting::stack_within_profile(admission, state)
-        || parts.combat.as_ref().is_some_and(|combat| {
-            !combat.blocked_attackers.is_empty() || combat.blockers.values().any(Option::is_some)
-        })
         || state_based_action_pending(state)
     {
         return Err(Error::TurnProgressUnsupported);
@@ -320,7 +392,8 @@ fn validate_slice(
     }
     crate::S1QueryAuthority::for_objects(admission, state, &battlefield_objects(state))
         .map_err(|_| Error::TurnProgressUnsupported)?;
-    crate::combat::validate_reachable_combat(admission, state)
+    crate::combat::validate_reachable_combat(admission, state)?;
+    crate::combat::validate_marked_damage(admission, state)
 }
 
 /// CR 704.5a: a player who has not lost and is at 0 or less life loses the
@@ -363,7 +436,8 @@ pub(crate) fn battlefield_objects(state: &EngineState) -> Vec<GameObjectId> {
 /// cleanup (CR 514.1) keep the non-active player at seven cards or fewer and
 /// the active player at seven before their draw and eight after it. A larger
 /// hand could only reach a cleanup with several simultaneous discards, which
-/// need the owner's graveyard order that this slice does not offer.
+/// need the owner's graveyard order, that this slice offers for deaths but not
+/// for discards.
 fn hands_within_slice(state: &EngineState) -> bool {
     let core = &state.core;
     let before_draw = matches!(
@@ -470,7 +544,27 @@ fn progress(
             };
             NextDecision::Priority(active)
         }
+        // CR 509.1a: the defending player answers for one creature. After the
+        // last one the active player receives priority (CR 509.2).
+        Answer::Block { blocker, attacker } => {
+            if crate::combat::declare_block(&mut next, &mut facts, blocker, attacker)? {
+                open_priority(&mut next)
+            } else {
+                NextDecision::Blockers
+            }
+        }
+        // CR 404.3: the owner orders their cards. After the last owner the
+        // creatures die, and the active player receives priority.
+        Answer::GraveyardOrder(top_to_bottom) => crate::state_based_actions::order_graveyard(
+            admission,
+            &mut next,
+            &mut facts,
+            request.actor,
+            top_to_bottom,
+        )?,
         // CR 514.1: the discard ends cleanup; the turn then ends (CR 514.3).
+        // `advance` removes the marked damage (CR 514.2) in this same
+        // transition, after the discard.
         Answer::Discard(object) => {
             move_card(
                 &mut next,
@@ -577,6 +671,28 @@ fn advance(
             next.combat = None;
             facts.combat_ended = true;
         }
+        if from
+            == (TurnPosition::Ending {
+                step: EndingStep::Cleanup,
+            })
+        {
+            // CR 514.2: the cleanup step ends here, whether it asked for the
+            // discard of CR 514.1 (which came first, and has been answered) or
+            // not: all damage marked on permanents is removed, simultaneously.
+            crate::combat::remove_marked_damage(next, facts);
+            // CR 514.3a: if a state-based action would be performed or a
+            // trigger waits after that, a player receives priority in the
+            // cleanup step, and another cleanup step follows. Neither can
+            // happen with lands and vanilla creatures: no damage is marked,
+            // no player is at 0 life without having lost, and nothing
+            // triggers. A state in which one does is not supported, so the
+            // turn does not go on past it, and priority is not skipped.
+            if crate::state_based_actions::any_apply(admission, next)?
+                || !next.execution.waiting_triggers.is_empty()
+            {
+                return Err(Error::TurnProgressUnsupported);
+            }
+        }
         let mut to = crate::temporal_successor(from);
         // CR 508.8: with no attackers, skip declare blockers and damage.
         if to
@@ -628,6 +744,12 @@ fn advance(
                         .get_mut(&active)
                         .ok_or(Error::InvalidResult)?
                         .has_lost = true;
+                    record_unobserved(
+                        facts,
+                        AuthoritativeRuleEventKind::StateBasedActionsApplied {
+                            actions: vec![SbaSelectedActionV1::PlayerLoses { player: active }],
+                        },
+                    );
                     return Ok(NextDecision::GameOver { loser: active });
                 }
                 draw(next, active, facts)?;
@@ -656,10 +778,10 @@ fn advance(
                 step: CombatStep::DeclareBlockers,
             } => {
                 admits(admission, "rules/declare-blockers")?;
-                // CR 509.1a: a defender with an untapped creature could block.
-                // Blocks arrive with a later rule.
-                if crate::combat::defender_could_block(admission, next)? {
-                    return Err(Error::TurnProgressUnsupported);
+                // CR 509.1a: a defender with an untapped creature declares
+                // blockers, one creature at a time.
+                if crate::combat::begin_block_declaration(admission, next)? {
+                    return Ok(NextDecision::Blockers);
                 }
                 // CR 509.2: with nothing to declare, the active player gets
                 // priority.
@@ -670,18 +792,19 @@ fn advance(
             } => {
                 admits(admission, "rules/combat-damage")?;
                 admits(admission, "rules/damage-and-life")?;
-                crate::combat::deal_unblocked_combat_damage(admission, next, facts)?;
+                crate::combat::deal_combat_damage(admission, next, facts)?;
                 // CR 704.3: state-based actions are checked before the active
-                // player gets priority (CR 510.3).
-                return Ok(
-                    match crate::combat::player_at_zero_life_loses(admission, next)? {
-                        Some(loser) => NextDecision::GameOver { loser },
-                        None => open_priority(next),
-                    },
+                // player gets priority (CR 510.3): a creature dealt lethal
+                // damage is destroyed (CR 704.5g) and a player at 0 life
+                // loses (CR 704.5a). Owners of cards that die together order
+                // them first (CR 404.3).
+                return crate::state_based_actions::perform_state_based_actions(
+                    admission, next, facts,
                 );
             }
             // CR 514.1-514.3: the active player discards to maximum hand
-            // size, then the turn ends without priority.
+            // size, then the damage is removed (see the top of the loop), and
+            // the turn ends without priority.
             TurnPosition::Ending {
                 step: EndingStep::Cleanup,
             } => {
@@ -698,7 +821,8 @@ fn advance(
                     None | Some(0) => {}
                     Some(1) => return Ok(NextDecision::Discard),
                     // Two or more simultaneous discards need the owner's
-                    // graveyard order, which this slice does not offer.
+                    // graveyard order, which this slice does not offer for
+                    // discards (it does for deaths).
                     Some(_) => return Err(Error::TurnProgressUnsupported),
                 }
             }
@@ -715,6 +839,10 @@ pub(crate) fn open_priority(next: &mut EngineState) -> NextDecision {
     NextDecision::Priority(active)
 }
 
+/// CR 502.2-502.4: the next turn begins. `advance` gets here only from the
+/// cleanup step, which has removed all damage marked on permanents (CR 514.2):
+/// a state that begins a turn with some is refused by
+/// `crate::combat::validate_marked_damage` when it is committed or restored.
 fn begin_turn(next: &mut EngineState, facts: &mut Facts) -> Result<(), Error> {
     let new_active = other_player(next)?;
     let core = &mut next.core;
@@ -992,16 +1120,24 @@ pub(crate) fn finish(
             running,
             Some(install_attacker_request(admission, &mut next)?),
         ),
+        NextDecision::Blockers => (
+            running,
+            Some(crate::combat::install_block_request(&mut next)?),
+        ),
+        NextDecision::GraveyardOrder => (
+            running,
+            Some(crate::state_based_actions::install_order_request(
+                &mut next,
+            )?),
+        ),
         NextDecision::Pregame => (
             running,
             Some(crate::game_start::install_pregame_request(&mut next)?),
         ),
         NextDecision::Discard => (running, Some(install_discard_request(&mut next)?)),
-        // CR 104.2a: in a two-player game the other player wins.
+        // CR 104.2a: in a two-player game the other player wins. The state-based
+        // action that made `loser` lose is among the events already.
         NextDecision::GameOver { loser } => {
-            pending.push(kind(AuthoritativeRuleEventKind::StateBasedActionsApplied {
-                actions: vec![SbaSelectedActionV1::PlayerLoses { player: loser }],
-            }));
             let players = next
                 .core
                 .players
@@ -1316,6 +1452,80 @@ fn validate_attacker_request(
         || !actor_only_request_matches(state, request)
     {
         return Err(BasicLandCandidateError::PendingCandidateSetMismatch);
+    }
+    Ok(())
+}
+
+/// CR 509.1a: a restored or committed block request is exactly the one the
+/// pending declaration calls for: for the defending player, who is not the
+/// active player, about the next creature, with the identities the installer
+/// allocates.
+fn validate_block_request(
+    admission: &ExecutableProfileAdmissionV1,
+    state: &EngineState,
+    request: &AuthoritativeDecisionRequest,
+    status: &EpisodeStatus,
+) -> Result<(), BasicLandCandidateError> {
+    state
+        .validate_structure()
+        .map_err(|_| BasicLandCandidateError::InvalidState)?;
+    validate_slice(admission, state).map_err(|_| BasicLandCandidateError::InvalidState)?;
+    // Only an admission with the rule that creates this request accepts it.
+    admits(admission, "rules/declare-blockers")
+        .map_err(|_| BasicLandCandidateError::PendingCandidateSetMismatch)?;
+    let mismatch = BasicLandCandidateError::PendingCandidateSetMismatch;
+    // `validate_slice` has checked the continuation against the battlefield.
+    let expected = crate::combat::block_request_shape(state).map_err(|_| mismatch)?;
+    let shape = RequestShape {
+        actor: request.actor,
+        visibility: request.visibility,
+        continuation_id: request.continuation_id,
+        purpose: request.purpose.clone(),
+        decision_domain_v2: request.decision_domain_v2.clone(),
+        candidates: request.candidates.clone(),
+    };
+    if !matches!(status, EpisodeStatus::Running)
+        || shape != expected
+        || !request_is_current(state, request)
+    {
+        return Err(mismatch);
+    }
+    Ok(())
+}
+
+/// CR 404.3: a restored or committed graveyard order request is exactly the one
+/// the pending order calls for: for the owner whose turn it is to arrange their
+/// cards, who need not be the active player, with the identities the installer
+/// allocates.
+fn validate_graveyard_order_request(
+    admission: &ExecutableProfileAdmissionV1,
+    state: &EngineState,
+    request: &AuthoritativeDecisionRequest,
+    status: &EpisodeStatus,
+) -> Result<(), BasicLandCandidateError> {
+    state
+        .validate_structure()
+        .map_err(|_| BasicLandCandidateError::InvalidState)?;
+    // `validate_slice` has checked the continuation against the state.
+    validate_slice(admission, state).map_err(|_| BasicLandCandidateError::InvalidState)?;
+    // Only an admission with the rule that creates this request accepts it.
+    admits(admission, "rules/state-based-actions-combat")
+        .map_err(|_| BasicLandCandidateError::PendingCandidateSetMismatch)?;
+    let mismatch = BasicLandCandidateError::PendingCandidateSetMismatch;
+    let expected = crate::state_based_actions::order_request_shape(state).map_err(|_| mismatch)?;
+    let shape = RequestShape {
+        actor: request.actor,
+        visibility: request.visibility,
+        continuation_id: request.continuation_id,
+        purpose: request.purpose.clone(),
+        decision_domain_v2: request.decision_domain_v2.clone(),
+        candidates: request.candidates.clone(),
+    };
+    if !matches!(status, EpisodeStatus::Running)
+        || shape != expected
+        || !request_is_current(state, request)
+    {
+        return Err(mismatch);
     }
     Ok(())
 }
@@ -2018,7 +2228,7 @@ mod tests {
         // missing. Every step up to the beginning of combat still runs.
         let (admission, state) = game_with_creature(3, P1);
         let state = pass_until(&admission, state, at(BEGIN_COMBAT, 1));
-        assert_eq!(zone_count(&state, P1, ZoneKind::Battlefield), 2);
+        assert_eq!(battlefield_creatures(&state).len(), 1);
     }
 
     /// The battlefield creatures of the fixtures (Savannah Lions), in object order.
@@ -2202,10 +2412,7 @@ mod tests {
         let combat = after.combat.as_ref().unwrap();
         assert_eq!(combat.defending_player, P2);
         assert_eq!(combat.attackers, vec![creature]);
-        assert_eq!(
-            combat.blockers,
-            std::collections::BTreeMap::from([(creature, None)])
-        );
+        assert!(combat.blockers.is_empty());
         assert!(combat.blocked_attackers.is_empty() && !combat.damage_step_completed);
         // CR 508.2: the active player receives priority.
         assert_eq!(pending(&after).actor, P1);
@@ -2350,9 +2557,6 @@ mod tests {
                     Some("life")
                 }
                 AuthoritativeRuleEventKind::CombatDamageStepCompleted => Some("completed"),
-                AuthoritativeRuleEventKind::DamageApplied { .. } => {
-                    panic!("combat damage is CombatDamageDealt and LifeChanged")
-                }
                 _ => None,
             })
             .collect();
@@ -2428,27 +2632,259 @@ mod tests {
         );
     }
 
-    #[test]
-    fn a_defender_with_an_untapped_creature_fails_closed() {
-        // CR 509.1: P2 could block with its creature. Blocks arrive with a
-        // later rule; until then the step is unsupported.
-        let (admission, state) = game_with_creatures(3, &[P1, P2]);
-        let state = after_declaring_an_attacker(&admission, state);
-        let state = pass(&admission, &state).0;
-        assert_eq!(pending(&state).actor, P2);
-        assert_eq!(
-            submit(&admission, &state, pass_answer(pending(&state))),
-            Err(crate::BasicLandTransitionError::TurnProgressUnsupported)
-        );
-        // A tapped creature cannot block (CR 509.1a).
-        let mut tapped = state.clone();
-        let creatures = battlefield_creatures(&tapped);
-        let defender = *creatures
+    /// The answer in `request` in which its creature blocks `attacker`, or
+    /// nothing.
+    fn block_answer(
+        request: &AuthoritativeDecisionRequest,
+        attacker: Option<GameObjectId>,
+    ) -> DecisionAnswerV2 {
+        DecisionAnswerV2::SelectOne {
+            candidate_id: candidate(request, |binding| {
+                matches!(binding,
+                    EngineCandidateBinding::DeclareBlock { attacker: bound, .. }
+                        if *bound == attacker)
+            })
+            .unwrap(),
+        }
+    }
+
+    /// The block declaration in progress: the defender, the creatures still to
+    /// ask, and the answers so far.
+    fn block_declaration(
+        state: &EngineState,
+    ) -> (
+        PlayerId,
+        Vec<GameObjectId>,
+        std::collections::BTreeMap<GameObjectId, Option<GameObjectId>>,
+    ) {
+        let [record] = state
+            .execution
+            .continuations
+            .values()
+            .collect::<Vec<_>>()
+            .try_into()
+            .expect("one continuation");
+        match &record.payload {
+            mtgml_state::ContinuationPayload::BlockDeclaration {
+                defender,
+                pending_blockers,
+                declared,
+            } => (*defender, pending_blockers.clone(), declared.clone()),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// The block declarations the product's events make.
+    fn declarations(
+        product: &crate::BasicLandTransitionProduct,
+    ) -> Vec<Vec<mtgml_state::CombatBlockerAssignmentV1>> {
+        product
+            .events
             .iter()
-            .find(|creature| tapped.zones.objects[creature].controller == P2)
+            .filter_map(|event| match &event.event {
+                AuthoritativeRuleEventKind::BlockersDeclared { assignments } => {
+                    Some(assignments.clone())
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// `declared` with P2 holding priority in the declare attackers step:
+    /// P1's pass has been made.
+    fn defender_to_pass(
+        admission: &ExecutableProfileAdmissionV1,
+        declared: &EngineState,
+    ) -> EngineState {
+        let state = pass(admission, declared).0;
+        assert_eq!(pending(&state).actor, P2);
+        state
+    }
+
+    #[test]
+    fn a_defender_with_an_untapped_creature_is_asked_to_block() {
+        // CR 509.1a: P2 may block with its creature, so the declare blockers
+        // step begins with P2's declaration, which nobody has priority for.
+        let (admission, state) = game_with_creatures(3, &[P1, P2]);
+        let attacking = after_declaring_an_attacker(&admission, state);
+        let attacker = attacking.combat.as_ref().unwrap().attackers[0];
+        let blocker = *battlefield_creatures(&attacking)
+            .iter()
+            .find(|creature| attacking.zones.objects[creature].controller == P2)
             .unwrap();
-        tapped.zones.objects.get_mut(&defender).unwrap().tapped = true;
-        assert!(submit(&admission, &tapped, pass_answer(pending(&tapped))).is_ok());
+        let at_priority = defender_to_pass(&admission, &attacking);
+        let product = submit(&admission, &at_priority, pass_answer(pending(&at_priority))).unwrap();
+        assert_eq!(declarations(&product), Vec::<Vec<_>>::new());
+        let asked = apply(&at_priority, &product);
+
+        let request = pending(&asked);
+        assert_eq!(request.actor, P2);
+        assert_eq!(request.purpose, DecisionPurposeV4::BlockerDeclaration);
+        assert_eq!(request.decision_domain_v2, DecisionDomainV2::ChooseOne);
+        assert_eq!(request.visibility, DecisionVisibility::ActingPlayerOnly);
+        assert_eq!(asked.core.priority, PriorityState::None);
+        assert_eq!(
+            block_declaration(&asked),
+            (P2, vec![blocker], std::collections::BTreeMap::new())
+        );
+        assert_eq!(
+            request.continuation_id,
+            asked.execution.continuations.keys().next().copied()
+        );
+        // The creature does not block, or blocks the attacker.
+        let bindings: Vec<_> = request
+            .candidates
+            .iter()
+            .map(|candidate| candidate.trusted_binding.clone())
+            .collect();
+        assert_eq!(
+            bindings,
+            vec![
+                EngineCandidateBinding::DeclareBlock {
+                    blocker,
+                    attacker: None
+                },
+                EngineCandidateBinding::DeclareBlock {
+                    blocker,
+                    attacker: Some(attacker)
+                },
+            ]
+        );
+        validate_magic_pending_request(&admission, &asked, &EpisodeStatus::Running).unwrap();
+
+        // No block: one declaration with nothing in it. P1 has priority.
+        let product = submit(&admission, &asked, block_answer(request, None)).unwrap();
+        assert_eq!(declarations(&product), vec![Vec::new()]);
+        let unblocked = apply(&asked, &product);
+        assert!(unblocked.execution.continuations.is_empty());
+        let combat = unblocked.combat.as_ref().unwrap();
+        assert!(combat.blockers.is_empty() && combat.blocked_attackers.is_empty());
+        assert_eq!(
+            unblocked.core.priority,
+            PriorityState::HeldBy {
+                player: P1,
+                consecutive_passes: 0
+            }
+        );
+        assert_eq!(pending(&unblocked).actor, P1);
+        assert_eq!(
+            pending(&unblocked).purpose,
+            DecisionPurposeV4::PriorityAction
+        );
+        validate_magic_pending_request(&admission, &unblocked, &EpisodeStatus::Running).unwrap();
+
+        // A block: the attacker is blocked (CR 509.1g, 509.1h).
+        let product = submit(&admission, &asked, block_answer(request, Some(attacker))).unwrap();
+        assert_eq!(
+            declarations(&product),
+            vec![vec![mtgml_state::CombatBlockerAssignmentV1 {
+                blocker,
+                attacker
+            }]]
+        );
+        let blocked = apply(&asked, &product);
+        let combat = blocked.combat.as_ref().unwrap();
+        assert_eq!(
+            combat.blockers,
+            std::collections::BTreeMap::from([(blocker, attacker)])
+        );
+        assert_eq!(
+            combat.blocked_attackers,
+            std::collections::BTreeSet::from([attacker])
+        );
+        validate_magic_pending_request(&admission, &blocked, &EpisodeStatus::Running).unwrap();
+
+        // CR 509.1a: a tapped creature cannot block, so nothing is asked.
+        let mut tapped = at_priority.clone();
+        tapped.zones.objects.get_mut(&blocker).unwrap().tapped = true;
+        let product = submit(&admission, &tapped, pass_answer(pending(&tapped))).unwrap();
+        assert_eq!(declarations(&product), Vec::<Vec<_>>::new());
+        let next = apply(&tapped, &product);
+        assert!(next.execution.continuations.is_empty());
+        assert_eq!(pending(&next).actor, P1);
+        assert_eq!(pending(&next).purpose, DecisionPurposeV4::PriorityAction);
+    }
+
+    #[test]
+    fn creatures_are_asked_in_the_order_of_the_defenders_opaque_ids() {
+        // Requests and candidates follow the actor's opaque ids, never the
+        // engine's object ids (INFORMATION_MODEL, Noninterference).
+        let (admission, state) = game_with_creatures(3, &[P1, P2, P2]);
+        let attacking = after_declaring_an_attacker(&admission, state);
+        let [first, second]: [GameObjectId; 2] = battlefield_creatures(&attacking)
+            .into_iter()
+            .filter(|creature| attacking.zones.objects[creature].controller == P2)
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
+        assert!(first < second);
+        let at_priority = defender_to_pass(&admission, &attacking);
+        let ask = |state: &EngineState| {
+            apply(
+                state,
+                &submit(&admission, state, pass_answer(pending(state))).unwrap(),
+            )
+        };
+
+        // The fixture's opaque ids rise with the object ids.
+        let asked = ask(&at_priority);
+        assert_eq!(
+            block_declaration(&asked),
+            (P2, vec![first, second], std::collections::BTreeMap::new())
+        );
+
+        // With P2's opaque ids of the two creatures swapped, the second object
+        // is asked about first, and the request shows its opaque id.
+        let mut swapped = at_priority.clone();
+        let identity = swapped.perspective_identities.players.get_mut(&P2).unwrap();
+        let (low, high) = (
+            identity.object_to_opaque[&first],
+            identity.object_to_opaque[&second],
+        );
+        assert!(low < high);
+        identity.object_to_opaque.insert(first, high);
+        identity.object_to_opaque.insert(second, low);
+        identity.opaque_to_object.insert(low, second);
+        identity.opaque_to_object.insert(high, first);
+        // P2 knows each opaque id as the card it is.
+        let knowledge = &mut swapped.knowledge.players.get_mut(&P2).unwrap().active;
+        let (low_card, high_card) = (
+            knowledge[&low].physical_card,
+            knowledge[&high].physical_card,
+        );
+        knowledge.get_mut(&low).unwrap().physical_card = high_card;
+        knowledge.get_mut(&high).unwrap().physical_card = low_card;
+        let asked = ask(&swapped);
+        assert_eq!(
+            block_declaration(&asked),
+            (P2, vec![second, first], std::collections::BTreeMap::new())
+        );
+        assert!(pending(&asked).candidates.iter().all(|candidate| matches!(
+            candidate.visible_intent,
+            CandidateIntent::DeclareBlock { blocker, .. } if blocker == low
+        )));
+        validate_magic_pending_request(&admission, &asked, &EpisodeStatus::Running).unwrap();
+
+        // The first answer leaves the other creature to ask.
+        let attacker = asked.combat.as_ref().unwrap().attackers[0];
+        let product = submit(
+            &admission,
+            &asked,
+            block_answer(pending(&asked), Some(attacker)),
+        )
+        .unwrap();
+        assert_eq!(declarations(&product), Vec::<Vec<_>>::new());
+        let half = apply(&asked, &product);
+        assert_eq!(
+            block_declaration(&half),
+            (
+                P2,
+                vec![first],
+                std::collections::BTreeMap::from([(second, Some(attacker))])
+            )
+        );
+        assert!(half.combat.as_ref().unwrap().blockers.is_empty());
+        validate_magic_pending_request(&admission, &half, &EpisodeStatus::Running).unwrap();
     }
 
     /// `state` with its combat moved to `step`, as a restored checkpoint could
@@ -2456,8 +2892,8 @@ mod tests {
     fn in_combat_step(state: &EngineState, step: CombatStep) -> EngineState {
         let mut moved = state.clone();
         moved.core.position = TurnPosition::Combat { step };
-        if step == CombatStep::EndOfCombat {
-            // An attack that reached the end of combat has dealt its damage.
+        if matches!(step, CombatStep::CombatDamage | CombatStep::EndOfCombat) {
+            // An attack that reached the damage step has dealt its damage.
             moved.combat.as_mut().unwrap().damage_step_completed = true;
         }
         moved
@@ -2472,40 +2908,142 @@ mod tests {
     }
 
     #[test]
-    fn a_restored_combat_with_a_possible_blocker_is_refused() {
-        // CR 509.1a: P2 controls an untapped creature, so it could block, and
-        // blocks arrive with a later rule. The state is a reachable one while
-        // the attack is declared (the pass out of the step fails closed), but
-        // no state from the declare blockers step on is.
-        let (admission, state) = game_with_creatures(3, &[P1, P2]);
+    fn a_restored_state_after_blocks_were_declared_may_hold_an_unblocking_creature() {
+        // CR 509.1a: blocking is a choice. Once the declaration is over, in the
+        // declare blockers step or after it, P2's untapped creature that did
+        // not block is legal.
+        let (admission, state) = game_with_creatures(3, &[P1, P2, P2]);
         let declared = after_declaring_an_attacker(&admission, state);
         validate_magic_pending_request(&admission, &declared, &EpisodeStatus::Running).unwrap();
+        let defenders: Vec<_> = battlefield_creatures(&declared)
+            .into_iter()
+            .filter(|creature| declared.zones.objects[creature].controller == P2)
+            .collect();
+        assert!(defenders
+            .iter()
+            .all(|defender| !declared.zones.objects[defender].tapped));
+        let running = EpisodeStatus::Running;
+
+        // Neither creature blocked.
         for step in [
             CombatStep::DeclareBlockers,
             CombatStep::CombatDamage,
             CombatStep::EndOfCombat,
         ] {
             let restored = in_combat_step(&declared, step);
-            assert!(is_refused(&admission, &restored), "{step:?}");
+            validate_magic_pending_request(&admission, &restored, &running)
+                .unwrap_or_else(|error| panic!("{step:?}: {error:?}"));
         }
 
-        // The same combat against a defender whose creature is tapped could
-        // not be blocked, and validates in each of those steps.
-        let defender = *battlefield_creatures(&declared)
+        // One creature blocked and the other did not.
+        let blocked = with_the_attacker_blocked(&declared, CombatStep::DeclareBlockers);
+        assert_eq!(blocked.combat.as_ref().unwrap().blockers.len(), 1);
+        validate_magic_pending_request(&admission, &blocked, &running).unwrap();
+        // Damage dealt with a block is damage the game can have dealt.
+        for step in [CombatStep::CombatDamage, CombatStep::EndOfCombat] {
+            let restored = with_the_attacker_blocked(&declared, step);
+            validate_magic_pending_request(&admission, &restored, &running)
+                .unwrap_or_else(|error| panic!("{step:?}: {error:?}"));
+        }
+    }
+
+    #[test]
+    fn a_restored_damage_step_has_dealt_its_damage() {
+        // CR 510.1, 510.3: the combat damage turn-based action happens on
+        // entering the step, before any player has priority. The game never
+        // rests in the step with attackers and the damage undealt.
+        let (admission, state) = game_with_creature(3, P1);
+        let declared = after_declaring_an_attacker(&admission, state);
+        let dealt = in_combat_step(&declared, CombatStep::CombatDamage);
+        assert!(dealt.combat.as_ref().unwrap().damage_step_completed);
+        validate_magic_pending_request(&admission, &dealt, &EpisodeStatus::Running).unwrap();
+
+        let mut undealt = dealt.clone();
+        undealt.combat.as_mut().unwrap().damage_step_completed = false;
+        assert!(is_refused(&admission, &undealt));
+    }
+
+    /// `declared` with P2's creature blocking P1's attacker, in `step`.
+    fn with_the_attacker_blocked(declared: &EngineState, step: CombatStep) -> EngineState {
+        let mut blocked = in_combat_step(declared, step);
+        let blocker = *battlefield_creatures(declared)
             .iter()
             .find(|creature| declared.zones.objects[creature].controller == P2)
             .unwrap();
+        let combat = blocked.combat.as_mut().unwrap();
+        let attacker = combat.attackers[0];
+        combat.blockers.insert(blocker, attacker);
+        combat.blocked_attackers.insert(attacker);
+        blocked
+    }
+
+    #[test]
+    fn a_restored_combat_has_no_blocks_before_the_declare_blockers_step() {
+        // CR 509.1: blockers are declared in the declare blockers step, which
+        // comes after the attackers are declared (CR 508.2): there is no
+        // block, and no blocked attacker, while priority is in the declare
+        // attackers step.
+        let (admission, state) = game_with_creatures(3, &[P1, P2]);
+        let declared = after_declaring_an_attacker(&admission, state);
+        let blocked = with_the_attacker_blocked(&declared, CombatStep::DeclareAttackers);
+        // The state itself is well formed; only its timing is not.
+        mtgml_state::validate_engine_state(&blocked).unwrap();
+        assert_eq!(
+            crate::combat::validate_reachable_combat(&admission, &blocked),
+            Err(crate::BasicLandTransitionError::TurnProgressUnsupported)
+        );
+        // An attacker that is blocked without a blocker is as unreachable
+        // (CR 509.1h: it becomes blocked in the declaration).
+        let mut history = declared.clone();
+        let combat = history.combat.as_mut().unwrap();
+        combat.blocked_attackers.insert(combat.attackers[0]);
+        mtgml_state::validate_engine_state(&history).unwrap();
+        assert_eq!(
+            crate::combat::validate_reachable_combat(&admission, &history),
+            Err(crate::BasicLandTransitionError::TurnProgressUnsupported)
+        );
+        assert_eq!(
+            crate::combat::validate_reachable_combat(&admission, &declared),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn a_restored_blocker_is_a_creature_the_defending_player_controls() {
+        // CR 509.1a: only creatures block. P2's creature is tapped here, so
+        // it is no possible blocker (CR 509.1a) and the step is reachable
+        // without any block.
+        let (admission, state) = game_with_creatures(3, &[P1, P2]);
+        let declared = after_declaring_an_attacker(&admission, state);
+        let creature = *battlefield_creatures(&declared)
+            .iter()
+            .find(|creature| declared.zones.objects[creature].controller == P2)
+            .unwrap();
+        // A land under P2's control (the fixture's lands are P1's).
+        let land = declared
+            .zones
+            .objects
+            .values()
+            .find(|object| {
+                declared.zones.locations[&object.id].zone == ZoneKind::Battlefield
+                    && object.id != creature
+                    && battlefield_creatures(&declared)
+                        .iter()
+                        .all(|creature| *creature != object.id)
+            })
+            .unwrap()
+            .id;
         let mut tapped = declared.clone();
-        tapped.zones.objects.get_mut(&defender).unwrap().tapped = true;
-        for step in [
-            CombatStep::DeclareBlockers,
-            CombatStep::CombatDamage,
-            CombatStep::EndOfCombat,
-        ] {
-            let restored = in_combat_step(&tapped, step);
-            validate_magic_pending_request(&admission, &restored, &EpisodeStatus::Running)
-                .unwrap_or_else(|error| panic!("{step:?}: {error:?}"));
-        }
+        tapped.zones.objects.get_mut(&creature).unwrap().tapped = true;
+        tapped.zones.objects.get_mut(&land).unwrap().controller = P2;
+        let mut land_blocks = with_the_attacker_blocked(&tapped, CombatStep::DeclareBlockers);
+        let combat = land_blocks.combat.as_mut().unwrap();
+        combat.blockers = std::collections::BTreeMap::from([(land, combat.attackers[0])]);
+        mtgml_state::validate_engine_state(&land_blocks).unwrap();
+        assert_eq!(
+            crate::combat::validate_reachable_combat(&admission, &land_blocks),
+            Err(crate::BasicLandTransitionError::TurnProgressUnsupported)
+        );
     }
 
     #[test]
@@ -2569,7 +3107,6 @@ mod tests {
         let mut not_a_creature = declared.clone();
         let combat = not_a_creature.combat.as_mut().unwrap();
         combat.attackers = vec![land];
-        combat.blockers = std::collections::BTreeMap::from([(land, None)]);
         // An attacker that is not on the battlefield.
         let in_the_library = *declared
             .zones
@@ -2581,7 +3118,6 @@ mod tests {
         let mut not_on_the_battlefield = declared.clone();
         let combat = not_on_the_battlefield.combat.as_mut().unwrap();
         combat.attackers = vec![in_the_library];
-        combat.blockers = std::collections::BTreeMap::from([(in_the_library, None)]);
 
         for (name, forged) in [
             ("controlled by the other player", other_players),
@@ -2914,7 +3450,8 @@ mod tests {
     #[test]
     fn hands_the_slice_cannot_reach_are_rejected_before_play() {
         // Discarding two or more cards at once needs the owner's graveyard
-        // order, which this slice does not offer. One draw per turn and the
+        // order, which this slice does not offer for discards (it does for
+        // deaths). One draw per turn and the
         // discard to seven keep every reachable cleanup at one discard, so
         // larger hands are rejected before any step instead of mid-game.
         let admission = crate::basic_land::basic_land_admission_fixture();
@@ -3016,5 +3553,1827 @@ mod tests {
 
         assert_eq!(zone_count(&after, P1, ZoneKind::Graveyard), 2);
         assert_eq!(after.core.turn_number, 4);
+    }
+
+    // Combat damage with blocks (CR 510.1, 510.2) and the state-based actions
+    // that follow it (CR 704.3). The vanilla creatures are Savannah Lions
+    // (2/1), Gray Ogre (2/2) and Hill Giant (3/3), so every fight between two
+    // of them is lethal for at least one of the two: the creature dealt
+    // lethal damage is destroyed in the same transition (CR 704.5g), and its
+    // marks are in the events of the step, not in the state after it. Every
+    // fight below is the whole step, as `pass` runs it.
+    use crate::basic_land::{GRAY_OGRE, HILL_GIANT, SAVANNAH_LIONS};
+
+    /// As `game_with_creatures`, with each creature made from the definition
+    /// given with its controller. Returns the creatures in the order given.
+    fn game_with_creature_cards(
+        cards: &[(PlayerId, mtgml_model::CardDefinitionId)],
+    ) -> (ExecutableProfileAdmissionV1, EngineState, Vec<GameObjectId>) {
+        game_with_creature_cards_and_hand(cards, 0)
+    }
+
+    /// As `game_with_creature_cards`, with `p1_extra` more cards in P1's hand.
+    fn game_with_creature_cards_and_hand(
+        cards: &[(PlayerId, mtgml_model::CardDefinitionId)],
+        p1_extra: u64,
+    ) -> (ExecutableProfileAdmissionV1, EngineState, Vec<GameObjectId>) {
+        let admission = crate::basic_land::vanilla_creature_admission_fixture();
+        let mut state = crate::basic_land::s1_b_state_with_two_lands_fixture();
+        make_synthetic_library_card_ordinary(&mut state);
+        add_library_cards(&mut state, P1, 3);
+        add_library_cards(&mut state, P2, 3);
+        add_hand_cards(&mut state, P1, p1_extra);
+        let creatures = cards
+            .iter()
+            .map(|(controller, definition)| {
+                crate::basic_land::put_creature_card_on_battlefield(
+                    &mut state,
+                    *controller,
+                    *definition,
+                )
+            })
+            .collect();
+        crate::install_basic_land_request(&admission, &mut state, P1, &EpisodeStatus::Running)
+            .unwrap();
+        (admission, state, creatures)
+    }
+
+    /// P1 attacks with the creatures `attackers` on turn 3, and P2 blocks
+    /// with its creatures as `blocks` says (each pair is a blocker of P2 and
+    /// the attacker it blocks; any other creature of P2 does not block). The
+    /// result is P2 holding priority in the declare blockers step, before the
+    /// pass that opens the combat damage step.
+    fn blocks_declared(
+        admission: &ExecutableProfileAdmissionV1,
+        state: EngineState,
+        attackers: &[GameObjectId],
+        blocks: &[(GameObjectId, GameObjectId)],
+    ) -> EngineState {
+        let state = pass_until(admission, state, at_attackers(3));
+        let candidate_ids: Vec<_> = pending(&state)
+            .candidates
+            .iter()
+            .filter(|candidate| match candidate.trusted_binding {
+                EngineCandidateBinding::SelectObject { object } => attackers.contains(&object),
+                _ => false,
+            })
+            .map(|candidate| candidate.candidate_id)
+            .collect();
+        assert_eq!(candidate_ids.len(), attackers.len());
+        let product = submit(
+            admission,
+            &state,
+            DecisionAnswerV2::SelectMany { candidate_ids },
+        )
+        .unwrap();
+        let mut state = apply(&state, &product);
+        // P1 and P2 pass in the declare attackers step; P2 declares blocks.
+        state = pass(admission, &state).0;
+        state = pass(admission, &state).0;
+        while pending(&state).purpose == DecisionPurposeV4::BlockerDeclaration {
+            let asked = block_declaration(&state).1[0];
+            let attacker = blocks
+                .iter()
+                .find(|(blocker, _)| *blocker == asked)
+                .map(|(_, attacker)| *attacker);
+            let product =
+                submit(admission, &state, block_answer(pending(&state), attacker)).unwrap();
+            state = apply(&state, &product);
+        }
+        // P1 passes: P2 holds priority.
+        let state = pass(admission, &state).0;
+        assert_eq!(pending(&state).actor, P2);
+        assert_eq!(
+            state.core.position,
+            TurnPosition::Combat {
+                step: CombatStep::DeclareBlockers
+            }
+        );
+        state
+    }
+
+    /// The marked damage of `object` in `state`.
+    fn marked(state: &EngineState, object: GameObjectId) -> u64 {
+        state.card_rules.permanents.permanents[&object].marked_damage
+    }
+
+    /// What the events of a damage step say, in order: the damage dealt, the
+    /// life lost, the damage marked and the completion of the step.
+    fn damage_events(product: &crate::BasicLandTransitionProduct) -> Vec<String> {
+        product
+            .events
+            .iter()
+            .filter_map(|event| match &event.event {
+                AuthoritativeRuleEventKind::CombatDamageDealt { assignments } => Some(format!(
+                    "damage {}",
+                    assignments
+                        .iter()
+                        .map(|assignment| match assignment.recipient {
+                            mtgml_state::DamageRecipientV1::Player { player } => format!(
+                                "{}>P{}:{}",
+                                assignment.source.0, player.0, assignment.amount
+                            ),
+                            mtgml_state::DamageRecipientV1::Creature { object } => format!(
+                                "{}>{}:{}",
+                                assignment.source.0, object.0, assignment.amount
+                            ),
+                        })
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                )),
+                AuthoritativeRuleEventKind::LifeChanged { player, from, to } => {
+                    Some(format!("life P{} {from} {to}", player.0))
+                }
+                AuthoritativeRuleEventKind::MarkedDamageChanged { creature, from, to } => {
+                    Some(format!("marked {} {from} {to}", creature.0))
+                }
+                AuthoritativeRuleEventKind::CombatDamageStepCompleted => {
+                    Some("completed".to_owned())
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The events of the product that a player observes: each one that an
+    /// observation occurrence follows.
+    fn observed_events(
+        product: &crate::BasicLandTransitionProduct,
+    ) -> Vec<&AuthoritativeRuleEventKind> {
+        let sources: Vec<_> = product
+            .events
+            .iter()
+            .filter_map(|event| match &event.event {
+                AuthoritativeRuleEventKind::PerspectiveObservationOccurrence {
+                    source_event_id,
+                    ..
+                } => Some(*source_event_id),
+                _ => None,
+            })
+            .collect();
+        product
+            .events
+            .iter()
+            .filter(|event| sources.contains(&event.event_id))
+            .map(|event| &event.event)
+            .collect()
+    }
+
+    /// The zone moves the product's events make, in order: the object that
+    /// moved, the object it became, and the zones it moved between.
+    fn moves(
+        product: &crate::BasicLandTransitionProduct,
+    ) -> Vec<(GameObjectId, GameObjectId, ZoneKind, ZoneKind)> {
+        product
+            .events
+            .iter()
+            .filter_map(|event| match &event.event {
+                AuthoritativeRuleEventKind::ZoneTransition { transition } => Some((
+                    transition.old_object,
+                    transition.new_object,
+                    transition.from.zone,
+                    transition.to.zone,
+                )),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The state-based actions the product's events say were performed: one
+    /// entry for each time they were performed (CR 704.3).
+    fn state_based_actions(
+        product: &crate::BasicLandTransitionProduct,
+    ) -> Vec<Vec<mtgml_state::SbaSelectedActionV1>> {
+        product
+            .events
+            .iter()
+            .filter_map(|event| match &event.event {
+                AuthoritativeRuleEventKind::StateBasedActionsApplied { actions } => {
+                    Some(actions.clone())
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The action that destroys `object`, which was dealt lethal damage.
+    fn destroyed(object: GameObjectId) -> mtgml_state::SbaSelectedActionV1 {
+        mtgml_state::SbaSelectedActionV1::ObjectToOwnerGraveyard {
+            object,
+            causes: vec![mtgml_state::SbaObjectCauseV1::LethalDamage],
+        }
+    }
+
+    /// The objects in `owner`'s graveyard, top first.
+    fn graveyard_of(state: &EngineState, owner: PlayerId) -> Vec<GameObjectId> {
+        let key = ZoneLocation {
+            zone: ZoneKind::Graveyard,
+            player: Some(owner),
+            position: ZonePosition::Top { offset: 0 },
+            visibility: VisibilityPartition::Public,
+            partition: None,
+        }
+        .key();
+        state
+            .zones
+            .ordered_zones
+            .get(&key)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn the_vanilla_creatures_have_the_powers_and_toughnesses_the_fights_assume() {
+        let (admission, state, creatures) =
+            game_with_creature_cards(&[(P1, SAVANNAH_LIONS), (P1, GRAY_OGRE), (P1, HILL_GIANT)]);
+        let queries = crate::S1QueryAuthority::for_objects(&admission, &state, &creatures).unwrap();
+        let stats: Vec<_> = queries
+            .iter()
+            .map(|query| query.derive_base_characteristics().base_power_toughness)
+            .collect();
+        assert_eq!(stats, [Some((2, 1)), Some((2, 2)), Some((3, 3))]);
+    }
+
+    #[test]
+    fn a_blocked_attacker_and_its_blocker_damage_each_other() {
+        // CR 510.1c, 510.1d, 510.2: Gray Ogre (2/2) is blocked by Savannah
+        // Lions (2/1). Each deals its power to the other at once, and the
+        // damage is marked (CR 120.3e). It is lethal to both (CR 704.5g), so
+        // both are destroyed in the same transition, and the defending player
+        // is not damaged.
+        let (admission, state, creatures) =
+            game_with_creature_cards(&[(P1, GRAY_OGRE), (P2, SAVANNAH_LIONS)]);
+        let [ogre, lions] = creatures[..] else {
+            panic!("two creatures")
+        };
+        let before = blocks_declared(&admission, state, &[ogre], &[(lions, ogre)]);
+        let life = (before.core.players[&P1].life, before.core.players[&P2].life);
+
+        let (after, product) = pass(&admission, &before);
+        assert_eq!(
+            (after.core.players[&P1].life, after.core.players[&P2].life),
+            life
+        );
+        assert!(after.combat.as_ref().unwrap().damage_step_completed);
+        // No player lost life, so no life loss is recorded.
+        assert!(!after.card_rules.turn_history.players[&P2].lost_life_this_turn);
+        assert_eq!(
+            damage_events(&product),
+            [
+                format!("damage {}>{}:2 {}>{}:2", ogre.0, lions.0, lions.0, ogre.0),
+                format!("marked {} 0 2", ogre.0),
+                format!("marked {} 0 2", lions.0),
+                "completed".to_owned(),
+            ]
+        );
+        // Both were dealt lethal damage: one state-based action performed
+        // both destructions at once (CR 704.3), each to the graveyard of its
+        // owner as a new object (CR 400.7).
+        assert_eq!(
+            state_based_actions(&product),
+            [vec![destroyed(ogre), destroyed(lions)]]
+        );
+        let moves = moves(&product);
+        assert_eq!(
+            moves
+                .iter()
+                .map(|(old, _, from, to)| (*old, *from, *to))
+                .collect::<Vec<_>>(),
+            [
+                (ogre, ZoneKind::Battlefield, ZoneKind::Graveyard),
+                (lions, ZoneKind::Battlefield, ZoneKind::Graveyard)
+            ]
+        );
+        assert_eq!(graveyard_of(&after, P1), [moves[0].1]);
+        assert_eq!(graveyard_of(&after, P2), [moves[1].1]);
+        for dead in [ogre, lions] {
+            assert!(!after.zones.objects.contains_key(&dead));
+        }
+        // Nothing is left of them in combat, and the marks went with them.
+        let combat = after.combat.as_ref().unwrap();
+        assert!(combat.attackers.is_empty() && combat.blockers.is_empty());
+        assert!(combat.blocked_attackers.is_empty());
+        assert!(!crate::combat::damage_is_marked(&after));
+        // Each owner has a permanent card in its graveyard this turn.
+        for owner in [P1, P2] {
+            assert!(after.card_rules.turn_history.players[&owner].permanent_card_to_graveyard);
+        }
+        // The deaths are public, in the order they were performed, and nothing
+        // else of the step is: the damage and the marks are shown to no player
+        // yet.
+        assert_eq!(
+            observed_events(&product)
+                .iter()
+                .map(|event| match event {
+                    AuthoritativeRuleEventKind::ZoneTransition { transition } => {
+                        (transition.old_object, transition.to.zone)
+                    }
+                    other => panic!("{other:?}"),
+                })
+                .collect::<Vec<_>>(),
+            [(ogre, ZoneKind::Graveyard), (lions, ZoneKind::Graveyard)]
+        );
+    }
+
+    #[test]
+    fn an_unblocked_attacker_still_hits_the_player_while_another_is_blocked() {
+        // Hill Giant (3/3) is blocked by Savannah Lions; P1's other Savannah
+        // Lions is not, and deals its 2 damage to P2 (CR 510.1b). The Giant
+        // survives its blocker's 2 damage (CR 704.5g needs 3) and kills the
+        // blocker.
+        let (admission, state, creatures) = game_with_creature_cards(&[
+            (P1, HILL_GIANT),
+            (P1, SAVANNAH_LIONS),
+            (P2, SAVANNAH_LIONS),
+        ]);
+        let [giant, free, blocker] = creatures[..] else {
+            panic!("three creatures")
+        };
+        let before = blocks_declared(&admission, state, &[giant, free], &[(blocker, giant)]);
+        let p2_life = before.core.players[&P2].life;
+
+        let (after, product) = pass(&admission, &before);
+        assert_eq!(after.core.players[&P2].life, p2_life - 2);
+        assert_eq!(after.core.players[&P1].life, before.core.players[&P1].life);
+        assert!(after.card_rules.turn_history.players[&P2].lost_life_this_turn);
+        assert_eq!((marked(&after, giant), marked(&after, free)), (2, 0));
+        assert!(!after.zones.objects.contains_key(&blocker));
+        assert_eq!(
+            damage_events(&product),
+            [
+                format!(
+                    "damage {}>{}:3 {}>P2:2 {}>{}:2",
+                    giant.0, blocker.0, free.0, blocker.0, giant.0
+                ),
+                format!("life P2 {p2_life} {}", p2_life - 2),
+                format!("marked {} 0 2", giant.0),
+                format!("marked {} 0 3", blocker.0),
+                "completed".to_owned(),
+            ]
+        );
+        assert_eq!(state_based_actions(&product), [vec![destroyed(blocker)]]);
+        // The life lost and the death are public; the marked damage is not
+        // shown yet.
+        let observed = observed_events(&product);
+        assert_eq!(observed.len(), 2);
+        assert_eq!(
+            observed[0],
+            &AuthoritativeRuleEventKind::LifeChanged {
+                player: P2,
+                from: p2_life,
+                to: p2_life - 2
+            }
+        );
+        assert!(matches!(observed[1],
+            AuthoritativeRuleEventKind::ZoneTransition { transition }
+                if transition.old_object == blocker));
+    }
+
+    #[test]
+    fn an_attacker_whose_blocker_is_gone_deals_no_damage() {
+        // CR 510.1c, 509.1h: a creature stays blocked when its blockers are
+        // gone, and then assigns no combat damage. It does not hit the player.
+        // This is a synthetic state, like the one of `perform_state_based_actions`
+        // below: a blocker leaves combat only by dying after the damage, so no
+        // game has a blocked attacker without a blocker before it. The step
+        // is run directly.
+        let (admission, state, creatures) =
+            game_with_creature_cards(&[(P1, SAVANNAH_LIONS), (P2, SAVANNAH_LIONS)]);
+        let [attacker, blocker] = creatures[..] else {
+            panic!("two creatures")
+        };
+        let mut before = blocks_declared(&admission, state, &[attacker], &[(blocker, attacker)]);
+        before.combat.as_mut().unwrap().blockers.clear();
+        before.core.position = TurnPosition::Combat {
+            step: CombatStep::CombatDamage,
+        };
+        assert!(before
+            .combat
+            .as_ref()
+            .unwrap()
+            .blocked_attackers
+            .contains(&attacker));
+
+        let mut after = before.clone();
+        let mut facts = Facts::default();
+        crate::combat::deal_combat_damage(&admission, &mut after, &mut facts).unwrap();
+        assert_eq!(after.core.players, before.core.players);
+        assert_eq!((marked(&after, attacker), marked(&after, blocker)), (0, 0));
+        assert!(after.combat.as_ref().unwrap().damage_step_completed);
+        assert!(!after.card_rules.turn_history.players[&P2].lost_life_this_turn);
+        // Nothing is dealt, lost or marked: the step only completes.
+        assert_eq!(
+            facts.zone_events,
+            [crate::zone_incarnation::ZoneMoveEvent::Public(Box::new(
+                AuthoritativeRuleEventKind::CombatDamageStepCompleted
+            ))]
+        );
+    }
+
+    #[test]
+    fn two_blockers_on_one_attacker_fail_closed_until_damage_can_be_divided() {
+        // CR 510.1c: an attacker blocked by two creatures divides its damage
+        // between them as its controller chooses, which is not supported yet.
+        let (admission, state, creatures) = game_with_creature_cards(&[
+            (P1, HILL_GIANT),
+            (P2, SAVANNAH_LIONS),
+            (P2, SAVANNAH_LIONS),
+        ]);
+        let [giant, first, second] = creatures[..] else {
+            panic!("three creatures")
+        };
+        let before = blocks_declared(
+            &admission,
+            state.clone(),
+            &[giant],
+            &[(first, giant), (second, giant)],
+        );
+        assert_eq!(before.combat.as_ref().unwrap().blockers.len(), 2);
+        assert_eq!(
+            submit(&admission, &before, pass_answer(pending(&before))),
+            Err(crate::BasicLandTransitionError::TurnProgressUnsupported)
+        );
+
+        // With one of them blocking, the same fight is supported: it is the
+        // two blockers that fail closed, not the damage.
+        let one = blocks_declared(&admission, state, &[giant], &[(first, giant)]);
+        assert!(submit(&admission, &one, pass_answer(pending(&one))).is_ok());
+    }
+
+    #[test]
+    fn a_restored_combat_after_a_blocker_died_is_accepted() {
+        // CR 509.1h, 506.4: Hill Giant (3/3) is blocked by Savannah Lions,
+        // which the Giant destroys. The Giant stays blocked with no blocker
+        // left, and has 2 damage marked, which is not lethal. Every state
+        // from the damage step to the end step, as the game reaches them, is
+        // one a restore accepts.
+        let (admission, state, creatures) =
+            game_with_creature_cards(&[(P1, HILL_GIANT), (P2, SAVANNAH_LIONS)]);
+        let [giant, lions] = creatures[..] else {
+            panic!("two creatures")
+        };
+        let before = blocks_declared(&admission, state, &[giant], &[(lions, giant)]);
+        let (damaged, _) = pass(&admission, &before);
+        let running = EpisodeStatus::Running;
+        let combat = |step| TurnPosition::Combat { step };
+        for position in [
+            combat(CombatStep::CombatDamage),
+            combat(CombatStep::EndOfCombat),
+            TurnPosition::PostcombatMain,
+            END_STEP,
+        ] {
+            let reached = pass_until(&admission, damaged.clone(), at(position, 3));
+            assert_eq!(marked(&reached, giant), 2, "{position:?}");
+            assert!(!reached.zones.objects.contains_key(&lions));
+            if let Some(combat) = &reached.combat {
+                assert_eq!(
+                    (
+                        combat.attackers.clone(),
+                        combat.blocked_attackers.clone(),
+                        combat.blockers.clone()
+                    ),
+                    (vec![giant], [giant].into(), Default::default()),
+                    "{position:?}"
+                );
+            }
+            validate_magic_pending_request(&admission, &reached, &running)
+                .unwrap_or_else(|error| panic!("{position:?}: {error:?}"));
+        }
+    }
+
+    #[test]
+    fn a_creature_that_dies_is_removed_from_combat_but_its_attacker_stays_blocked() {
+        // CR 506.4: a creature that leaves the battlefield is removed from
+        // combat, and stops being an attacking, blocking, blocked creature.
+        // CR 509.1h: an attacker stays blocked when all its blockers are
+        // removed from combat.
+        // P1 attacks with Savannah Lions and Hill Giant; P2 blocks the Lions
+        // with its Hill Giant and P1's Giant with its Savannah Lions. P1's Lions
+        // is destroyed (3 damage), and so is P2's (3 damage); both Giants
+        // survive with 2 marked.
+        let (admission, state, creatures) = game_with_creature_cards(&[
+            (P1, SAVANNAH_LIONS),
+            (P1, HILL_GIANT),
+            (P2, HILL_GIANT),
+            (P2, SAVANNAH_LIONS),
+        ]);
+        let [lions, giant, blocking_giant, blocking_lions] = creatures[..] else {
+            panic!("four creatures")
+        };
+        let before = blocks_declared(
+            &admission,
+            state,
+            &[lions, giant],
+            &[(blocking_giant, lions), (blocking_lions, giant)],
+        );
+        let combat = before.combat.as_ref().unwrap();
+        assert_eq!(combat.attackers, [lions, giant]);
+        assert_eq!(combat.blocked_attackers, [lions, giant].into());
+
+        let (after, product) = pass(&admission, &before);
+        assert_eq!(
+            state_based_actions(&product),
+            [vec![destroyed(lions), destroyed(blocking_lions)]]
+        );
+        let combat = after.combat.as_ref().unwrap();
+        // The attacker that died is no longer attacking or blocked. Known
+        // divergence: CR 509.1g keeps the creature that blocked it (P2's Hill
+        // Giant) a blocking creature until combat ends, but the combat records
+        // a block as the attacker its blocker blocks, so its entry is dropped
+        // with the attacker (`rules/declare-blockers`, "Known divergence").
+        // The assertion that no blocker is left pins that divergence; a fix
+        // that keeps the creature blocking changes it. The blocker that died
+        // is gone, and the Giant it blocked is still attacking, and still
+        // blocked (CR 509.1h).
+        assert_eq!(combat.attackers, [giant]);
+        assert_eq!(combat.blocked_attackers, [giant].into());
+        assert!(combat.blockers.is_empty());
+        for survivor in [giant, blocking_giant] {
+            assert_eq!(marked(&after, survivor), 2);
+        }
+    }
+
+    #[test]
+    fn the_prune_removes_a_departed_permanent() {
+        // CR 400.7: a permanent that leaves the battlefield becomes a new
+        // object with no memory of its previous existence. What the game
+        // kept of the permanent, since when its controller controls it and the
+        // damage marked on it, goes with it, and the new object, in the
+        // graveyard, is not a permanent. The other permanents keep theirs.
+        let (_, mut state, creatures) =
+            game_with_creature_cards(&[(P1, HILL_GIANT), (P2, SAVANNAH_LIONS)]);
+        let [giant, lions] = creatures[..] else {
+            panic!("two creatures")
+        };
+        state.card_rules.permanents.mark_damage(giant, 2).unwrap();
+        let kept = state.card_rules.permanents.permanents[&lions];
+        assert_eq!(
+            state.card_rules.permanents.permanents[&giant].marked_damage,
+            2
+        );
+
+        let mut facts = Facts::default();
+        let new = move_card(
+            &mut state,
+            giant,
+            crate::zone_incarnation::SelectedZoneTransitionKind::BattlefieldToOwnerGraveyard,
+            ZoneLocation {
+                zone: ZoneKind::Graveyard,
+                player: Some(P1),
+                position: ZonePosition::Top { offset: 0 },
+                visibility: VisibilityPartition::Public,
+                partition: None,
+            },
+            &mut facts,
+        )
+        .unwrap();
+
+        assert_ne!(new, giant);
+        assert!(!state.zones.objects.contains_key(&giant));
+        assert_eq!(state.zones.locations[&new].zone, ZoneKind::Graveyard);
+        assert_eq!(graveyard_of(&state, P1), [new]);
+        let permanents = &state.card_rules.permanents.permanents;
+        assert!(!permanents.contains_key(&giant) && !permanents.contains_key(&new));
+        assert_eq!(permanents.get(&lions), Some(&kept));
+        // The face goes to the new incarnation, which shows what the card shows.
+        assert!(!state.card_rules.faces.faces.contains_key(&giant));
+        assert_eq!(state.card_rules.faces.faces.get(&new), Some(&0));
+        mtgml_state::validate_engine_state(&state).unwrap();
+    }
+
+    #[test]
+    fn both_players_losing_at_once_fails_closed() {
+        // CR 104.4a: if all the players remaining in a game lose
+        // simultaneously, the game is a draw, which is not modelled. This is
+        // a synthetic state: no game rests with a player at 0 life who has not
+        // lost, so this cannot be reached by playing.
+        let (admission, mut state, _) = game_with_creature_cards(&[(P1, SAVANNAH_LIONS)]);
+        let perform = |state: &EngineState, facts: &mut Facts| {
+            let mut next = state.clone();
+            crate::state_based_actions::perform_state_based_actions(&admission, &mut next, facts)
+                .map(|decision| match decision {
+                    NextDecision::GameOver { loser } => (Some(loser), next),
+                    NextDecision::Priority(player) => {
+                        assert_eq!(player, next.core.active_player);
+                        (None, next)
+                    }
+                    _ => panic!("a state without creatures to order asks nothing else"),
+                })
+        };
+
+        // One player at 0 or less life loses (CR 704.5a), whichever it is.
+        for (player, life) in [(P1, 0), (P2, -4)] {
+            let mut one = state.clone();
+            one.core.players.get_mut(&player).unwrap().life = life;
+            let (loser, next) = perform(&one, &mut Facts::default()).unwrap();
+            assert_eq!(loser, Some(player));
+            assert!(next.core.players[&player].has_lost);
+        }
+        // Nobody loses with nobody at 0 or less life.
+        let (loser, next) = perform(&state, &mut Facts::default()).unwrap();
+        assert_eq!((loser, &next), (None, &state));
+
+        state.core.players.get_mut(&P1).unwrap().life = 0;
+        state.core.players.get_mut(&P2).unwrap().life = -3;
+        let mut facts = Facts::default();
+        assert_eq!(
+            perform(&state, &mut facts).map(|(loser, _)| loser),
+            Err(crate::BasicLandTransitionError::TurnProgressUnsupported)
+        );
+        assert!(facts.zone_events.is_empty());
+    }
+
+    /// P1's Gray Ogre and Hill Giant attack, and P2's two Savannah Lions block
+    /// them: the first blocks the Ogre, the second the Giant. P2 holds priority
+    /// in the declare blockers step, one pass from the damage step. Returns the
+    /// state and the Ogre, the Giant and the two Lions.
+    fn ogre_and_giant_blocked_by_two_lions(
+    ) -> (ExecutableProfileAdmissionV1, EngineState, [GameObjectId; 4]) {
+        let (admission, state, creatures) = game_with_creature_cards(&[
+            (P1, GRAY_OGRE),
+            (P1, HILL_GIANT),
+            (P2, SAVANNAH_LIONS),
+            (P2, SAVANNAH_LIONS),
+        ]);
+        let [ogre, giant, lions_a, lions_b] = creatures[..] else {
+            panic!("four creatures")
+        };
+        let before = blocks_declared(
+            &admission,
+            state,
+            &[ogre, giant],
+            &[(lions_a, ogre), (lions_b, giant)],
+        );
+        (admission, before, [ogre, giant, lions_a, lions_b])
+    }
+
+    /// The answer to the pending graveyard order request that puts
+    /// `top_to_bottom` in that order.
+    fn order_in(state: &EngineState, top_to_bottom: &[GameObjectId]) -> DecisionAnswerV2 {
+        DecisionAnswerV2::Order {
+            candidate_ids: top_to_bottom
+                .iter()
+                .map(|wanted| {
+                    candidate(pending(state), |binding| {
+                        matches!(binding,
+                            EngineCandidateBinding::SelectObject { object } if object == wanted)
+                    })
+                    .expect("the request offers the card")
+                })
+                .collect(),
+        }
+    }
+
+    /// The batch and the owners waiting in `state`'s graveyard order.
+    fn pending_order(
+        state: &EngineState,
+    ) -> (
+        Vec<mtgml_state::SbaSelectedActionV1>,
+        Vec<PlayerId>,
+        u32,
+        Vec<mtgml_state::SbaGraveyardOwnerOrderV1>,
+    ) {
+        let [record] = state
+            .execution
+            .continuations
+            .values()
+            .collect::<Vec<_>>()
+            .try_into()
+            .expect("one continuation");
+        match &record.payload {
+            mtgml_state::ContinuationPayload::MagicSbaGraveyardOrderV1 {
+                selected_sba_actions,
+                apnap_owners,
+                next_owner_index,
+                completed_owner_orders,
+                ..
+            } => (
+                selected_sba_actions.clone(),
+                apnap_owners.clone(),
+                *next_owner_index,
+                completed_owner_orders.clone(),
+            ),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// The events of the product that say an owner chose an order.
+    fn orders_chosen(
+        product: &crate::BasicLandTransitionProduct,
+    ) -> Vec<(PlayerId, Vec<GameObjectId>)> {
+        product
+            .events
+            .iter()
+            .filter_map(|event| match &event.event {
+                AuthoritativeRuleEventKind::SbaGraveyardOrderChosen {
+                    owner,
+                    top_to_bottom,
+                    ..
+                } => Some((*owner, top_to_bottom.clone())),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The kinds of the events of the product that are about the order and the
+    /// batch, in the order they were recorded.
+    fn order_and_batch_events(product: &crate::BasicLandTransitionProduct) -> Vec<&'static str> {
+        product
+            .events
+            .iter()
+            .filter_map(|event| match &event.event {
+                AuthoritativeRuleEventKind::SbaGraveyardOrderChosen { .. } => Some("order"),
+                AuthoritativeRuleEventKind::ZoneTransition { .. } => Some("move"),
+                AuthoritativeRuleEventKind::StateBasedActionsApplied { .. } => Some("batch"),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_owner_of_two_dying_cards_alone_is_asked_for_the_order() {
+        // CR 404.3, 704.3: two cards put into one graveyard at the same time
+        // are arranged by their owner. P1's Gray Ogre and Hill Giant attack;
+        // P2's Savannah Lions block them. The Ogre and both Lions die, the
+        // Giant survives. P1 has one dying card and is not asked; P2 has two
+        // and is, and nothing dies before it answers.
+        let (admission, before, [ogre, giant, lions_a, lions_b]) =
+            ogre_and_giant_blocked_by_two_lions();
+        let product = submit(&admission, &before, pass_answer(pending(&before))).unwrap();
+        let at_order = apply(&before, &product);
+
+        // The damage step dealt its damage and nothing more: the creatures are
+        // still on the battlefield with their marks, nobody has priority and
+        // the only decision is P2's order.
+        assert_eq!(
+            [ogre, giant, lions_a, lions_b].map(|creature| marked(&at_order, creature)),
+            [2, 2, 2, 3]
+        );
+        assert!(moves(&product).is_empty() && state_based_actions(&product).is_empty());
+        assert_eq!(at_order.core.priority, PriorityState::None);
+        let request = pending(&at_order);
+        assert_eq!(request.actor, P2);
+        assert_eq!(request.purpose, DecisionPurposeV4::SbaGraveyardOrder);
+        assert_eq!(request.visibility, DecisionVisibility::ActingPlayerOnly);
+        assert_eq!(
+            request.decision_domain_v2,
+            DecisionDomainV2::Order {
+                minimum: 2,
+                maximum: 2
+            }
+        );
+        // The Lions are offered in the order of P2's opaque ids.
+        let opaque = |object: GameObjectId| {
+            at_order.perspective_identities.players[&P2].object_to_opaque[&object]
+        };
+        let offered: Vec<_> = request
+            .candidates
+            .iter()
+            .map(|candidate| candidate.visible_intent.clone())
+            .collect();
+        let mut expected = [lions_a, lions_b];
+        expected.sort_by_key(|lions| opaque(*lions));
+        assert_eq!(
+            offered,
+            expected.map(|lions| CandidateIntent::SelectObject {
+                object: opaque(lions)
+            })
+        );
+        let mut dying = [ogre, lions_a, lions_b];
+        dying.sort();
+        assert_eq!(
+            pending_order(&at_order),
+            (dying.map(destroyed).to_vec(), vec![P2], 0, Vec::new())
+        );
+        validate_magic_pending_request(&admission, &at_order, &EpisodeStatus::Running).unwrap();
+
+        // P2 answers, in either order: its graveyard follows the answer, and
+        // the batch applies as one event after the order that chose it.
+        for top_to_bottom in [[lions_a, lions_b], [lions_b, lions_a]] {
+            let product =
+                submit(&admission, &at_order, order_in(&at_order, &top_to_bottom)).unwrap();
+            let after = apply(&at_order, &product);
+            assert_eq!(orders_chosen(&product), [(P2, top_to_bottom.to_vec())]);
+            assert_eq!(
+                order_and_batch_events(&product),
+                ["order", "move", "move", "move", "batch"]
+            );
+            assert_eq!(
+                state_based_actions(&product),
+                [dying.map(destroyed).to_vec()]
+            );
+            // The pile of the new objects, top to bottom, is the answer.
+            let new_of = |old: GameObjectId| {
+                moves(&product)
+                    .into_iter()
+                    .find(|(moved, ..)| *moved == old)
+                    .map(|(_, new, ..)| new)
+                    .unwrap()
+            };
+            assert_eq!(graveyard_of(&after, P2), top_to_bottom.map(new_of).to_vec());
+            assert_eq!(graveyard_of(&after, P1), [new_of(ogre)]);
+            for dead in dying {
+                assert!(!after.zones.objects.contains_key(&dead));
+            }
+            // The Giant survives, damaged, blocked and attacking; the others
+            // left combat.
+            assert_eq!(marked(&after, giant), 2);
+            let combat = after.combat.as_ref().unwrap();
+            assert_eq!(combat.attackers, vec![giant]);
+            assert_eq!(combat.blocked_attackers, [giant].into());
+            assert!(combat.blockers.is_empty());
+            // The continuation is gone and the active player has priority.
+            assert!(after.execution.continuations.is_empty());
+            assert_eq!(pending(&after).actor, P1);
+            assert_eq!(pending(&after).purpose, DecisionPurposeV4::PriorityAction);
+            for owner in [P1, P2] {
+                assert!(after.card_rules.turn_history.players[&owner].permanent_card_to_graveyard);
+            }
+            validate_magic_pending_request(&admission, &after, &EpisodeStatus::Running).unwrap();
+        }
+    }
+
+    #[test]
+    fn an_owner_is_offered_their_cards_in_the_order_of_their_opaque_ids() {
+        // Requests and candidates follow the actor's opaque ids, never the
+        // engine's object ids (INFORMATION_MODEL, Noninterference).
+        let (admission, before, [_, _, lions_a, lions_b]) = ogre_and_giant_blocked_by_two_lions();
+        let offered = |state: &EngineState| -> Vec<GameObjectId> {
+            pending(state)
+                .candidates
+                .iter()
+                .map(|candidate| match candidate.trusted_binding {
+                    EngineCandidateBinding::SelectObject { object } => object,
+                    _ => panic!("a card"),
+                })
+                .collect()
+        };
+        assert!(lions_a < lions_b);
+        // The fixture's opaque ids rise with the object ids.
+        assert_eq!(offered(&pass(&admission, &before).0), [lions_a, lions_b]);
+
+        // With P2's opaque ids of the two Lions swapped, the second is offered
+        // first, under the opaque id the first had.
+        let mut swapped = before.clone();
+        let identity = swapped.perspective_identities.players.get_mut(&P2).unwrap();
+        let (low, high) = (
+            identity.object_to_opaque[&lions_a],
+            identity.object_to_opaque[&lions_b],
+        );
+        assert!(low < high);
+        identity.object_to_opaque.insert(lions_a, high);
+        identity.object_to_opaque.insert(lions_b, low);
+        identity.opaque_to_object.insert(low, lions_b);
+        identity.opaque_to_object.insert(high, lions_a);
+        // P2 knows each opaque id as the card it is.
+        let knowledge = &mut swapped.knowledge.players.get_mut(&P2).unwrap().active;
+        let (low_card, high_card) = (
+            knowledge[&low].physical_card,
+            knowledge[&high].physical_card,
+        );
+        knowledge.get_mut(&low).unwrap().physical_card = high_card;
+        knowledge.get_mut(&high).unwrap().physical_card = low_card;
+        let at_order = pass(&admission, &swapped).0;
+        assert_eq!(offered(&at_order), [lions_b, lions_a]);
+        assert_eq!(
+            pending(&at_order)
+                .candidates
+                .iter()
+                .map(|candidate| candidate.visible_intent.clone())
+                .collect::<Vec<_>>(),
+            [low, high].map(|object| CandidateIntent::SelectObject { object })
+        );
+        validate_magic_pending_request(&admission, &at_order, &EpisodeStatus::Running).unwrap();
+    }
+
+    #[test]
+    fn owners_are_asked_in_turn_order_and_the_batch_waits_for_the_last() {
+        // CR 101.4, 404.3: P1 attacks with two Savannah Lions and P2 blocks each
+        // with one of its own: two cards of each owner die. The active player
+        // orders first, then the other player; each answer is its own
+        // transition and the creatures die with the second.
+        let (admission, state, creatures) = game_with_creature_cards(&[
+            (P1, SAVANNAH_LIONS),
+            (P1, SAVANNAH_LIONS),
+            (P2, SAVANNAH_LIONS),
+            (P2, SAVANNAH_LIONS),
+        ]);
+        let [first, second, first_blocker, second_blocker] = creatures[..] else {
+            panic!("four creatures")
+        };
+        let before = blocks_declared(
+            &admission,
+            state,
+            &[first, second],
+            &[(first_blocker, first), (second_blocker, second)],
+        );
+        let product = submit(&admission, &before, pass_answer(pending(&before))).unwrap();
+        let at_first = apply(&before, &product);
+        assert_eq!(pending(&at_first).actor, P1);
+        assert_eq!(
+            pending(&at_first).purpose,
+            DecisionPurposeV4::SbaGraveyardOrder
+        );
+        let (batch, owners, index, completed) = pending_order(&at_first);
+        assert_eq!(batch.len(), 4);
+        assert_eq!((owners, index, completed), (vec![P1, P2], 0, Vec::new()));
+
+        // APNAP order is the order of the turn, the active player first. A
+        // state that asks P2 first, with a request of its own for it, agrees
+        // with itself and is refused for that alone; asking again the owner
+        // the pending order asks first is accepted.
+        let running = EpisodeStatus::Running;
+        let mut again = at_first.clone();
+        crate::state_based_actions::install_order_request(&mut again).unwrap();
+        validate_magic_pending_request(&admission, &again, &running).unwrap();
+        let mut backwards = at_first.clone();
+        let record = backwards
+            .execution
+            .continuations
+            .values_mut()
+            .next()
+            .unwrap();
+        let mtgml_state::ContinuationPayload::MagicSbaGraveyardOrderV1 { apnap_owners, .. } =
+            &mut record.payload
+        else {
+            unreachable!()
+        };
+        apnap_owners.reverse();
+        crate::state_based_actions::install_order_request(&mut backwards).unwrap();
+        assert_eq!(pending(&backwards).actor, P2);
+        assert!(validate_magic_pending_request(&admission, &backwards, &running).is_err());
+
+        // P1 answers: only the order is recorded; P2 is asked next and nobody
+        // has priority.
+        let p1_order = [second, first];
+        let product = submit(&admission, &at_first, order_in(&at_first, &p1_order)).unwrap();
+        let at_second = apply(&at_first, &product);
+        assert_eq!(order_and_batch_events(&product), ["order"]);
+        assert_eq!(orders_chosen(&product), [(P1, p1_order.to_vec())]);
+        assert_eq!(pending(&at_second).actor, P2);
+        assert_eq!(
+            pending(&at_second).purpose,
+            DecisionPurposeV4::SbaGraveyardOrder
+        );
+        assert_eq!(at_second.core.priority, PriorityState::None);
+        let (_, owners, index, completed) = pending_order(&at_second);
+        assert_eq!((owners, index), (vec![P1, P2], 1));
+        assert_eq!(
+            completed,
+            [mtgml_state::SbaGraveyardOwnerOrderV1 {
+                owner: P1,
+                top_to_bottom: p1_order.to_vec()
+            }]
+        );
+        for creature in creatures {
+            assert!(at_second.zones.objects.contains_key(&creature));
+        }
+        validate_magic_pending_request(&admission, &at_second, &EpisodeStatus::Running).unwrap();
+
+        // P2 answers: the whole batch applies, each graveyard in its owner's
+        // order.
+        let p2_order = [first_blocker, second_blocker];
+        let product = submit(&admission, &at_second, order_in(&at_second, &p2_order)).unwrap();
+        let after = apply(&at_second, &product);
+        assert_eq!(
+            order_and_batch_events(&product),
+            ["order", "move", "move", "move", "move", "batch"]
+        );
+        let new_of = |old: GameObjectId| {
+            moves(&product)
+                .into_iter()
+                .find(|(moved, ..)| *moved == old)
+                .map(|(_, new, ..)| new)
+                .unwrap()
+        };
+        assert_eq!(graveyard_of(&after, P1), p1_order.map(new_of).to_vec());
+        assert_eq!(graveyard_of(&after, P2), p2_order.map(new_of).to_vec());
+        assert!(after.execution.continuations.is_empty());
+        assert_eq!(pending(&after).actor, P1);
+        validate_magic_pending_request(&admission, &after, &EpisodeStatus::Running).unwrap();
+    }
+
+    #[test]
+    fn a_player_losing_in_the_same_batch_skips_the_graveyard_order() {
+        // CR 104.2a, 404.3, 704.3. P2 is at 2 life and P1's free Savannah
+        // Lions is unblocked: P2 loses while its two Lions, blocking P1's Gray
+        // Ogre and Hill Giant, die. The loss ends the game in this batch, so
+        // the order the owner would give could never matter: nobody is asked
+        // (owner decision 2026-10-01; a decision with no consequence is
+        // noise). The batch applies at once and the cards go to the graveyard
+        // in object order.
+        let (admission, mut state, creatures) = game_with_creature_cards(&[
+            (P1, GRAY_OGRE),
+            (P1, HILL_GIANT),
+            (P1, SAVANNAH_LIONS),
+            (P2, SAVANNAH_LIONS),
+            (P2, SAVANNAH_LIONS),
+        ]);
+        let [ogre, giant, free, lions_a, lions_b] = creatures[..] else {
+            panic!("five creatures")
+        };
+        state.core.players.get_mut(&P2).unwrap().life = 2;
+        let before = blocks_declared(
+            &admission,
+            state,
+            &[ogre, giant, free],
+            &[(lions_a, ogre), (lions_b, giant)],
+        );
+
+        let product = submit(&admission, &before, pass_answer(pending(&before))).unwrap();
+        let after = apply(&before, &product);
+        // The game is over, and nothing was asked.
+        assert_eq!(product.next_decision, None);
+        assert!(matches!(
+            product.status,
+            EpisodeStatus::Terminal {
+                reason: mtgml_model::TerminalReason::RulesLoss,
+                ..
+            }
+        ));
+        assert!(after.core.players[&P2].has_lost && !after.core.players[&P1].has_lost);
+        assert!(after.execution.continuations.is_empty());
+        assert!(orders_chosen(&product).is_empty());
+        // One batch: the loss, then the destructions in object order.
+        let mut dying = [ogre, lions_a, lions_b];
+        dying.sort();
+        assert_eq!(
+            state_based_actions(&product),
+            [[
+                vec![mtgml_state::SbaSelectedActionV1::PlayerLoses { player: P2 }],
+                dying.map(destroyed).to_vec()
+            ]
+            .concat()]
+        );
+        // The moves are in object order, so the card of the higher object id
+        // lies on top of P2's graveyard.
+        let moved: Vec<_> = moves(&product)
+            .into_iter()
+            .map(|(old, new, ..)| (old, new))
+            .collect();
+        assert_eq!(moved.iter().map(|(old, _)| *old).collect::<Vec<_>>(), dying);
+        let new_of = |old: GameObjectId| moved.iter().find(|(o, _)| *o == old).unwrap().1;
+        assert_eq!(graveyard_of(&after, P2), [new_of(lions_b), new_of(lions_a)]);
+        assert_eq!(graveyard_of(&after, P1), [new_of(ogre)]);
+        validate_magic_pending_request(&admission, &after, &product.status).unwrap();
+    }
+
+    #[test]
+    fn a_pending_graveyard_order_may_hold_the_lethal_damage_of_its_own_batch_only() {
+        // Restore refuses a creature with lethal damage marked on it at a
+        // decision point (CR 704.5g): it is destroyed before any player has
+        // priority. The creatures of a pending graveyard order are the one
+        // exception: exactly those, and only while that request is pending.
+        let (admission, before, [ogre, giant, lions_a, lions_b]) =
+            ogre_and_giant_blocked_by_two_lions();
+        let at_order = pass(&admission, &before).0;
+        let running = EpisodeStatus::Running;
+        // The creatures that die carry lethal damage: the Ogre and a Lions 2,
+        // the other Lions 3.
+        assert_eq!(
+            [ogre, lions_a, lions_b].map(|creature| marked(&at_order, creature)),
+            [2, 2, 3]
+        );
+        crate::combat::validate_marked_damage(&admission, &at_order).unwrap();
+        validate_magic_pending_request(&admission, &at_order, &running).unwrap();
+
+        // Another creature with lethal damage is refused: the Giant has 3
+        // damage on a toughness of 3 and is not in the batch.
+        let giant_dying = with_marked(&at_order, giant, 3);
+        assert!(crate::combat::validate_marked_damage(&admission, &giant_dying).is_err());
+        assert!(validate_magic_pending_request(&admission, &giant_dying, &running).is_err());
+
+        // Without the pending request the same lethal damage is refused.
+        let mut settled = at_order.clone();
+        settled.execution.pending_decision = None;
+        settled.execution.continuations.clear();
+        assert!(crate::combat::validate_marked_damage(&admission, &settled).is_err());
+        // The creatures that die with the order are those of the batch of the
+        // pending request: none when another request is pending, or none.
+        let awaiting = crate::state_based_actions::creatures_awaiting_the_order;
+        let mut dying = [ogre, lions_a, lions_b];
+        dying.sort();
+        assert_eq!(awaiting(&at_order), dying);
+        assert!(awaiting(&settled).is_empty());
+        let mut elsewhere = at_order.clone();
+        elsewhere
+            .execution
+            .pending_decision
+            .as_mut()
+            .unwrap()
+            .purpose = DecisionPurposeV4::PriorityAction;
+        assert!(awaiting(&elsewhere).is_empty());
+    }
+
+    /// `state` with `edit` applied to the batch and the owners of its pending
+    /// graveyard order.
+    fn with_order(
+        state: &EngineState,
+        edit: impl FnOnce(&mut Vec<mtgml_state::SbaSelectedActionV1>, &mut Vec<PlayerId>),
+    ) -> EngineState {
+        let mut forged = state.clone();
+        let record = forged.execution.continuations.values_mut().next().unwrap();
+        let mtgml_state::ContinuationPayload::MagicSbaGraveyardOrderV1 {
+            selected_sba_actions,
+            apnap_owners,
+            ..
+        } = &mut record.payload
+        else {
+            unreachable!()
+        };
+        edit(selected_sba_actions, apnap_owners);
+        forged
+    }
+
+    #[test]
+    fn a_graveyard_order_whose_batch_holds_a_loss_fails_closed() {
+        // A batch with a loss asks nobody (owner decision 2026-10-01), so a
+        // pending order whose batch holds one is not a state the game makes.
+        // Answering it must not end the game as though it were.
+        let (admission, before, [_, _, lions_a, lions_b]) = ogre_and_giant_blocked_by_two_lions();
+        let at_order = pass(&admission, &before).0;
+        let forged = with_order(&at_order, |batch, _| {
+            batch.insert(
+                0,
+                mtgml_state::SbaSelectedActionV1::PlayerLoses { player: P1 },
+            )
+        });
+        let mut next = forged.clone();
+        let outcome = crate::state_based_actions::order_graveyard(
+            &admission,
+            &mut next,
+            &mut Facts::default(),
+            P2,
+            vec![lions_a, lions_b],
+        );
+        assert!(matches!(
+            outcome,
+            Err(crate::BasicLandTransitionError::InvalidResult)
+        ));
+    }
+
+    #[test]
+    fn a_restored_graveyard_order_the_game_could_not_have_reached_is_refused() {
+        let (admission, before, [ogre, giant, lions_a, lions_b]) =
+            ogre_and_giant_blocked_by_two_lions();
+        let at_order = pass(&admission, &before).0;
+        let running = EpisodeStatus::Running;
+        validate_magic_pending_request(&admission, &at_order, &running).unwrap();
+        let refused = |what: &str, tampered: &EngineState| {
+            assert!(
+                validate_magic_pending_request(&admission, tampered, &running).is_err(),
+                "{what}"
+            );
+        };
+
+        // The batch is exactly what the state calls for (CR 704.3).
+        refused(
+            "a batch that leaves out a creature with lethal damage",
+            &with_order(&at_order, |batch, _| {
+                batch.retain(|action| *action != destroyed(ogre))
+            }),
+        );
+        let mut with_giant = vec![destroyed(giant)];
+        with_giant.extend([ogre, lions_a, lions_b].map(destroyed));
+        with_giant.sort();
+        refused(
+            "a batch with a creature that is not dying",
+            &with_order(&at_order, |batch, _| *batch = with_giant),
+        );
+        refused(
+            "a batch with another cause",
+            &with_order(&at_order, |batch, _| {
+                batch[0] = mtgml_state::SbaSelectedActionV1::ObjectToOwnerGraveyard {
+                    object: ogre,
+                    causes: vec![mtgml_state::SbaObjectCauseV1::ZeroToughness],
+                }
+            }),
+        );
+        refused(
+            "a batch in which a player at 20 life loses",
+            &with_order(&at_order, |batch, _| {
+                batch.insert(
+                    0,
+                    mtgml_state::SbaSelectedActionV1::PlayerLoses { player: P1 },
+                )
+            }),
+        );
+        // The owners asked are those with two or more dying cards, in APNAP
+        // order, and no one else.
+        refused(
+            "an owner with one dying card asked too",
+            &with_order(&at_order, |_, owners| *owners = vec![P1, P2]),
+        );
+        refused(
+            "the wrong owner asked",
+            &with_order(&at_order, |_, owners| *owners = vec![P1]),
+        );
+        refused(
+            "nobody asked",
+            &with_order(&at_order, |_, owners| owners.clear()),
+        );
+
+        // CR 704.5g: a creature outside the batch with lethal damage.
+        refused(
+            "lethal damage outside the batch",
+            &with_marked(&at_order, giant, 3),
+        );
+
+        // Owner decision 2026-10-01: a batch with a loss never asks for an
+        // order. P2 at 0 life is a loss the state calls for, and a batch that
+        // lists it is the batch the state calls for, yet it is refused.
+        let mut at_zero = at_order.clone();
+        at_zero.core.players.get_mut(&P2).unwrap().life = 0;
+        let losing = with_order(&at_zero, |batch, _| {
+            batch.insert(
+                0,
+                mtgml_state::SbaSelectedActionV1::PlayerLoses { player: P2 },
+            )
+        });
+        assert!(
+            crate::state_based_actions::validate_pending_graveyard_order(&admission, &losing)
+                .is_err()
+        );
+        refused("a batch with a loss that asks for an order", &losing);
+        refused("a player at 0 life who has not lost", &at_zero);
+
+        // It rests in the combat damage step, before anyone has priority.
+        let mut elsewhere = at_order.clone();
+        elsewhere.core.position = TurnPosition::Combat {
+            step: CombatStep::EndOfCombat,
+        };
+        refused("another step", &elsewhere);
+        let mut priority = at_order.clone();
+        priority.core.priority = PriorityState::HeldBy {
+            player: P1,
+            consecutive_passes: 0,
+        };
+        refused("priority held", &priority);
+        assert!(validate_magic_pending_request(
+            &admission,
+            &at_order,
+            &EpisodeStatus::Terminal {
+                reason: mtgml_model::TerminalReason::RulesLoss,
+                players: Vec::new(),
+            }
+        )
+        .is_err());
+
+        // The request is the one the continuation calls for.
+        let tampered = |edit: &dyn Fn(&mut AuthoritativeDecisionRequest)| {
+            let mut state = at_order.clone();
+            edit(state.execution.pending_decision.as_mut().unwrap());
+            state
+        };
+        refused(
+            "the active player as the actor",
+            &tampered(&|request| request.actor = P1),
+        );
+        refused(
+            "a public request",
+            &tampered(&|request| request.visibility = DecisionVisibility::Public),
+        );
+        refused(
+            "a domain wider than the cards",
+            &tampered(&|request| {
+                request.decision_domain_v2 = DecisionDomainV2::Order {
+                    minimum: 1,
+                    maximum: 2,
+                }
+            }),
+        );
+        refused(
+            "no continuation",
+            &tampered(&|request| request.continuation_id = None),
+        );
+        refused(
+            "another purpose",
+            &tampered(&|request| request.purpose = DecisionPurposeV4::TriggerOrder),
+        );
+        refused(
+            "a card never offered",
+            &tampered(&|request| {
+                request.candidates.pop();
+            }),
+        );
+    }
+
+    #[test]
+    fn a_player_losing_in_the_same_pass_as_a_dying_creature_loses_with_it() {
+        // CR 704.3, 704.5a, 704.5g: state-based actions are performed
+        // simultaneously as a single event. P2 is at 2 life. P1's free Savannah
+        // Lions deals it 2 damage; P1's Gray Ogre and P2's Savannah Lions
+        // destroy each other. P2 loses and both creatures are destroyed, in the
+        // same step (CR 104.2a: P1 wins).
+        let (admission, mut state, creatures) = game_with_creature_cards(&[
+            (P1, GRAY_OGRE),
+            (P1, SAVANNAH_LIONS),
+            (P2, SAVANNAH_LIONS),
+        ]);
+        let [ogre, free, lions] = creatures[..] else {
+            panic!("three creatures")
+        };
+        state.core.players.get_mut(&P2).unwrap().life = 2;
+        let before = blocks_declared(&admission, state, &[ogre, free], &[(lions, ogre)]);
+
+        let product = submit(&admission, &before, pass_answer(pending(&before))).unwrap();
+        let after = apply(&before, &product);
+        assert!(after.core.players[&P2].has_lost && !after.core.players[&P1].has_lost);
+        assert_eq!(after.core.players[&P2].life, 0);
+        assert_eq!(
+            product.status,
+            EpisodeStatus::Terminal {
+                reason: mtgml_model::TerminalReason::RulesLoss,
+                players: vec![
+                    mtgml_model::PlayerOutcome {
+                        player: P1,
+                        result: mtgml_model::PlayerResult::Win,
+                    },
+                    mtgml_model::PlayerOutcome {
+                        player: P2,
+                        result: mtgml_model::PlayerResult::Loss,
+                    },
+                ],
+            }
+        );
+        // One event for the whole batch: the loss first, then the
+        // destructions in object order.
+        assert_eq!(
+            state_based_actions(&product),
+            [vec![
+                mtgml_state::SbaSelectedActionV1::PlayerLoses { player: P2 },
+                destroyed(ogre),
+                destroyed(lions)
+            ]]
+        );
+        assert_eq!(graveyard_of(&after, P1).len(), 1);
+        assert_eq!(graveyard_of(&after, P2).len(), 1);
+        assert!(after.zones.objects.contains_key(&free));
+        assert_eq!(product.next_decision, None);
+        validate_magic_pending_request(&admission, &after, &product.status).unwrap();
+    }
+
+    #[test]
+    fn a_restored_blocked_attacker_without_a_blocker_is_accepted_only_after_the_damage() {
+        // CR 509.1h: the attacker stays blocked after its blockers are gone.
+        // A blocker leaves combat only by dying in the state-based actions that
+        // follow the combat damage step (CR 704.5g, 506.4), so before the
+        // damage every blocked attacker has a blocker (CR 509.1h): a blocked
+        // attacker without one is not a state the game reaches there.
+        let (admission, state, creatures) =
+            game_with_creature_cards(&[(P1, SAVANNAH_LIONS), (P2, SAVANNAH_LIONS)]);
+        let [attacker, blocker] = creatures[..] else {
+            panic!("two creatures")
+        };
+        let mut restored = blocks_declared(&admission, state, &[attacker], &[(blocker, attacker)]);
+        // With its blocker, before the damage, the combat is one the game makes.
+        validate_magic_pending_request(&admission, &restored, &EpisodeStatus::Running).unwrap();
+        restored.combat.as_mut().unwrap().blockers.clear();
+        assert!(restored
+            .combat
+            .as_ref()
+            .unwrap()
+            .blocked_attackers
+            .contains(&attacker));
+
+        // Without it, in the declare blockers step, it is refused.
+        let declare_blockers = in_combat_step(&restored, CombatStep::DeclareBlockers);
+        assert!(is_refused(&admission, &declare_blockers));
+        // So is the combat damage step before the damage is dealt.
+        let mut undealt = in_combat_step(&restored, CombatStep::CombatDamage);
+        undealt.combat.as_mut().unwrap().damage_step_completed = false;
+        assert!(is_refused(&admission, &undealt));
+
+        // From the damage on, it is the state of an attacker whose blocker died.
+        for step in [CombatStep::CombatDamage, CombatStep::EndOfCombat] {
+            let restored = in_combat_step(&restored, step);
+            validate_magic_pending_request(&admission, &restored, &EpisodeStatus::Running)
+                .unwrap_or_else(|error| panic!("{step:?}: {error:?}"));
+        }
+    }
+
+    /// The states of a game on turn 3 that a checkpoint is restored in, of the
+    /// kinds validation reaches in different ways (priority windows and the
+    /// attacker declaration), before and after the combat damage step. P1
+    /// attacks with a creature and P2 has none, so the damage is dealt to the
+    /// player and no damage is marked.
+    struct RestorePoints {
+        /// From the upkeep to the declare blockers step.
+        before_damage: Vec<EngineState>,
+        /// From the combat damage step to the end step.
+        after_damage: Vec<EngineState>,
+    }
+
+    fn restore_points(
+        admission: &ExecutableProfileAdmissionV1,
+        state: EngineState,
+    ) -> RestorePoints {
+        let combat = |step| TurnPosition::Combat { step };
+        let to =
+            |from: &EngineState, position| pass_until(admission, from.clone(), at(position, 3));
+        let declared = after_declaring_an_attacker(admission, state.clone());
+        let points = RestorePoints {
+            before_damage: vec![
+                to(&state, UPKEEP),
+                to(&state, TurnPosition::PrecombatMain),
+                to(&state, BEGIN_COMBAT),
+                pass_until(admission, state, at_attackers(3)),
+                declared.clone(),
+                to(&declared, combat(CombatStep::DeclareBlockers)),
+            ],
+            after_damage: vec![
+                to(&declared, combat(CombatStep::CombatDamage)),
+                to(&declared, combat(CombatStep::EndOfCombat)),
+                to(&declared, TurnPosition::PostcombatMain),
+                to(&declared, END_STEP),
+            ],
+        };
+        let running = EpisodeStatus::Running;
+        for state in points.before_damage.iter().chain(&points.after_damage) {
+            validate_magic_pending_request(admission, state, &running)
+                .unwrap_or_else(|error| panic!("{:?}: {error:?}", state.core.position));
+        }
+        assert!(points.before_damage.iter().all(|state| !state
+            .combat
+            .as_ref()
+            .is_some_and(|c| c.damage_step_completed)));
+        assert!(points.after_damage.iter().all(|state| state
+            .combat
+            .as_ref()
+            .is_none_or(|c| c.damage_step_completed)));
+        points
+    }
+
+    /// `state` with `damage` marked on `object`.
+    fn with_marked(state: &EngineState, object: GameObjectId, damage: u64) -> EngineState {
+        let mut marked = state.clone();
+        marked
+            .card_rules
+            .permanents
+            .permanents
+            .get_mut(&object)
+            .unwrap()
+            .marked_damage = damage;
+        marked
+    }
+
+    /// Whether a restored `state` is refused: it does not validate, and
+    /// answering its request fails closed.
+    fn refused_everywhere(admission: &ExecutableProfileAdmissionV1, state: &EngineState) -> bool {
+        validate_magic_pending_request(admission, state, &EpisodeStatus::Running).is_err()
+            && submit(admission, state, pass_answer(pending(state)))
+                == Err(crate::BasicLandTransitionError::TurnProgressUnsupported)
+    }
+
+    #[test]
+    fn a_restored_creature_with_lethal_damage_is_refused() {
+        // CR 704.5g: a creature with damage marked at least equal to its
+        // toughness is destroyed before any player has priority, so no game
+        // rests there. Hill Giant (3/3), Gray Ogre (2/2), Savannah Lions (2/1).
+        // Damage is marked by combat damage and stays marked until cleanup
+        // removes it (CR 120.6, 514.2): damage that is not lethal is accepted
+        // from the combat damage step to the end step, and nowhere else but
+        // the discard of the cleanup step (see
+        // `a_restored_cleanup_accepts_marked_damage_only_while_the_discard_is_pending`).
+        let (admission, state, creatures) =
+            game_with_creature_cards(&[(P1, HILL_GIANT), (P1, GRAY_OGRE), (P1, SAVANNAH_LIONS)]);
+        let running = EpisodeStatus::Running;
+        let points = restore_points(&admission, state);
+        for (creature, lethal) in creatures.iter().zip([3, 2, 1]) {
+            for state in &points.after_damage {
+                for damage in 0..lethal {
+                    validate_magic_pending_request(
+                        &admission,
+                        &with_marked(state, *creature, damage),
+                        &running,
+                    )
+                    .unwrap_or_else(|error| {
+                        panic!(
+                            "{creature:?} {damage} at {:?}: {error:?}",
+                            state.core.position
+                        )
+                    });
+                }
+                assert!(
+                    refused_everywhere(&admission, &with_marked(state, *creature, lethal)),
+                    "{creature:?} {lethal} at {:?}",
+                    state.core.position
+                );
+            }
+            // Before the damage step no damage is marked, lethal or not.
+            for state in &points.before_damage {
+                for damage in 1..=lethal {
+                    assert!(
+                        refused_everywhere(&admission, &with_marked(state, *creature, damage)),
+                        "{creature:?} {damage} at {:?} {:?}",
+                        state.core.position,
+                        pending(state).purpose
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_restored_land_with_marked_damage_is_refused() {
+        // Damage is marked on creatures (CR 120.3e): a land has none, whenever.
+        let (admission, state, _) = game_with_creature_cards(&[(P1, HILL_GIANT)]);
+        let points = restore_points(&admission, state);
+        for state in points.before_damage.iter().chain(&points.after_damage) {
+            let land = state
+                .card_rules
+                .permanents
+                .permanents
+                .keys()
+                .copied()
+                .find(|object| state.zones.objects[object].card_definition != HILL_GIANT)
+                .unwrap();
+            assert!(
+                refused_everywhere(&admission, &with_marked(state, land, 1)),
+                "{:?} {:?}",
+                state.core.position,
+                pending(state).purpose
+            );
+        }
+    }
+
+    #[test]
+    fn a_restored_combat_that_dealt_no_damage_has_no_marked_damage() {
+        // CR 508.8: with no attackers the damage step is skipped. Nothing is
+        // dealt, so nothing is marked, in the end of combat step or in the
+        // combat damage step of such a combat.
+        let (admission, state, creatures) = game_with_creature_cards(&[(P1, HILL_GIANT)]);
+        let state = pass_until(&admission, state, at_attackers(3));
+        let declared = apply(&state, &declare(&admission, &state, 0).unwrap());
+        let end_of_combat = pass_until(
+            &admission,
+            declared,
+            at(
+                TurnPosition::Combat {
+                    step: CombatStep::EndOfCombat,
+                },
+                3,
+            ),
+        );
+        let combat = end_of_combat.combat.as_ref().unwrap();
+        assert!(combat.attackers.is_empty() && !combat.damage_step_completed);
+        let mut damage_step = end_of_combat.clone();
+        damage_step.core.position = TurnPosition::Combat {
+            step: CombatStep::CombatDamage,
+        };
+        for state in [&end_of_combat, &damage_step] {
+            validate_magic_pending_request(&admission, state, &EpisodeStatus::Running).unwrap();
+            assert!(
+                refused_everywhere(&admission, &with_marked(state, creatures[0], 1)),
+                "{:?}",
+                state.core.position
+            );
+        }
+    }
+
+    /// The end step of turn 3 of a game in which P1's Hill Giant attacked and
+    /// was dealt 2 damage (which is not lethal), and P1 has `p1_extra` cards
+    /// more than usual in hand (6 makes it 8 at this point, so that cleanup
+    /// asks for a discard). Returns the Giant, the state without the damage
+    /// and the state with it.
+    fn end_step_with_damage_and_hand(
+        p1_extra: u64,
+    ) -> (
+        ExecutableProfileAdmissionV1,
+        GameObjectId,
+        EngineState,
+        EngineState,
+    ) {
+        let (admission, state, creatures) =
+            game_with_creature_cards_and_hand(&[(P1, HILL_GIANT)], p1_extra);
+        let unmarked = restore_points(&admission, state)
+            .after_damage
+            .pop()
+            .unwrap();
+        assert_eq!(unmarked.core.position, END_STEP);
+        assert_eq!(
+            zone_count(&unmarked, P1, ZoneKind::Hand),
+            if p1_extra == 0 { 3 } else { 8 }
+        );
+        let marked = with_marked(&unmarked, creatures[0], 2);
+        for state in [&unmarked, &marked] {
+            validate_magic_pending_request(&admission, state, &EpisodeStatus::Running).unwrap();
+        }
+        (admission, creatures[0], unmarked, marked)
+    }
+
+    #[test]
+    fn marked_damage_is_removed_at_cleanup_with_and_without_a_discard() {
+        // CR 120.6, 514.1, 514.2: P1's Hill Giant has 2 damage marked on it in
+        // the end step, as after a block it survives (the endpoint tests play
+        // that block). Cleanup begins when P2's pass ends the end step.
+        // Without a discard the damage is removed in that transition; with one,
+        // P1 first discards (CR 514.1), with the damage still marked, and the
+        // damage is removed with the answer (CR 514.2). Either way the turn
+        // ends and P2's turn begins, with nothing damaged.
+        for (p1_extra, discards) in [(0, false), (6, true)] {
+            let (admission, giant, _, damaged) = end_step_with_damage_and_hand(p1_extra);
+            assert_eq!(marked(&damaged, giant), 2);
+            let p2 = pass(&admission, &damaged).0;
+            assert_eq!(pending(&p2).actor, P2);
+            let (cleanup, begun) = pass(&admission, &p2);
+            let (next, product) = if discards {
+                assert_eq!(
+                    pending(&cleanup).purpose,
+                    DecisionPurposeV4::HandSizeDiscard
+                );
+                assert_eq!(cleanup.core.turn_number, 3);
+                assert_eq!(marked(&cleanup, giant), 2);
+                assert!(damage_events(&begun).is_empty());
+                pass(&admission, &cleanup)
+            } else {
+                (cleanup, begun)
+            };
+
+            assert_eq!((next.core.turn_number, next.core.position), (4, UPKEEP));
+            assert_eq!(pending(&next).actor, P2);
+            assert_eq!(marked(&next, giant), 0);
+            assert!(!crate::combat::damage_is_marked(&next));
+            validate_magic_pending_request(&admission, &next, &EpisodeStatus::Running).unwrap();
+            // One event: the Giant's 2 damage goes to 0. No player observes it.
+            assert_eq!(
+                damage_events(&product),
+                [format!("marked {} 2 0", giant.0)],
+                "discards: {discards}"
+            );
+            assert!(observed_events(&product).iter().all(|event| !matches!(
+                event,
+                AuthoritativeRuleEventKind::MarkedDamageChanged { .. }
+            )));
+            // CR 514.1 comes before CR 514.2: the discard moves first.
+            let position = |pick: fn(&AuthoritativeRuleEventKind) -> bool| {
+                product.events.iter().position(|event| pick(&event.event))
+            };
+            let discard = position(|event| {
+                matches!(event, AuthoritativeRuleEventKind::ZoneTransition { .. })
+            });
+            let removal = position(|event| {
+                matches!(
+                    event,
+                    AuthoritativeRuleEventKind::MarkedDamageChanged { .. }
+                )
+            })
+            .unwrap();
+            assert_eq!(discard.is_some(), discards);
+            assert!(discard.is_none_or(|discard| discard < removal));
+        }
+    }
+
+    #[test]
+    fn cleanup_removes_the_damage_of_every_creature_that_had_any_in_object_order() {
+        // CR 514.2: all damage marked on permanents is removed at once, with
+        // one event for each creature that had any, in object order. The Lions
+        // has none and has no event.
+        let (admission, state, creatures) =
+            game_with_creature_cards(&[(P1, SAVANNAH_LIONS), (P1, GRAY_OGRE), (P1, HILL_GIANT)]);
+        let [lions, ogre, giant] = creatures[..] else {
+            panic!("three creatures")
+        };
+        assert!(lions < ogre && ogre < giant);
+        let end_step = restore_points(&admission, state)
+            .after_damage
+            .pop()
+            .unwrap();
+        // Damage that is not lethal: the Giant has 3 toughness, the Ogre 2.
+        let damaged = with_marked(&with_marked(&end_step, giant, 2), ogre, 1);
+        validate_magic_pending_request(&admission, &damaged, &EpisodeStatus::Running).unwrap();
+
+        let p2 = pass(&admission, &damaged).0;
+        let (next, product) = pass(&admission, &p2);
+        assert_eq!(
+            damage_events(&product),
+            [
+                format!("marked {} 1 0", ogre.0),
+                format!("marked {} 2 0", giant.0)
+            ]
+        );
+        for creature in creatures {
+            assert_eq!(marked(&next, creature), 0);
+        }
+    }
+
+    #[test]
+    fn a_restored_cleanup_accepts_marked_damage_only_while_the_discard_is_pending() {
+        // CR 514.1, 514.2: the discard is asked in the cleanup step before the
+        // damage is removed, so a checkpoint there still has it. Nowhere else
+        // in the cleanup step is any damage marked.
+        let (admission, giant, _, damaged) = end_step_with_damage_and_hand(6);
+        let p2 = pass(&admission, &damaged).0;
+        let cleanup = pass(&admission, &p2).0;
+        assert_eq!(
+            pending(&cleanup).purpose,
+            DecisionPurposeV4::HandSizeDiscard
+        );
+        assert_eq!(marked(&cleanup, giant), 2);
+        let running = EpisodeStatus::Running;
+        crate::combat::validate_marked_damage(&admission, &cleanup).unwrap();
+        validate_magic_pending_request(&admission, &cleanup, &running).unwrap();
+        // The restored state goes on: the discard ends the turn.
+        let next = pass(&admission, &cleanup).0;
+        assert_eq!((next.core.turn_number, marked(&next, giant)), (4, 0));
+
+        // Lethal damage is refused there as everywhere (CR 704.5g), and so is
+        // damage on a land (CR 120.3e).
+        assert!(refused_everywhere(
+            &admission,
+            &with_marked(&cleanup, giant, 3)
+        ));
+        let land = cleanup
+            .card_rules
+            .permanents
+            .permanents
+            .keys()
+            .copied()
+            .find(|object| *object != giant)
+            .unwrap();
+        assert!(refused_everywhere(
+            &admission,
+            &with_marked(&cleanup, land, 1)
+        ));
+
+        // Without the discard request, in the cleanup step or not, the same
+        // damage is not a state the game rests in.
+        let not_asked = |state: &EngineState| {
+            crate::combat::validate_marked_damage(&admission, state)
+                == Err(crate::BasicLandTransitionError::TurnProgressUnsupported)
+        };
+        let mut settled = cleanup.clone();
+        settled.execution.pending_decision = None;
+        assert!(not_asked(&settled));
+        let mut elsewhere = cleanup.clone();
+        elsewhere
+            .execution
+            .pending_decision
+            .as_mut()
+            .unwrap()
+            .purpose = DecisionPurposeV4::PriorityAction;
+        assert!(not_asked(&elsewhere));
+        // The end step's own request, in the cleanup step: the damage is only
+        // there while the discard is asked.
+        let mut end_step = damaged.clone();
+        end_step.core.position = TurnPosition::Ending {
+            step: EndingStep::Cleanup,
+        };
+        assert!(not_asked(&end_step));
+    }
+
+    #[test]
+    fn a_state_based_action_in_cleanup_fails_closed_instead_of_granting_priority() {
+        // CR 514.3a: if a state-based action would be performed after the
+        // cleanup actions, a player receives priority in the cleanup step. With
+        // lands and vanilla creatures none can: a game never rests with a
+        // player at 0 life who has not lost, so this is not a state the slice
+        // reaches. The turn must not go on past it, and must not skip the
+        // priority either.
+        let (admission, _, unmarked, _) = end_step_with_damage_and_hand(0);
+        let advance_from = |state: &EngineState| {
+            let mut next = state.clone();
+            next.core.priority = PriorityState::None;
+            advance(&admission, &mut next, &mut Facts::default())
+        };
+        assert!(matches!(
+            advance_from(&unmarked),
+            Ok(NextDecision::Priority(P2))
+        ));
+        let mut dying = unmarked.clone();
+        dying.core.players.get_mut(&P2).unwrap().life = 0;
+        assert!(matches!(
+            advance_from(&dying),
+            Err(crate::BasicLandTransitionError::TurnProgressUnsupported)
+        ));
+    }
+
+    #[test]
+    fn a_restored_tapped_blocker_is_refused() {
+        // CR 509.1a: only an untapped creature blocks, and nothing taps a
+        // blocker afterwards.
+        let (admission, state, creatures) =
+            game_with_creature_cards(&[(P1, SAVANNAH_LIONS), (P2, SAVANNAH_LIONS)]);
+        let [attacker, blocker] = creatures[..] else {
+            panic!("two creatures")
+        };
+        let blocked = blocks_declared(&admission, state, &[attacker], &[(blocker, attacker)]);
+        let running = EpisodeStatus::Running;
+        validate_magic_pending_request(&admission, &blocked, &running).unwrap();
+        for step in [
+            CombatStep::DeclareBlockers,
+            CombatStep::CombatDamage,
+            CombatStep::EndOfCombat,
+        ] {
+            let mut tapped = in_combat_step(&blocked, step);
+            tapped.zones.objects.get_mut(&blocker).unwrap().tapped = true;
+            mtgml_state::validate_engine_state(&tapped).unwrap();
+            assert_eq!(
+                crate::combat::validate_reachable_combat(&admission, &tapped),
+                Err(crate::BasicLandTransitionError::TurnProgressUnsupported),
+                "{step:?}"
+            );
+            assert!(is_refused(&admission, &tapped), "{step:?}");
+        }
     }
 }

@@ -78,7 +78,7 @@ fn v7_digest_changes_for_each_state_component_mutation() {
                 attackers: vec![GameObjectId(1)],
                 damage_step_completed: false,
                 blocked_attackers: BTreeSet::new(),
-                blockers: BTreeMap::from([(GameObjectId(1), None)]),
+                blockers: BTreeMap::new(),
             });
         }),
         ("zone_object_tapped", |state| {
@@ -352,10 +352,7 @@ fn v7_digest_binds_combat_inner_values() {
         attackers: vec![GameObjectId(1), GameObjectId(2)],
         damage_step_completed: false,
         blocked_attackers: BTreeSet::new(),
-        blockers: BTreeMap::from([
-            (GameObjectId(1), None),
-            (GameObjectId(2), None),
-        ]),
+        blockers: BTreeMap::new(),
     });
     baseline.core.position = TurnPosition::Combat {
         step: crate::CombatStep::CombatDamage,
@@ -377,6 +374,123 @@ fn v7_digest_binds_combat_inner_values() {
     changed.combat.as_mut().unwrap().damage_step_completed = true;
     validate_engine_state(&changed).unwrap();
     assert_ne!(baseline_digest, v7_digest(&changed));
+}
+
+#[test]
+fn the_combat_digest_binds_blockers_and_blocked_attackers() {
+    type Mutation = (&'static str, fn(&mut EngineState));
+    let baseline = combat_before_blocks();
+    validate_engine_state(&baseline).unwrap();
+    let mutations: [Mutation; 10] = [
+        ("one block", |state| block(state, 5, 3)),
+        ("the same blocker on the other attacker", |state| {
+            block(state, 5, 4)
+        }),
+        ("another blocker on the same attacker", |state| {
+            block(state, 5, 3);
+            block(state, 6, 3);
+        }),
+        ("another blocker on the other attacker", |state| {
+            block(state, 5, 3);
+            block(state, 6, 4);
+        }),
+        // The same blockers and the same blocked attackers as the mutation
+        // above, with the attackers swapped: only the pairs differ.
+        ("the two blockers' attackers swapped", |state| {
+            block(state, 5, 4);
+            block(state, 6, 3);
+        }),
+        // CR 509.1h: blocked history alone, with no live blocker.
+        ("a blocked attacker without a blocker", |state| {
+            state
+                .combat
+                .as_mut()
+                .unwrap()
+                .blocked_attackers
+                .insert(GameObjectId(3));
+        }),
+        ("the other blocked attacker without a blocker", |state| {
+            state
+                .combat
+                .as_mut()
+                .unwrap()
+                .blocked_attackers
+                .insert(GameObjectId(4));
+        }),
+        // The same blocks as the first mutation with one more blocked
+        // attacker: only `blocked_attackers` differs.
+        ("a block and another blocked attacker", |state| {
+            block(state, 5, 3);
+            state
+                .combat
+                .as_mut()
+                .unwrap()
+                .blocked_attackers
+                .insert(GameObjectId(4));
+        }),
+        // Only `attackers` differs from the baseline.
+        ("the first attacker alone", |state| {
+            state.combat.as_mut().unwrap().attackers = vec![GameObjectId(3)];
+        }),
+        ("the second attacker alone", |state| {
+            state.combat.as_mut().unwrap().attackers = vec![GameObjectId(4)];
+        }),
+    ];
+    let baseline_digest = v7_digest(&baseline);
+    let mut digests = BTreeSet::from([baseline_digest.clone()]);
+    for (name, mutate) in mutations {
+        let mut changed = baseline.clone();
+        mutate(&mut changed);
+        validate_engine_state(&changed)
+            .unwrap_or_else(|error| panic!("mutation {name} must stay valid: {error}"));
+        assert!(
+            digests.insert(v7_digest(&changed)),
+            "mutation {name} must give a digest no other state here has"
+        );
+    }
+}
+
+#[test]
+fn an_empty_combat_has_one_digest_form() {
+    // An attack with no attackers ends the combat without a damage step, so
+    // the state before and after the step's completion differ in the flag
+    // and nothing else.
+    let mut before = synthetic_state();
+    before.core.position = TurnPosition::Combat {
+        step: crate::CombatStep::EndOfCombat,
+    };
+    before.combat = Some(CombatState {
+        defending_player: PlayerId(2),
+        attackers: Vec::new(),
+        damage_step_completed: false,
+        blocked_attackers: BTreeSet::new(),
+        blockers: BTreeMap::new(),
+    });
+    let mut after = before.clone();
+    after.combat.as_mut().unwrap().damage_step_completed = true;
+    validate_engine_state(&before).unwrap();
+    validate_engine_state(&after).unwrap();
+
+    let form = |state: &EngineState| match crate::digest::combat_value(state) {
+        Value::Array(items) => items,
+        other => panic!("a combat is an array, not {other:?}"),
+    };
+    let (before_form, after_form) = (form(&before), form(&after));
+    assert_eq!(before_form.len(), 5);
+    assert_eq!(after_form.len(), 5);
+    assert_eq!(before_form[..4], after_form[..4]);
+    assert_eq!(before_form[4], Value::Bool(false));
+    assert_eq!(after_form[4], Value::Bool(true));
+    assert_eq!(
+        before_form[..4],
+        [
+            Value::Unsigned(2),
+            Value::Array(Vec::new()),
+            Value::Array(Vec::new()),
+            Value::Array(Vec::new()),
+        ]
+    );
+    assert_ne!(v7_digest(&before), v7_digest(&after));
 }
 
 #[test]

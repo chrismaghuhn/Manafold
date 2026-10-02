@@ -83,8 +83,8 @@
         "rules/declare-attackers"
       ],
       "key": "rules/declare-blockers",
-      "lifecycle": "specified",
-      "lifecycle_rank": 1,
+      "lifecycle": "covered",
+      "lifecycle_rank": 3,
       "version": "0.1.0"
     },
     {

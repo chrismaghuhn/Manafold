@@ -1,7 +1,9 @@
 //! Closed values of the execution state: continuations, stack items, waiting
-//! triggers and temporary effects. The rules crate writes two continuations,
-//! the start of the game and a Cast whose payment is a choice. The others are
-//! validated and digested, but nothing creates them yet.
+//! triggers and temporary effects. The rules crate writes four continuations:
+//! the start of the game, a Cast whose payment is a choice, the defending
+//! player's block declaration, and an owner's graveyard order for creatures
+//! that die together. The others are validated and digested, but nothing
+//! creates them yet.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -198,6 +200,18 @@ pub enum ContinuationPayload {
     TriggerPlacement(TriggerPlacementContinuation),
     StackResolution(StackResolutionContinuation),
     GameStart(GameStartContinuation),
+    /// The defending player chooses blockers one untapped creature at a time
+    /// (CR 509.1a). `pending_blockers` are the creatures not asked yet, in the
+    /// order of the defender's opaque identities; the first is asked next.
+    /// `declared` holds each answered creature with the attacker it blocks, or
+    /// `None` for no block. The answers are one declaration: they become the
+    /// combat's blockers and blocked attackers only when the last is given
+    /// (CR 509.1g, 509.1h).
+    BlockDeclaration {
+        defender: PlayerId,
+        pending_blockers: Vec<GameObjectId>,
+        declared: BTreeMap<GameObjectId, Option<GameObjectId>>,
+    },
 }
 
 /// Where the start of the game is (CR 103).

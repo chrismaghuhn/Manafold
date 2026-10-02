@@ -35,7 +35,7 @@ The following are not supported and fail closed:
 The stack zone holds the spell's card with its stack record. Resolution moves
 the card from the stack to the battlefield as a new incarnation (CR 400.7). The
 permanent starts with a fresh record of when its controller began controlling
-it. Marked damage is not recorded yet.
+it and with no damage marked on it (see `rules/damage-and-life`).
 
 ## Events and replacement points
 

@@ -9,11 +9,10 @@ use mtgml_model::{
 };
 use mtgml_random::RandomStreamKeyV1;
 use mtgml_state::{
-    ActionCostFacts, CostCommitActionV1, CostFacts, DamageKind, DamageRecipient, EngineState,
-    ManaPoolChangeCauseV1, ManaPoolV1, ManaSourceActivation, PendingTriggerRecord,
-    PerspectiveLifecycleAuditV1, SemanticDeltaOperation, SourceContext, StackItemEndKindV1,
-    StackItemPayload, StateDelta, TargetBinding, TemporaryEffectRecord, TurnPosition,
-    ZoneTransition,
+    ActionCostFacts, CostCommitActionV1, CostFacts, EngineState, ManaPoolChangeCauseV1, ManaPoolV1,
+    ManaSourceActivation, PendingTriggerRecord, PerspectiveLifecycleAuditV1,
+    SemanticDeltaOperation, StackItemEndKindV1, StackItemPayload, StateDelta, TargetBinding,
+    TemporaryEffectRecord, TurnPosition, ZoneTransition,
 };
 use serde::{Deserialize, Serialize};
 
@@ -193,12 +192,6 @@ pub enum AuthoritativeRuleEventKind {
     PerspectiveObservationOccurrence {
         lifecycle: Box<PerspectiveLifecycleAuditV1>,
         source_event_id: RuleEventId,
-    },
-    DamageApplied {
-        source: Option<SourceContext>,
-        recipient: DamageRecipient,
-        post_replacement_amount: u32,
-        damage_kind: DamageKind,
     },
     /// CR 103.1: the chooser picked who takes the first turn. Public.
     StartingPlayerChosen {
@@ -457,17 +450,6 @@ impl AuthoritativeRuleEventKind {
                     lifecycle: lifecycle.as_ref().clone(),
                 }]
             }
-            Self::DamageApplied {
-                source,
-                recipient,
-                post_replacement_amount,
-                damage_kind,
-            } => vec![SemanticDeltaOperation::DamageApplied {
-                source: source.clone().map(Box::new),
-                recipient: *recipient,
-                post_replacement_amount: *post_replacement_amount,
-                damage_kind: *damage_kind,
-            }],
             Self::StartingPlayerChosen {
                 chooser,
                 starting_player,
@@ -798,7 +780,6 @@ fn validate_event_delta_state_inner(
         validate_event_projection_v3(before, after, &event.event)?;
     }
     validate_zone_transition_chain(before, after, events)?;
-    validate_damage_state_projection_v3(before, after, events)?;
     Ok(())
 }
 
@@ -943,51 +924,6 @@ fn is_projectable_public_source_event(event: &AuthoritativeRuleEventKind) -> boo
     )
 }
 
-fn validate_damage_state_projection_v3(
-    before: &EngineState,
-    after: &EngineState,
-    events: &[AuthoritativeRuleEvent],
-) -> Result<(), EventDeltaError> {
-    let mut player_damage = std::collections::BTreeMap::<PlayerId, u64>::new();
-    let mut object_damage = std::collections::BTreeMap::<GameObjectId, u64>::new();
-    for event in events {
-        let AuthoritativeRuleEventKind::DamageApplied {
-            recipient,
-            post_replacement_amount,
-            ..
-        } = &event.event
-        else {
-            continue;
-        };
-        let total = match recipient {
-            DamageRecipient::Player(player) => player_damage.entry(*player).or_default(),
-            DamageRecipient::Object(object) => object_damage.entry(*object).or_default(),
-        };
-        let Some(next) = total.checked_add(u64::from(*post_replacement_amount)) else {
-            return Err(EventDeltaError::Mismatch);
-        };
-        *total = next;
-    }
-    for (player, amount) in player_damage {
-        let Some(before_player) = before.core.players.get(&player) else {
-            return Err(EventDeltaError::Mismatch);
-        };
-        let Some(after_player) = after.core.players.get(&player) else {
-            return Err(EventDeltaError::Mismatch);
-        };
-        let actual_loss = i128::from(before_player.life) - i128::from(after_player.life);
-        if actual_loss != i128::from(amount) {
-            return Err(EventDeltaError::Mismatch);
-        }
-    }
-    // No state component records marked damage yet: damage to an object
-    // cannot be projected and fails closed.
-    if !object_damage.is_empty() {
-        return Err(EventDeltaError::Mismatch);
-    }
-    Ok(())
-}
-
 fn validate_delta_operation_projection_v3(
     before: &EngineState,
     after: &EngineState,
@@ -1025,7 +961,6 @@ fn validate_delta_operation_projection_v3(
         | SemanticDeltaOperation::ObjectEntered { .. }
         | SemanticDeltaOperation::AbilityAuthorityAdded { .. }
         | SemanticDeltaOperation::AbilityAuthorityRemoved { .. }
-        | SemanticDeltaOperation::DamageApplied { .. }
         | SemanticDeltaOperation::StartingPlayerChosen { .. }
         | SemanticDeltaOperation::MulliganDeclared { .. }
         | SemanticDeltaOperation::LibraryShuffled { .. } => true,
@@ -1253,6 +1188,117 @@ fn validate_delta_operation_projection_v3(
     }
 }
 
+/// CR 514.1, 514.2: whether the transition from `before` to `after` ends the
+/// cleanup step, which removes all damage marked on permanents: it begins in
+/// the end step (when no discard is asked) or in the cleanup step (after the
+/// discard) and the next turn begins. The transition that begins the cleanup
+/// step with a discard to ask ends in it, with the damage still marked.
+fn cleanup_step_ends(before: &EngineState, after: &EngineState) -> bool {
+    matches!(
+        before.core.position,
+        TurnPosition::Ending {
+            step: mtgml_state::EndingStep::EndStep | mtgml_state::EndingStep::Cleanup
+        }
+    ) && before.core.turn_number.checked_add(1) == Some(after.core.turn_number)
+}
+
+/// The damage marked on `object`, if it is a permanent.
+fn marked_damage_of(state: &EngineState, object: GameObjectId) -> Option<u64> {
+    state
+        .card_rules
+        .permanents
+        .permanents
+        .get(&object)
+        .map(|permanent| permanent.marked_damage)
+}
+
+/// CR 510.1a-d: whether `assignment` is damage that `combat` lets its source
+/// assign: it is positive; an unblocked attacker assigns to the defending
+/// player (CR 510.1b); a blocked attacker assigns to a creature that blocks it
+/// (CR 510.1c); a blocker assigns to the attacker it blocks (CR 510.1d).
+fn combat_damage_may_be_assigned(
+    combat: &mtgml_state::CombatState,
+    assignment: &mtgml_state::DamageAssignmentV1,
+) -> bool {
+    use mtgml_state::DamageRecipientV1 as Recipient;
+    let source = assignment.source;
+    assignment.amount > 0
+        && match assignment.recipient {
+            Recipient::Player { player } => {
+                player == combat.defending_player
+                    && combat.attackers.contains(&source)
+                    && !combat.blocked_attackers.contains(&source)
+            }
+            Recipient::Creature { object } => {
+                (combat.attackers.contains(&source)
+                    && combat.blockers.get(&object) == Some(&source))
+                    || combat.blockers.get(&source) == Some(&object)
+            }
+        }
+}
+
+/// Whether the damage `assignments` are combat damage the `before` combat
+/// can deal (see `combat_damage_may_be_assigned`), and `after` shows exactly
+/// what it does, all at once (CR 510.2): the defending player lost as much
+/// life as the damage dealt to them (CR 120.3a), and each permanent has as much
+/// more damage marked on it as the damage dealt to it (CR 120.3e), which is
+/// none for a permanent no damage was dealt to. A creature dealt lethal damage
+/// is destroyed in the same transition (CR 704.5g): it is not in `after`, so
+/// the damage dealt to it is all its marks leave of evidence. Only a creature
+/// that was dealt damage can have left.
+fn combat_damage_matches_the_states(
+    before: &EngineState,
+    after: &EngineState,
+    assignments: &[mtgml_state::DamageAssignmentV1],
+) -> bool {
+    use mtgml_state::DamageRecipientV1 as Recipient;
+    let Some(combat) = before.combat.as_ref() else {
+        return false;
+    };
+    let mut to_player = 0_u64;
+    let mut to_creatures = std::collections::BTreeMap::<GameObjectId, u64>::new();
+    for assignment in assignments {
+        if !combat_damage_may_be_assigned(combat, assignment) {
+            return false;
+        }
+        let total = match assignment.recipient {
+            Recipient::Player { .. } => &mut to_player,
+            Recipient::Creature { object } => to_creatures.entry(object).or_default(),
+        };
+        let Some(sum) = total.checked_add(assignment.amount) else {
+            return false;
+        };
+        *total = sum;
+    }
+    let life = |state: &EngineState| {
+        state
+            .core
+            .players
+            .get(&combat.defending_player)
+            .map(|player| i128::from(player.life))
+    };
+    let permanents_before = &before.card_rules.permanents.permanents;
+    !assignments.is_empty()
+        && match (life(before), life(after)) {
+            (Some(before), Some(after)) => before - after == i128::from(to_player),
+            _ => false,
+        }
+        && to_creatures
+            .keys()
+            .all(|creature| permanents_before.contains_key(creature))
+        && permanents_before.iter().all(|(object, was)| {
+            match after.card_rules.permanents.permanents.get(object) {
+                Some(now) => {
+                    now.marked_damage.checked_sub(was.marked_damage)
+                        == Some(to_creatures.get(object).copied().unwrap_or(0))
+                }
+                None => {
+                    to_creatures.contains_key(object) && !after.zones.objects.contains_key(object)
+                }
+            }
+        })
+}
+
 fn validate_event_projection_v3(
     before: &EngineState,
     after: &EngineState,
@@ -1306,9 +1352,21 @@ fn validate_event_projection_v3(
                     .get(player)
                     .is_some_and(|state| state.life == *to)
         }
-        // No state component records marked damage yet: the event cannot be
-        // projected and fails closed.
-        AuthoritativeRuleEventKind::MarkedDamageChanged { .. } => false,
+        // CR 120.3e, 120.6: the damage marked on a creature goes from `from`
+        // to `to`, as the states show. A creature that is destroyed in the same
+        // transition (CR 704.5g) is gone from the after state: what the event
+        // says of it is that it had `from` before and that damage was added.
+        // Damage rises as it is marked, and falls only to 0, when the cleanup
+        // step removes it (CR 514.2).
+        AuthoritativeRuleEventKind::MarkedDamageChanged { creature, from, to } => {
+            from != to
+                && marked_damage_of(before, *creature) == Some(*from)
+                && match marked_damage_of(after, *creature) {
+                    Some(now) => now == *to,
+                    None => from < to && !after.zones.objects.contains_key(creature),
+                }
+                && (from < to || (*to == 0 && cleanup_step_ends(before, after)))
+        }
         AuthoritativeRuleEventKind::ObjectTapped { object, from, to } => {
             from != to
                 && before
@@ -1379,19 +1437,7 @@ fn validate_event_projection_v3(
             continuation,
             owner,
             top_to_bottom,
-        } => after
-            .execution
-            .continuations
-            .get(continuation)
-            .is_some_and(|record| match &record.payload {
-                mtgml_state::ContinuationPayload::MagicSbaGraveyardOrderV1 {
-                    completed_owner_orders,
-                    ..
-                } => completed_owner_orders
-                    .iter()
-                    .any(|order| order.owner == *owner && order.top_to_bottom == *top_to_bottom),
-                _ => false,
-            }),
+        } => graveyard_order_is_recorded(before, after, *continuation, *owner, top_to_bottom),
         AuthoritativeRuleEventKind::StateBasedActionsApplied { actions } => {
             actions.iter().all(|action| match action {
                 mtgml_state::SbaSelectedActionV1::PlayerLoses { player } => after
@@ -1399,8 +1445,22 @@ fn validate_event_projection_v3(
                     .players
                     .get(player)
                     .is_some_and(|state| state.has_lost),
+                // A battlefield object that is gone afterwards, and that is no
+                // longer in combat (CR 506.4): the delta lets this event stand
+                // for the combat changing in a transition that dealt no damage.
                 mtgml_state::SbaSelectedActionV1::ObjectToOwnerGraveyard { object, .. } => {
-                    !after.zones.objects.contains_key(object)
+                    before
+                        .zones
+                        .locations
+                        .get(object)
+                        .is_some_and(|location| location.zone == ZoneKind::Battlefield)
+                        && !after.zones.objects.contains_key(object)
+                        && after.combat.as_ref().is_none_or(|combat| {
+                            !combat.attackers.contains(object)
+                                && !combat.blocked_attackers.contains(object)
+                                && !combat.blockers.contains_key(object)
+                                && !combat.blockers.values().any(|attacker| attacker == object)
+                        })
                 }
             })
         }
@@ -1445,44 +1505,41 @@ fn validate_event_projection_v3(
         AuthoritativeRuleEventKind::TurnNumberChanged { from, to } => {
             from != to && before.core.turn_number == *from && after.core.turn_number == *to
         }
-        // CR 510.2, 120.3a: attacking creatures deal damage to the defending
-        // player, and the player loses that much life. Damage to a creature
-        // has no state to check it against yet and fails closed.
+        // CR 510.1, 510.2, 120.3: attacking creatures deal damage to the
+        // defending player or to the creatures that block them, and blocking
+        // creatures to the attacker they block, all at once. The player loses
+        // that much life and each damaged creature has that much more damage
+        // marked on it.
         AuthoritativeRuleEventKind::CombatDamageDealt { assignments } => {
-            before.combat.as_ref().is_some_and(|combat| {
-                let dealt = assignments.iter().try_fold(0_u64, |total, assignment| {
-                    let to_defender = matches!(assignment.recipient,
-                        mtgml_state::DamageRecipientV1::Player { player }
-                            if player == combat.defending_player);
-                    if assignment.amount == 0
-                        || !to_defender
-                        || !combat.attackers.contains(&assignment.source)
-                    {
-                        return None;
-                    }
-                    total.checked_add(assignment.amount)
-                });
-                let life = |state: &EngineState| {
-                    state
-                        .core
-                        .players
-                        .get(&combat.defending_player)
-                        .map(|player| i128::from(player.life))
-                };
-                !assignments.is_empty()
-                    && match (dealt, life(before), life(after)) {
-                        (Some(dealt), Some(before), Some(after)) => {
-                            before - after == i128::from(dealt)
-                        }
-                        _ => false,
-                    }
-            })
+            combat_damage_matches_the_states(before, after, assignments)
         }
-        // Blocked-state state projection remains closed until its exact
-        // legal relation is characterized and accepted.
-        AuthoritativeRuleEventKind::BlockersDeclared { .. } => false,
+        // CR 509.1, 509.1g, 509.1h: the defending player declares every
+        // blocker at once, listed by blocker. Each blocker blocks one attacker
+        // and each of those attackers becomes blocked; nothing else of the
+        // combat changes.
+        AuthoritativeRuleEventKind::BlockersDeclared { assignments } => {
+            let blockers: std::collections::BTreeMap<_, _> = assignments
+                .iter()
+                .map(|assignment| (assignment.blocker, assignment.attacker))
+                .collect();
+            let blocked: std::collections::BTreeSet<_> = blockers.values().copied().collect();
+            assignments
+                .windows(2)
+                .all(|pair| pair[0].blocker < pair[1].blocker)
+                && match (before.combat.as_ref(), after.combat.as_ref()) {
+                    (Some(before), Some(after)) => {
+                        before.blockers.is_empty()
+                            && before.blocked_attackers.is_empty()
+                            && after.blockers == blockers
+                            && after.blocked_attackers == blocked
+                            && after.defending_player == before.defending_player
+                            && after.attackers == before.attackers
+                            && after.damage_step_completed == before.damage_step_completed
+                    }
+                    _ => false,
+                }
+        }
         AuthoritativeRuleEventKind::PerspectiveObservationOccurrence { .. } => true,
-        AuthoritativeRuleEventKind::DamageApplied { .. } => true,
         AuthoritativeRuleEventKind::StackItemAdded {
             stack_object,
             payload,
@@ -1698,6 +1755,74 @@ fn validate_event_projection_v3(
     } else {
         Err(EventDeltaError::Mismatch)
     }
+}
+
+/// CR 404.3: the order `owner` chose for their cards that die together is
+/// recorded in the continuation of the pending order, with the owners still to
+/// be asked. When `owner` is the last, it is not kept: the continuation ends
+/// and the batch applies, which takes each card of the order, and exactly those
+/// of `owner` that the batch holds, off the battlefield.
+fn graveyard_order_is_recorded(
+    before: &EngineState,
+    after: &EngineState,
+    continuation: ContinuationId,
+    owner: PlayerId,
+    top_to_bottom: &[GameObjectId],
+) -> bool {
+    let kept = after
+        .execution
+        .continuations
+        .get(&continuation)
+        .is_some_and(|record| match &record.payload {
+            mtgml_state::ContinuationPayload::MagicSbaGraveyardOrderV1 {
+                completed_owner_orders,
+                ..
+            } => completed_owner_orders
+                .iter()
+                .any(|order| order.owner == owner && order.top_to_bottom == top_to_bottom),
+            _ => false,
+        });
+    let applied_with_the_batch = !after.execution.continuations.contains_key(&continuation)
+        && before
+            .execution
+            .continuations
+            .get(&continuation)
+            .is_some_and(|record| match &record.payload {
+                mtgml_state::ContinuationPayload::MagicSbaGraveyardOrderV1 {
+                    selected_sba_actions,
+                    apnap_owners,
+                    next_owner_index,
+                    ..
+                } => {
+                    let asked = usize::try_from(*next_owner_index).ok();
+                    let owned: std::collections::BTreeSet<_> = selected_sba_actions
+                        .iter()
+                        .filter_map(|action| match action {
+                            mtgml_state::SbaSelectedActionV1::ObjectToOwnerGraveyard {
+                                object,
+                                ..
+                            } if before
+                                .zones
+                                .objects
+                                .get(object)
+                                .is_some_and(|card| card.owner == owner) =>
+                            {
+                                Some(*object)
+                            }
+                            _ => None,
+                        })
+                        .collect();
+                    asked.and_then(|asked| apnap_owners.get(asked)) == Some(&owner)
+                        && asked.is_some_and(|asked| asked + 1 == apnap_owners.len())
+                        && owned.len() == top_to_bottom.len()
+                        && owned == top_to_bottom.iter().copied().collect()
+                }
+                _ => false,
+            })
+        && top_to_bottom
+            .iter()
+            .all(|object| !after.zones.objects.contains_key(object));
+    kept || applied_with_the_batch
 }
 
 fn game_start_of(state: &EngineState) -> Option<&mtgml_state::GameStartContinuation> {
@@ -2173,8 +2298,8 @@ mod tests {
     use mtgml_state::{
         construct_synthetic_engine_state, AbilityAuthorityV1, ActionCostFacts, CounterKindV1,
         EngineState, ManaCost, ManaPoolV1, ManaSourceActivation, ManaSourceActivationCost,
-        SemanticDeltaOperation, StackRecord, StateDelta, SyntheticResetInputs, SyntheticV4Setup,
-        VisibilityPartition, ZoneLocation, ZonePosition,
+        SemanticDeltaOperation, SourceContext, StackRecord, StateDelta, SyntheticResetInputs,
+        SyntheticV4Setup, VisibilityPartition, ZoneLocation, ZonePosition,
     };
 
     fn state() -> EngineState {
@@ -2705,66 +2830,6 @@ mod tests {
     }
 
     #[test]
-    fn post_replacement_damage_event_matches_the_actual_player_life_delta() {
-        let before = state();
-        let player = PlayerId(1);
-        let life_before = before.core.players[&player].life;
-        let mut after = before.clone();
-        after.core.players.get_mut(&player).unwrap().life -= 3;
-        after.revision = StateRevision(before.revision.0 + 1);
-
-        let kinds = [
-            AuthoritativeRuleEventKind::DamageApplied {
-                source: None,
-                recipient: DamageRecipient::Player(player),
-                post_replacement_amount: 3,
-                damage_kind: DamageKind::Noncombat,
-            },
-            AuthoritativeRuleEventKind::LifeChanged {
-                player,
-                from: life_before,
-                to: life_before - 3,
-            },
-        ];
-        let (events, next) =
-            allocate_rule_events(before.allocators.next_rule_event_id, after.revision, kinds)
-                .unwrap();
-        after.allocators.next_rule_event_id = next;
-        let delta = StateDelta::between(
-            &before,
-            &after,
-            events
-                .iter()
-                .flat_map(AuthoritativeRuleEvent::semantic_operations)
-                .collect(),
-        )
-        .unwrap();
-        validate_event_delta_state(&before, &after, &events, &delta).unwrap();
-
-        let mut wrong_events = events.clone();
-        if let AuthoritativeRuleEventKind::DamageApplied {
-            post_replacement_amount,
-            ..
-        } = &mut wrong_events[0].event
-        {
-            *post_replacement_amount = 4;
-        }
-        let wrong_delta = StateDelta::between(
-            &before,
-            &after,
-            wrong_events
-                .iter()
-                .flat_map(AuthoritativeRuleEvent::semantic_operations)
-                .collect(),
-        )
-        .unwrap();
-        assert_eq!(
-            validate_event_delta_state(&before, &after, &wrong_events, &wrong_delta),
-            Err(EventDeltaError::Mismatch)
-        );
-    }
-
-    #[test]
     fn counter_delta_operation_is_bound_to_its_sequential_event_identity() {
         let before = state();
         let object = GameObjectId(1);
@@ -3189,7 +3254,7 @@ mod tests {
             attackers: vec![GameObjectId(1)],
             damage_step_completed: false,
             blocked_attackers: Default::default(),
-            blockers: std::collections::BTreeMap::from([(GameObjectId(1), None)]),
+            blockers: std::collections::BTreeMap::new(),
         });
         before.validate().unwrap();
         let mut after = before.clone();
@@ -3292,16 +3357,852 @@ mod tests {
         );
     }
 
-    #[test]
-    fn combat_damage_to_a_creature_fails_closed() {
-        assert_eq!(
-            combat_damage_is_valid(vec![damage(
-                1,
-                mtgml_state::DamageRecipientV1::Creature {
-                    object: GameObjectId(2)
+    /// P1's creatures 3 and 4 attack P2, who has 40 life and controls the
+    /// creature 5, which blocks 3, in the combat damage step: `(before,
+    /// after)` of the damage that Hill Giant 3 (power 3) deals to 5, 5 (power
+    /// 2) deals to 3 and the unblocked 4 (power 2) deals to P2.
+    fn fight_states() -> (EngineState, EngineState) {
+        let mut before = state();
+        for (id, controller) in [(3, 1), (4, 1), (5, 2)] {
+            let id = GameObjectId(id);
+            before.zones.objects.insert(
+                id,
+                mtgml_state::GameObject {
+                    id,
+                    physical_card: Some(mtgml_model::PhysicalCardId(id.0)),
+                    card_definition: mtgml_model::CardDefinitionId(1),
+                    owner: PlayerId(controller),
+                    controller: PlayerId(controller),
+                    tapped: controller == 1,
+                    face_down: false,
                 },
-                3
-            )]),
+            );
+            before.zones.locations.insert(
+                id,
+                ZoneLocation {
+                    zone: mtgml_model::ZoneKind::Battlefield,
+                    player: None,
+                    position: ZonePosition::Unordered,
+                    visibility: VisibilityPartition::Public,
+                    partition: None,
+                },
+            );
+            before.card_rules.permanents.enter(id, 1).unwrap();
+        }
+        before.allocators.next_object_id = GameObjectId(6);
+        before.core.position = TurnPosition::Combat {
+            step: mtgml_state::CombatStep::CombatDamage,
+        };
+        before.combat = Some(mtgml_state::CombatState {
+            defending_player: PlayerId(2),
+            attackers: vec![GameObjectId(3), GameObjectId(4)],
+            damage_step_completed: false,
+            blocked_attackers: std::collections::BTreeSet::from([GameObjectId(3)]),
+            blockers: std::collections::BTreeMap::from([(GameObjectId(5), GameObjectId(3))]),
+        });
+        before.validate().unwrap();
+        let mut after = before.clone();
+        after.revision = StateRevision(before.revision.0 + 1);
+        after.core.players.get_mut(&PlayerId(2)).unwrap().life -= 2;
+        after.combat.as_mut().unwrap().damage_step_completed = true;
+        after
+            .card_rules
+            .turn_history
+            .players
+            .get_mut(&PlayerId(2))
+            .unwrap()
+            .lost_life_this_turn = true;
+        for (creature, amount) in [(3, 2), (5, 3)] {
+            after
+                .card_rules
+                .permanents
+                .mark_damage(GameObjectId(creature), amount)
+                .unwrap();
+        }
+        after.validate().unwrap();
+        (before, after)
+    }
+
+    fn marked(creature: u64, from: u64, to: u64) -> AuthoritativeRuleEventKind {
+        AuthoritativeRuleEventKind::MarkedDamageChanged {
+            creature: GameObjectId(creature),
+            from,
+            to,
+        }
+    }
+
+    /// The events of the damage step of `fight_states` with the damage
+    /// `assignments`, as they must be.
+    fn fight_events(
+        assignments: Vec<mtgml_state::DamageAssignmentV1>,
+    ) -> Vec<AuthoritativeRuleEventKind> {
+        vec![
+            AuthoritativeRuleEventKind::CombatDamageDealt { assignments },
+            AuthoritativeRuleEventKind::LifeChanged {
+                player: PlayerId(2),
+                from: 40,
+                to: 38,
+            },
+            marked(3, 0, 2),
+            marked(5, 0, 3),
+            AuthoritativeRuleEventKind::CombatDamageStepCompleted,
+        ]
+    }
+
+    /// Validates `events` as the events of `fight_states`' transition, from
+    /// the delta they give to the projections.
+    fn fight_is_valid(events: Vec<AuthoritativeRuleEventKind>) -> Result<(), String> {
+        let (before, mut after) = fight_states();
+        let (events, next) =
+            allocate_rule_events(before.allocators.next_rule_event_id, after.revision, events)
+                .unwrap();
+        after.allocators.next_rule_event_id = next;
+        let delta = StateDelta::between(
+            &before,
+            &after,
+            events
+                .iter()
+                .flat_map(AuthoritativeRuleEvent::semantic_operations)
+                .collect(),
+        )
+        .map_err(|error| format!("delta: {error:?}"))?;
+        validate_event_delta_state(&before, &after, &events, &delta)
+            .map_err(|error| format!("events: {error:?}"))
+    }
+
+    fn to_creature(object: u64) -> mtgml_state::DamageRecipientV1 {
+        mtgml_state::DamageRecipientV1::Creature {
+            object: GameObjectId(object),
+        }
+    }
+
+    fn the_fight() -> Vec<mtgml_state::DamageAssignmentV1> {
+        let to_p2 = mtgml_state::DamageRecipientV1::Player {
+            player: PlayerId(2),
+        };
+        vec![
+            damage(3, to_creature(5), 3),
+            damage(4, to_p2, 2),
+            damage(5, to_creature(3), 2),
+        ]
+    }
+
+    #[test]
+    fn combat_damage_to_creatures_must_match_the_blocks_and_the_marked_damage() {
+        let to_p2 = mtgml_state::DamageRecipientV1::Player {
+            player: PlayerId(2),
+        };
+        assert_eq!(fight_is_valid(fight_events(the_fight())), Ok(()));
+
+        let refused = |assignments: Vec<mtgml_state::DamageAssignmentV1>| {
+            fight_is_valid(fight_events(assignments)).unwrap_err()
+        };
+        let events_mismatch = "events: Mismatch";
+        // An amount that is not the damage marked (CR 120.3e), more or less.
+        for (to_5, to_3) in [(2, 2), (4, 2), (3, 1), (3, 3)] {
+            assert_eq!(
+                refused(vec![
+                    damage(3, to_creature(5), to_5),
+                    damage(4, to_p2, 2),
+                    damage(5, to_creature(3), to_3),
+                ]),
+                events_mismatch,
+                "{to_5} {to_3}"
+            );
+        }
+        // The damage to a creature is positive (CR 510.1a).
+        let mut zero = the_fight();
+        zero.push(damage(5, to_creature(3), 0));
+        assert_eq!(refused(zero), events_mismatch);
+        // CR 510.1c: a blocked attacker assigns to the creature blocking it,
+        // not to the player or to a creature that does not block it.
+        assert_eq!(
+            refused(vec![
+                damage(3, to_p2, 3),
+                damage(4, to_p2, 2),
+                damage(5, to_creature(3), 2)
+            ]),
+            events_mismatch
+        );
+        assert_eq!(
+            refused(vec![
+                damage(3, to_creature(4), 3),
+                damage(4, to_p2, 2),
+                damage(5, to_creature(3), 2)
+            ]),
+            events_mismatch
+        );
+        // CR 510.1b: an unblocked attacker assigns to the player it attacks,
+        // not to a creature.
+        assert_eq!(
+            refused(vec![
+                damage(3, to_creature(5), 3),
+                damage(4, to_creature(5), 2),
+                damage(5, to_creature(3), 2)
+            ]),
+            events_mismatch
+        );
+        // CR 510.1d: a blocker assigns to the attacker it blocks, never to the
+        // player, to the other attacker or to a creature on its own side.
+        for recipient in [to_p2, to_creature(4), to_creature(5)] {
+            assert_eq!(
+                refused(vec![
+                    damage(3, to_creature(5), 3),
+                    damage(4, to_p2, 2),
+                    damage(5, recipient, 2)
+                ]),
+                events_mismatch
+            );
+        }
+        // A creature that does not fight assigns nothing.
+        assert_eq!(
+            refused(vec![
+                damage(3, to_creature(5), 3),
+                damage(4, to_p2, 2),
+                damage(5, to_creature(3), 2),
+                damage(2, to_p2, 1)
+            ]),
+            events_mismatch
+        );
+        // Damage marked that no assignment accounts for: nothing is assigned
+        // to the creature 3, which has 2 marked.
+        assert_eq!(
+            refused(vec![damage(3, to_creature(5), 3), damage(4, to_p2, 2)]),
+            events_mismatch
+        );
+    }
+
+    #[test]
+    fn combat_damage_goes_where_the_combat_sends_it() {
+        // In `fight_states`, 3 and 4 attack P2 and 5 blocks 3. Of every damage
+        // a creature of 0 to 7 could assign to a player or a creature of 0 to
+        // 7, exactly three are legal: the blocked attacker to its blocker
+        // (CR 510.1c), the unblocked attacker to the player (CR 510.1b) and the
+        // blocker to the attacker it blocks (CR 510.1d).
+        let (before, _) = fight_states();
+        let combat = before.combat.as_ref().unwrap();
+        let to_player = |player| mtgml_state::DamageRecipientV1::Player {
+            player: PlayerId(player),
+        };
+        let legal = [(3, to_creature(5)), (4, to_player(2)), (5, to_creature(3))];
+        let recipients: Vec<_> = [to_player(1), to_player(2)]
+            .into_iter()
+            .chain((0..=7).map(to_creature))
+            .collect();
+        for source in 0..=7 {
+            for recipient in &recipients {
+                assert_eq!(
+                    combat_damage_may_be_assigned(combat, &damage(source, *recipient, 1)),
+                    legal.contains(&(source, *recipient)),
+                    "{source} to {recipient:?}"
+                );
+            }
+        }
+        // CR 510.1a: it is positive.
+        for (source, recipient) in legal {
+            assert!(!combat_damage_may_be_assigned(
+                combat,
+                &damage(source, recipient, 0)
+            ));
+        }
+    }
+
+    #[test]
+    fn combat_damage_without_the_marked_damage_events_is_uncovered() {
+        // The marks are state changes of the transition: each needs its event.
+        let events = |skip: u64| {
+            fight_events(the_fight())
+                .into_iter()
+                .filter(|event| {
+                    !matches!(event,
+                        AuthoritativeRuleEventKind::MarkedDamageChanged { creature, .. }
+                            if creature.0 == skip)
+                })
+                .collect::<Vec<_>>()
+        };
+        for skip in [3, 5] {
+            assert_eq!(
+                fight_is_valid(events(skip)),
+                Err("delta: UncoveredMutation".to_owned()),
+                "{skip}"
+            );
+        }
+        // An event that states other values than the marks is not covering.
+        let mut wrong = fight_events(the_fight());
+        wrong[3] = marked(5, 0, 2);
+        assert_eq!(
+            fight_is_valid(wrong),
+            Err("delta: UncoveredMutation".to_owned())
+        );
+    }
+
+    #[test]
+    fn marked_damage_changed_must_match_the_states() {
+        let (before, after) = fight_states();
+        let valid = |event: &AuthoritativeRuleEventKind| {
+            validate_event_projection_v3(&before, &after, event)
+        };
+        assert_eq!(valid(&marked(3, 0, 2)), Ok(()));
+        assert_eq!(valid(&marked(5, 0, 3)), Ok(()));
+        // The values are those of the states, and they differ.
+        for event in [
+            marked(3, 0, 3),
+            marked(3, 1, 2),
+            marked(5, 0, 2),
+            marked(4, 0, 0),
+        ] {
+            assert_eq!(valid(&event), Err(EventDeltaError::Mismatch), "{event:?}");
+        }
+        // A creature that was not damaged did not change.
+        assert_eq!(valid(&marked(4, 0, 2)), Err(EventDeltaError::Mismatch));
+        // The object is a permanent.
+        assert_eq!(valid(&marked(1, 0, 0)), Err(EventDeltaError::Mismatch));
+        assert_eq!(valid(&marked(99, 0, 2)), Err(EventDeltaError::Mismatch));
+    }
+
+    const END_STEP: TurnPosition = TurnPosition::Ending {
+        step: mtgml_state::EndingStep::EndStep,
+    };
+    const CLEANUP: TurnPosition = TurnPosition::Ending {
+        step: mtgml_state::EndingStep::Cleanup,
+    };
+
+    /// The states around a cleanup step that ends: the damaged creatures 3 and
+    /// 5 of `fight_states` (2 and 3 marked) at `from`, and the same game in
+    /// the upkeep of the next turn with the damage removed.
+    fn cleanup_states(from: TurnPosition) -> (EngineState, EngineState) {
+        let (_, mut before) = fight_states();
+        before.core.position = from;
+        let mut after = before.clone();
+        after.core.turn_number = before.core.turn_number + 1;
+        after.core.position = TurnPosition::Beginning {
+            step: mtgml_state::BeginningStep::Upkeep,
+        };
+        for creature in [3, 5] {
+            after
+                .card_rules
+                .permanents
+                .permanents
+                .get_mut(&GameObjectId(creature))
+                .unwrap()
+                .marked_damage = 0;
+        }
+        (before, after)
+    }
+
+    #[test]
+    fn marked_damage_falls_only_when_the_cleanup_step_ends() {
+        // CR 514.2: all damage marked on permanents is removed in the cleanup
+        // step, which ends in the transition that leaves the end step (no
+        // discard) or the cleanup step (after the discard of CR 514.1) for
+        // the next turn. A mark falls to 0 there and in no other transition.
+        for from in [END_STEP, CLEANUP] {
+            let (before, after) = cleanup_states(from);
+            assert_eq!(
+                before.card_rules.permanents.permanents[&GameObjectId(3)].marked_damage,
+                2
+            );
+            let valid = |event: &AuthoritativeRuleEventKind| {
+                validate_event_projection_v3(&before, &after, event)
+            };
+            assert_eq!(valid(&marked(3, 2, 0)), Ok(()), "{from:?}");
+            assert_eq!(valid(&marked(5, 3, 0)), Ok(()), "{from:?}");
+            // The values are still those of the states.
+            for wrong in [marked(3, 3, 0), marked(5, 2, 0), marked(4, 2, 0)] {
+                assert_eq!(valid(&wrong), Err(EventDeltaError::Mismatch), "{wrong:?}");
+            }
+            // It falls to 0, not to another value.
+            let mut partly = after.clone();
+            partly
+                .card_rules
+                .permanents
+                .permanents
+                .get_mut(&GameObjectId(3))
+                .unwrap()
+                .marked_damage = 1;
+            assert_eq!(
+                validate_event_projection_v3(&before, &partly, &marked(3, 2, 1)),
+                Err(EventDeltaError::Mismatch),
+                "{from:?}"
+            );
+        }
+
+        // Not in a transition that does not end the cleanup step: any other
+        // position, or one in which the turn does not change (the end step
+        // that begins cleanup with a discard still to answer).
+        for from in [
+            TurnPosition::PrecombatMain,
+            TurnPosition::Combat {
+                step: mtgml_state::CombatStep::CombatDamage,
+            },
+            TurnPosition::PostcombatMain,
+            TurnPosition::Beginning {
+                step: mtgml_state::BeginningStep::Upkeep,
+            },
+        ] {
+            let (before, after) = cleanup_states(from);
+            assert_eq!(
+                validate_event_projection_v3(&before, &after, &marked(3, 2, 0)),
+                Err(EventDeltaError::Mismatch),
+                "{from:?}"
+            );
+        }
+        let (before, mut still_cleanup) = cleanup_states(END_STEP);
+        still_cleanup.core.turn_number = before.core.turn_number;
+        still_cleanup.core.position = CLEANUP;
+        assert_eq!(
+            validate_event_projection_v3(&before, &still_cleanup, &marked(3, 2, 0)),
+            Err(EventDeltaError::Mismatch)
+        );
+    }
+
+    /// The states of `fight_states`, with the blocker 5 destroyed (CR 704.5g)
+    /// in the same transition: it is no longer on the battlefield, and the
+    /// combat no longer has it.
+    fn fight_states_with_the_blocker_destroyed() -> (EngineState, EngineState) {
+        let (before, mut after) = fight_states();
+        after.zones.objects.remove(&GameObjectId(5));
+        after.zones.locations.remove(&GameObjectId(5));
+        after
+            .card_rules
+            .permanents
+            .permanents
+            .remove(&GameObjectId(5));
+        after.card_rules.faces.faces.remove(&GameObjectId(5));
+        after.combat.as_mut().unwrap().blockers.clear();
+        (before, after)
+    }
+
+    #[test]
+    fn combat_damage_to_a_creature_that_is_destroyed_in_the_same_transition_is_valid() {
+        // Its marks are no longer in the after state: the damage dealt to it
+        // is the evidence (CR 120.3e, 704.5g).
+        let (before, after) = fight_states_with_the_blocker_destroyed();
+        assert!(combat_damage_matches_the_states(
+            &before,
+            &after,
+            &the_fight()
+        ));
+        // The creatures that stay are still held to the damage dealt to them.
+        let mut wrong = after.clone();
+        wrong
+            .card_rules
+            .permanents
+            .mark_damage(GameObjectId(3), 1)
+            .unwrap();
+        assert!(!combat_damage_matches_the_states(
+            &before,
+            &wrong,
+            &the_fight()
+        ));
+        // Only a creature that was dealt damage is destroyed in the step.
+        let mut other = after.clone();
+        other.zones.objects.remove(&GameObjectId(4));
+        other.zones.locations.remove(&GameObjectId(4));
+        other
+            .card_rules
+            .permanents
+            .permanents
+            .remove(&GameObjectId(4));
+        assert!(!combat_damage_matches_the_states(
+            &before,
+            &other,
+            &the_fight()
+        ));
+    }
+
+    #[test]
+    fn marked_damage_changed_of_a_creature_destroyed_in_the_same_transition_is_valid() {
+        // The creature is gone, so the event cannot be checked against what it
+        // has marked after: it is the damage it had before, and it rose.
+        let (before, after) = fight_states_with_the_blocker_destroyed();
+        let valid = |event: &AuthoritativeRuleEventKind| {
+            validate_event_projection_v3(&before, &after, event)
+        };
+        assert_eq!(valid(&marked(5, 0, 3)), Ok(()));
+        assert_eq!(valid(&marked(3, 0, 2)), Ok(()));
+        for wrong in [
+            marked(5, 1, 3),
+            marked(5, 3, 3),
+            marked(5, 3, 0),
+            marked(99, 0, 3),
+        ] {
+            assert_eq!(valid(&wrong), Err(EventDeltaError::Mismatch), "{wrong:?}");
+        }
+        // Damage only rises: a creature with 2 marked that has fewer marked
+        // after the event, or the same, was not damaged by it.
+        let mut marked_before = before.clone();
+        marked_before
+            .card_rules
+            .permanents
+            .mark_damage(GameObjectId(5), 2)
+            .unwrap();
+        for wrong in [marked(5, 2, 1), marked(5, 2, 2)] {
+            assert_eq!(
+                validate_event_projection_v3(&marked_before, &after, &wrong),
+                Err(EventDeltaError::Mismatch),
+                "{wrong:?}"
+            );
+        }
+        assert_eq!(
+            validate_event_projection_v3(&marked_before, &after, &marked(5, 2, 3)),
+            Ok(())
+        );
+        // A permanent that is gone but whose object is not did not leave the
+        // battlefield by being destroyed.
+        let mut object_kept = after.clone();
+        object_kept.zones.objects.insert(
+            GameObjectId(5),
+            before.zones.objects[&GameObjectId(5)].clone(),
+        );
+        assert_eq!(
+            validate_event_projection_v3(&before, &object_kept, &marked(5, 0, 3)),
+            Err(EventDeltaError::Mismatch)
+        );
+    }
+
+    #[test]
+    fn destroyed_objects_were_on_the_battlefield_and_are_gone() {
+        let (before, after) = fight_states_with_the_blocker_destroyed();
+        let destroyed = |object: u64| AuthoritativeRuleEventKind::StateBasedActionsApplied {
+            actions: vec![mtgml_state::SbaSelectedActionV1::ObjectToOwnerGraveyard {
+                object: GameObjectId(object),
+                causes: vec![mtgml_state::SbaObjectCauseV1::LethalDamage],
+            }],
+        };
+        let valid = |event: &AuthoritativeRuleEventKind| {
+            validate_event_projection_v3(&before, &after, event)
+        };
+        assert_eq!(valid(&destroyed(5)), Ok(()));
+        // A creature still on the battlefield was not destroyed, and nor was
+        // an object that was not there.
+        assert_eq!(valid(&destroyed(3)), Err(EventDeltaError::Mismatch));
+        assert_eq!(valid(&destroyed(99)), Err(EventDeltaError::Mismatch));
+        // An object that was not on the battlefield before is not destroyed.
+        let mut elsewhere = before.clone();
+        elsewhere
+            .zones
+            .locations
+            .get_mut(&GameObjectId(5))
+            .unwrap()
+            .zone = mtgml_model::ZoneKind::Hand;
+        assert_eq!(
+            validate_event_projection_v3(&elsewhere, &after, &destroyed(5)),
+            Err(EventDeltaError::Mismatch)
+        );
+        // A destroyed creature is removed from combat (CR 506.4): as a blocker,
+        // and as a blocked or attacking creature, with the blockers it had.
+        let mut still_blocking = after.clone();
+        still_blocking
+            .combat
+            .as_mut()
+            .unwrap()
+            .blockers
+            .insert(GameObjectId(5), GameObjectId(3));
+        assert_eq!(
+            validate_event_projection_v3(&before, &still_blocking, &destroyed(5)),
+            Err(EventDeltaError::Mismatch)
+        );
+        let mut still_attacking = after.clone();
+        still_attacking.combat.as_mut().unwrap().attackers = vec![GameObjectId(5)];
+        assert_eq!(
+            validate_event_projection_v3(&before, &still_attacking, &destroyed(5)),
+            Err(EventDeltaError::Mismatch)
+        );
+        let mut still_blocked = after.clone();
+        still_blocked
+            .combat
+            .as_mut()
+            .unwrap()
+            .blocked_attackers
+            .insert(GameObjectId(5));
+        assert_eq!(
+            validate_event_projection_v3(&before, &still_blocked, &destroyed(5)),
+            Err(EventDeltaError::Mismatch)
+        );
+        let mut blocked_by_it = after.clone();
+        blocked_by_it
+            .combat
+            .as_mut()
+            .unwrap()
+            .blockers
+            .insert(GameObjectId(3), GameObjectId(5));
+        assert_eq!(
+            validate_event_projection_v3(&before, &blocked_by_it, &destroyed(5)),
+            Err(EventDeltaError::Mismatch)
+        );
+    }
+
+    /// P2 owns the creatures 5 and 6, which die in a batch together with P1's 3
+    /// (CR 404.3), and the state waits for the order of P2, the last owner to be
+    /// asked: `(before, after)` of P2's answer, in which the batch applies and
+    /// the continuation ends.
+    fn last_graveyard_order_states() -> (EngineState, EngineState) {
+        let (mut before, _) = fight_states();
+        before.revision = StateRevision(5);
+        let id = GameObjectId(6);
+        before.zones.objects.insert(
+            id,
+            mtgml_state::GameObject {
+                id,
+                physical_card: Some(mtgml_model::PhysicalCardId(id.0)),
+                card_definition: mtgml_model::CardDefinitionId(1),
+                owner: PlayerId(2),
+                controller: PlayerId(2),
+                tapped: false,
+                face_down: false,
+            },
+        );
+        before.zones.locations.insert(
+            id,
+            ZoneLocation {
+                zone: mtgml_model::ZoneKind::Battlefield,
+                player: None,
+                position: ZonePosition::Unordered,
+                visibility: VisibilityPartition::Public,
+                partition: None,
+            },
+        );
+        before.allocators.next_object_id = GameObjectId(7);
+        let destroyed = |object: u64| mtgml_state::SbaSelectedActionV1::ObjectToOwnerGraveyard {
+            object: GameObjectId(object),
+            causes: vec![mtgml_state::SbaObjectCauseV1::LethalDamage],
+        };
+        before.execution.continuations.insert(
+            ContinuationId(1),
+            mtgml_state::ContinuationRecord {
+                id: ContinuationId(1),
+                created_at_revision: before.revision,
+                payload: mtgml_state::ContinuationPayload::MagicSbaGraveyardOrderV1 {
+                    round_start_revision: StateRevision(before.revision.0 - 1),
+                    selected_sba_actions: vec![destroyed(3), destroyed(5), destroyed(6)],
+                    apnap_owners: vec![PlayerId(2)],
+                    next_owner_index: 0,
+                    completed_owner_orders: Vec::new(),
+                },
+            },
+        );
+        let mut after = before.clone();
+        after.revision = StateRevision(before.revision.0 + 1);
+        after.execution.continuations.clear();
+        for gone in [3, 5, 6] {
+            after.zones.objects.remove(&GameObjectId(gone));
+            after.zones.locations.remove(&GameObjectId(gone));
+        }
+        (before, after)
+    }
+
+    fn order_chosen(owner: u64, top_to_bottom: &[u64]) -> AuthoritativeRuleEventKind {
+        AuthoritativeRuleEventKind::SbaGraveyardOrderChosen {
+            continuation: ContinuationId(1),
+            owner: PlayerId(owner),
+            top_to_bottom: top_to_bottom.iter().copied().map(GameObjectId).collect(),
+        }
+    }
+
+    #[test]
+    fn the_last_graveyard_order_is_applied_with_its_batch() {
+        // CR 404.3: the order of the last owner is not kept in the state: the
+        // batch applies, and the continuation ends with the cards gone.
+        let (before, after) = last_graveyard_order_states();
+        let valid = |event: &AuthoritativeRuleEventKind| {
+            validate_event_projection_v3(&before, &after, event)
+        };
+        assert_eq!(valid(&order_chosen(2, &[5, 6])), Ok(()));
+        assert_eq!(valid(&order_chosen(2, &[6, 5])), Ok(()));
+        // Only the owner who is asked, with exactly its cards of the batch.
+        for wrong in [
+            order_chosen(1, &[3]),
+            order_chosen(1, &[5, 6]),
+            order_chosen(2, &[5]),
+            order_chosen(2, &[5, 5]),
+            order_chosen(2, &[5, 6, 3]),
+            order_chosen(2, &[5, 4]),
+        ] {
+            assert_eq!(valid(&wrong), Err(EventDeltaError::Mismatch), "{wrong:?}");
+        }
+        // Another continuation is not the one that ended.
+        let other = AuthoritativeRuleEventKind::SbaGraveyardOrderChosen {
+            continuation: ContinuationId(2),
+            owner: PlayerId(2),
+            top_to_bottom: vec![GameObjectId(5), GameObjectId(6)],
+        };
+        assert_eq!(valid(&other), Err(EventDeltaError::Mismatch));
+        // The cards are gone: the order alone, with the batch not applied, is
+        // not the last one.
+        let mut alive = after.clone();
+        alive.zones.objects.insert(
+            GameObjectId(6),
+            before.zones.objects[&GameObjectId(6)].clone(),
+        );
+        assert_eq!(
+            validate_event_projection_v3(&before, &alive, &order_chosen(2, &[5, 6])),
+            Err(EventDeltaError::Mismatch)
+        );
+        // With another owner still to be asked it is kept in the continuation,
+        // which the state still holds, and is not applied.
+        let mut two_owners = before.clone();
+        let mtgml_state::ContinuationPayload::MagicSbaGraveyardOrderV1 { apnap_owners, .. } =
+            &mut two_owners
+                .execution
+                .continuations
+                .get_mut(&ContinuationId(1))
+                .unwrap()
+                .payload
+        else {
+            unreachable!()
+        };
+        *apnap_owners = vec![PlayerId(2), PlayerId(1)];
+        assert_eq!(
+            validate_event_projection_v3(&two_owners, &after, &order_chosen(2, &[5, 6])),
+            Err(EventDeltaError::Mismatch)
+        );
+        let mut kept = after.clone();
+        let mut record = two_owners.execution.continuations[&ContinuationId(1)].clone();
+        let mtgml_state::ContinuationPayload::MagicSbaGraveyardOrderV1 {
+            next_owner_index,
+            completed_owner_orders,
+            ..
+        } = &mut record.payload
+        else {
+            unreachable!()
+        };
+        *next_owner_index = 1;
+        *completed_owner_orders = vec![mtgml_state::SbaGraveyardOwnerOrderV1 {
+            owner: PlayerId(2),
+            top_to_bottom: vec![GameObjectId(5), GameObjectId(6)],
+        }];
+        kept.execution
+            .continuations
+            .insert(ContinuationId(1), record);
+        assert_eq!(
+            validate_event_projection_v3(&two_owners, &kept, &order_chosen(2, &[5, 6])),
+            Ok(())
+        );
+        assert_eq!(
+            validate_event_projection_v3(&two_owners, &kept, &order_chosen(2, &[6, 5])),
+            Err(EventDeltaError::Mismatch)
+        );
+    }
+
+    /// P1's creatures 3 and 4 attack P2, who controls the creatures 5 and
+    /// 6, in the declare blockers step: `(before, after)` of a declaration
+    /// in which each of P2's creatures blocks one of them.
+    fn block_declaration_states() -> (EngineState, EngineState) {
+        let mut before = state();
+        for (id, controller) in [(3, 1), (4, 1), (5, 2), (6, 2)] {
+            let id = GameObjectId(id);
+            before.zones.objects.insert(
+                id,
+                mtgml_state::GameObject {
+                    id,
+                    physical_card: Some(mtgml_model::PhysicalCardId(id.0)),
+                    card_definition: mtgml_model::CardDefinitionId(1),
+                    owner: PlayerId(controller),
+                    controller: PlayerId(controller),
+                    tapped: false,
+                    face_down: false,
+                },
+            );
+            before.zones.locations.insert(
+                id,
+                ZoneLocation {
+                    zone: mtgml_model::ZoneKind::Battlefield,
+                    player: None,
+                    position: ZonePosition::Unordered,
+                    visibility: VisibilityPartition::Public,
+                    partition: None,
+                },
+            );
+        }
+        before.allocators.next_object_id = GameObjectId(7);
+        before.core.position = TurnPosition::Combat {
+            step: mtgml_state::CombatStep::DeclareBlockers,
+        };
+        before.combat = Some(mtgml_state::CombatState {
+            defending_player: PlayerId(2),
+            attackers: vec![GameObjectId(3), GameObjectId(4)],
+            damage_step_completed: false,
+            blocked_attackers: Default::default(),
+            blockers: Default::default(),
+        });
+        before.validate().unwrap();
+        let mut after = before.clone();
+        after.revision = StateRevision(before.revision.0 + 1);
+        let combat = after.combat.as_mut().unwrap();
+        combat.blockers = std::collections::BTreeMap::from([
+            (GameObjectId(5), GameObjectId(3)),
+            (GameObjectId(6), GameObjectId(3)),
+        ]);
+        combat.blocked_attackers = std::collections::BTreeSet::from([GameObjectId(3)]);
+        after.validate().unwrap();
+        (before, after)
+    }
+
+    fn blocks(pairs: &[(u64, u64)]) -> AuthoritativeRuleEventKind {
+        AuthoritativeRuleEventKind::BlockersDeclared {
+            assignments: pairs
+                .iter()
+                .map(
+                    |(blocker, attacker)| mtgml_state::CombatBlockerAssignmentV1 {
+                        blocker: GameObjectId(*blocker),
+                        attacker: GameObjectId(*attacker),
+                    },
+                )
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn declared_blockers_must_match_the_blocks_in_the_combat() {
+        let (before, after) = block_declaration_states();
+        let valid = |event: &AuthoritativeRuleEventKind| {
+            validate_event_projection_v3(&before, &after, event)
+        };
+        // Two creatures block one attacker (CR 509.1h): it is blocked once.
+        assert_eq!(valid(&blocks(&[(5, 3), (6, 3)])), Ok(()));
+        // The assignments are the blocks of the after state, listed by
+        // blocker: no other attacker, a missing or extra blocker, or another
+        // order.
+        for wrong in [
+            blocks(&[(5, 4), (6, 3)]),
+            blocks(&[(5, 3)]),
+            blocks(&[(5, 3), (6, 3), (6, 4)]),
+            blocks(&[(6, 3), (5, 3)]),
+            blocks(&[(5, 3), (5, 3)]),
+            blocks(&[]),
+        ] {
+            assert_eq!(valid(&wrong), Err(EventDeltaError::Mismatch), "{wrong:?}");
+        }
+        // Blocks are declared once, and into a combat.
+        let declaration = blocks(&[(5, 3), (6, 3)]);
+        assert_eq!(
+            validate_event_projection_v3(&after, &after, &declaration),
+            Err(EventDeltaError::Mismatch)
+        );
+        let mut ended = after.clone();
+        ended.combat = None;
+        assert_eq!(
+            validate_event_projection_v3(&before, &ended, &declaration),
+            Err(EventDeltaError::Mismatch)
+        );
+        // The declaration changes nothing else of the combat.
+        let mut damaged = after.clone();
+        damaged.combat.as_mut().unwrap().damage_step_completed = true;
+        assert_eq!(
+            validate_event_projection_v3(&before, &damaged, &declaration),
+            Err(EventDeltaError::Mismatch)
+        );
+        // An attacker the blockers leave stays unblocked.
+        let mut blocked_too_many = after.clone();
+        blocked_too_many
+            .combat
+            .as_mut()
+            .unwrap()
+            .blocked_attackers
+            .insert(GameObjectId(4));
+        assert_eq!(
+            validate_event_projection_v3(&before, &blocked_too_many, &declaration),
             Err(EventDeltaError::Mismatch)
         );
     }

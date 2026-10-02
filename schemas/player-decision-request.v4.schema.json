@@ -965,6 +965,48 @@
           "purpose": {
             "properties": {
               "kind": {
+                "const": "blocker_declaration"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "decision_domain_v2": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "choose_one"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "visibility": {
+            "const": "acting_player_only"
+          }
+        },
+        "required": [
+          "decision_domain_v2",
+          "visibility"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "properties": {
+              "kind": {
                 "const": "hand_size_discard"
               }
             },
@@ -1794,6 +1836,53 @@
                     "kind": {
                       "enum": [
                         "select_object"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                }
+              },
+              "required": [
+                "intent"
+              ]
+            }
+          }
+        },
+        "required": [
+          "candidates"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "purpose": {
+            "properties": {
+              "kind": {
+                "const": "blocker_declaration"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        "required": [
+          "purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "candidates": {
+            "items": {
+              "properties": {
+                "intent": {
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "declare_block"
                       ]
                     }
                   },
@@ -2992,6 +3081,33 @@
                   "trigger"
                 ],
                 "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "attacker": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/u64"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "blocker": {
+                    "$ref": "#/$defs/u64"
+                  },
+                  "kind": {
+                    "const": "declare_block"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "blocker",
+                  "attacker"
+                ],
+                "type": "object"
               }
             ]
           }
@@ -3280,6 +3396,18 @@
           "properties": {
             "kind": {
               "const": "attacker_declaration"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "blocker_declaration"
             }
           },
           "required": [

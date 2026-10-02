@@ -1227,6 +1227,13 @@
     {
       "change_process": "process-pr",
       "owner_role": "maintainer",
+      "path": "docs/superpowers/plans/2026-10-01-blocks-and-deaths.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
       "path": "docs/superpowers/plans/2026-09-30-old-formats-cleanup.md",
       "role": "process",
       "stability": "provisional"

@@ -1281,8 +1281,24 @@ pub(crate) fn put_vanilla_creature_on_battlefield(
     state: &mut EngineState,
     owner: PlayerId,
 ) -> mtgml_model::GameObjectId {
-    tests::add_vanilla_creature(state, owner)
+    tests::add_vanilla_creature(state, owner, tests::SAVANNAH_LIONS)
 }
+
+/// Puts the vanilla creature `definition` (`SAVANNAH_LIONS`, `GRAY_OGRE` or
+/// `HILL_GIANT`) on `owner`'s battlefield.
+#[cfg(test)]
+pub(crate) fn put_creature_card_on_battlefield(
+    state: &mut EngineState,
+    owner: PlayerId,
+    definition: mtgml_model::CardDefinitionId,
+) -> mtgml_model::GameObjectId {
+    tests::add_vanilla_creature(state, owner, definition)
+}
+
+/// The vanilla creatures of the combined catalog: Savannah Lions (2/1), Gray
+/// Ogre (2/2) and Hill Giant (3/3).
+#[cfg(test)]
+pub(crate) use tests::{GRAY_OGRE, HILL_GIANT, SAVANNAH_LIONS};
 
 #[cfg(test)]
 mod tests {
@@ -1364,21 +1380,66 @@ mod tests {
         )
     }
 
-    /// A Savannah Lions (definition 3 of the combined catalog) on `owner`'s
+    pub(crate) const SAVANNAH_LIONS: CardDefinitionId = CardDefinitionId(3);
+    pub(crate) const GRAY_OGRE: CardDefinitionId = CardDefinitionId(4);
+    pub(crate) const HILL_GIANT: CardDefinitionId = CardDefinitionId(5);
+
+    /// The vanilla creature `definition` of the combined catalog on `owner`'s
     /// battlefield, with its face entry.
     pub(super) fn add_vanilla_creature(
         state: &mut mtgml_state::EngineState,
         owner: PlayerId,
+        definition: CardDefinitionId,
     ) -> mtgml_model::GameObjectId {
+        use mtgml_state::{VisibilityPartition, ZoneLocation, ZonePosition};
         // Each creature has its own opaque identity.
         let opaque_id = 40 + state.allocators.next_object_id.0;
-        let object = add_object(
-            state,
-            CardDefinitionId(3),
-            owner,
-            ZoneKind::Battlefield,
-            opaque_id,
-        );
+        let object = add_object(state, definition, owner, ZoneKind::Battlefield, opaque_id);
+        // A permanent a game made (a resolved spell or a played land) is in
+        // the one unordered public battlefield, which belongs to no player:
+        // put the creature where the game does.
+        let synthetic = state.zones.locations[&object].key();
+        let members = state.zones.ordered_zones.get_mut(&synthetic).unwrap();
+        members.retain(|member| *member != object);
+        if members.is_empty() {
+            state.zones.ordered_zones.remove(&synthetic);
+        }
+        let battlefield = ZoneLocation {
+            zone: ZoneKind::Battlefield,
+            player: None,
+            position: ZonePosition::Unordered,
+            visibility: VisibilityPartition::Public,
+            partition: None,
+        };
+        state.zones.locations.insert(object, battlefield.clone());
+        // A creature a game made is a physical card, which every player knows
+        // is there: it is public.
+        let physical_card = Some(mtgml_model::PhysicalCardId(3_000 + object.0));
+        state.zones.objects.get_mut(&object).unwrap().physical_card = physical_card;
+        for (player, identity) in &state.perspective_identities.players {
+            let opaque = identity.object_to_opaque[&object];
+            state
+                .knowledge
+                .players
+                .get_mut(player)
+                .unwrap()
+                .active
+                .insert(
+                    opaque,
+                    mtgml_state::KnowledgeRecordV2 {
+                        opaque_object: opaque,
+                        physical_card,
+                        card_definition: Some(definition),
+                        known_location: Some(mtgml_state::KnownLocationFactV2 {
+                            location: battlefield.clone(),
+                            provenance:
+                                mtgml_state::KnowledgeAcquisitionReason::InitialConfiguration,
+                        }),
+                        acquisition: mtgml_state::KnowledgeAcquisitionReason::InitialConfiguration,
+                        historical_locations: Vec::new(),
+                    },
+                );
+        }
         state.card_rules.faces.faces.insert(object, 0);
         state
             .card_rules
