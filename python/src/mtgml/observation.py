@@ -28,8 +28,11 @@ from ._knowledge import (
 )
 from ._magic_basic_land_observation_v1 import (
     MAGIC_BASIC_LAND_OBSERVATION_SCHEMA_V1,
+    AssignedDamageObservationV1,
     AttachmentObservationV1,
+    BlockObservationV1,
     CounterObservationV1,
+    DeclaredBlockObservationV1,
     FaceObservationV1,
     MagicBasicLandObservationV1,
     ManaPoolObservationV1,
@@ -95,8 +98,11 @@ __all__ = [
     "SYNTHETIC_TURN_KINDS",
     "ZONE_KINDS",
     "ActivatedAbilityStackItemV1",
+    "AssignedDamageObservationV1",
     "AttachmentObservationV1",
+    "BlockObservationV1",
     "CounterObservationV1",
+    "DeclaredBlockObservationV1",
     "EpisodeStatus",
     "FaceObservationV1",
     "GrantKeywordV1",

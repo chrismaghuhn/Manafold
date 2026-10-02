@@ -219,7 +219,8 @@ fn possible_blockers(
 /// controls an untapped creature, a block declaration starts: the creatures are
 /// asked about one at a time, and the caller asks about the first
 /// (`install_block_request`). Returns whether there is such a declaration;
-/// without one, nothing is asked.
+/// without one, nothing is asked and the caller declares no blocks
+/// (`declare_no_blockers`).
 pub(crate) fn begin_block_declaration(
     admission: &ExecutableProfileAdmissionV1,
     next: &mut EngineState,
@@ -403,14 +404,28 @@ pub(crate) fn install_block_request(
     crate::turn_progression::install_request(next, shape)
 }
 
+/// CR 509.1: the defending player controls no untapped creature, so the
+/// declare blockers step's turn-based action declares no blockers: one empty
+/// `BlockersDeclared`, which both players observe, as for any other declaration.
+/// It happens whenever there are attackers (CR 508.8).
+pub(crate) fn declare_no_blockers(next: &mut EngineState, facts: &mut Facts) -> Result<(), Error> {
+    observe_public(
+        next,
+        facts,
+        AuthoritativeRuleEventKind::BlockersDeclared {
+            assignments: Vec::new(),
+        },
+    )
+}
+
 /// CR 509.1a: the creature the pending declaration asks about, `blocker`,
 /// blocks `attacker`, or nothing. With creatures still to ask, the declaration
 /// goes on and this returns `false`. After the last answer the declaration is
 /// complete: every chosen creature becomes a blocking creature and each
 /// attacker with a blocker becomes blocked (CR 509.1g, 509.1h), in one
-/// `BlockersDeclared`, which is emitted even when no creature blocks. The
-/// continuation ends and this returns `true`; the caller gives the active
-/// player priority (CR 509.2).
+/// `BlockersDeclared`, which both players observe and which is emitted even
+/// when no creature blocks. The continuation ends and this returns `true`; the
+/// caller gives the active player priority (CR 509.2).
 ///
 /// Every combination of answers is a legal declaration for vanilla creatures:
 /// no restriction or requirement applies to blocking (CR 509.1b, 509.1c).
@@ -466,12 +481,11 @@ pub(crate) fn declare_block(
             .insert(assignment.blocker, Some(assignment.attacker));
         combat.blocked_attackers.insert(assignment.attacker);
     }
-    // No observed event or observation field shows blocks yet, so no player
-    // observes this rule event.
-    record_unobserved(
+    observe_public(
+        next,
         facts,
         AuthoritativeRuleEventKind::BlockersDeclared { assignments },
-    );
+    )?;
     Ok(true)
 }
 
@@ -1150,10 +1164,13 @@ pub(crate) fn deal_combat_damage(
             .ok_or(Error::InvalidResult)?;
     }
     if !assignments.is_empty() {
-        record_unobserved(
+        // Combat damage is public (CR 510.2): both players observe all of it,
+        // dealt at once, before the life lost and the creatures that die.
+        observe_public(
+            next,
             facts,
             AuthoritativeRuleEventKind::CombatDamageDealt { assignments },
-        );
+        )?;
     }
     if to_player > 0 {
         let player = combat.defending_player;
@@ -1182,8 +1199,8 @@ pub(crate) fn deal_combat_damage(
             AuthoritativeRuleEventKind::LifeChanged { player, from, to },
         )?;
     }
-    // No observed event or observation field shows marked damage yet, so no
-    // player observes these rule events.
+    // The observation shows the damage marked on every permanent, so no
+    // observed event repeats it: no player observes these rule events.
     for (creature, amount) in to_creatures {
         let (from, to) = next
             .card_rules
@@ -1215,8 +1232,9 @@ pub(crate) fn damage_is_marked(state: &EngineState) -> bool {
 
 /// CR 514.2, 120.6: all damage marked on permanents is removed, all at once,
 /// in the cleanup step. Each creature that had some has one
-/// `MarkedDamageChanged` to 0, in object order. No player observes it, as no
-/// player observes the marking.
+/// `MarkedDamageChanged` to 0, in object order. No player observes the event:
+/// the observation shows the damage marked, so the removal is seen as the mark
+/// going to 0.
 pub(crate) fn remove_marked_damage(next: &mut EngineState, facts: &mut Facts) {
     for (creature, from) in next.card_rules.permanents.remove_marked_damage() {
         record_unobserved(

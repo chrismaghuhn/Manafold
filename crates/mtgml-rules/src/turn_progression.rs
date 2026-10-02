@@ -847,8 +847,10 @@ fn advance(
                 if crate::combat::begin_block_declaration(admission, next)? {
                     return Ok(NextDecision::Blockers);
                 }
-                // CR 509.2: with nothing to declare, the active player gets
-                // priority.
+                // CR 509.1: the turn-based action still happens, with no
+                // creature to declare: an empty declaration, which both
+                // players observe. CR 509.2: the active player gets priority.
+                crate::combat::declare_no_blockers(next, facts)?;
                 return Ok(open_priority(next));
             }
             TurnPosition::Combat {
@@ -2891,11 +2893,12 @@ mod tests {
         );
         validate_magic_pending_request(&admission, &blocked, &EpisodeStatus::Running).unwrap();
 
-        // CR 509.1a: a tapped creature cannot block, so nothing is asked.
+        // CR 509.1a: a tapped creature cannot block, so nothing is asked, and
+        // the declaration the step makes is empty (CR 509.1, 508.8).
         let mut tapped = at_priority.clone();
         tapped.zones.objects.get_mut(&blocker).unwrap().tapped = true;
         let product = submit(&admission, &tapped, pass_answer(pending(&tapped))).unwrap();
-        assert_eq!(declarations(&product), Vec::<Vec<_>>::new());
+        assert_eq!(declarations(&product), vec![Vec::new()]);
         let next = apply(&tapped, &product);
         assert!(next.execution.continuations.is_empty());
         assert_eq!(pending(&next).actor, P1);
@@ -3955,11 +3958,16 @@ mod tests {
         for owner in [P1, P2] {
             assert!(after.card_rules.turn_history.players[&owner].permanent_card_to_graveyard);
         }
-        // The deaths are public, in the order they were performed, and nothing
-        // else of the step is: the damage and the marks are shown to no player
-        // yet.
+        // The damage is public, and so are the deaths, in the order they were
+        // performed. Nothing else of the step is: the marks are in the
+        // observation, not an event.
+        let observed = observed_events(&product);
+        assert!(matches!(
+            observed[0],
+            AuthoritativeRuleEventKind::CombatDamageDealt { assignments } if assignments.len() == 2
+        ));
         assert_eq!(
-            observed_events(&product)
+            observed[1..]
                 .iter()
                 .map(|event| match event {
                     AuthoritativeRuleEventKind::ZoneTransition { transition } => {
@@ -4009,19 +4017,22 @@ mod tests {
             ]
         );
         assert_eq!(state_based_actions(&product), [vec![destroyed(blocker)]]);
-        // The life lost and the death are public; the marked damage is not
-        // shown yet.
+        // The damage dealt, the life lost and the death are public; the
+        // marked damage is in the observation, not an event.
         let observed = observed_events(&product);
-        assert_eq!(observed.len(), 2);
+        assert_eq!(observed.len(), 3);
+        assert!(matches!(observed[0],
+            AuthoritativeRuleEventKind::CombatDamageDealt { assignments }
+                if assignments.len() == 3));
         assert_eq!(
-            observed[0],
+            observed[1],
             &AuthoritativeRuleEventKind::LifeChanged {
                 player: P2,
                 from: p2_life,
                 to: p2_life - 2
             }
         );
-        assert!(matches!(observed[1],
+        assert!(matches!(observed[2],
             AuthoritativeRuleEventKind::ZoneTransition { transition }
                 if transition.old_object == blocker));
     }

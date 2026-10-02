@@ -127,6 +127,14 @@
     {
       "contract": "observed-event-envelope.v4",
       "path": "observed-event-v4-attackers-declared.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "path": "observed-event-v4-blockers-declared.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "path": "observed-event-v4-combat-damage-dealt.json"
     }
   ]
 }

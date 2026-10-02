@@ -359,7 +359,7 @@
         "a_tapped_creature_is_not_asked_to_block",
         "two_creatures_may_block_one_attacker",
         "a_half_declared_block_is_invisible_to_the_attacker",
-        "the_completing_block_answer_shows_nothing_about_blocks_to_either_player",
+        "both_players_see_the_blocks_once_declared",
         "a_restored_half_declared_block_continues_identically",
         "a_rejected_block_answer_changes_nothing",
         "a_restored_block_declaration_the_game_could_not_have_reached_is_refused",

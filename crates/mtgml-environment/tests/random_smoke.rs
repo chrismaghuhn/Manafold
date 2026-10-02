@@ -8,8 +8,9 @@
 //!
 //! Two kinds of games run: two basic-land decks against each other, and a
 //! deck of 17 lands and 10 vanilla creatures against 27 lands (the land
-//! player has no creatures, so no block is ever declared). The second kind
-//! casts creatures, attacks, and can end the game at 0 life.
+//! player has no creatures, so no creature ever blocks: each attack gets an
+//! empty block declaration). The second kind casts creatures, attacks, and can
+//! end the game at 0 life.
 //!
 //! Thirty-turn games need an optimized build: `scripts/run_checks.py`
 //! runs `cargo test --release -p mtgml-environment --test random_smoke`.
@@ -31,8 +32,8 @@ use mtgml_observation::PlayerStepSubmissionV1;
 const FIRST_SEED: u64 = 0x4D41_4E41;
 const LAST_TURN: u64 = 30;
 const SHORT_LAST_TURN: u64 = 3;
-const SHORT_FINGERPRINT: &str = "ce5a35d35dc9efafe664ae6ca840f95f9a00a531a6f139d3a4451243be4bd42b";
-const LONG_FINGERPRINT: &str = "0a48dc3c1b0e46f62c8ba611cb2544be884bfcbadfe1917ae3dbc16f0f248bd9";
+const SHORT_FINGERPRINT: &str = "35a8ba9d4940054203b5c8328d4515a62288a1a15234b6fa7ee7664a62e04f39";
+const LONG_FINGERPRINT: &str = "e6a676b0fc47b6f184dc60006e22b666abcb4d24c112c6bce12e86ce3458efa3";
 /// The first asymmetric seed whose game casts a creature before turn 6
 /// begins, so that the short pin covers the creature rules and not only land
 /// play (`FIRST_SEED` through `FIRST_SEED + 5` cast nothing that early).
@@ -40,7 +41,7 @@ const ASYMMETRIC_SHORT_SEED: u64 = FIRST_SEED + 6;
 /// Until turn 6 begins.
 const ASYMMETRIC_SHORT_LAST_TURN: u64 = 5;
 const ASYMMETRIC_SHORT_FINGERPRINT: &str =
-    "9c28330db09bbe815507c49781c9dccb938cb379a15416e684974d64f84c3401";
+    "447b55c1f5bcbbd443168b4fb60cb25681714b0658e54e90572d567ece03a9a4";
 const ASYMMETRIC_GAMES: u64 = 10;
 const ASYMMETRIC_LANDS: usize = 17;
 const ASYMMETRIC_CREATURES: usize = 10;

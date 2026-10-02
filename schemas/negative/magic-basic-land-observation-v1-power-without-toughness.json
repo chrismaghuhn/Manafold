@@ -25,6 +25,8 @@
     }
   ],
   "pending_sba_ordering": null,
+  "pending_blocks": null,
+  "pending_damage_assignment": null,
   "mana_pools": [
     {
       "player": "0",
@@ -74,24 +76,29 @@
       "controller": "1",
       "controlled_since_turn": "2",
       "power": 3,
-      "toughness": null
+      "toughness": null,
+      "marked_damage": "0"
     },
     {
       "object": "7",
       "controller": "0",
       "controlled_since_turn": "1",
       "power": 2,
-      "toughness": 2
+      "toughness": 2,
+      "marked_damage": "0"
     },
     {
       "object": "8",
       "controller": "0",
       "controlled_since_turn": "3",
       "power": null,
-      "toughness": null
+      "toughness": null,
+      "marked_damage": "0"
     }
   ],
   "attacking": [
     "7"
-  ]
+  ],
+  "blocked": [],
+  "blocking": []
 }

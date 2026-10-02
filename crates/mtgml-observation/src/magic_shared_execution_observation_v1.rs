@@ -6,7 +6,8 @@ use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 
 use crate::{
-    AttachmentObservationV1, CounterObservationV1, FaceObservationV1, MagicBasicLandObservationV1,
+    AssignedDamageObservationV1, AttachmentObservationV1, BlockObservationV1, CounterObservationV1,
+    DeclaredBlockObservationV1, FaceObservationV1, MagicBasicLandObservationV1,
     MagicPendingSbaOrdering, ManaPoolObservationV1, ObservationValidationError,
     PermanentObservationV1, PlayerObservationV1, SyntheticPriority, SyntheticTurnPosition,
     MAGIC_BASIC_LAND_OBSERVATION_SCHEMA_V1,
@@ -239,6 +240,10 @@ pub struct MagicSharedExecutionObservationV1 {
     pub players: Vec<PlayerObservationV1>,
     #[serde(deserialize_with = "deserialize_required_option")]
     pub pending_sba_ordering: Option<MagicPendingSbaOrdering>,
+    #[serde(deserialize_with = "deserialize_required_option")]
+    pub pending_blocks: Option<Vec<DeclaredBlockObservationV1>>,
+    #[serde(deserialize_with = "deserialize_required_option")]
+    pub pending_damage_assignment: Option<Vec<AssignedDamageObservationV1>>,
     pub mana_pools: Vec<ManaPoolObservationV1>,
     pub counters: Vec<CounterObservationV1>,
     pub attachments: Vec<AttachmentObservationV1>,
@@ -246,6 +251,8 @@ pub struct MagicSharedExecutionObservationV1 {
     pub tapped: Vec<OpaqueObjectId>,
     pub permanents: Vec<PermanentObservationV1>,
     pub attacking: Vec<OpaqueObjectId>,
+    pub blocked: Vec<OpaqueObjectId>,
+    pub blocking: Vec<BlockObservationV1>,
     pub stack: Vec<PublicStackItemV1>,
     pub temporary_effects: Vec<PublicTemporaryEffectV1>,
 }
@@ -263,6 +270,8 @@ impl MagicSharedExecutionObservationV1 {
             priority: self.priority,
             players: self.players.clone(),
             pending_sba_ordering: self.pending_sba_ordering.clone(),
+            pending_blocks: self.pending_blocks.clone(),
+            pending_damage_assignment: self.pending_damage_assignment.clone(),
             mana_pools: self.mana_pools.clone(),
             counters: self.counters.clone(),
             attachments: self.attachments.clone(),
@@ -270,6 +279,8 @@ impl MagicSharedExecutionObservationV1 {
             tapped: self.tapped.clone(),
             permanents: self.permanents.clone(),
             attacking: self.attacking.clone(),
+            blocked: self.blocked.clone(),
+            blocking: self.blocking.clone(),
         };
         base.validate()?;
         for item in &self.stack {

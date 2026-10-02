@@ -1,0 +1,33 @@
+{
+  "event": {
+    "assignments": [
+      {
+        "amount": 0,
+        "recipient": {
+          "kind": "object",
+          "object": "5"
+        },
+        "source": "4"
+      },
+      {
+        "amount": 2,
+        "recipient": {
+          "kind": "object",
+          "object": "4"
+        },
+        "source": "5"
+      },
+      {
+        "amount": 1,
+        "recipient": {
+          "kind": "player",
+          "player": "2"
+        },
+        "source": "9"
+      }
+    ],
+    "kind": "combat_damage_dealt"
+  },
+  "schema_version": "observed-event-envelope.v4",
+  "sequence": "15"
+}

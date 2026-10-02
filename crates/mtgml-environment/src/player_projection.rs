@@ -9,13 +9,13 @@ use mtgml_model::{
     ExecutionIdentityV1, PlayerId, RulesContractManifestV1, SemanticContractManifestV1,
 };
 use mtgml_observation::{
-    AttachmentObservationV1, CounterObservationV1, FaceObservationV1, InformationStateDigestInput,
-    MagicBasicLandObservationV1, MagicSharedExecutionObservationV1, ManaPoolObservationV1,
-    ObservationEnvelope, ObservedFaceV1, PermanentObservationV1, PlayerInformationState,
-    PlayerKnowledgeCauseV1, PlayerKnowledgeChannelV1, PlayerKnowledgeInvalidationReasonV1,
-    PlayerKnowledgeProvenanceV1, PlayerKnownLocationFactV1, PlayerKnownLocationV1,
-    PlayerKnownObjectV1, SyntheticBeginningStep, SyntheticCombatStep, SyntheticEndingStep,
-    SyntheticPriority, SyntheticTurnPosition,
+    AttachmentObservationV1, BlockObservationV1, CounterObservationV1, FaceObservationV1,
+    InformationStateDigestInput, MagicBasicLandObservationV1, MagicSharedExecutionObservationV1,
+    ManaPoolObservationV1, ObservationEnvelope, ObservedFaceV1, PermanentObservationV1,
+    PlayerInformationState, PlayerKnowledgeCauseV1, PlayerKnowledgeChannelV1,
+    PlayerKnowledgeInvalidationReasonV1, PlayerKnowledgeProvenanceV1, PlayerKnownLocationFactV1,
+    PlayerKnownLocationV1, PlayerKnownObjectV1, SyntheticBeginningStep, SyntheticCombatStep,
+    SyntheticEndingStep, SyntheticPriority, SyntheticTurnPosition,
 };
 use mtgml_observation::{MagicCompletedOrder, MagicPendingSbaOrdering};
 use mtgml_state::{
@@ -243,6 +243,9 @@ fn project_magic_basic_land_observation_from_verified_faces(
         // The shared observation carries the pending ordering from the
         // current execution; the basic value never owns it.
         pending_sba_ordering: None,
+        // No half-made answer is told to anyone yet.
+        pending_blocks: None,
+        pending_damage_assignment: None,
         mana_pools: parts
             .card_rules
             .mana
@@ -260,6 +263,8 @@ fn project_magic_basic_land_observation_from_verified_faces(
         tapped: Vec::new(),
         permanents: Vec::new(),
         attacking: Vec::new(),
+        blocked: Vec::new(),
+        blocking: Vec::new(),
     };
     for (object, counters) in &parts.card_rules.counters.counters {
         if !public_battlefield(*object) {
@@ -313,6 +318,8 @@ fn project_magic_basic_land_observation_from_verified_faces(
             controlled_since_turn: permanent.controlled_since_turn,
             power: printed.map(|(power, _)| power),
             toughness: printed.map(|(_, toughness)| toughness),
+            // CR 120.3e: the damage marked on the permanent, which is public.
+            marked_damage: permanent.marked_damage,
         });
     }
     // CR 508.1k: the attacking creatures are public. One that is not a
@@ -320,6 +327,18 @@ fn project_magic_basic_land_observation_from_verified_faces(
     if let Some(combat) = &state.combat {
         for attacker in &combat.attackers {
             value.attacking.push(opaque(*attacker)?);
+        }
+        // CR 509.1h: an attacker that has a blocker, or had one, is blocked.
+        for attacker in &combat.blocked_attackers {
+            value.blocked.push(opaque(*attacker)?);
+        }
+        // CR 509.1g: a blocking creature, with the attacker it blocks; that
+        // attacker is null once it has left combat (CR 506.4).
+        for (blocker, attacker) in &combat.blockers {
+            value.blocking.push(BlockObservationV1 {
+                blocker: opaque(*blocker)?,
+                attacker: attacker.map(opaque).transpose()?,
+            });
         }
     }
     for (source, edge) in &parts.card_rules.attachments.by_source {
@@ -356,6 +375,8 @@ fn project_magic_basic_land_observation_from_verified_faces(
     value.tapped.sort();
     value.permanents.sort_by_key(|entry| entry.object);
     value.attacking.sort();
+    value.blocked.sort();
+    value.blocking.sort_by_key(|block| block.blocker);
     value
         .validate()
         .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
@@ -597,6 +618,8 @@ fn project_shared_execution_observation(
         priority: basic.priority,
         players: basic.players,
         pending_sba_ordering: project_sba_ordering_v4(parts, perspective)?,
+        pending_blocks: basic.pending_blocks,
+        pending_damage_assignment: basic.pending_damage_assignment,
         mana_pools: basic.mana_pools,
         counters: basic.counters,
         attachments: basic.attachments,
@@ -604,6 +627,8 @@ fn project_shared_execution_observation(
         tapped: basic.tapped,
         permanents: basic.permanents,
         attacking: basic.attacking,
+        blocked: basic.blocked,
+        blocking: basic.blocking,
         stack,
         temporary_effects,
     })

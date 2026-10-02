@@ -2444,7 +2444,8 @@ fn every_boundary_of_a_cast_a_resolution_an_attack_and_its_damage_restores() {
 }
 
 /// The permanent `object` as `player` is shown it: under their own opaque id,
-/// with `printed` power and toughness if it is a creature.
+/// with `printed` power and toughness if it is a creature, and the damage the
+/// authoritative state marks on it.
 fn permanent_row(
     state: &EngineState,
     player: PlayerId,
@@ -2458,6 +2459,7 @@ fn permanent_row(
         controlled_since_turn,
         power: printed.map(|(power, _)| power),
         toughness: printed.map(|(_, toughness)| toughness),
+        marked_damage: state.card_rules.permanents.permanents[&object].marked_damage,
     }
 }
 

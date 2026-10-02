@@ -4,8 +4,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use mtgml_model::{OpaqueObjectId, PlayerId, VisibleSequence};
 use mtgml_observation::{
-    ManaPoolAfterV1, ObservedEventEnvelopeV4, ObservedEventKindV4, ObservedFaceV1,
-    PlayerStepSubmissionV1, PlayerSubmissionCodeV1,
+    ManaPoolAfterV1, ObservedBlockV1, ObservedDamageRecipientV1, ObservedDamageV1,
+    ObservedEventEnvelopeV4, ObservedEventKindV4, ObservedFaceV1, PlayerStepSubmissionV1,
+    PlayerSubmissionCodeV1,
 };
 use mtgml_rules::AuthoritativeRuleEventKind;
 use mtgml_state::{EngineState, PerspectiveIdentityRecordV2};
@@ -320,7 +321,9 @@ fn requires_all_player_audience(
         | Event::StartingPlayerChosen { .. }
         | Event::MulliganDeclared { .. }
         | Event::LifeChanged { .. }
-        | Event::AttackersDeclared { .. } => Ok(true),
+        | Event::AttackersDeclared { .. }
+        | Event::BlockersDeclared { .. }
+        | Event::CombatDamageDealt { .. } => Ok(true),
         Event::CounterChanged { object, .. } => {
             Ok(public_face_up_battlefield_object(*object, before, after))
         }
@@ -390,6 +393,21 @@ fn project_v4_public_source_event(
         stack_order_before,
     } = context;
     use AuthoritativeRuleEventKind as Event;
+    // A creature in combat is on the battlefield, public to everyone, before
+    // this transition: one that dies in it is not in `after`, and the
+    // perspective keeps the opaque id it knew it by.
+    let combat_object = |object: mtgml_model::GameObjectId| {
+        crate::player_projection::public_opaque_object(after, after_identity, knowledge, object)
+            .or_else(|| {
+                crate::player_projection::public_opaque_object(
+                    before,
+                    before_identity,
+                    knowledge,
+                    object,
+                )
+            })
+            .ok_or(SuccessorProjectionError::MissingOpaqueIdentity)
+    };
     match &source_event.event {
         Event::ZoneTransition { transition } => {
             let policy = mtgml_rules::PerspectiveObservationPolicyV1::MovedInSight {
@@ -458,6 +476,57 @@ fn project_v4_public_source_event(
                 attacking_player: after.core.active_player,
                 defending_player: *defending_player,
                 attackers,
+            })
+        }
+        // CR 509.1: every player sees the blocks, even when there are none.
+        Event::BlockersDeclared { assignments } => {
+            let defending_player = after
+                .combat
+                .as_ref()
+                .or(before.combat.as_ref())
+                .map(|combat| combat.defending_player)
+                .ok_or(SuccessorProjectionError::ObservationOccurrenceMismatch)?;
+            let mut blocks = assignments
+                .iter()
+                .map(|assignment| {
+                    Ok(ObservedBlockV1 {
+                        blocker: combat_object(assignment.blocker)?,
+                        attacker: combat_object(assignment.attacker)?,
+                    })
+                })
+                .collect::<Result<Vec<_>, SuccessorProjectionError>>()?;
+            // Ascending opaque ids: the blockers' object order means nothing
+            // to a player.
+            blocks.sort_by_key(|block| block.blocker);
+            Ok(ObservedEventKindV4::BlockersDeclared {
+                defending_player,
+                blocks,
+            })
+        }
+        // CR 510.2: every player sees all combat damage, dealt at once.
+        Event::CombatDamageDealt { assignments } => {
+            let mut damage = assignments
+                .iter()
+                .map(|assignment| {
+                    Ok(ObservedDamageV1 {
+                        source: combat_object(assignment.source)?,
+                        recipient: match assignment.recipient {
+                            mtgml_state::DamageRecipientV1::Player { player } => {
+                                ObservedDamageRecipientV1::Player { player }
+                            }
+                            mtgml_state::DamageRecipientV1::Creature { object } => {
+                                ObservedDamageRecipientV1::Object {
+                                    object: combat_object(object)?,
+                                }
+                            }
+                        },
+                        amount: assignment.amount,
+                    })
+                })
+                .collect::<Result<Vec<_>, SuccessorProjectionError>>()?;
+            damage.sort_by_key(|damage| (damage.source, damage.recipient));
+            Ok(ObservedEventKindV4::CombatDamageDealt {
+                assignments: damage,
             })
         }
         Event::ObjectTapped { object, to, .. } => Ok(ObservedEventKindV4::ObjectTapped {

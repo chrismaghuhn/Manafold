@@ -417,6 +417,42 @@
       "type": "array",
       "uniqueItems": true
     },
+    "blocked": {
+      "items": {
+        "pattern": "^(0|[1-9][0-9]*)$",
+        "type": "string"
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
+    "blocking": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "blocker": {
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string"
+          },
+          "attacker": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "pattern": "^(0|[1-9][0-9]*)$",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "blocker",
+          "attacker"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
     "counters": {
       "items": {
         "additionalProperties": false,
@@ -508,6 +544,74 @@
       },
       "type": "array"
     },
+    "pending_blocks": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "blocker": {
+                "pattern": "^(0|[1-9][0-9]*)$",
+                "type": "string"
+              },
+              "attacker": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "type": "string"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "blocker",
+              "attacker"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      ]
+    },
+    "pending_damage_assignment": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "attacker": {
+                "pattern": "^(0|[1-9][0-9]*)$",
+                "type": "string"
+              },
+              "blocker": {
+                "pattern": "^(0|[1-9][0-9]*)$",
+                "type": "string"
+              },
+              "amount": {
+                "pattern": "^(0|[1-9][0-9]*)$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "attacker",
+              "blocker",
+              "amount"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      ]
+    },
     "pending_sba_ordering": {
       "oneOf": [
         {
@@ -595,6 +699,25 @@
                 }
               }
             }
+          },
+          {
+            "if": {
+              "properties": {
+                "power": {
+                  "type": "null"
+                }
+              },
+              "required": [
+                "power"
+              ]
+            },
+            "then": {
+              "properties": {
+                "marked_damage": {
+                  "const": "0"
+                }
+              }
+            }
           }
         ],
         "properties": {
@@ -603,6 +726,10 @@
             "type": "string"
           },
           "controller": {
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string"
+          },
+          "marked_damage": {
             "pattern": "^(0|[1-9][0-9]*)$",
             "type": "string"
           },
@@ -632,7 +759,8 @@
           "controller",
           "controlled_since_turn",
           "power",
-          "toughness"
+          "toughness",
+          "marked_damage"
         ],
         "type": "object"
       },
@@ -831,6 +959,8 @@
     "priority",
     "players",
     "pending_sba_ordering",
+    "pending_blocks",
+    "pending_damage_assignment",
     "mana_pools",
     "counters",
     "attachments",
@@ -838,6 +968,8 @@
     "tapped",
     "permanents",
     "attacking",
+    "blocked",
+    "blocking",
     "stack",
     "temporary_effects"
   ],

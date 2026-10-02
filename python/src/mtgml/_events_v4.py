@@ -63,7 +63,7 @@ NEW_EVENT_KINDS_V1 = frozenset(
     }
 )
 GAME_START_EVENT_KINDS = frozenset({"starting_player_chosen", "mulligan_declared"})
-COMBAT_EVENT_KINDS = frozenset({"attackers_declared"})
+COMBAT_EVENT_KINDS = frozenset({"attackers_declared", "blockers_declared", "combat_damage_dealt"})
 EVENT_KINDS_V4 = EVENT_KINDS_V3 | NEW_EVENT_KINDS_V1 | GAME_START_EVENT_KINDS | COMBAT_EVENT_KINDS
 _UINT_FIELDS = frozenset(
     {
@@ -81,6 +81,40 @@ _UINT_FIELDS = frozenset(
         "new_target",
     }
 )
+
+
+def _block(value: object) -> tuple[int, int]:
+    obj = require_exact_keys(value, {"blocker", "attacker"})
+    return parse_uint(obj["blocker"]), parse_uint(obj["attacker"])
+
+
+# A player comes before a creature, as the Rust vocabulary orders them.
+_RECIPIENT_RANK = {"player": 0, "object": 1}
+_RECIPIENT_KIND = {rank: kind for kind, rank in _RECIPIENT_RANK.items()}
+
+
+def _damage(value: object) -> tuple[int, tuple[int, int], int]:
+    obj = require_exact_keys(value, {"source", "recipient", "amount"})
+    recipient = obj["recipient"]
+    kind = recipient.get("kind") if isinstance(recipient, dict) else None
+    if not isinstance(kind, str) or kind not in _RECIPIENT_RANK:
+        raise WireError("decode.invalid_json", "unknown damage recipient")
+    recipient = require_exact_keys(recipient, {"kind", kind})
+    return (
+        parse_uint(obj["source"]),
+        (_RECIPIENT_RANK[kind], parse_uint(recipient[kind])),
+        parse_u64_number(obj["amount"]),
+    )
+
+
+def _damage_wire(damage: tuple[int, tuple[int, int], int]) -> dict[str, object]:
+    source, (rank, recipient), amount = damage
+    kind = _RECIPIENT_KIND[rank]
+    return {
+        "source": uint_wire(source),
+        "recipient": {"kind": kind, kind: uint_wire(recipient)},
+        "amount": amount,
+    }
 
 
 @dataclass(frozen=True, slots=True)
@@ -253,6 +287,29 @@ class ObservedEventV4:
                 "defending_player": defending,
                 "attackers": attackers,
             }
+        elif kind == "blockers_declared":
+            obj = require_exact_keys(value, {"kind", "defending_player", "blocks"})
+            if not isinstance(obj["blocks"], list):
+                raise WireError("decode.invalid_json", "blocks must be a list")
+            blocks = tuple(_block(item) for item in obj["blocks"])
+            if any(first[0] >= second[0] for first, second in pairwise(blocks)):
+                raise WireError(
+                    "semantic.observed_event", "blocks are ascending by blocker, one for each"
+                )
+            fields = {"defending_player": parse_uint(obj["defending_player"]), "blocks": blocks}
+        elif kind == "combat_damage_dealt":
+            obj = require_exact_keys(value, {"kind", "assignments"})
+            if not isinstance(obj["assignments"], list):
+                raise WireError("decode.invalid_json", "assignments must be a list")
+            assignments = tuple(_damage(item) for item in obj["assignments"])
+            if any(amount == 0 for _, _, amount in assignments):
+                raise WireError("semantic.observed_event", "combat damage is not dealt as 0")
+            if any(first[:2] >= second[:2] for first, second in pairwise(assignments)):
+                raise WireError(
+                    "semantic.observed_event",
+                    "damage is ascending by source and recipient, one for each",
+                )
+            fields = {"assignments": assignments}
         elif kind in {"temporary_effect_created", "temporary_effect_expired"}:
             obj = require_exact_keys(value, {"kind", "effect"})
             fields = {"effect": PublicTemporaryEffectV1.from_wire(obj["effect"]).to_wire()}
@@ -265,6 +322,13 @@ class ObservedEventV4:
         for key, value in self.fields:
             if key == "attackers":
                 result[key] = [uint_wire(item) for item in value]  # type: ignore[attr-defined]
+            elif key == "blocks":
+                result[key] = [
+                    {"blocker": uint_wire(blocker), "attacker": uint_wire(attacker)}
+                    for blocker, attacker in value  # type: ignore[attr-defined]
+                ]
+            elif key == "assignments":
+                result[key] = [_damage_wire(item) for item in value]  # type: ignore[attr-defined]
             elif key in _UINT_FIELDS:
                 result[key] = None if value is None else uint_wire(value)  # type: ignore[arg-type]
             else:

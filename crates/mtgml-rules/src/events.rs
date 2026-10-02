@@ -919,6 +919,8 @@ fn is_projectable_public_source_event(event: &AuthoritativeRuleEventKind) -> boo
             | AuthoritativeRuleEventKind::ObjectTapped { .. }
             | AuthoritativeRuleEventKind::LifeChanged { .. }
             | AuthoritativeRuleEventKind::AttackersDeclared { .. }
+            | AuthoritativeRuleEventKind::BlockersDeclared { .. }
+            | AuthoritativeRuleEventKind::CombatDamageDealt { .. }
             | AuthoritativeRuleEventKind::StartingPlayerChosen { .. }
             | AuthoritativeRuleEventKind::MulliganDeclared { .. }
     )
@@ -4265,6 +4267,13 @@ mod tests {
         };
         // Two creatures block one attacker (CR 509.1h): it is blocked once.
         assert_eq!(valid(&blocks(&[(5, 3), (6, 3)])), Ok(()));
+        // CR 509.1, 508.8: the declaration happens whenever there are
+        // attackers. With no creature to block, or none that does, it is empty
+        // and the combat is as it was.
+        assert_eq!(
+            validate_event_projection_v3(&before, &before, &blocks(&[])),
+            Ok(())
+        );
         // The assignments are the blocks of the after state, listed by
         // blocker: no other attacker, a missing or extra blocker, or another
         // order.

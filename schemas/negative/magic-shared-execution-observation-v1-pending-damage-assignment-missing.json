@@ -77,7 +77,6 @@
   ],
   "pending_sba_ordering": null,
   "pending_blocks": null,
-  "pending_damage_assignment": null,
   "permanents": [
     {
       "controlled_since_turn": "1",

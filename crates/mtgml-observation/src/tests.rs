@@ -170,22 +170,25 @@ fn basic_land_observation_v1_shows_every_permanent_with_its_controller_and_the_a
     .unwrap();
     let observation: MagicBasicLandObservationV1 = serde_json::from_value(example.clone()).unwrap();
     observation.validate().unwrap();
-    let row = |object, controller, controlled_since_turn, power_toughness: Option<(i64, i64)>| {
-        PermanentObservationV1 {
-            object: mtgml_model::OpaqueObjectId(object),
-            controller: PlayerId(controller),
-            controlled_since_turn,
-            power: power_toughness.map(|(power, _)| power),
-            toughness: power_toughness.map(|(_, toughness)| toughness),
-        }
+    let row = |object,
+               controller,
+               controlled_since_turn,
+               power_toughness: Option<(i64, i64)>,
+               marked_damage| PermanentObservationV1 {
+        object: mtgml_model::OpaqueObjectId(object),
+        controller: PlayerId(controller),
+        controlled_since_turn,
+        power: power_toughness.map(|(power, _)| power),
+        toughness: power_toughness.map(|(_, toughness)| toughness),
+        marked_damage,
     };
     // Two creatures and a non-creature, each with its controller.
     assert_eq!(
         observation.permanents,
         vec![
-            row(6, 1, 2, Some((3, 3))),
-            row(7, 0, 1, Some((2, 2))),
-            row(8, 0, 3, None),
+            row(6, 1, 2, Some((3, 3)), 2),
+            row(7, 0, 1, Some((2, 2)), 1),
+            row(8, 0, 3, None, 0),
         ]
     );
     assert_eq!(observation.attacking, vec![mtgml_model::OpaqueObjectId(7)]);
@@ -223,7 +226,13 @@ fn basic_land_observation_v1_shows_every_permanent_with_its_controller_and_the_a
     // Attackers are listed once each, in ascending order, and are the
     // creatures among the permanents: a non-creature or an unlisted object is
     // not one.
-    assert!(broken(&|value| value["attacking"] = serde_json::json!([])).is_ok());
+    assert!(broken(&|value| {
+        // Nobody attacks, so nothing is blocked and nothing blocks.
+        value["attacking"] = serde_json::json!([]);
+        value["blocked"] = serde_json::json!([]);
+        value["blocking"] = serde_json::json!([]);
+    })
+    .is_ok());
     assert!(broken(&|value| value["attacking"] = serde_json::json!(["6", "7"])).is_ok());
     assert!(broken(&|value| value["attacking"] = serde_json::json!(["7", "6"])).is_err());
     assert!(broken(&|value| value["attacking"] = serde_json::json!(["7", "7"])).is_err());
@@ -282,4 +291,228 @@ fn basic_land_observation_v1_shows_every_permanent_with_its_controller_and_the_a
     .is_err());
     // The creature-only rows of the first design are gone.
     assert!(broken(&|value| value["creatures"] = serde_json::json!([])).is_err());
+}
+
+/// `example` with `edit` applied, decoded and validated as the basic-land
+/// observation.
+fn edited_basic(
+    example: &serde_json::Value,
+    edit: &dyn Fn(&mut serde_json::Value),
+) -> Result<MagicBasicLandObservationV1, ()> {
+    let mut value = example.clone();
+    edit(&mut value);
+    serde_json::from_value::<MagicBasicLandObservationV1>(value)
+        .map_err(|_| ())
+        .and_then(|observation| observation.validate().map(|()| observation).map_err(|_| ()))
+}
+
+#[test]
+fn basic_land_observation_v1_shows_blocks_and_marked_damage() {
+    // CR 509.1g, 509.1h, 120.3e: the blocked attackers, each blocking creature
+    // with the attacker it blocks (none when that attacker left combat), and
+    // the damage marked on every permanent.
+    let example: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../schemas/examples/magic-basic-land-observation-v1.json"
+    ))
+    .unwrap();
+    let observation = edited_basic(&example, &|_| {}).unwrap();
+    let opaque = mtgml_model::OpaqueObjectId;
+    assert_eq!(observation.attacking, vec![opaque(7)]);
+    assert_eq!(observation.blocked, vec![opaque(7)]);
+    assert_eq!(
+        observation.blocking,
+        vec![BlockObservationV1 {
+            blocker: opaque(6),
+            attacker: Some(opaque(7)),
+        }]
+    );
+    // The partial answers are not told in this slice of the format: the keys
+    // are there, and null.
+    assert_eq!(observation.pending_blocks, None);
+    assert_eq!(observation.pending_damage_assignment, None);
+    assert!(example["pending_blocks"].is_null());
+    assert!(example["pending_damage_assignment"].is_null());
+    // Marked damage travels as a decimal string, as `turn_number` does, and is
+    // "0" for a permanent that is not a creature.
+    let marked: Vec<_> = observation
+        .permanents
+        .iter()
+        .map(|permanent| permanent.marked_damage)
+        .collect();
+    assert_eq!(marked, vec![2, 1, 0]);
+    assert_eq!(example["permanents"][0]["marked_damage"], "2");
+    assert_eq!(example["permanents"][2]["marked_damage"], "0");
+    assert_eq!(serde_json::to_value(&observation).unwrap(), example);
+
+    // A blocker whose attacker left combat blocks nothing, and is still a
+    // blocking creature.
+    let ordered: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../schemas/examples/magic-basic-land-observation-v1-ordered.json"
+    ))
+    .unwrap();
+    let observation = edited_basic(&ordered, &|_| {}).unwrap();
+    assert_eq!(observation.blocked, Vec::new());
+    assert_eq!(
+        observation.blocking,
+        vec![BlockObservationV1 {
+            blocker: opaque(5),
+            attacker: None,
+        }]
+    );
+    assert!(ordered["blocking"][0]["attacker"].is_null());
+    assert_eq!(serde_json::to_value(&observation).unwrap(), ordered);
+
+    let broken = |edit: &dyn Fn(&mut serde_json::Value)| edited_basic(&example, edit).is_err();
+    // Blocked attackers are listed once each, in ascending order, and are
+    // attacking.
+    assert!(!broken(&|value| value["blocked"] = serde_json::json!(["7"])));
+    assert!(broken(&|value| value["blocked"] = serde_json::json!(["6"])));
+    assert!(broken(
+        &|value| value["blocked"] = serde_json::json!(["7", "7"])
+    ));
+    assert!(broken(&|value| {
+        value["attacking"] = serde_json::json!(["6", "7"]);
+        value["blocked"] = serde_json::json!(["7", "6"]);
+    }));
+    // A blocking creature's attacker is attacking and blocked; a blocked
+    // attacker may have no blocker left (CR 509.1h).
+    assert!(!broken(&|value| value["blocking"] = serde_json::json!([])));
+    assert!(broken(
+        &|value| value["blocking"][0]["attacker"] = serde_json::json!("6")
+    ));
+    assert!(broken(
+        &|value| value["blocking"][0]["attacker"] = serde_json::json!("9")
+    ));
+    assert!(broken(&|value| value["blocked"] = serde_json::json!([])));
+    // Blocks are listed once per blocker, in ascending order of blocker, and
+    // a blocker is a creature among the permanents.
+    let two_blockers = |first: &str, second: &str| {
+        serde_json::json!([
+            {"blocker": first, "attacker": "7"},
+            {"blocker": second, "attacker": "7"},
+        ])
+    };
+    assert!(!broken(&|value| value["blocking"] = two_blockers("6", "7")));
+    assert!(broken(&|value| value["blocking"] = two_blockers("7", "6")));
+    assert!(broken(&|value| value["blocking"] = two_blockers("6", "6")));
+    assert!(broken(
+        &|value| value["blocking"][0]["blocker"] = serde_json::json!("8")
+    ));
+    assert!(broken(
+        &|value| value["blocking"][0]["blocker"] = serde_json::json!("9")
+    ));
+    // Marked damage exists on creatures only (CR 120.3e).
+    assert!(!broken(
+        &|value| value["permanents"][1]["marked_damage"] = serde_json::json!("0")
+    ));
+    assert!(broken(
+        &|value| value["permanents"][2]["marked_damage"] = serde_json::json!("1")
+    ));
+    // It is a canonical decimal string of a u64.
+    for damage in ["0", "3", "18446744073709551615"] {
+        assert!(
+            !broken(&|value| value["permanents"][0]["marked_damage"] = serde_json::json!(damage)),
+            "{damage}"
+        );
+    }
+    for damage in [
+        serde_json::json!(2),
+        serde_json::json!(-1),
+        serde_json::json!(null),
+        serde_json::json!("02"),
+        serde_json::json!("+2"),
+        serde_json::json!("-2"),
+        serde_json::json!("2a"),
+        serde_json::json!(""),
+        serde_json::json!("18446744073709551616"),
+    ] {
+        assert!(
+            broken(&|value| value["permanents"][0]["marked_damage"] = damage.clone()),
+            "{damage}"
+        );
+    }
+    // Every key is required, and a block row has no other.
+    for key in [
+        "blocked",
+        "blocking",
+        "pending_blocks",
+        "pending_damage_assignment",
+    ] {
+        assert!(
+            broken(&|value| {
+                value.as_object_mut().unwrap().remove(key);
+            }),
+            "{key}"
+        );
+    }
+    assert!(broken(&|value| {
+        value["permanents"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("marked_damage");
+    }));
+    assert!(broken(&|value| {
+        value["blocking"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("attacker");
+    }));
+    assert!(broken(
+        &|value| value["blocking"][0]["extra"] = serde_json::json!(0)
+    ));
+}
+
+#[test]
+fn the_pending_answers_of_a_block_or_a_division_have_a_shape_and_are_null_by_default() {
+    // The keys exist for the player's own half-made answers: a block row
+    // names the creature and what it blocks (null: it blocks nothing), a
+    // damage row the attacker, the creature it damages and the amount.
+    let example: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../schemas/examples/magic-basic-land-observation-v1.json"
+    ))
+    .unwrap();
+    let observation = edited_basic(&example, &|value| {
+        value["pending_blocks"] = serde_json::json!([
+            {"blocker": "6", "attacker": "7"},
+            {"blocker": "7", "attacker": null},
+        ]);
+        value["pending_damage_assignment"] = serde_json::json!([
+            {"attacker": "7", "blocker": "6", "amount": "2"},
+        ]);
+    })
+    .unwrap();
+    let opaque = mtgml_model::OpaqueObjectId;
+    assert_eq!(
+        observation.pending_blocks,
+        Some(vec![
+            DeclaredBlockObservationV1 {
+                blocker: opaque(6),
+                attacker: Some(opaque(7)),
+            },
+            DeclaredBlockObservationV1 {
+                blocker: opaque(7),
+                attacker: None,
+            },
+        ])
+    );
+    assert_eq!(
+        observation.pending_damage_assignment,
+        Some(vec![AssignedDamageObservationV1 {
+            attacker: opaque(7),
+            blocker: opaque(6),
+            amount: 2,
+        }])
+    );
+    // The amount is a canonical decimal string; a row has no missing field.
+    for amount in [serde_json::json!(2), serde_json::json!("02")] {
+        assert!(edited_basic(&example, &|value| {
+            value["pending_damage_assignment"] =
+                serde_json::json!([{"attacker": "7", "blocker": "6", "amount": amount}]);
+        })
+        .is_err());
+    }
+    assert!(edited_basic(&example, &|value| {
+        value["pending_blocks"] = serde_json::json!([{"blocker": "6"}]);
+    })
+    .is_err());
 }

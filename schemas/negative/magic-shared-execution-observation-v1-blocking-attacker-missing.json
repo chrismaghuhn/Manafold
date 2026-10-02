@@ -12,7 +12,11 @@
   ],
   "attacking": [],
   "blocked": [],
-  "blocking": [],
+  "blocking": [
+    {
+      "blocker": "3"
+    }
+  ],
   "counters": [
     {
       "count": 1,
