@@ -415,6 +415,15 @@ fn check_creature_game(seed: u64) -> (Tally, bool) {
     let has_winner = match &last.status {
         EpisodeStatus::Running => {
             assert_eq!(last.state.core.turn_number, LAST_TURN + 1, "seed {seed:#x}");
+            // CR 704.5a: a player at 0 or less life loses the game, so no
+            // player of a game that is still running is there.
+            for (player, state) in &last.state.core.players {
+                assert!(
+                    state.life > 0,
+                    "seed {seed:#x}: {player:?} is at {} life in a running game",
+                    state.life
+                );
+            }
             false
         }
         EpisodeStatus::Terminal {
