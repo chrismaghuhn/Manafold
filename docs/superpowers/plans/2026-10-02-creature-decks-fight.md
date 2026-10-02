@@ -1,6 +1,6 @@
 # Creature Decks Fight Implementation Plan
 
-**Status:** DRAFT for owner review (2026-10-02).
+**Status:** APPROVED by the owner on 2026-10-02 ("ja sieht gut aus").
 - Execution: subagent-driven, with Sonnet implementers and Opus reviewers.
 - This is step 3b of the approved spec. Step 3a (blocks and deaths) is merged
   as #272 (`master` 6165cd25), and its references were refreshed there.
