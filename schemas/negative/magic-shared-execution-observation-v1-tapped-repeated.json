@@ -73,6 +73,8 @@
     }
   ],
   "pending_sba_ordering": null,
+  "pending_blocks": null,
+  "pending_damage_assignment": null,
   "players": [
     {
       "hand_count": 6,
@@ -155,6 +157,8 @@
   ],
   "permanents": [],
   "attacking": [],
+  "blocked": [],
+  "blocking": [],
   "temporary_effects": [
     {
       "affected_objects": [

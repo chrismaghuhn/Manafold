@@ -87,11 +87,15 @@ fn validate_combat(
             .is_some_and(|location| location.zone == ZoneKind::Battlefield);
         // CR 509.1h: the attacker is blocked, and stays so without a blocker.
         // Every blocked attacker is one of `attackers` (checked above), so the
-        // blocker blocks an attacker.
-        if !controlled_by_the_defender
-            || !on_the_battlefield
-            || !combat.blocked_attackers.contains(attacker)
-        {
+        // blocker blocks an attacker. CR 509.1g, 506.4: a blocker whose attacker
+        // was removed from combat blocks nothing, and an attacker is removed by
+        // dying in the state-based actions after the combat damage step, so
+        // there is no such blocker before the damage is dealt.
+        let blocks_a_blocked_attacker = match attacker {
+            Some(attacker) => combat.blocked_attackers.contains(attacker),
+            None => combat.damage_step_completed,
+        };
+        if !controlled_by_the_defender || !on_the_battlefield || !blocks_a_blocked_attacker {
             return Err(EngineStateViolation::CombatState);
         }
     }

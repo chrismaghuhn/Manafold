@@ -53,6 +53,74 @@
         }
       ]
     },
+    "pending_blocks": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "blocker": {
+                "pattern": "^(0|[1-9][0-9]*)$",
+                "type": "string"
+              },
+              "attacker": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "type": "string"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "blocker",
+              "attacker"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      ]
+    },
+    "pending_damage_assignment": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "attacker": {
+                "pattern": "^(0|[1-9][0-9]*)$",
+                "type": "string"
+              },
+              "blocker": {
+                "pattern": "^(0|[1-9][0-9]*)$",
+                "type": "string"
+              },
+              "amount": {
+                "pattern": "^(0|[1-9][0-9]*)$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "attacker",
+              "blocker",
+              "amount"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      ]
+    },
     "priority": {
       "oneOf": [
         {
@@ -378,6 +446,25 @@
                 }
               }
             }
+          },
+          {
+            "if": {
+              "properties": {
+                "power": {
+                  "type": "null"
+                }
+              },
+              "required": [
+                "power"
+              ]
+            },
+            "then": {
+              "properties": {
+                "marked_damage": {
+                  "const": "0"
+                }
+              }
+            }
           }
         ],
         "properties": {
@@ -408,6 +495,10 @@
               "integer",
               "null"
             ]
+          },
+          "marked_damage": {
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string"
           }
         },
         "required": [
@@ -415,7 +506,8 @@
           "controller",
           "controlled_since_turn",
           "power",
-          "toughness"
+          "toughness",
+          "marked_damage"
         ],
         "type": "object"
       },
@@ -428,6 +520,42 @@
       },
       "type": "array",
       "uniqueItems": true
+    },
+    "blocked": {
+      "items": {
+        "pattern": "^(0|[1-9][0-9]*)$",
+        "type": "string"
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
+    "blocking": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "blocker": {
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string"
+          },
+          "attacker": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "pattern": "^(0|[1-9][0-9]*)$",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "blocker",
+          "attacker"
+        ],
+        "type": "object"
+      },
+      "type": "array"
     }
   },
   "required": [
@@ -438,13 +566,17 @@
     "priority",
     "players",
     "pending_sba_ordering",
+    "pending_blocks",
+    "pending_damage_assignment",
     "mana_pools",
     "counters",
     "attachments",
     "faces",
     "tapped",
     "permanents",
-    "attacking"
+    "attacking",
+    "blocked",
+    "blocking"
   ],
   "title": "Magic Basic Land Observation V1",
   "type": "object"

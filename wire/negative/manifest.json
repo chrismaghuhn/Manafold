@@ -185,6 +185,48 @@
       "expected_error_code": "semantic.magic_basic_land_observation_v1",
       "expected_reject_layer": "rust-python-semantic-or-decode",
       "path": "magic-basic-land-observation-v1-power-without-toughness.json"
+    },
+    {
+      "contract": "observed-event-envelope.v4",
+      "expected_error_code": "semantic.observed_event",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "observed-event-v4-combat-damage-zero-amount.json"
+    },
+    {
+      "contract": "magic-basic-land-observation.v1",
+      "expected_error_code": "semantic.magic_basic_land_observation_v1",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "magic-basic-land-observation-v1-blocking-unsorted.json"
+    },
+    {
+      "contract": "magic-basic-land-observation.v1",
+      "expected_error_code": "semantic.magic_basic_land_observation_v1",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "magic-basic-land-observation-v1-blocking-duplicate.json"
+    },
+    {
+      "contract": "magic-basic-land-observation.v1",
+      "expected_error_code": "semantic.magic_basic_land_observation_v1",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "magic-basic-land-observation-v1-blocking-attacker-not-attacking.json"
+    },
+    {
+      "contract": "magic-basic-land-observation.v1",
+      "expected_error_code": "semantic.magic_basic_land_observation_v1",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "magic-basic-land-observation-v1-blocked-not-attacking.json"
+    },
+    {
+      "contract": "magic-basic-land-observation.v1",
+      "expected_error_code": "semantic.magic_basic_land_observation_v1",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "magic-basic-land-observation-v1-marked-damage-on-a-land.json"
+    },
+    {
+      "contract": "magic-basic-land-observation.v1",
+      "expected_error_code": "decode.invalid_json",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "magic-basic-land-observation-v1-pending-blocks-missing.json"
     }
   ]
 }

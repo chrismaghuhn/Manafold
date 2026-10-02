@@ -11,6 +11,13 @@
     }
   ],
   "attacking": [],
+  "blocked": [],
+  "blocking": [
+    {
+      "attacker": null,
+      "blocker": "5"
+    }
+  ],
   "counters": [
     {
       "count": 1,
@@ -73,11 +80,14 @@
       ]
     }
   ],
+  "pending_blocks": null,
+  "pending_damage_assignment": null,
   "pending_sba_ordering": null,
   "permanents": [
     {
       "controlled_since_turn": "1",
       "controller": "0",
+      "marked_damage": "0",
       "object": "3",
       "power": null,
       "toughness": null
@@ -85,6 +95,7 @@
     {
       "controlled_since_turn": "1",
       "controller": "1",
+      "marked_damage": "0",
       "object": "4",
       "power": null,
       "toughness": null
@@ -92,6 +103,7 @@
     {
       "controlled_since_turn": "1",
       "controller": "0",
+      "marked_damage": "0",
       "object": "5",
       "power": 2,
       "toughness": 1
@@ -99,6 +111,7 @@
     {
       "controlled_since_turn": "1",
       "controller": "0",
+      "marked_damage": "0",
       "object": "7",
       "power": null,
       "toughness": null
@@ -106,6 +119,7 @@
     {
       "controlled_since_turn": "1",
       "controller": "1",
+      "marked_damage": "0",
       "object": "8",
       "power": null,
       "toughness": null

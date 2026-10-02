@@ -284,10 +284,17 @@ temporary effects, the payload carries the public player state:
   has controlled it (CR 302.6), a decimal string like `turn_number`. It
   states that raw fact, not whether a creature can attack. For a creature the
   row also has `power` and `toughness` (CR 208.1); for any other permanent
-  both are null.
+  both are null. Every row has `marked_damage`, the damage marked on the
+  permanent (CR 120.3e), a decimal string, which is 0 for a permanent that is
+  not a creature in this card pool (see below).
 - `attacking`: the perspective's opaque ids of the attacking creatures
   (CR 508.1k), ascending, each a creature among `permanents`; empty outside
   combat.
+- `blocked` and `blocking`: the blocked attackers and the blocking creatures
+  (see "Blocks, combat damage and deaths").
+- `pending_blocks` and `pending_damage_assignment`: the perspective's own
+  partial answers to a block declaration or a division of combat damage in
+  progress, null for the other player (see the same section).
 
 A creature's `power` and `toughness` are its printed ones, which are also its
 current ones because the projection applies neither effects nor counters: it
@@ -295,30 +302,59 @@ fails closed (no observation is made) while a creature is on the battlefield
 and a temporary effect exists, for a creature with a +1/+1 or -1/-1 counter,
 and for a face-down permanent.
 
+A permanent with no `power` is one that never was a creature, which is why its
+`marked_damage` is 0: damage is marked on creatures (CR 120.3e) and stays
+until the cleanup step even if the permanent stops being a creature
+(CR 120.6), so the rule holds only because no effect in this card pool can
+change a creature. A payload that shows damage on such a permanent is invalid.
+
 None of these values depends on library order, hidden card identity or
 trusted ids.
 
 ### Blocks, combat damage and deaths
 
-The payload shows who attacks (`attacking`), the life totals and the creatures
-on the battlefield. For everything that follows the attack the current slice
-observes the following, and nothing more (owner decision 2026-10-01: blocks and
-marked damage become observable together with the observation of combat, and
-until then players see deaths but not blocks or marked damage):
+Owner decision 2026-10-01: blocks and marked damage become observable together
+with the observation of combat. The slice now observes the following of a
+fight, and nothing more:
 
-- **Blocks are observed by no player, for the whole slice.** Not the answers
-  while the defending player declares blockers, and not the complete
-  declaration. The declare-blockers request is `acting_player_only` and its
-  actor is the defending player; the partial answers live in a continuation
-  that no projection reads, so a half-declared block changes nothing the
-  attacker can see, and neither does the answer that completes it.
-  `BlockersDeclared` is not observed by either perspective, and the observation
-  has no field for a blocked or blocking creature.
-- **Combat damage to creatures and marked damage are observed by no player.**
-  `CombatDamageDealt`, `MarkedDamageChanged` and `CombatDamageStepCompleted` are
-  not observed, and a permanent row has no damage. Damage dealt to a player is
-  seen as before: `LifeChanged` is public. Blocks and marked damage show only
-  through their results, the life lost and the creatures that die.
+- **Blocks are public once declared.** The declare-blockers request is
+  `acting_player_only` and its actor is the defending player, so the answers
+  are not told to the attacker one by one. The answer that completes the
+  declaration is public (CR 509.1g, 509.1h): both players observe one
+  `BlockersDeclared`, which has the defending player and each block as a
+  blocker and the attacker it blocks, ascending by the blocker's opaque id.
+  The observation lists the `blocked` attackers (ascending, each also in
+  `attacking`) and the `blocking` creatures (ascending by blocker, each a
+  creature among `permanents`). `BlockersDeclared` is emitted whenever there are
+  attackers (CR 508.8), so also when no creature blocks and when the defending
+  player controls no untapped creature to ask: its list of blocks is then
+  empty.
+- **A blocker whose attacker left combat is still a blocking creature**
+  (CR 509.1g, 506.4): its row in `blocking` has a null `attacker`, and the
+  creature stays there until combat ends. An attacker stays in `blocked` after
+  every creature that blocks it has left combat (CR 509.1h). A creature that
+  dies is seen as a death, below.
+- **Combat damage and marked damage are public.** Both players observe one
+  `CombatDamageDealt` for the whole combat (CR 510.2): each assignment names the
+  source, the recipient (a player or a creature) and an amount of 1 or more,
+  sorted by the player's opaque ids. It comes before the `LifeChanged` of the
+  player hit (CR 120.3a) and before the deaths, and is not emitted when no
+  damage is dealt. Every permanent row shows the damage marked on it
+  (CR 120.3e), so damage dealt to a creature is seen as its mark, and the
+  removal in the cleanup step (CR 514.2) as the mark going to 0.
+  `MarkedDamageChanged` and `CombatDamageStepCompleted` are not observed.
+- **Partial answers are private to their actor.** While the defending player
+  declares blockers, their `pending_blocks` lists the creatures answered so far
+  with the attacker each blocks, or null for no block, ascending by blocker.
+  While the attacking player divides the combat damage of an attacker that two
+  or more creatures block (CR 510.1c), their `pending_damage_assignment` lists
+  the amounts answered so far (attacker, blocker, amount), ascending by
+  attacker and then blocker; an amount the rules force is no answer and is not
+  listed. An empty list is a declaration or a division that has begun, and null
+  is none in progress. The other player is shown null, and an answer changes
+  nothing else they see: not their information state, their visible decision or
+  their observed events. The values are in the viewer's own opaque ids, and a
+  restored checkpoint shows the same.
 - **Deaths are public.** A creature destroyed by lethal damage is observed by
   both players as the zone move from the battlefield to its owner's graveyard;
   both follow the card and keep the opaque id they knew the creature by.

@@ -2,10 +2,30 @@
   "schema_version": "magic-basic-land-observation.v1",
   "active_player": "0",
   "turn_number": "1",
-  "turn_position": {"kind": "precombat_main"},
-  "priority": {"kind": "held_by", "player": "0"},
-  "players": [{"player": "0", "life": 20, "hand_count": 7, "library_count": 33}, {"player": "1", "life": 20, "hand_count": 7, "library_count": 33}],
+  "turn_position": {
+    "kind": "precombat_main"
+  },
+  "priority": {
+    "kind": "held_by",
+    "player": "0"
+  },
+  "players": [
+    {
+      "player": "0",
+      "life": 20,
+      "hand_count": 7,
+      "library_count": 33
+    },
+    {
+      "player": "1",
+      "life": 20,
+      "hand_count": 7,
+      "library_count": 33
+    }
+  ],
   "pending_sba_ordering": null,
+  "pending_blocks": null,
+  "pending_damage_assignment": null,
   "mana_pools": [],
   "counters": [],
   "attachments": [],
@@ -13,5 +33,7 @@
   "tapped": [],
   "permanents": [],
   "attacking": [],
+  "blocked": [],
+  "blocking": [],
   "candidates": []
 }

@@ -64,11 +64,17 @@ pub struct PlayerObservationV1 {
 
 /// A permanent on the battlefield: who controls it and the turn since which
 /// that player has controlled it (CR 302.6) and, for a creature, its power
-/// and toughness (CR 208.1); both are null for any other permanent.
+/// and toughness (CR 208.1); both are null for any other permanent. Every
+/// permanent shows the damage marked on it (CR 120.3e), which is 0 for a
+/// permanent that is not a creature in this card pool (see below).
 ///
 /// A creature's power and toughness are its printed ones, which are also its
 /// current ones: the projection is not made for a creature that an effect or a
-/// +1/+1 or -1/-1 counter could change.
+/// +1/+1 or -1/-1 counter could change. That is what makes a permanent without
+/// a power a permanent that never was a creature, and so one with no damage:
+/// CR 120.6 keeps damage marked on a creature until the cleanup step even if
+/// the permanent stops being a creature, so with such effects this rule would
+/// not hold.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PermanentObservationV1 {
@@ -80,6 +86,8 @@ pub struct PermanentObservationV1 {
     pub power: Option<i64>,
     #[serde(deserialize_with = "deserialize_required_option")]
     pub toughness: Option<i64>,
+    #[serde(with = "canonical_u64_string")]
+    pub marked_damage: u64,
 }
 
 impl PermanentObservationV1 {
@@ -110,6 +118,38 @@ pub struct FaceObservationV1 {
     pub face: PublicFaceV1,
 }
 
+/// A blocking creature (CR 509.1g) and the attacker it blocks. A creature
+/// whose attacker left combat (CR 506.4) is still a blocking creature, and
+/// blocks nothing: its attacker is null.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BlockObservationV1 {
+    pub blocker: OpaqueObjectId,
+    #[serde(deserialize_with = "deserialize_required_option")]
+    pub attacker: Option<OpaqueObjectId>,
+}
+
+/// One answer of a block declaration in progress: the creature blocks the
+/// attacker, or, when the attacker is null, does not block.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DeclaredBlockObservationV1 {
+    pub blocker: OpaqueObjectId,
+    #[serde(deserialize_with = "deserialize_required_option")]
+    pub attacker: Option<OpaqueObjectId>,
+}
+
+/// One answer of a combat damage division in progress: how much of the
+/// attacker's damage the blocker is assigned (CR 510.1c).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AssignedDamageObservationV1 {
+    pub attacker: OpaqueObjectId,
+    pub blocker: OpaqueObjectId,
+    #[serde(with = "canonical_u64_string")]
+    pub amount: u64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MagicBasicLandObservationV1 {
@@ -121,6 +161,22 @@ pub struct MagicBasicLandObservationV1 {
     pub players: Vec<PlayerObservationV1>,
     #[serde(deserialize_with = "deserialize_required_pending_ordering")]
     pub pending_sba_ordering: Option<MagicPendingSbaOrdering>,
+    /// The blocks the viewer has declared so far while the viewer's block
+    /// declaration is in progress (CR 509.1a): one row for each creature
+    /// answered, ascending by blocker. An empty list is a declaration that has
+    /// begun with no creature answered yet. Null when no declaration is in
+    /// progress, and always null for the player who is not declaring.
+    #[serde(deserialize_with = "deserialize_required_option")]
+    pub pending_blocks: Option<Vec<DeclaredBlockObservationV1>>,
+    /// The damage the viewer has divided so far while the division of the
+    /// viewer's combat damage is in progress (CR 510.1c): one row for each
+    /// blocker answered, ascending by attacker and then blocker. An amount the
+    /// rules force is not an answer and is not listed. An empty list is a
+    /// division that has begun with no blocker answered yet. Null when no
+    /// division is in progress, and always null for the player who is not
+    /// dividing.
+    #[serde(deserialize_with = "deserialize_required_option")]
+    pub pending_damage_assignment: Option<Vec<AssignedDamageObservationV1>>,
     pub mana_pools: Vec<ManaPoolObservationV1>,
     pub counters: Vec<CounterObservationV1>,
     pub attachments: Vec<AttachmentObservationV1>,
@@ -133,6 +189,14 @@ pub struct MagicBasicLandObservationV1 {
     /// The creatures that are attacking (CR 508.1k), ascending by opaque id.
     /// Each is a creature among `permanents`.
     pub attacking: Vec<OpaqueObjectId>,
+    /// The attacking creatures that are blocked (CR 509.1h), ascending by
+    /// opaque id. Each is in `attacking`; one stays blocked after every
+    /// creature that blocked it has left combat.
+    pub blocked: Vec<OpaqueObjectId>,
+    /// The blocking creatures (CR 509.1g), ascending by blocker, each a
+    /// creature among `permanents`. A blocker's attacker is in `attacking`
+    /// and in `blocked`, or null when that attacker left combat.
+    pub blocking: Vec<BlockObservationV1>,
 }
 
 impl MagicBasicLandObservationV1 {
@@ -166,6 +230,42 @@ impl MagicBasicLandObservationV1 {
                     .binary_search_by_key(attacker, |permanent| permanent.object)
                     .is_ok_and(|index| self.permanents[index].is_creature())
             })
+            || self.blocked.windows(2).any(|pair| pair[0] >= pair[1])
+            || self
+                .blocked
+                .iter()
+                .any(|attacker| self.attacking.binary_search(attacker).is_err())
+            || self
+                .blocking
+                .windows(2)
+                .any(|pair| pair[0].blocker >= pair[1].blocker)
+            || self.blocking.iter().any(|block| {
+                !self
+                    .permanents
+                    .binary_search_by_key(&block.blocker, |permanent| permanent.object)
+                    .is_ok_and(|index| self.permanents[index].is_creature())
+                    || block.attacker.is_some_and(|attacker| {
+                        self.attacking.binary_search(&attacker).is_err()
+                            || self.blocked.binary_search(&attacker).is_err()
+                    })
+            })
+            || self.pending_blocks.as_ref().is_some_and(|rows| {
+                rows.windows(2)
+                    .any(|pair| pair[0].blocker >= pair[1].blocker)
+            })
+            || self.pending_damage_assignment.as_ref().is_some_and(|rows| {
+                rows.windows(2).any(|pair| {
+                    (pair[0].attacker, pair[0].blocker) >= (pair[1].attacker, pair[1].blocker)
+                })
+            })
+            // Damage is marked on creatures (CR 120.3e). This holds for a
+            // permanent that is not a creature only in this card pool:
+            // `is_creature` reads the printed power, and no effect can make a
+            // creature stop being one (CR 120.6 would keep its damage).
+            || self
+                .permanents
+                .iter()
+                .any(|permanent| !permanent.is_creature() && permanent.marked_damage != 0)
             || self
                 .mana_pools
                 .windows(2)

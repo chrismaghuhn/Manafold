@@ -808,6 +808,54 @@ impl EngineState {
                 .all(|attacker| combat.attackers.contains(attacker))
     }
 
+    /// CR 510.1c: a combat damage assignment in progress belongs to the
+    /// attacking player, in the combat damage step of an attack, before the
+    /// damage is dealt and while no player has priority. Its attackers are
+    /// attacking creatures, each once, and the blockers it asks are blockers of
+    /// the first of them, with at least one still to ask. An answered blocker
+    /// blocks an attacker that is finished or being divided now, never one that
+    /// has not been reached, and is not asked as well. How much is left to
+    /// divide is for the rules that know the creatures' powers.
+    fn combat_damage_assignment_is_valid(
+        &self,
+        player: mtgml_model::PlayerId,
+        pending_attackers: &[mtgml_model::GameObjectId],
+        pending_blockers: &[mtgml_model::GameObjectId],
+        assigned: &std::collections::BTreeMap<mtgml_model::GameObjectId, u64>,
+    ) -> bool {
+        let (Some(combat), Some(current)) = (self.combat.as_ref(), pending_attackers.first())
+        else {
+            return false;
+        };
+        let attackers: BTreeSet<_> = pending_attackers.iter().collect();
+        let asked: BTreeSet<_> = pending_blockers.iter().chain(assigned.keys()).collect();
+        self.core.position
+            == (crate::TurnPosition::Combat {
+                step: crate::CombatStep::CombatDamage,
+            })
+            && self.core.priority == crate::PriorityState::None
+            && player == self.core.active_player
+            && combat.defending_player != player
+            && !combat.damage_step_completed
+            && attackers.len() == pending_attackers.len()
+            && pending_attackers
+                .iter()
+                .all(|attacker| combat.attackers.contains(attacker))
+            && !pending_blockers.is_empty()
+            && pending_blockers
+                .iter()
+                .all(|blocker| combat.blockers.get(blocker) == Some(&Some(*current)))
+            && asked.len() == pending_blockers.len() + assigned.len()
+            && assigned.keys().all(|blocker| {
+                combat.blockers.get(blocker).is_some_and(|attacker| {
+                    attacker.is_some_and(|attacker| {
+                        combat.attackers.contains(&attacker)
+                            && !pending_attackers[1..].contains(&attacker)
+                    })
+                })
+            })
+    }
+
     fn validate_continuation_payload(
         &self,
         payload: &crate::ContinuationPayload,
@@ -978,6 +1026,21 @@ impl EngineState {
             } => {
                 if !self.block_declaration_is_valid(*defender, pending_blockers, declared) {
                     return Err(EngineStateError::BlockDeclaration);
+                }
+            }
+            crate::ContinuationPayload::CombatDamageAssignment {
+                player,
+                pending_attackers,
+                pending_blockers,
+                assigned,
+            } => {
+                if !self.combat_damage_assignment_is_valid(
+                    *player,
+                    pending_attackers,
+                    pending_blockers,
+                    assigned,
+                ) {
+                    return Err(EngineStateError::CombatDamageAssignment);
                 }
             }
             crate::ContinuationPayload::StackResolution(value) => {
@@ -1175,6 +1238,7 @@ impl EngineState {
                 | crate::GameStartStage::Bottoming { player } => player,
             }),
             crate::ContinuationPayload::BlockDeclaration { defender, .. } => Some(*defender),
+            crate::ContinuationPayload::CombatDamageAssignment { player, .. } => Some(*player),
         }
     }
 
@@ -1222,6 +1286,10 @@ impl EngineState {
             ),
             crate::ContinuationPayload::BlockDeclaration { .. } => {
                 matches!(&request.purpose, Purpose::BlockerDeclaration)
+                    && matches!(&request.decision_domain_v2, Domain::ChooseOne)
+            }
+            crate::ContinuationPayload::CombatDamageAssignment { .. } => {
+                matches!(&request.purpose, Purpose::CombatDamageAssignment)
                     && matches!(&request.decision_domain_v2, Domain::ChooseOne)
             }
             crate::ContinuationPayload::MagicSbaGraveyardOrderV1 { .. } => {
@@ -1531,6 +1599,41 @@ impl EngineState {
                                     pending_blockers,
                                     ..
                                 } => pending_blockers.first() == Some(bound_blocker),
+                                _ => false,
+                            })
+                }
+                (
+                    Intent::AssignCombatDamage {
+                        attacker,
+                        recipient,
+                        amount,
+                    },
+                    Binding::AssignCombatDamage {
+                        attacker: bound_attacker,
+                        recipient: bound_recipient,
+                        amount: bound_amount,
+                    },
+                ) => {
+                    // CR 510.1c: the request asks about the next blocker of the
+                    // attacker being divided, and each candidate is an amount of
+                    // that attacker's damage for it.
+                    amount == bound_amount
+                        && identities.opaque_to_object.get(attacker) == Some(bound_attacker)
+                        && identities.opaque_to_object.get(recipient) == Some(bound_recipient)
+                        && request.purpose
+                            == mtgml_decision::DecisionPurposeV4::CombatDamageAssignment
+                        && request
+                            .continuation_id
+                            .and_then(|id| self.execution.continuations.get(&id))
+                            .is_some_and(|record| match &record.payload {
+                                crate::ContinuationPayload::CombatDamageAssignment {
+                                    pending_attackers,
+                                    pending_blockers,
+                                    ..
+                                } => {
+                                    pending_attackers.first() == Some(bound_attacker)
+                                        && pending_blockers.first() == Some(bound_recipient)
+                                }
                                 _ => false,
                             })
                 }
@@ -2257,6 +2360,8 @@ pub enum EngineStateError {
     GameStart,
     #[error("the block declaration is inconsistent with the combat or the battlefield")]
     BlockDeclaration,
+    #[error("the combat damage assignment is inconsistent with the combat")]
+    CombatDamageAssignment,
     #[error("successor stack order is not a bijection with stack records")]
     StackOrder,
     #[error("successor stack record identity is inconsistent")]

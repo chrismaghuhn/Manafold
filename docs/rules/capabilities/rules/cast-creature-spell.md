@@ -130,13 +130,13 @@ for either request, changes nothing.
   continues identically, and a game with a cast replays to the same
   checkpoint.
 - Random smoke games in `crates/mtgml-environment/tests/random_smoke.rs`:
-  `asymmetric_games_cast_attack_and_end_at_zero_life` plays ten seeded games
-  of a creature deck against a land deck to turn 31 or the end of the game,
-  and asserts that creature spells are cast, a payment is decided, and each
-  game repeats and replays to the same checkpoint;
-  `asymmetric_short_game_matches_its_pinned_fingerprint` pins the first game
-  that casts a creature, up to turn 6 (a debug-build check that also asserts
-  the cast).
+  `creature_games_fight_to_a_winner` plays fifteen seeded games of two
+  creature decks to turn 31 or the end of the game, and asserts that creature
+  spells are cast, a payment is decided, and each game repeats and replays to
+  the same checkpoint;
+  `creature_short_game_matches_its_pinned_fingerprint` pins the first game
+  that declares a block, up to turn 9, in which creatures are cast (a
+  debug-build check that also asserts the block).
 - State, event and delta cases for the Cast continuation and the cast timing in
   `crates/mtgml-state/tests/g0d_state_authority.rs`,
   `crates/mtgml-rules/src/events.rs` and `creature_game.rs`.

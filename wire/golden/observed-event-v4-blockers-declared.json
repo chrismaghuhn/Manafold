@@ -1,0 +1,1 @@
+{"event":{"blocks":[{"attacker":"4","blocker":"5"},{"attacker":"4","blocker":"8"}],"defending_player":"2","kind":"blockers_declared"},"schema_version":"observed-event-envelope.v4","sequence":"14"}

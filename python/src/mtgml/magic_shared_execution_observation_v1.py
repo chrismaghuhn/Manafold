@@ -340,6 +340,8 @@ class MagicSharedExecutionObservationV1:
             "priority",
             "players",
             "pending_sba_ordering",
+            "pending_blocks",
+            "pending_damage_assignment",
             "mana_pools",
             "counters",
             "attachments",
@@ -347,6 +349,8 @@ class MagicSharedExecutionObservationV1:
             "tapped",
             "permanents",
             "attacking",
+            "blocked",
+            "blocking",
         }
         obj = require_exact_keys(value, base_fields | {"stack", "temporary_effects"})
         if obj["schema_version"] != MAGIC_SHARED_EXECUTION_OBSERVATION_SCHEMA_V1:

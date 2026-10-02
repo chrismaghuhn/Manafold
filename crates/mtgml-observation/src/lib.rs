@@ -25,7 +25,8 @@ pub use knowledge::{
     PlayerKnownLocationV1, PlayerKnownObjectV1,
 };
 pub use magic_observation::{
-    AttachmentObservationV1, CounterObservationV1, FaceObservationV1, MagicBasicLandObservationV1,
+    AssignedDamageObservationV1, AttachmentObservationV1, BlockObservationV1, CounterObservationV1,
+    DeclaredBlockObservationV1, FaceObservationV1, MagicBasicLandObservationV1,
     MagicCompletedOrder, MagicPendingSbaOrdering, ManaPoolObservationV1, PermanentObservationV1,
     PlayerObservationV1, PublicCounterKindV1, PublicFaceV1,
 };
@@ -36,8 +37,9 @@ pub use magic_shared_execution_observation_v1::{
 };
 pub use observation::{ObservationEnvelope, OBSERVATION_SCHEMA_V2};
 pub use observed_event_v4::{
-    ManaPoolAfterV1, ManaPoolChangeCauseV2, ObservedCounterKindV3, ObservedEventEnvelopeV4,
-    ObservedEventKindV4, ObservedFaceV1, StackItemRemovalCauseV1,
+    ManaPoolAfterV1, ManaPoolChangeCauseV2, ObservedBlockV1, ObservedCounterKindV3,
+    ObservedDamageRecipientV1, ObservedDamageV1, ObservedEventEnvelopeV4, ObservedEventKindV4,
+    ObservedFaceV1, StackItemRemovalCauseV1,
 };
 pub use player_step::{PlayerServiceErrorCodeV1, PlayerStepSubmissionV1, PlayerSubmissionCodeV1};
 pub use player_step_v4::PlayerStepV4;

@@ -102,7 +102,9 @@ pub struct AbilityAuthorityStateV1 {
 /// What the rules record about one permanent beyond its object: the turn
 /// since which its controller has controlled it (CR 302.6), and the damage
 /// marked on it (CR 120.3e). Only a creature is ever damaged; this crate holds
-/// no card types, so the rules that mark damage keep to that.
+/// no card types, so the rules that mark damage keep to that. That holds in this
+/// card pool only: CR 120.6 keeps damage on a permanent that stops being a
+/// creature, and nothing here makes a creature stop being one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PermanentState {
     pub controlled_since_turn: u64,

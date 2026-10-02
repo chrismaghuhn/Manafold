@@ -9,7 +9,8 @@ use mtgml_model::{
     ExecutionIdentityV1, PlayerId, RulesContractManifestV1, SemanticContractManifestV1,
 };
 use mtgml_observation::{
-    AttachmentObservationV1, CounterObservationV1, FaceObservationV1, InformationStateDigestInput,
+    AssignedDamageObservationV1, AttachmentObservationV1, BlockObservationV1, CounterObservationV1,
+    DeclaredBlockObservationV1, FaceObservationV1, InformationStateDigestInput,
     MagicBasicLandObservationV1, MagicSharedExecutionObservationV1, ManaPoolObservationV1,
     ObservationEnvelope, ObservedFaceV1, PermanentObservationV1, PlayerInformationState,
     PlayerKnowledgeCauseV1, PlayerKnowledgeChannelV1, PlayerKnowledgeInvalidationReasonV1,
@@ -243,6 +244,10 @@ fn project_magic_basic_land_observation_from_verified_faces(
         // The shared observation carries the pending ordering from the
         // current execution; the basic value never owns it.
         pending_sba_ordering: None,
+        // A half-made answer is told to the player who is making it, and to
+        // nobody else.
+        pending_blocks: project_pending_blocks(state, perspective, opaque)?,
+        pending_damage_assignment: project_pending_damage_assignment(state, perspective, opaque)?,
         mana_pools: parts
             .card_rules
             .mana
@@ -260,6 +265,8 @@ fn project_magic_basic_land_observation_from_verified_faces(
         tapped: Vec::new(),
         permanents: Vec::new(),
         attacking: Vec::new(),
+        blocked: Vec::new(),
+        blocking: Vec::new(),
     };
     for (object, counters) in &parts.card_rules.counters.counters {
         if !public_battlefield(*object) {
@@ -313,6 +320,8 @@ fn project_magic_basic_land_observation_from_verified_faces(
             controlled_since_turn: permanent.controlled_since_turn,
             power: printed.map(|(power, _)| power),
             toughness: printed.map(|(_, toughness)| toughness),
+            // CR 120.3e: the damage marked on the permanent, which is public.
+            marked_damage: permanent.marked_damage,
         });
     }
     // CR 508.1k: the attacking creatures are public. One that is not a
@@ -320,6 +329,18 @@ fn project_magic_basic_land_observation_from_verified_faces(
     if let Some(combat) = &state.combat {
         for attacker in &combat.attackers {
             value.attacking.push(opaque(*attacker)?);
+        }
+        // CR 509.1h: an attacker that has a blocker, or had one, is blocked.
+        for attacker in &combat.blocked_attackers {
+            value.blocked.push(opaque(*attacker)?);
+        }
+        // CR 509.1g: a blocking creature, with the attacker it blocks; that
+        // attacker is null once it has left combat (CR 506.4).
+        for (blocker, attacker) in &combat.blockers {
+            value.blocking.push(BlockObservationV1 {
+                blocker: opaque(*blocker)?,
+                attacker: attacker.map(opaque).transpose()?,
+            });
         }
     }
     for (source, edge) in &parts.card_rules.attachments.by_source {
@@ -356,6 +377,8 @@ fn project_magic_basic_land_observation_from_verified_faces(
     value.tapped.sort();
     value.permanents.sort_by_key(|entry| entry.object);
     value.attacking.sort();
+    value.blocked.sort();
+    value.blocking.sort_by_key(|block| block.blocker);
     value
         .validate()
         .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
@@ -363,6 +386,112 @@ fn project_magic_basic_land_observation_from_verified_faces(
 }
 
 use crate::endpoint::PlayerEndpointError;
+
+/// The blocks `perspective` has declared so far, while its block declaration
+/// is in progress (CR 509.1a): one row for each creature answered, ascending by
+/// the perspective's opaque id of the blocker. Nothing for any other player, and
+/// nothing when no declaration is in progress. A declaration with no creature
+/// answered yet is an empty list, which tells it from none.
+fn project_pending_blocks(
+    state: &EngineState,
+    perspective: PlayerId,
+    opaque: impl Fn(
+        mtgml_model::GameObjectId,
+    ) -> Result<mtgml_model::OpaqueObjectId, PlayerEndpointError>,
+) -> Result<Option<Vec<DeclaredBlockObservationV1>>, PlayerEndpointError> {
+    let mut declarations =
+        state
+            .execution
+            .continuations
+            .values()
+            .filter_map(|record| match &record.payload {
+                mtgml_state::ContinuationPayload::BlockDeclaration {
+                    defender, declared, ..
+                } => Some((defender, declared)),
+                _ => None,
+            });
+    let Some((defender, declared)) = declarations.next() else {
+        return Ok(None);
+    };
+    if declarations.next().is_some() {
+        return Err(PlayerEndpointError::ServiceUnavailable);
+    }
+    if *defender != perspective {
+        return Ok(None);
+    }
+    let mut rows = declared
+        .iter()
+        .map(|(blocker, attacker)| {
+            Ok(DeclaredBlockObservationV1 {
+                blocker: opaque(*blocker)?,
+                attacker: attacker.map(&opaque).transpose()?,
+            })
+        })
+        .collect::<Result<Vec<_>, PlayerEndpointError>>()?;
+    rows.sort_by_key(|row| row.blocker);
+    Ok(Some(rows))
+}
+
+/// The damage `perspective` has divided so far, while the division of its
+/// attackers' combat damage is in progress (CR 510.1c): one row for each blocker
+/// answered, with the attacker it blocks, ascending by the perspective's opaque
+/// ids of the attacker and then the blocker. An amount the rules force is not an
+/// answer and is not listed. Nothing for any other player, and nothing when no
+/// division is in progress. A division with no blocker answered yet is an empty
+/// list, which tells it from none.
+fn project_pending_damage_assignment(
+    state: &EngineState,
+    perspective: PlayerId,
+    opaque: impl Fn(
+        mtgml_model::GameObjectId,
+    ) -> Result<mtgml_model::OpaqueObjectId, PlayerEndpointError>,
+) -> Result<Option<Vec<AssignedDamageObservationV1>>, PlayerEndpointError> {
+    let mut divisions =
+        state
+            .execution
+            .continuations
+            .values()
+            .filter_map(|record| match &record.payload {
+                mtgml_state::ContinuationPayload::CombatDamageAssignment {
+                    player,
+                    assigned,
+                    ..
+                } => Some((player, assigned)),
+                _ => None,
+            });
+    let Some((player, assigned)) = divisions.next() else {
+        return Ok(None);
+    };
+    if divisions.next().is_some() {
+        return Err(PlayerEndpointError::ServiceUnavailable);
+    }
+    if *player != perspective {
+        return Ok(None);
+    }
+    let combat = state
+        .combat
+        .as_ref()
+        .ok_or(PlayerEndpointError::ServiceUnavailable)?;
+    let mut rows = assigned
+        .iter()
+        .map(|(blocker, amount)| {
+            // Each blocker blocks one attacker (CR 509.1a).
+            let attacker = combat
+                .blockers
+                .get(blocker)
+                .copied()
+                .flatten()
+                .ok_or(PlayerEndpointError::ServiceUnavailable)?;
+            Ok(AssignedDamageObservationV1 {
+                attacker: opaque(attacker)?,
+                blocker: opaque(*blocker)?,
+                amount: *amount,
+            })
+        })
+        .collect::<Result<Vec<_>, PlayerEndpointError>>()?;
+    rows.sort_by_key(|row| (row.attacker, row.blocker));
+    Ok(Some(rows))
+}
 
 fn public_location(location: &mtgml_state::ZoneLocation) -> PlayerKnownLocationV1 {
     PlayerKnownLocationV1 {
@@ -597,6 +726,8 @@ fn project_shared_execution_observation(
         priority: basic.priority,
         players: basic.players,
         pending_sba_ordering: project_sba_ordering_v4(parts, perspective)?,
+        pending_blocks: basic.pending_blocks,
+        pending_damage_assignment: basic.pending_damage_assignment,
         mana_pools: basic.mana_pools,
         counters: basic.counters,
         attachments: basic.attachments,
@@ -604,6 +735,8 @@ fn project_shared_execution_observation(
         tapped: basic.tapped,
         permanents: basic.permanents,
         attacking: basic.attacking,
+        blocked: basic.blocked,
+        blocking: basic.blocking,
         stack,
         temporary_effects,
     })

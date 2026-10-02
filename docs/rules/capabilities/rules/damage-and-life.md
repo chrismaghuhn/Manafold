@@ -45,7 +45,11 @@ The player's life total and the `lost_life_this_turn` flag of the turn history,
 and, for every permanent on the battlefield, `marked_damage` of its permanent
 record (`PermanentState`, a number of damage that starts at 0). Only a creature
 is ever damaged. A permanent that leaves the battlefield loses its record, so a
-new incarnation starts without damage (CR 400.7).
+new incarnation starts without damage (CR 400.7). That damage is on creatures
+only is true of this card pool, not of the rules: CR 120.6 keeps damage marked
+on a permanent until the cleanup step even if it stops being a creature, and
+nothing in the pool makes a creature stop being one (a creature is told by its
+printed power and toughness, which nothing can change).
 
 A restored or committed state is accepted only if the damage marked in it is
 damage this slice can have made: it is on a creature only; it exists only from
@@ -73,13 +77,16 @@ No decision is involved.
 
 ## Information and opaque identities
 
-Life totals are public. Both players observe `LifeChanged`. No player observes
-marked damage: `CombatDamageDealt` and `MarkedDamageChanged` are observed by
-neither, and the observation has no field for it, so two states that differ only
-in non-lethal damage marked give both players the same observation, events and
-decisions. A creature's damage becomes observable with the observation of combat
-(owner decision 2026-10-01); until then players see only what damage causes: the
-life change, and a creature going to its owner's graveyard.
+Life totals and marked damage are public. Both players observe `LifeChanged`,
+and `CombatDamageDealt` (see `rules/combat-damage`). The observation of each
+permanent on the battlefield, lands included, has `marked_damage` (CR 120.3e), a
+decimal string, so a creature's damage is seen as its mark, in the viewer's own
+opaque ids, and the removal in the cleanup step as the mark going to 0. It is 0
+for a permanent that is not a creature, in this card pool only (see "State and
+identity model"); an observation that shows damage on such a permanent is
+invalid. `MarkedDamageChanged` is observed by neither player: the observation
+shows the damage marked, so no event repeats it. A creature going to its owner's
+graveyard is public, too.
 
 ## Transition/continuation behavior
 
@@ -122,12 +129,20 @@ this slice does not support: the transition fails closed.
   `overkill_damage_shows_negative_life_and_ends_the_game`.
 - Production-endpoint cases in `crates/mtgml-environment/tests/creature_combat.rs`:
   `a_3_3_blocked_by_a_2_1_kills_it_and_survives` (the survivor has 2 damage
-  marked and no player observes it),
+  marked),
+  `both_players_see_combat_damage_and_marks` (both players see the mark in their
+  observation, as a decimal string, and the damage dealt in one event),
   `a_creature_that_survived_a_block_has_no_damage_marked_in_the_next_turn`,
   `a_blocker_that_survives_keeps_its_damage_until_the_cleanup_of_the_attackers_turn`
   (the defender's survivor, in the turn of the attacker) and
   `a_discard_in_the_cleanup_step_comes_before_the_damage_is_removed`.
+- Observation cases: `basic_land_observation_v1_shows_blocks_and_marked_damage`
+  in `crates/mtgml-observation/src/tests.rs`, and in Python
+  `test_observation_shows_the_blocks_and_marked_damage` and
+  `test_malformed_blocks_and_marked_damage_are_rejected` in
+  `python/tests/test_public_player_state.py`.
 - Random smoke games in `crates/mtgml-environment/tests/random_smoke.rs`:
-  `asymmetric_games_cast_attack_and_end_at_zero_life` plays ten seeded games of a
-  creature deck against a land deck, in which unblocked attackers lower the
-  land player's life.
+  `creature_games_fight_to_a_winner` plays fifteen seeded games of two creature
+  decks, in which attackers lower the defending player's life, creatures are
+  dealt damage and die, and at least one game ends with a winner;
+  `creature_short_game_matches_its_pinned_fingerprint` pins a short one.

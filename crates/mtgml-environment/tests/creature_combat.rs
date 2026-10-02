@@ -18,9 +18,10 @@ use mtgml_model::{
     PlayerDecisionIdV1, PlayerId, StateRevision, TruncationReason, VisibleSequence, ZoneKind,
 };
 use mtgml_observation::{
+    AssignedDamageObservationV1, BlockObservationV1, DeclaredBlockObservationV1,
     MagicCompletedOrder, MagicPendingSbaOrdering, MagicSharedExecutionObservationV1,
-    ObservedEventEnvelopeV4, ObservedEventKindV4, PlayerStepSubmissionV1, PlayerStepV4,
-    SyntheticPriority,
+    ObservedBlockV1, ObservedDamageRecipientV1, ObservedDamageV1, ObservedEventEnvelopeV4,
+    ObservedEventKindV4, PlayerStepSubmissionV1, PlayerStepV4, SyntheticPriority,
 };
 use mtgml_rules::{AuthoritativeRuleEventKind, BasicLandTransitionProduct};
 use mtgml_state::{
@@ -33,14 +34,27 @@ use std::collections::{BTreeMap, BTreeSet};
 struct Game {
     controller: TrustedEnvironmentController,
     players: [PlayerEndpointHandle; 2],
+    /// With `record_views`, what each answer led to.
+    views: std::cell::RefCell<Option<Vec<Recorded>>>,
 }
+
+/// An answer's effect: who answered, the step the answer returned and each
+/// player's information state afterwards.
+type Recorded = (PlayerId, Vec<u8>, [Vec<u8>; 2]);
 
 impl Game {
     /// A game at P1's first precombat main with the given hands (P1's first)
     /// and ten Mountains in each library.
     fn with_hands(hands: [Vec<CardDefinitionId>; 2]) -> Self {
         let (mountain, _) = land_definitions();
-        let libraries = [vec![mountain; 10], vec![mountain; 10]];
+        Self::with_hands_and_libraries(hands, [vec![mountain; 10], vec![mountain; 10]])
+    }
+
+    /// As `with_hands`, with the given libraries (the first card is the top).
+    fn with_hands_and_libraries(
+        hands: [Vec<CardDefinitionId>; 2],
+        libraries: [Vec<CardDefinitionId>; 2],
+    ) -> Self {
         let controller = creature_game(&libraries, &hands, 5);
         let players = [
             controller.bind_player(P1).unwrap(),
@@ -49,7 +63,31 @@ impl Game {
         Self {
             controller,
             players,
+            views: Default::default(),
         }
+    }
+
+    /// From now on, records what each answer leads to.
+    fn record_views(&self) {
+        *self.views.borrow_mut() = Some(Vec::new());
+    }
+
+    /// What `player` is shown after each answer since `record_views`: the step
+    /// when it answered, and its information state.
+    fn views_of(&self, player: PlayerId) -> Vec<(Option<Vec<u8>>, Vec<u8>)> {
+        let index = usize::from(player != P1);
+        self.views
+            .borrow()
+            .as_ref()
+            .expect("views are recorded")
+            .iter()
+            .map(|(actor, step, information)| {
+                (
+                    (*actor == player).then(|| step.clone()),
+                    information[index].clone(),
+                )
+            })
+            .collect()
     }
 
     fn endpoint(&self, player: PlayerId) -> &PlayerEndpointHandle {
@@ -100,6 +138,13 @@ impl Game {
             })
             .unwrap();
         assert_eq!(step.submission, PlayerStepSubmissionV1::Accepted);
+        if let Some(views) = self.views.borrow_mut().as_mut() {
+            views.push((
+                player,
+                mtgml_wire::encode_canonical(&step).unwrap(),
+                [self.information_bytes(P1), self.information_bytes(P2)],
+            ));
+        }
         (player, step)
     }
 
@@ -214,6 +259,81 @@ impl Game {
     fn seen_by_both(&self) -> [Seen; 2] {
         [self.seen(P1), self.seen(P2)]
     }
+
+    /// The observation `player` receives, as it is on the wire.
+    fn observation_json(&self, player: PlayerId) -> serde_json::Value {
+        let information = self.endpoint(player).information_state().unwrap();
+        let payload = base64::Engine::decode(
+            &base64::engine::general_purpose::STANDARD,
+            &information.current_observation.payload_base64,
+        )
+        .unwrap();
+        serde_json::from_slice(&payload).unwrap()
+    }
+
+    /// The damage marked on `object`, as `player` observes it.
+    fn marked_damage(&self, player: PlayerId, object: OpaqueObjectId) -> u64 {
+        let observation = self.seen(player).observation;
+        observation
+            .permanents
+            .iter()
+            .find(|permanent| permanent.object == object)
+            .unwrap_or_else(|| panic!("{player:?} sees no permanent {object:?}"))
+            .marked_damage
+    }
+}
+
+/// The block declarations and the combat damage among `events`.
+fn combat_events(events: &[ObservedEventEnvelopeV4]) -> Vec<&ObservedEventKindV4> {
+    events
+        .iter()
+        .map(|envelope| &envelope.event)
+        .filter(|event| {
+            matches!(
+                event,
+                ObservedEventKindV4::BlockersDeclared { .. }
+                    | ObservedEventKindV4::CombatDamageDealt { .. }
+            )
+        })
+        .collect()
+}
+
+/// The blocks `player` is told of, one for each pair, ascending by blocker.
+fn observed_blocks(
+    state: &EngineState,
+    player: PlayerId,
+    pairs: &[(GameObjectId, GameObjectId)],
+) -> Vec<ObservedBlockV1> {
+    let mut blocks: Vec<_> = pairs
+        .iter()
+        .map(|(blocker, attacker)| ObservedBlockV1 {
+            blocker: opaque_of(state, player, *blocker),
+            attacker: opaque_of(state, player, *attacker),
+        })
+        .collect();
+    blocks.sort_by_key(|block| block.blocker);
+    blocks
+}
+
+/// The damage `player` is told of: (source, creature recipient, amount),
+/// sorted in `player`'s opaque ids.
+fn observed_damage(
+    state: &EngineState,
+    player: PlayerId,
+    dealt: &[(GameObjectId, GameObjectId, u64)],
+) -> Vec<ObservedDamageV1> {
+    let mut damage: Vec<_> = dealt
+        .iter()
+        .map(|(source, recipient, amount)| ObservedDamageV1 {
+            source: opaque_of(state, player, *source),
+            recipient: ObservedDamageRecipientV1::Object {
+                object: opaque_of(state, player, *recipient),
+            },
+            amount: *amount,
+        })
+        .collect();
+    damage.sort_by_key(|damage| (damage.source, damage.recipient));
+    damage
 }
 
 /// See `Game::seen`.
@@ -689,7 +809,10 @@ fn the_defender_declares_blocks_one_creature_at_a_time() {
     let combat = declared.combat.as_ref().unwrap();
     assert_eq!(
         combat.blockers,
-        BTreeMap::from([(blockers[0], attackers[0]), (blockers[1], attackers[1])])
+        BTreeMap::from([
+            (blockers[0], Some(attackers[0])),
+            (blockers[1], Some(attackers[1]))
+        ])
     );
     assert_eq!(
         combat.blocked_attackers,
@@ -728,9 +851,20 @@ fn declaring_no_block_declares_an_empty_block_and_the_attack_stays_unblocked() {
     assert_eq!(declarations(&first), Vec::<&Vec<_>>::new());
     game.declare_block(None);
     let half = game.state();
-    let last = product_of(&half, block_in(&half, None));
-    // Every answer was "no block": one declaration, with no assignments.
+    let (last, observed) = product_and_observations(&half, block_in(&half, None));
+    // Every answer was "no block": one declaration, with no assignments, and
+    // both players are told of it: "no blocks" is one event-log shape.
     assert_eq!(declarations(&last), vec![&Vec::new()]);
+    for player in [P1, P2] {
+        assert_eq!(
+            combat_events(&observed[&player]),
+            [&ObservedEventKindV4::BlockersDeclared {
+                defending_player: P2,
+                blocks: Vec::new()
+            }],
+            "{player:?}"
+        );
+    }
     game.declare_block(None);
 
     let declared = game.state();
@@ -751,7 +885,8 @@ fn declaring_no_block_declares_an_empty_block_and_the_attack_stays_unblocked() {
 
 #[test]
 fn a_defender_without_an_untapped_creature_is_not_asked() {
-    // P2 has no creature: nothing is asked and nothing is declared.
+    // P2 has no creature: nothing is asked, and the declaration is empty
+    // (CR 509.1: the turn-based action happens whenever there are attackers).
     let (_, plains) = land_definitions();
     let (mountain, _) = land_definitions();
     let game = Game::with_hands([vec![plains, lions()], vec![mountain]]);
@@ -774,7 +909,7 @@ fn a_defender_without_an_untapped_creature_is_not_asked() {
                 .candidate_id,
         },
     );
-    assert_eq!(declarations(&product), Vec::<&Vec<_>>::new());
+    assert_eq!(declarations(&product), vec![&Vec::new()]);
     assert!(product.next_state.execution.continuations.is_empty());
     assert_eq!(
         product
@@ -845,7 +980,7 @@ fn a_tapped_creature_is_not_asked_to_block() {
     let declared = game.state();
     assert_eq!(
         declared.combat.as_ref().unwrap().blockers,
-        BTreeMap::from([(new_lions, attackers[0])])
+        BTreeMap::from([(new_lions, Some(attackers[0]))])
     );
     assert_eq!(game.pending().0, P1);
 }
@@ -878,9 +1013,234 @@ fn a_half_declared_block_is_invisible_to_the_attacker() {
     );
     assert_eq!(game.endpoint(P1).visible_decision().unwrap(), None);
 
-    // The half-declared block shows in no player's observation, and the
-    // defender's own request is the only place it is.
+    // The half-declared block shows in the defender's own request and
+    // observation (see `the_defender_sees_its_own_partial_blocks`), and in no
+    // other player's.
     assert_eq!(game.pending().0, P2);
+}
+
+/// P1 attacks on turn 7 with its Savannah Lions, and P2 has three untapped
+/// Savannah Lions to ask about, one cast on each of its turns. Returns the game,
+/// the attacker, and P2's creatures in the order they are asked about.
+fn three_lions_may_block() -> (Game, GameObjectId, [GameObjectId; 3]) {
+    let (mountain, plains) = land_definitions();
+    let game = Game::with_hands_and_libraries(
+        [vec![plains, lions()], vec![plains, plains, lions()]],
+        [
+            vec![mountain; 10],
+            [vec![lions(), lions()], vec![mountain; 8]].concat(),
+        ],
+    );
+    cast_lions(&game);
+    for turn in [2, 4, 6] {
+        game.run_until(start_of_main_phase(turn));
+        cast_lions(&game);
+    }
+    game.run_until(at_attackers(7));
+    let state = game.state();
+    let [attacker]: [GameObjectId; 1] = lions_of(&state, P1).try_into().unwrap();
+    let blockers: [GameObjectId; 3] = in_opaque_order(&state, P2, lions_of(&state, P2))
+        .try_into()
+        .unwrap();
+    game.declare_attackers(&[opaque_of(&state, P1, attacker)]);
+    game.answer(pass, pass);
+    game.answer(pass, pass);
+    assert_eq!(game.pending().0, P2);
+    (game, attacker, blockers)
+}
+
+/// The block answers `player` is shown, one for each pair, in the order given.
+fn declared_blocks(
+    state: &EngineState,
+    player: PlayerId,
+    answers: &[(GameObjectId, Option<GameObjectId>)],
+) -> Vec<DeclaredBlockObservationV1> {
+    answers
+        .iter()
+        .map(|(blocker, attacker)| DeclaredBlockObservationV1 {
+            blocker: opaque_of(state, player, *blocker),
+            attacker: attacker.map(|attacker| opaque_of(state, player, attacker)),
+        })
+        .collect()
+}
+
+#[test]
+fn the_defender_sees_its_own_partial_blocks() {
+    // CR 509.1a: P2 answers for one untapped creature at a time. The answers
+    // so far are P2's own and shown to P2 alone, in P2's opaque ids. P1 is
+    // shown nothing, and P1's bytes do not change.
+    let (game, attacker, blockers) = three_lions_may_block();
+    let state = game.state();
+    let pending = |player: PlayerId| game.seen(player).observation.pending_blocks;
+    let wire = |player: PlayerId| game.observation_json(player)["pending_blocks"].clone();
+    let id = |object: GameObjectId| opaque_of(&state, P2, object).0.to_string();
+
+    // The declaration has begun and no creature has been answered: P2's list is
+    // empty, and not null, which is how P2 tells a declaration begun from none.
+    assert_eq!(pending(P2), Some(Vec::new()));
+    assert_eq!(wire(P2), serde_json::json!([]));
+    assert_eq!(pending(P1), None);
+    assert!(wire(P1).is_null());
+    let information = game.information_bytes(P1);
+
+    // The first creature blocks the attacker.
+    let (actor, step) = game.declare_block(Some(opaque_of(&state, P2, attacker)));
+    assert_eq!(actor, P2);
+    assert!(step.observed_events.is_empty());
+    assert_eq!(
+        pending(P2),
+        Some(declared_blocks(
+            &state,
+            P2,
+            &[(blockers[0], Some(attacker))]
+        ))
+    );
+    assert_eq!(
+        wire(P2),
+        serde_json::json!([{"blocker": id(blockers[0]), "attacker": id(attacker)}])
+    );
+    assert_eq!(pending(P1), None);
+    assert!(wire(P1).is_null());
+    assert_eq!(game.information_bytes(P1), information);
+
+    // The second does not block. Its answer is a row with a null attacker.
+    game.declare_block(None);
+    assert_eq!(
+        pending(P2),
+        Some(declared_blocks(
+            &state,
+            P2,
+            &[(blockers[0], Some(attacker)), (blockers[1], None)]
+        ))
+    );
+    assert_eq!(
+        wire(P2),
+        serde_json::json!([
+            {"blocker": id(blockers[0]), "attacker": id(attacker)},
+            {"blocker": id(blockers[1]), "attacker": null},
+        ])
+    );
+    assert_eq!(pending(P1), None);
+    assert_eq!(game.information_bytes(P1), information);
+    assert_eq!(game.endpoint(P1).visible_decision().unwrap(), None);
+
+    // The last answer completes the declaration: nothing is pending for
+    // anybody, and the blocks are the public ones.
+    game.declare_block(Some(opaque_of(&state, P2, attacker)));
+    assert_eq!(game.pending().0, P1, "the attacker has priority");
+    for player in [P1, P2] {
+        assert_eq!(pending(player), None, "{player:?}");
+        assert!(wire(player).is_null(), "{player:?}");
+        assert_eq!(
+            game.seen(player).observation.blocking.len(),
+            2,
+            "{player:?}"
+        );
+    }
+}
+
+#[test]
+fn a_restored_partial_block_gives_the_same_observation() {
+    // The partial answers are rederived from the state, so a checkpoint taken
+    // with the declaration pending shows each player what the game showed at
+    // that moment.
+    let (game, attacker, _) = three_lions_may_block();
+    let state = game.state();
+    let own = Some(opaque_of(&state, P2, attacker));
+    let shown = |game: &Game| [game.information_bytes(P1), game.information_bytes(P2)];
+    let at_first = (game.checkpoint(), shown(&game));
+    game.declare_block(own);
+    let after_one = (game.checkpoint(), shown(&game));
+    game.declare_block(None);
+    let after_two = (game.checkpoint(), shown(&game));
+
+    assert_ne!(at_first.1[1], after_one.1[1]);
+    assert_ne!(after_one.1[1], after_two.1[1]);
+    for (checkpoint, expected) in [&after_one, &at_first, &after_two, &after_one] {
+        game.controller.restore(checkpoint.clone()).unwrap();
+        assert_eq!(&game.checkpoint(), checkpoint);
+        assert_eq!(&shown(&game), expected);
+    }
+
+    // Playing on from the restored half leads to what the game showed.
+    game.declare_block(None);
+    assert_eq!(game.checkpoint(), after_two.0);
+    assert_eq!(shown(&game), after_two.1);
+}
+
+/// Exchanges the opaque ids `player` has for `a` and `b`, in the identity and
+/// in the knowledge it is kept under, so that the order of the ids is not the
+/// order of the objects.
+fn swap_opaque_ids(state: &mut EngineState, player: PlayerId, a: GameObjectId, b: GameObjectId) {
+    let identity = state
+        .perspective_identities
+        .players
+        .get_mut(&player)
+        .unwrap();
+    let (opaque_a, opaque_b) = (identity.object_to_opaque[&a], identity.object_to_opaque[&b]);
+    identity.object_to_opaque.insert(a, opaque_b);
+    identity.object_to_opaque.insert(b, opaque_a);
+    identity.opaque_to_object.insert(opaque_a, b);
+    identity.opaque_to_object.insert(opaque_b, a);
+    let active = &mut state.knowledge.players.get_mut(&player).unwrap().active;
+    let record_a = active.remove(&opaque_a).unwrap();
+    let record_b = active.remove(&opaque_b).unwrap();
+    active.insert(
+        opaque_b,
+        mtgml_state::KnowledgeRecordV2 {
+            opaque_object: opaque_b,
+            ..record_a
+        },
+    );
+    active.insert(
+        opaque_a,
+        mtgml_state::KnowledgeRecordV2 {
+            opaque_object: opaque_a,
+            ..record_b
+        },
+    );
+}
+
+#[test]
+fn the_partial_blocks_are_listed_in_the_order_of_the_defenders_opaque_ids() {
+    // The order of the objects means nothing to a player. P2 has answered for
+    // two creatures, and the ids P2 knows them by are in the opposite order to
+    // the objects: the answers are listed in the order of the ids.
+    let (game, attacker, blockers) = three_lions_may_block();
+    let state = game.state();
+    game.declare_block(Some(opaque_of(&state, P2, attacker)));
+    game.declare_block(None);
+    let reached = game.checkpoint();
+    let mut forged = reached.state.clone();
+    swap_opaque_ids(&mut forged, P2, blockers[0], blockers[1]);
+    assert!(blockers[0] < blockers[1]);
+    assert!(opaque_of(&forged, P2, blockers[1]) < opaque_of(&forged, P2, blockers[0]));
+    restore_state(&game, &reached, forged.clone()).unwrap();
+
+    assert_eq!(
+        game.seen(P2).observation.pending_blocks,
+        Some(declared_blocks(
+            &forged,
+            P2,
+            &[(blockers[1], None), (blockers[0], Some(attacker))]
+        ))
+    );
+    let wire = game.observation_json(P2)["pending_blocks"].clone();
+    let listed: Vec<u64> = wire
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|row| row["blocker"].as_str().unwrap().parse().unwrap())
+        .collect();
+    assert_eq!(listed.len(), 2);
+    assert!(listed[0] < listed[1], "{listed:?}");
+    assert_eq!(game.seen(P1).observation.pending_blocks, None);
+
+    // The declaration goes on from the restored state.
+    game.declare_block(None);
+    for player in [P1, P2] {
+        assert_eq!(game.seen(player).observation.pending_blocks, None);
+    }
 }
 
 #[test]
@@ -1205,7 +1565,7 @@ fn a_restored_block_declaration_the_game_could_not_have_reached_is_refused() {
     // The declaration is one declaration: nothing is blocked while it is open.
     let mut blocked = half.clone();
     let combat = blocked.combat.as_mut().unwrap();
-    combat.blockers.insert(blockers[0], attackers[0]);
+    combat.blockers.insert(blockers[0], Some(attackers[0]));
     combat.blocked_attackers.insert(attackers[0]);
     refused("a block recorded before the declaration ends", &blocked);
     // Nobody has priority while the declaration is open, and it belongs to the
@@ -1291,12 +1651,14 @@ fn a_restored_block_declaration_the_game_could_not_have_reached_is_refused() {
 }
 
 #[test]
-fn the_completing_block_answer_shows_nothing_about_blocks_to_either_player() {
-    // Blocks are shown to no player until the observation step (INFORMATION_MODEL):
-    // not the first answer, and not the one that completes the declaration and
-    // records them. Priority passing to the attacker is public turn structure;
-    // nothing else about either player's observation, visible events or
-    // knowledge changes.
+fn both_players_see_the_blocks_once_declared() {
+    // CR 509.1g, 509.1h: no block is public while the declaration is made. The
+    // first answer has no event and the attacker sees no change; the defender
+    // sees it in its own `pending_blocks`, and in nothing else. The answer that
+    // completes the declaration is public: both players observe one
+    // `BlockersDeclared`, and the observation lists the blocked attackers and
+    // each blocking creature with its attacker, in the player's own opaque ids.
+    // Priority passing to the attacker is public turn structure.
     let game = two_lions_each();
     let state = game.state();
     let attackers: [GameObjectId; 2] = lions_of(&state, P1).try_into().unwrap();
@@ -1311,27 +1673,90 @@ fn the_completing_block_answer_shows_nothing_about_blocks_to_either_player() {
     for (before, after) in before_attack.iter().zip(&after_attack) {
         assert_ne!(before.sequence, after.sequence);
         assert_ne!(before.observation.attacking, after.observation.attacking);
+        // Before the declaration there is no block to see.
+        assert!(after.observation.blocked.is_empty() && after.observation.blocking.is_empty());
     }
     game.answer(pass, pass);
     game.answer(pass, pass);
     assert_eq!(game.pending().0, P2);
+    let blockers: [GameObjectId; 2] = in_opaque_order(&state, P2, lions_of(&state, P2))
+        .try_into()
+        .unwrap();
 
-    // The first answer shows nothing, and neither does the last.
-    let before_first = game.seen_by_both();
+    // The first answer makes no block public: it has no event, and the
+    // attacker sees no change. The defender's own answer shows in its
+    // `pending_blocks`, and in nothing else.
+    let [attacker_before, mut defender_before] = game.seen_by_both();
+    let at_first = game.state();
+    let (_, observed_first) =
+        product_and_observations(&at_first, block_in(&at_first, Some(attackers[0])));
+    assert!(observed_first.values().all(|events| events.is_empty()));
     game.declare_block(own(attackers[0]));
-    let before = game.seen_by_both();
-    assert_eq!(before_first, before);
+    let [attacker_after, defender_after] = game.seen_by_both();
+    assert_eq!(attacker_before, attacker_after);
+    assert_ne!(
+        defender_before.observation.pending_blocks,
+        defender_after.observation.pending_blocks
+    );
+    defender_before.observation.pending_blocks = defender_after.observation.pending_blocks.clone();
+    assert_eq!(defender_before, defender_after);
     assert!(game.state().combat.as_ref().unwrap().blockers.is_empty());
-    let (_, step) = game.declare_block(own(attackers[1]));
-    let after = game.seen_by_both();
+
+    // The last answer records the blocks, and both players see them.
+    let at_last = game.state();
+    let (product, observed) =
+        product_and_observations(&at_last, block_in(&at_last, Some(attackers[1])));
+    let (actor, step) = game.declare_block(own(attackers[1]));
+    assert_eq!(actor, P2);
+    assert_eq!(step.observed_events, observed[&P2]);
     let combat = game.state().combat.clone().unwrap();
     assert_eq!(combat.blockers.len(), 2, "the blocks are recorded");
     assert_eq!(combat.blocked_attackers.len(), 2);
     assert_eq!(game.pending().0, P1, "the attacker has priority");
+    assert_eq!(game.state(), product.next_state);
+    let pairs = [(blockers[0], attackers[0]), (blockers[1], attackers[1])];
 
-    assert!(step.observed_events.is_empty());
-    assert_eq!(before, after);
-    // The attacker's own step shows nothing new either.
+    for player in [P1, P2] {
+        // One declaration, listed by the player's own ids.
+        assert_eq!(
+            combat_events(&observed[&player]),
+            [&ObservedEventKindV4::BlockersDeclared {
+                defending_player: P2,
+                blocks: observed_blocks(&state, player, &pairs),
+            }],
+            "{player:?}"
+        );
+        let observation = game.seen(player).observation;
+        let mut blocked: Vec<_> = attackers
+            .iter()
+            .map(|attacker| opaque_of(&state, player, *attacker))
+            .collect();
+        blocked.sort();
+        assert_eq!(observation.blocked, blocked, "{player:?}");
+        assert_eq!(observation.attacking, blocked, "{player:?}");
+        let blocking: Vec<_> = observed_blocks(&state, player, &pairs)
+            .into_iter()
+            .map(|block| BlockObservationV1 {
+                blocker: block.blocker,
+                attacker: Some(block.attacker),
+            })
+            .collect();
+        assert_eq!(observation.blocking, blocking, "{player:?}");
+        assert!(blocking
+            .windows(2)
+            .all(|pair| pair[0].blocker < pair[1].blocker));
+        // The declaration is complete: no answer is pending any more.
+        assert_eq!(observation.pending_blocks, None);
+        assert_eq!(observation.pending_damage_assignment, None);
+        // On the wire a block names both creatures.
+        let wire = game.observation_json(player);
+        assert_eq!(
+            wire["blocking"][0]["attacker"],
+            serde_json::json!(blocking[0].attacker.unwrap().0.to_string())
+        );
+        assert!(wire["pending_blocks"].is_null());
+    }
+    // The attacker holds priority.
     assert_eq!(
         game.endpoint(P1)
             .visible_decision()
@@ -1357,7 +1782,10 @@ fn two_creatures_may_block_one_attacker() {
     let combat = declared.combat.as_ref().unwrap();
     assert_eq!(
         combat.blockers,
-        BTreeMap::from([(blockers[0], attackers[0]), (blockers[1], attackers[0])])
+        BTreeMap::from([
+            (blockers[0], Some(attackers[0])),
+            (blockers[1], Some(attackers[0]))
+        ])
     );
     assert_eq!(combat.blocked_attackers, BTreeSet::from([attackers[0]]));
     assert!(declared.execution.continuations.is_empty());
@@ -1380,7 +1808,7 @@ fn a_3_3_blocked_by_a_2_1_kills_it_and_survives() {
     let blocked = before.combat.clone().unwrap();
     assert_eq!(
         blocked.blockers,
-        BTreeMap::from([(lions_object, giant_object)])
+        BTreeMap::from([(lions_object, Some(giant_object))])
     );
     let card = before.zones.objects[&lions_object].physical_card;
     let lives = before.core.players.clone();
@@ -1429,9 +1857,9 @@ fn a_3_3_blocked_by_a_2_1_kills_it_and_survives() {
     assert_eq!(combat.blocked_attackers, BTreeSet::from([giant_object]));
     assert!(combat.blockers.is_empty());
 
-    // Both players see the Lions go from the battlefield to the graveyard, and
-    // follow it: it keeps the opaque id they knew it by. They see nothing
-    // else of the step: the damage and the blocks are not shown yet.
+    // Both players see the damage dealt and then the Lions go from the
+    // battlefield to the graveyard, and follow it: it keeps the opaque id they
+    // knew it by. They see nothing else of the step.
     for player in [P1, P2] {
         let opaque = opaque_of(&before, player, lions_object);
         assert_eq!(opaque_of(&after, player, dead), opaque, "{player:?}");
@@ -1445,7 +1873,23 @@ fn a_3_3_blocked_by_a_2_1_kills_it_and_survives() {
             )],
             "{player:?}"
         );
-        assert_eq!(observed[&player].len(), 1, "{player:?}");
+        assert!(
+            matches!(
+                observed[&player][..],
+                [
+                    ObservedEventEnvelopeV4 {
+                        event: ObservedEventKindV4::CombatDamageDealt { .. },
+                        ..
+                    },
+                    ObservedEventEnvelopeV4 {
+                        event: ObservedEventKindV4::ObjectMoved { .. },
+                        ..
+                    }
+                ]
+            ),
+            "{player:?}: {:?}",
+            observed[&player]
+        );
     }
 
     // CR 510.3: the active player has priority in the combat damage step.
@@ -1634,6 +2078,94 @@ fn a_restored_combat_after_a_blocker_died_continues_identically() {
     assert_eq!(game.checkpoint(), last);
 }
 
+/// P1 casts a Savannah Lions on its first turn, and P2 a Hill Giant on its
+/// fourth, with the four lands it plays. On turn 9 P1 attacks with the Lions
+/// and P2 blocks it with the Giant. P2 holds priority in the declare blockers
+/// step: its pass opens the combat damage step. Returns the game, the Lions
+/// and the Giant.
+fn a_lions_blocked_by_a_giant() -> (Game, GameObjectId, GameObjectId) {
+    let (mountain, plains) = land_definitions();
+    let [_, _, giant] = creature_definitions();
+    let hand = [vec![mountain; 4], vec![giant]].concat();
+    let game = Game::with_hands([vec![plains, lions()], hand]);
+    cast_lions(&game);
+    game.run_until(start_of_main_phase(8));
+    cast_creature(&game, 4);
+    game.run_until(at_attackers(9));
+    let state = game.state();
+    let [lions_object]: [GameObjectId; 1] = lions_of(&state, P1).try_into().unwrap();
+    let [giant_object]: [GameObjectId; 1] = creatures_of(&state, P2, giant).try_into().unwrap();
+    attack_and_block(&game, lions_object);
+    (game, lions_object, giant_object)
+}
+
+#[test]
+fn a_blocker_whose_attacker_died_is_still_blocking_until_combat_ends() {
+    // CR 509.1g, 506.4: P1's Savannah Lions (2/1) attacks, and P2's Hill Giant
+    // (3/3) blocks it. The Lions is destroyed in the combat damage step and so
+    // removed from combat. The Giant survives with 2 damage marked, and it
+    // remains a blocking creature, which blocks nothing, until the combat
+    // ends: the combat records it with no attacker.
+    let (game, lions_object, giant_object) = a_lions_blocked_by_a_giant();
+    let combat = game.state().combat.unwrap();
+    assert_eq!(
+        combat.blockers,
+        BTreeMap::from([(giant_object, Some(lions_object))])
+    );
+
+    game.answer(pass, pass);
+    let at_damage = game.checkpoint();
+    let state = &at_damage.state;
+    assert_eq!(
+        state.core.position,
+        TurnPosition::Combat {
+            step: CombatStep::CombatDamage
+        }
+    );
+    assert!(!state.zones.objects.contains_key(&lions_object));
+    let [dead] = graveyard_of(state, P1)[..] else {
+        panic!("P1's graveyard holds the Lions")
+    };
+    assert_eq!(state.zones.objects[&dead].card_definition, lions());
+    assert_eq!(marked(state, giant_object), 2);
+    let combat = state.combat.clone().unwrap();
+    assert!(combat.damage_step_completed);
+    assert!(combat.attackers.is_empty() && combat.blocked_attackers.is_empty());
+    assert_eq!(combat.blockers, BTreeMap::from([(giant_object, None)]));
+    game.controller.restore(at_damage.clone()).unwrap();
+    assert_eq!(game.checkpoint(), at_damage);
+
+    // The end of combat step: the Giant still blocks nothing, and still has its
+    // damage. The checkpoint restores, and the answers that follow it lead to
+    // the same state as before.
+    game.pass_until(|state| {
+        state.core.position
+            == TurnPosition::Combat {
+                step: CombatStep::EndOfCombat,
+            }
+    });
+    let at_end_of_combat = game.checkpoint();
+    let state = &at_end_of_combat.state;
+    assert_eq!(marked(state, giant_object), 2);
+    assert_eq!(
+        state.combat.as_ref().unwrap().blockers,
+        BTreeMap::from([(giant_object, None)])
+    );
+    game.answer(pass, pass);
+    game.answer(pass, pass);
+    let after = game.checkpoint();
+    game.controller.restore(at_end_of_combat.clone()).unwrap();
+    assert_eq!(game.checkpoint(), at_end_of_combat);
+    game.answer(pass, pass);
+    game.answer(pass, pass);
+    assert_eq!(game.checkpoint(), after);
+
+    // The combat phase has ended, and with it the combat: nothing blocks.
+    assert_eq!(after.state.core.position, TurnPosition::PostcombatMain);
+    assert_eq!(after.state.combat, None);
+    assert_eq!(marked(&after.state, giant_object), 2);
+}
+
 #[test]
 fn a_restored_blocked_attacker_has_its_blocker_until_the_damage_is_dealt() {
     // CR 509.1h: an attacker is blocked by the creature that blocks it. The
@@ -1648,7 +2180,10 @@ fn a_restored_blocked_attacker_has_its_blocker_until_the_damage_is_dealt() {
     attack_and_block(&game, giant_object);
     let blocked = game.checkpoint();
     let combat = blocked.state.combat.as_ref().unwrap();
-    assert_eq!(combat.blockers.get(&lions_object), Some(&giant_object));
+    assert_eq!(
+        combat.blockers.get(&lions_object),
+        Some(&Some(giant_object))
+    );
     assert!(combat.blocked_attackers.contains(&giant_object) && !combat.damage_step_completed);
     restore_state(&game, &blocked, blocked.state.clone()).unwrap();
     assert_eq!(game.checkpoint(), blocked);
@@ -2256,9 +2791,11 @@ fn at_the_end_of_the_end_step(state: &EngineState) -> bool {
 }
 
 /// What each player observes of the transition `answer` makes from `state`,
-/// and of the same transition from `state` with no damage marked: the same,
-/// because no player observes damage marked.
-fn observed_the_same_without_the_damage(state: &EngineState, answer: &DecisionAnswerV2) {
+/// and of the same transition from `state` with no damage marked: the same
+/// events. Damage is marked by the combat damage and removed by the cleanup
+/// step; the observation shows what is marked, so the removal is seen as the
+/// mark going to 0, not as an event.
+fn no_event_shows_the_damage_removal(state: &EngineState, answer: &DecisionAnswerV2) {
     let undamaged = without_damage(state);
     assert_ne!(&undamaged, state);
     let (_, with_damage) = product_and_observations(state, answer.clone());
@@ -2272,7 +2809,8 @@ fn a_creature_that_survived_a_block_has_no_damage_marked_in_the_next_turn() {
     // and dies, and the Giant survives with 2 damage marked on it. The damage
     // stays until the cleanup step, which P1's hand does not ask to discard
     // in: the transition that ends the turn removes it, and the next turn
-    // begins with the Giant undamaged. No player observes any of that.
+    // begins with the Giant undamaged. Both players see the damage marked in
+    // the observation, and see it go to 0 with no event for the removal.
     let [_, _, giant] = creature_definitions();
     let (game, giant_object, lions_object) = attacker_against_a_lions(giant, 4);
     attack_and_block(&game, giant_object);
@@ -2286,13 +2824,35 @@ fn a_creature_that_survived_a_block_has_no_damage_marked_in_the_next_turn() {
     let answer = pass_in(&before);
     let (product, observed) = product_and_observations(&before, answer.clone());
     assert_eq!(damage_changes(&product), [(giant_object, 2, 0)]);
-    observed_the_same_without_the_damage(&before, &answer);
+    no_event_shows_the_damage_removal(&before, &answer);
+    for player in [P1, P2] {
+        assert_eq!(
+            game.marked_damage(player, opaque_of(&before, player, giant_object)),
+            2,
+            "{player:?}"
+        );
+    }
 
     let (actor, step) = game.answer(pass, pass);
     assert_eq!(actor, P2);
     assert_eq!(step.observed_events, observed[&P2]);
     let after = game.state();
     assert_eq!(after, product.next_state);
+    for player in [P1, P2] {
+        assert_eq!(
+            game.marked_damage(player, opaque_of(&after, player, giant_object)),
+            0,
+            "{player:?}"
+        );
+        assert!(
+            combat_events(&observed[&player]).is_empty()
+                && observed[&player].iter().all(|envelope| !matches!(
+                    envelope.event,
+                    ObservedEventKindV4::ObjectMoved { .. }
+                )),
+            "{player:?}: no combat event and no move is observed"
+        );
+    }
     // P2's turn has begun, and the Giant is undamaged.
     assert_eq!(
         (
@@ -2398,17 +2958,31 @@ fn a_blocker_that_survives_keeps_its_damage_until_the_cleanup_of_the_attackers_t
     assert_eq!(marked(&before, giant_object), 2);
 
     // The pass that ends the end step begins the cleanup step, which removes
-    // the damage from P2's creature, and P2's turn begins. Nothing of this is
-    // observed.
+    // the damage from P2's creature, and P2's turn begins. No event shows the
+    // removal: both players see the mark go from 2 to 0 in the observation.
     let answer = pass_in(&before);
     let (product, observed) = product_and_observations(&before, answer.clone());
     assert_eq!(damage_changes(&product), [(giant_object, 2, 0)]);
-    observed_the_same_without_the_damage(&before, &answer);
+    no_event_shows_the_damage_removal(&before, &answer);
+    for player in [P1, P2] {
+        assert_eq!(
+            game.marked_damage(player, opaque_of(&before, player, giant_object)),
+            2,
+            "{player:?}"
+        );
+    }
     let (actor, step) = game.answer(pass, pass);
     assert_eq!(actor, P2);
     assert_eq!(step.observed_events, observed[&P2]);
     let after = game.state();
     assert_eq!(after, product.next_state);
+    for player in [P1, P2] {
+        assert_eq!(
+            game.marked_damage(player, opaque_of(&after, player, giant_object)),
+            0,
+            "{player:?}"
+        );
+    }
     assert_eq!((after.core.turn_number, after.core.active_player), (10, P2));
     assert_eq!(
         after.zones.locations[&giant_object].zone,
@@ -2529,7 +3103,15 @@ fn a_discard_in_the_cleanup_step_comes_before_the_damage_is_removed() {
         )
     });
     assert!(discard.unwrap() < removal.unwrap());
-    observed_the_same_without_the_damage(state, &answer);
+    no_event_shows_the_damage_removal(state, &answer);
+    // Both players see the damage still marked while the discard is asked.
+    for player in [P1, P2] {
+        assert_eq!(
+            game.marked_damage(player, opaque_of(state, player, giant_object)),
+            2,
+            "{player:?}"
+        );
+    }
 
     let (actor, step) = game.submit(answer);
     assert_eq!(actor, P1);
@@ -2538,6 +3120,13 @@ fn a_discard_in_the_cleanup_step_comes_before_the_damage_is_removed() {
     assert_eq!(after, product.next_state);
     assert_eq!((after.core.turn_number, after.core.active_player), (12, P2));
     assert_eq!(marked(&after, giant_object), 0);
+    for player in [P1, P2] {
+        assert_eq!(
+            game.marked_damage(player, opaque_of(&after, player, giant_object)),
+            0,
+            "{player:?}"
+        );
+    }
 
     let checkpoint = game.checkpoint();
     let report = game
@@ -2545,4 +3134,1409 @@ fn a_discard_in_the_cleanup_step_comes_before_the_damage_is_removed() {
         .execute_replay(game.controller.export_replay().unwrap())
         .unwrap();
     assert_eq!(report.final_checkpoint, checkpoint);
+}
+
+/// P1's Hill Giant (3/3) blocked by every creature of P2: a Gray Ogre (2/2)
+/// and some Savannah Lions (2/1).
+struct GiantFight {
+    game: Game,
+    giant: GameObjectId,
+    ogre: GameObjectId,
+    lions: Vec<GameObjectId>,
+    /// P2's creatures in the order P1 divides the Giant's damage among them:
+    /// the order of P1's opaque ids, not of the object ids.
+    blockers: Vec<GameObjectId>,
+}
+
+/// P2 casts a Savannah Lions on turn 2 (and a second on turn 4 when
+/// `lions_count` is 2) and a Gray Ogre on turn 6; P1 casts a Hill Giant on turn
+/// 7. On turn 9 the Giant attacks and every creature of P2 blocks it. P2 holds
+/// priority in the declare blockers step: its pass opens the combat damage
+/// step.
+fn giant_blocked_by(lions_count: usize) -> GiantFight {
+    let [_, ogre_card, giant_card] = creature_definitions();
+    let (mountain, plains) = land_definitions();
+    let mut hand = vec![plains, lions(), plains];
+    if lions_count == 2 {
+        hand.push(lions());
+    }
+    hand.push(ogre_card);
+    let game = Game::with_hands([
+        vec![mountain, mountain, mountain, mountain, giant_card],
+        hand,
+    ]);
+    game.run_until(start_of_main_phase(2));
+    cast_lions(&game);
+    if lions_count == 2 {
+        game.run_until(start_of_main_phase(4));
+        cast_lions(&game);
+    }
+    game.run_until(start_of_main_phase(6));
+    cast_creature(&game, 3);
+    game.run_until(start_of_main_phase(7));
+    cast_creature(&game, 4);
+    game.run_until(at_attackers(9));
+    every_creature_blocks_the_giant(game, lions_count)
+}
+
+/// At P1's attacker declaration with a Hill Giant, against P2's Gray Ogre and
+/// `lions_count` Savannah Lions: the Giant attacks and every creature of P2
+/// blocks it. P2 holds priority in the declare blockers step: its pass opens
+/// the combat damage step.
+fn every_creature_blocks_the_giant(game: Game, lions_count: usize) -> GiantFight {
+    let [_, ogre_card, giant_card] = creature_definitions();
+    let state = game.state();
+    let [giant]: [GameObjectId; 1] = creatures_of(&state, P1, giant_card).try_into().unwrap();
+    let [ogre]: [GameObjectId; 1] = creatures_of(&state, P2, ogre_card).try_into().unwrap();
+    let lions = lions_of(&state, P2);
+    assert_eq!(lions.len(), lions_count);
+    let blockers = in_opaque_order(&state, P1, [lions.clone(), vec![ogre]].concat());
+    game.declare_attackers(&[opaque_of(&state, P1, giant)]);
+    game.answer(pass, pass);
+    game.answer(pass, pass);
+    for _ in &blockers {
+        game.declare_block(Some(opaque_of(&state, P2, giant)));
+    }
+    game.answer(pass, pass);
+    assert_eq!(game.pending().0, P2);
+    assert_eq!(
+        game.state().core.position,
+        TurnPosition::Combat {
+            step: CombatStep::DeclareBlockers
+        }
+    );
+    GiantFight {
+        game,
+        giant,
+        ogre,
+        lions,
+        blockers,
+    }
+}
+
+/// The answer to a division request that gives its recipient `amount`.
+fn damage_answer(request: &PlayerDecisionRequestV4, amount: u64) -> DecisionAnswerV2 {
+    let candidate = request
+        .candidates
+        .iter()
+        .find(|candidate| {
+            matches!(candidate.intent,
+                CandidateIntent::AssignCombatDamage { amount: offered, .. } if offered == amount)
+        })
+        .unwrap_or_else(|| panic!("the request does not offer {amount}"));
+    DecisionAnswerV2::SelectOne {
+        candidate_id: candidate.candidate_id,
+    }
+}
+
+impl GiantFight {
+    /// P2 passes, which opens the combat damage step: P1 is asked how the
+    /// Giant divides its damage. Returns that request.
+    fn open_the_damage_step(&self) -> PlayerDecisionRequestV4 {
+        assert_eq!(self.game.answer(pass, pass).0, P2);
+        let (actor, request) = self.game.pending();
+        assert_eq!(actor, P1);
+        assert_eq!(request.purpose, DecisionPurposeV4::CombatDamageAssignment);
+        request
+    }
+
+    /// P1 gives `amount` of the Giant's damage to the creature it is asked
+    /// about.
+    fn assign(&self, amount: u64) -> (PlayerId, PlayerStepV4) {
+        let (actor, request) = self.game.pending();
+        assert_eq!(
+            (actor, &request.purpose),
+            (P1, &DecisionPurposeV4::CombatDamageAssignment)
+        );
+        self.game.submit(damage_answer(&request, amount))
+    }
+
+    /// What P1 is offered for `blocker`: each amount from 0 to `most`, in the
+    /// opaque ids of P1.
+    fn offered_for(
+        &self,
+        state: &EngineState,
+        blocker: GameObjectId,
+        most: u64,
+    ) -> Vec<CandidateIntent> {
+        (0..=most)
+            .map(|amount| CandidateIntent::AssignCombatDamage {
+                attacker: opaque_of(state, P1, self.giant),
+                recipient: opaque_of(state, P1, blocker),
+                amount,
+            })
+            .collect()
+    }
+}
+
+/// The combat damage assignment in progress: who divides, the attackers and
+/// the blockers still to ask, and the amounts answered.
+fn damage_division(
+    state: &EngineState,
+) -> (
+    PlayerId,
+    Vec<GameObjectId>,
+    Vec<GameObjectId>,
+    BTreeMap<GameObjectId, u64>,
+) {
+    let [record] = state
+        .execution
+        .continuations
+        .values()
+        .collect::<Vec<_>>()
+        .try_into()
+        .expect("one continuation");
+    let ContinuationPayload::CombatDamageAssignment {
+        player,
+        pending_attackers,
+        pending_blockers,
+        assigned,
+    } = &record.payload
+    else {
+        panic!("not a combat damage assignment: {record:?}");
+    };
+    (
+        *player,
+        pending_attackers.clone(),
+        pending_blockers.clone(),
+        assigned.clone(),
+    )
+}
+
+/// Whether `state` waits for the damage of an attacker to be divided.
+fn dividing(state: &EngineState) -> bool {
+    state.execution.continuations.values().any(|record| {
+        matches!(
+            record.payload,
+            ContinuationPayload::CombatDamageAssignment { .. }
+        )
+    })
+}
+
+/// The damage the product's `CombatDamageDealt` assigns, as (source, creature
+/// recipient, amount), sorted. There is exactly one such event.
+fn damage_dealt_to_creatures(
+    product: &BasicLandTransitionProduct,
+) -> Vec<(GameObjectId, GameObjectId, u64)> {
+    let dealt: Vec<_> = product
+        .events
+        .iter()
+        .filter_map(|event| match &event.event {
+            AuthoritativeRuleEventKind::CombatDamageDealt { assignments } => Some(assignments),
+            _ => None,
+        })
+        .collect();
+    let [assignments] = dealt[..] else {
+        panic!("one CombatDamageDealt: {dealt:?}")
+    };
+    let mut dealt: Vec<_> = assignments
+        .iter()
+        .map(|assignment| match assignment.recipient {
+            mtgml_state::DamageRecipientV1::Creature { object } => {
+                (assignment.source, object, assignment.amount)
+            }
+            other => panic!("no player is dealt damage: {other:?}"),
+        })
+        .collect();
+    dealt.sort();
+    dealt
+}
+
+#[test]
+fn a_hill_giant_blocked_by_lions_and_ogre_can_assign_every_division() {
+    // CR 510.1c: a creature blocked by two or more creatures assigns its combat
+    // damage to them divided as its controller chooses. P1's Hill Giant (3/3)
+    // is blocked by P2's Savannah Lions and Gray Ogre, so P1 is asked, once,
+    // for the first of them in the order of P1's opaque ids, how much of the 3
+    // it gets, which is any of 0, 1, 2 and 3; the other gets what is left.
+    let fight = giant_blocked_by(1);
+    let request = fight.open_the_damage_step();
+    let at_request = fight.game.checkpoint();
+    let state = &at_request.state;
+
+    // Nobody has priority while the damage is divided, and none is dealt yet.
+    assert_eq!(
+        state.core.position,
+        TurnPosition::Combat {
+            step: CombatStep::CombatDamage
+        }
+    );
+    assert_eq!(state.core.priority, PriorityState::None);
+    let combat = state.combat.as_ref().unwrap();
+    assert!(!combat.damage_step_completed);
+    assert_eq!(combat.attackers, vec![fight.giant]);
+    assert_eq!(combat.blockers.len(), 2);
+    assert!(state
+        .card_rules
+        .permanents
+        .permanents
+        .values()
+        .all(|permanent| permanent.marked_damage == 0));
+
+    // The request is P1's alone, one answer, with an amount for the first of
+    // the two blockers in P1's opaque order.
+    assert_eq!(request.visibility, DecisionVisibility::ActingPlayerOnly);
+    assert_eq!(request.decision_domain_v2, DecisionDomainV2::ChooseOne);
+    assert_eq!(fight.blockers.len(), 2);
+    assert_eq!(
+        fight.game.offered(),
+        fight.offered_for(state, fight.blockers[0], 3)
+    );
+    assert_eq!(fight.game.endpoint(P2).visible_decision().unwrap(), None);
+
+    // The division waits in a continuation that names P1, the attacker and both
+    // blockers, in P1's opaque order, with nothing answered.
+    let [(_, record)] = state.execution.continuations.iter().collect::<Vec<_>>()[..] else {
+        panic!("one continuation")
+    };
+    assert_eq!(record.created_at_revision, state.revision);
+    assert_eq!(
+        record.payload,
+        ContinuationPayload::CombatDamageAssignment {
+            player: P1,
+            pending_attackers: vec![fight.giant],
+            pending_blockers: fight.blockers.clone(),
+            assigned: BTreeMap::new(),
+        }
+    );
+    assert_eq!(
+        state
+            .execution
+            .pending_decision
+            .as_ref()
+            .unwrap()
+            .continuation_id,
+        Some(record.id)
+    );
+
+    // Every one of the four amounts is an answer the game takes, and asks
+    // nothing more: the last blocker gets the rest.
+    for amount in 0..=3 {
+        fight.game.controller.restore(at_request.clone()).unwrap();
+        fight.assign(amount);
+        let after = fight.game.state();
+        assert!(!dividing(&after), "{amount}");
+        assert!(after.combat.as_ref().unwrap().damage_step_completed);
+        assert_ne!(
+            fight.game.pending().1.purpose,
+            DecisionPurposeV4::CombatDamageAssignment,
+            "{amount}"
+        );
+    }
+}
+
+#[test]
+fn each_division_gives_the_expected_deaths() {
+    // CR 510.1c, 510.2, 704.5g: Hill Giant (3/3) is blocked by Savannah Lions
+    // (2/1) and Gray Ogre (2/2) and divides its 3 damage between them as
+    // (to the Lions, to the Ogre). The two deal the Giant 4, which is lethal in
+    // every division. What the Giant gives each of them is lethal to the Lions
+    // from 1 and to the Ogre from 2.
+    //
+    // For each division: the damage marked on the Lions and on the Ogre when it
+    // survives, and none when it dies.
+    type Survivor = Option<u64>;
+    let cases: [((u64, u64), Survivor, Survivor); 4] = [
+        ((0, 3), Some(0), None),
+        ((1, 2), None, None),
+        ((2, 1), None, Some(1)),
+        ((3, 0), None, Some(0)),
+    ];
+    for ((to_lions, to_ogre), lions_survives, ogre_survives) in cases {
+        let fight = giant_blocked_by(1);
+        let [lions] = fight.lions[..] else {
+            unreachable!()
+        };
+        let (giant, ogre) = (fight.giant, fight.ogre);
+        let request = fight.open_the_damage_step();
+        let before = fight.game.state();
+        let first = fight.blockers[0];
+        let to_first = if first == lions { to_lions } else { to_ogre };
+        let answer = damage_answer(&request, to_first);
+        let (product, observed) = product_and_observations(&before, answer.clone());
+        let lives = before.core.players.clone();
+
+        let (actor, step) = fight.game.submit(answer);
+        assert_eq!(actor, P1, "{to_lions}/{to_ogre}");
+        assert_eq!(step.observed_events, observed[&P1]);
+        let answered = fight.game.state();
+        assert_eq!(answered, product.next_state);
+        assert!(!dividing(&answered));
+        assert!(answered.combat.as_ref().unwrap().damage_step_completed);
+        // Only creatures are dealt damage: nobody loses life.
+        assert_eq!(answered.core.players, lives);
+
+        // One event holds the whole assignment: the Giant's division, whose
+        // zero amounts are not assignments, and the damage of the blockers.
+        let mut expected = vec![
+            (giant, lions, to_lions),
+            (giant, ogre, to_ogre),
+            (lions, giant, 2),
+            (ogre, giant, 2),
+        ];
+        expected.retain(|(_, _, amount)| *amount > 0);
+        expected.sort();
+        assert_eq!(damage_dealt_to_creatures(&product), expected);
+
+        // In the division (1, 2) both of P2's creatures die together, so P2
+        // orders its two cards (CR 404.3) and P1 is not asked: it loses only
+        // the Giant. The creatures die with the answer to that request, with
+        // the damage they were dealt on them until then.
+        if (to_lions, to_ogre) == (1, 2) {
+            let (asked, next) = fight.game.pending();
+            assert_eq!(
+                (asked, &next.purpose),
+                (P2, &DecisionPurposeV4::SbaGraveyardOrder)
+            );
+            assert_eq!(fight.game.endpoint(P1).visible_decision().unwrap(), None);
+            assert_eq!(next.candidates.len(), 2);
+            assert_eq!(
+                [giant, lions, ogre].map(|creature| marked(&answered, creature)),
+                [4, 1, 2]
+            );
+            let wanted: Vec<_> = next
+                .candidates
+                .iter()
+                .map(|candidate| match candidate.intent {
+                    CandidateIntent::SelectObject { object } => object,
+                    _ => unreachable!(),
+                })
+                .collect();
+            fight.game.submit(order_answer(&next, &wanted));
+        }
+        let after = fight.game.state();
+        assert!(after.execution.continuations.is_empty());
+        let (asked, next) = fight.game.pending();
+        assert_eq!(
+            (asked, next.purpose),
+            (P1, DecisionPurposeV4::PriorityAction),
+            "{to_lions}/{to_ogre}"
+        );
+
+        // The Giant is dealt 4 in every division, and dies.
+        assert!(!after.zones.objects.contains_key(&giant));
+        for (creature, survives) in [(lions, lions_survives), (ogre, ogre_survives)] {
+            match survives {
+                Some(damage) => {
+                    assert_eq!(
+                        after.zones.locations[&creature].zone,
+                        ZoneKind::Battlefield,
+                        "{to_lions}/{to_ogre}"
+                    );
+                    assert_eq!(marked(&after, creature), damage, "{to_lions}/{to_ogre}");
+                }
+                None => assert!(
+                    !after.zones.objects.contains_key(&creature),
+                    "{to_lions}/{to_ogre}"
+                ),
+            }
+        }
+        assert_eq!(graveyard_of(&after, P1).len(), 1);
+        let p2_dead = usize::from(lions_survives.is_none()) + usize::from(ogre_survives.is_none());
+        assert_eq!(graveyard_of(&after, P2).len(), p2_dead);
+    }
+}
+
+#[test]
+fn a_division_that_runs_out_asks_for_no_more() {
+    // CR 510.1c: the Giant's 3 damage is blocked by two Savannah Lions and a
+    // Gray Ogre. Giving all 3 to the first blocker leaves nothing for the
+    // others, so they are not asked: each is assigned 0.
+    let fight = giant_blocked_by(2);
+    let request = fight.open_the_damage_step();
+    let before = fight.game.state();
+    assert_eq!(fight.blockers.len(), 3);
+    let first = fight.blockers[0];
+    assert_eq!(fight.game.offered(), fight.offered_for(&before, first, 3));
+    let answer = damage_answer(&request, 3);
+    let (product, _) = product_and_observations(&before, answer.clone());
+
+    fight.game.submit(answer);
+    let after = fight.game.state();
+    assert_eq!(after, product.next_state);
+    // Nothing more is asked: the division is over and P1 has priority.
+    assert!(after.execution.continuations.is_empty());
+    let (asked, next) = fight.game.pending();
+    assert_eq!(
+        (asked, next.purpose),
+        (P1, DecisionPurposeV4::PriorityAction)
+    );
+
+    // The first blocker is assigned all 3, the others nothing; each of the
+    // three deals the Giant its own 2.
+    let mut expected = vec![(fight.giant, first, 3)];
+    expected.extend(
+        fight
+            .blockers
+            .iter()
+            .map(|blocker| (*blocker, fight.giant, 2)),
+    );
+    expected.sort();
+    assert_eq!(damage_dealt_to_creatures(&product), expected);
+    assert!(!after.zones.objects.contains_key(&first));
+    for other in &fight.blockers[1..] {
+        assert_eq!(after.zones.locations[other].zone, ZoneKind::Battlefield);
+        assert_eq!(marked(&after, *other), 0);
+    }
+    assert!(!after.zones.objects.contains_key(&fight.giant));
+}
+
+#[test]
+fn a_restored_partial_division_continues_identically() {
+    // The Giant's 3 damage is blocked by two Savannah Lions and a Gray Ogre.
+    // P1 gives 1 to the first, which leaves 2 for the other two, and is asked
+    // for the second.
+    let fight = giant_blocked_by(2);
+    let game = &fight.game;
+    fight.open_the_damage_step();
+    let at_first = game.checkpoint();
+    fight.assign(1);
+    let half = game.checkpoint();
+
+    // The half-divided damage names who has been answered and who is asked
+    // next, and the revision it was created at is the state's less the answers.
+    let state = &half.state;
+    assert_eq!(
+        damage_division(state),
+        (
+            P1,
+            vec![fight.giant],
+            fight.blockers[1..].to_vec(),
+            BTreeMap::from([(fight.blockers[0], 1)])
+        )
+    );
+    assert_eq!(
+        state
+            .execution
+            .continuations
+            .values()
+            .next()
+            .unwrap()
+            .created_at_revision
+            .0,
+        state.revision.0 - 1
+    );
+    assert_eq!(
+        game.offered(),
+        fight.offered_for(state, fight.blockers[1], 2)
+    );
+
+    fight.assign(1);
+    let divided = game.checkpoint();
+    // 1, 1 and the 1 that is left: both Lions die, and P2 orders its two.
+    assert_eq!(
+        game.pending().1.purpose,
+        DecisionPurposeV4::SbaGraveyardOrder
+    );
+
+    // The checkpoint with the whole division pending restores the request and
+    // its continuation, and the same answers lead to the same checkpoints.
+    game.controller.restore(at_first.clone()).unwrap();
+    assert_eq!(game.checkpoint(), at_first);
+    assert_eq!(
+        game.pending().1.purpose,
+        DecisionPurposeV4::CombatDamageAssignment
+    );
+    fight.assign(1);
+    assert_eq!(game.checkpoint(), half);
+
+    // So does the half-divided one.
+    game.controller.restore(half.clone()).unwrap();
+    assert_eq!(game.checkpoint(), half);
+    assert_eq!(game.pending().0, P1);
+    fight.assign(1);
+    assert_eq!(game.checkpoint(), divided);
+
+    // The whole game, the division included, replays to the same checkpoint.
+    let report = game
+        .controller
+        .execute_replay(game.controller.export_replay().unwrap())
+        .unwrap();
+    assert_eq!(report.final_checkpoint, divided);
+}
+
+/// `state` with `edit` applied to its combat damage assignment.
+fn forged_division(
+    state: &EngineState,
+    edit: impl FnOnce(
+        &mut PlayerId,
+        &mut Vec<GameObjectId>,
+        &mut Vec<GameObjectId>,
+        &mut BTreeMap<GameObjectId, u64>,
+    ),
+) -> EngineState {
+    let mut forged = state.clone();
+    let record = forged.execution.continuations.values_mut().next().unwrap();
+    let ContinuationPayload::CombatDamageAssignment {
+        player,
+        pending_attackers,
+        pending_blockers,
+        assigned,
+    } = &mut record.payload
+    else {
+        unreachable!()
+    };
+    edit(player, pending_attackers, pending_blockers, assigned);
+    forged
+}
+
+#[test]
+fn a_forged_partial_division_is_refused() {
+    let fight = giant_blocked_by(2);
+    let game = &fight.game;
+    fight.open_the_damage_step();
+    let at_first = game.checkpoint();
+    fight.assign(1);
+    let half = game.checkpoint();
+    let [b0, b1, b2] = fight.blockers[..] else {
+        unreachable!()
+    };
+    let refused = |what: &str, reached: &EnvironmentCheckpointV8, forged: EngineState| {
+        let before = game.checkpoint();
+        assert!(
+            restore_state(game, reached, forged).is_err(),
+            "restored: {what}"
+        );
+        assert_eq!(game.checkpoint(), before, "{what}");
+    };
+
+    // The states as played restore.
+    restore_state(game, &at_first, at_first.state.clone()).unwrap();
+    restore_state(game, &half, half.state.clone()).unwrap();
+
+    // CR 510.1c: all of the attacker's damage is divided, none more. An amount
+    // above what is left is refused, however it is placed.
+    refused(
+        "an amount above the damage the attacker has",
+        &half,
+        forged_division(&half.state, |_, _, _, assigned| {
+            assigned.insert(b0, 4);
+        }),
+    );
+    refused(
+        "two amounts that add up to more than the attacker has",
+        &half,
+        forged_division(&half.state, |_, _, pending, assigned| {
+            pending.remove(0);
+            assigned.insert(b1, 3);
+        }),
+    );
+    refused(
+        "an amount that leaves nothing, with blockers still to ask",
+        &half,
+        forged_division(&half.state, |_, _, _, assigned| {
+            assigned.insert(b0, 3);
+        }),
+    );
+    refused(
+        "an answer for a blocker that is not asked before the first",
+        &half,
+        forged_division(&half.state, |_, _, pending, assigned| {
+            pending.clear();
+            pending.push(b0);
+            assigned.clear();
+            assigned.insert(b1, 1);
+        }),
+    );
+    refused(
+        "an answer for the blocker that gets the rest",
+        &half,
+        forged_division(&half.state, |_, _, pending, assigned| {
+            pending.truncate(1);
+            assigned.insert(b2, 1);
+        }),
+    );
+    refused(
+        "an answer for a creature that does not block",
+        &half,
+        forged_division(&half.state, |_, _, _, assigned| {
+            assigned.insert(fight.giant, 1);
+        }),
+    );
+
+    // The record is made by the transition that opens the damage step and
+    // gains one answer with each revision after it, so the revision it was
+    // created at is the state's, less the answers. The values next to it and
+    // the first revision are refused; the sweep over every other value, which
+    // the same check refuses, is not worth its time.
+    for (reached, answered) in [(&at_first, 0), (&half, 1)] {
+        let created = |state: &EngineState| {
+            state
+                .execution
+                .continuations
+                .values()
+                .next()
+                .unwrap()
+                .created_at_revision
+        };
+        assert_eq!(
+            created(&reached.state).0,
+            reached.state.revision.0 - answered
+        );
+        let real = created(&reached.state).0;
+        let others: BTreeSet<u64> = [0, real - 1, real + 1]
+            .into_iter()
+            .filter(|revision| *revision != real)
+            .collect();
+        assert!(others.len() >= 2, "{others:?}");
+        for revision in others {
+            let mut forged = reached.state.clone();
+            forged
+                .execution
+                .continuations
+                .values_mut()
+                .next()
+                .unwrap()
+                .created_at_revision = StateRevision(revision);
+            refused(
+                &format!("{answered} answered, created at revision {revision}"),
+                reached,
+                forged,
+            );
+        }
+    }
+
+    // The blockers asked are the first attacker's, in P1's opaque order.
+    refused(
+        "the blockers asked in another order",
+        &at_first,
+        forged_division(&at_first.state, |_, _, pending, _| pending.swap(0, 1)),
+    );
+    refused(
+        "the blockers asked in reverse",
+        &at_first,
+        forged_division(&at_first.state, |_, _, pending, _| pending.reverse()),
+    );
+    refused(
+        "the remaining blockers swapped",
+        &half,
+        forged_division(&half.state, |_, _, pending, _| pending.swap(0, 1)),
+    );
+    refused(
+        "a blocker that is asked and answered",
+        &half,
+        forged_division(&half.state, |_, _, pending, _| pending.insert(0, b0)),
+    );
+    refused(
+        "a blocker that is never asked",
+        &at_first,
+        forged_division(&at_first.state, |_, _, pending, _| pending.truncate(2)),
+    );
+    refused(
+        "nobody left to ask",
+        &half,
+        forged_division(&half.state, |_, _, pending, _| pending.clear()),
+    );
+    refused(
+        "no attacker to divide",
+        &at_first,
+        forged_division(&at_first.state, |_, attackers, _, _| attackers.clear()),
+    );
+    refused(
+        "an attacker twice",
+        &at_first,
+        forged_division(&at_first.state, |_, attackers, _, _| {
+            attackers.push(attackers[0]);
+        }),
+    );
+    refused(
+        "the defending player as the one who divides",
+        &at_first,
+        forged_division(&at_first.state, |player, _, _, _| *player = P2),
+    );
+
+    // The damage has not been dealt while it is divided, and nobody has
+    // priority.
+    for reached in [&at_first, &half] {
+        let mut dealt = reached.state.clone();
+        dealt.combat.as_mut().unwrap().damage_step_completed = true;
+        refused("a division with the damage already dealt", reached, dealt);
+        let mut priority = reached.state.clone();
+        priority.core.priority = PriorityState::HeldBy {
+            player: P1,
+            consecutive_passes: 0,
+        };
+        refused("priority during the division", reached, priority);
+        let mut step = reached.state.clone();
+        step.core.position = TurnPosition::Combat {
+            step: CombatStep::EndOfCombat,
+        };
+        refused("the division in another step", reached, step);
+    }
+    // The request is the one the continuation calls for.
+    let tampered =
+        |reached: &EnvironmentCheckpointV8,
+         edit: &dyn Fn(&mut mtgml_decision::AuthoritativeDecisionRequest)| {
+            let mut forged = reached.state.clone();
+            edit(forged.execution.pending_decision.as_mut().unwrap());
+            forged
+        };
+    refused(
+        "the request of the first blocker after it was answered",
+        &half,
+        tampered(&half, &|request| {
+            request.candidates = at_first
+                .state
+                .execution
+                .pending_decision
+                .as_ref()
+                .unwrap()
+                .candidates
+                .clone();
+        }),
+    );
+    refused(
+        "a request without its largest amount",
+        &at_first,
+        tampered(&at_first, &|request| {
+            request.candidates.pop();
+        }),
+    );
+    refused(
+        "a request with an amount too many",
+        &at_first,
+        tampered(&at_first, &|request| {
+            let mut last = request.candidates.last().unwrap().clone();
+            last.candidate_id = CandidateIdV1(request.candidates.len() as u32);
+            if let (
+                CandidateIntent::AssignCombatDamage { amount, .. },
+                mtgml_decision::EngineCandidateBinding::AssignCombatDamage {
+                    amount: bound, ..
+                },
+            ) = (&mut last.visible_intent, &mut last.trusted_binding)
+            {
+                *amount += 1;
+                *bound += 1;
+            }
+            request.candidates.push(last);
+        }),
+    );
+    refused(
+        "a request for the blocker after the first",
+        &at_first,
+        tampered(&at_first, &|request| {
+            for candidate in &mut request.candidates {
+                if let (
+                    CandidateIntent::AssignCombatDamage { recipient, .. },
+                    mtgml_decision::EngineCandidateBinding::AssignCombatDamage {
+                        recipient: bound,
+                        ..
+                    },
+                ) = (
+                    &mut candidate.visible_intent,
+                    &mut candidate.trusted_binding,
+                ) {
+                    *recipient = opaque_of(&at_first.state, P1, b1);
+                    *bound = b1;
+                }
+            }
+        }),
+    );
+    refused(
+        "a public request",
+        &half,
+        tampered(&half, &|request| {
+            request.visibility = DecisionVisibility::Public
+        }),
+    );
+    refused(
+        "a request of the defending player",
+        &half,
+        tampered(&half, &|request| request.actor = P2),
+    );
+    refused(
+        "a request without its continuation",
+        &half,
+        tampered(&half, &|request| request.continuation_id = None),
+    );
+    refused(
+        "a request for several answers",
+        &half,
+        tampered(&half, &|request| {
+            request.decision_domain_v2 = DecisionDomainV2::ChooseMany {
+                minimum: 0,
+                maximum: 2,
+            }
+        }),
+    );
+    refused(
+        "a priority request in the middle of the division",
+        &half,
+        tampered(&half, &|request| {
+            request.purpose = DecisionPurposeV4::PriorityAction
+        }),
+    );
+
+    // A division needs the rule, and is never part of a closed episode.
+    let admission = creature_game_admission();
+    let running = EpisodeStatus::Running;
+    mtgml_rules::validate_magic_pending_request(&admission, &half.state, &running).unwrap();
+    assert!(mtgml_rules::validate_magic_pending_request(
+        &common::game_admission(),
+        &half.state,
+        &running
+    )
+    .is_err());
+    let closed = EpisodeStatus::Truncated {
+        reason: TruncationReason::ExternalStop,
+        players: Vec::new(),
+    };
+    assert!(mtgml_rules::validate_magic_pending_request(&admission, &half.state, &closed).is_err());
+}
+
+#[test]
+fn a_half_divided_damage_is_invisible_to_the_defender() {
+    // CR 510.1c: P1 divides the Giant's damage one blocker at a time. P2 sees
+    // nothing of it, not the request, not an answer, and not what is left: only
+    // P1 sees its own answers (see
+    // `the_attacking_player_sees_its_own_partial_division`).
+    let fight = giant_blocked_by(2);
+    let game = &fight.game;
+    fight.open_the_damage_step();
+    let information = game.information_bytes(P2);
+    let observation = game
+        .endpoint(P2)
+        .information_state()
+        .unwrap()
+        .current_observation;
+    let seen = game.seen(P2);
+    assert_eq!(game.endpoint(P2).visible_decision().unwrap(), None);
+
+    let (_, step) = fight.assign(1);
+    assert!(step.observed_events.is_empty());
+    assert_eq!(game.pending().0, P1, "P1 divides on");
+    assert_eq!(game.information_bytes(P2), information);
+    assert_eq!(
+        game.endpoint(P2)
+            .information_state()
+            .unwrap()
+            .current_observation,
+        observation
+    );
+    assert_eq!(game.seen(P2), seen);
+    assert_eq!(game.endpoint(P2).visible_decision().unwrap(), None);
+
+    // Positive control: the same comparison does see what is public. The last
+    // answer makes both Lions die together, so P2 is asked to arrange its two
+    // cards, which both players see; and when it has, they see the deaths.
+    fight.assign(1);
+    assert_eq!(game.pending().0, P2);
+    assert_ne!(game.information_bytes(P2), information);
+    assert_ne!(game.seen(P2), seen);
+    let (_, request) = game.pending();
+    let wanted: Vec<_> = request
+        .candidates
+        .iter()
+        .map(|candidate| match candidate.intent {
+            CandidateIntent::SelectObject { object } => object,
+            _ => unreachable!(),
+        })
+        .collect();
+    let (_, step) = game.submit(order_answer(&request, &wanted));
+    assert!(!step.observed_events.is_empty());
+}
+
+/// P1's Hill Giant (3/3) is blocked by four creatures of P2: three Savannah
+/// Lions and a Gray Ogre, so that P1 answers twice with the division still
+/// going on (a creature is asked about while two or more have no amount). P2
+/// casts a Lions on turns 2, 4 and 8 and the Ogre on turn 6.
+fn giant_blocked_by_four() -> GiantFight {
+    let [_, ogre_card, giant_card] = creature_definitions();
+    let (mountain, plains) = land_definitions();
+    let game = Game::with_hands_and_libraries(
+        [
+            vec![mountain, mountain, mountain, mountain, giant_card],
+            vec![plains, plains, lions(), ogre_card],
+        ],
+        [
+            vec![mountain; 10],
+            [
+                vec![mountain, lions(), mountain, lions()],
+                vec![mountain; 6],
+            ]
+            .concat(),
+        ],
+    );
+    game.run_until(start_of_main_phase(2));
+    cast_lions(&game);
+    game.run_until(start_of_main_phase(4));
+    cast_lions(&game);
+    game.run_until(start_of_main_phase(6));
+    cast_creature(&game, 3);
+    game.run_until(start_of_main_phase(7));
+    cast_creature(&game, 4);
+    game.run_until(start_of_main_phase(8));
+    cast_lions(&game);
+    game.run_until(at_attackers(9));
+    let fight = every_creature_blocks_the_giant(game, 3);
+    assert_eq!(fight.blockers.len(), 4);
+    fight
+}
+
+/// The division answers P1 is shown for the Giant, one for each pair of a
+/// blocker and its amount, in the order given.
+fn assigned_damage(
+    fight: &GiantFight,
+    answers: &[(GameObjectId, u64)],
+) -> Vec<AssignedDamageObservationV1> {
+    let state = fight.game.state();
+    answers
+        .iter()
+        .map(|(blocker, amount)| AssignedDamageObservationV1 {
+            attacker: opaque_of(&state, P1, fight.giant),
+            blocker: opaque_of(&state, P1, *blocker),
+            amount: *amount,
+        })
+        .collect()
+}
+
+#[test]
+fn the_attacking_player_sees_its_own_partial_division() {
+    // CR 510.1c: P1 divides the Giant's 3 damage one blocker at a time. The
+    // amounts answered so far are P1's own and shown to P1 alone, in P1's
+    // opaque ids. P2 is shown nothing, and P2's bytes do not change.
+    let fight = giant_blocked_by_four();
+    let game = &fight.game;
+    let state = game.state();
+    let pending = |player: PlayerId| game.seen(player).observation.pending_damage_assignment;
+    let wire =
+        |player: PlayerId| game.observation_json(player)["pending_damage_assignment"].clone();
+    let id = |object: GameObjectId| opaque_of(&state, P1, object).0.to_string();
+
+    // The step has not opened: no division is pending.
+    assert_eq!((pending(P1), pending(P2)), (None, None));
+    fight.open_the_damage_step();
+
+    // The division has begun and no blocker has been answered: P1's list is
+    // empty, and not null.
+    assert_eq!(pending(P1), Some(Vec::new()));
+    assert_eq!(wire(P1), serde_json::json!([]));
+    assert_eq!(pending(P2), None);
+    assert!(wire(P2).is_null());
+    let information = game.information_bytes(P2);
+
+    // The first blocker is given 1 of the 3, which leaves 2.
+    let (actor, step) = fight.assign(1);
+    assert_eq!(actor, P1);
+    assert!(step.observed_events.is_empty());
+    assert_eq!(
+        pending(P1),
+        Some(assigned_damage(&fight, &[(fight.blockers[0], 1)]))
+    );
+    assert_eq!(
+        wire(P1),
+        serde_json::json!([{
+            "attacker": id(fight.giant),
+            "blocker": id(fight.blockers[0]),
+            "amount": "1",
+        }])
+    );
+    assert_eq!(pending(P2), None);
+    assert!(wire(P2).is_null());
+    assert_eq!(game.information_bytes(P2), information);
+
+    // The second is given 0, and that is an answer too.
+    fight.assign(0);
+    assert_eq!(
+        pending(P1),
+        Some(assigned_damage(
+            &fight,
+            &[(fight.blockers[0], 1), (fight.blockers[1], 0)]
+        ))
+    );
+    assert_eq!(
+        wire(P1),
+        serde_json::json!([
+            {"attacker": id(fight.giant), "blocker": id(fight.blockers[0]), "amount": "1"},
+            {"attacker": id(fight.giant), "blocker": id(fight.blockers[1]), "amount": "0"},
+        ])
+    );
+    assert_eq!(pending(P2), None);
+    assert_eq!(game.information_bytes(P2), information);
+    assert_eq!(game.endpoint(P2).visible_decision().unwrap(), None);
+    assert!(dividing(&game.state()));
+
+    // The third is given the 2 that are left, and the fourth gets none: the
+    // division is complete and the damage is dealt. Nothing is pending for
+    // anybody.
+    fight.assign(2);
+    assert!(!dividing(&game.state()));
+    for player in [P1, P2] {
+        assert_eq!(pending(player), None, "{player:?}");
+        assert!(wire(player).is_null(), "{player:?}");
+    }
+}
+
+#[test]
+fn a_restored_partial_division_gives_the_same_observation() {
+    // The partial answers are rederived from the state, so a checkpoint taken
+    // with the division pending shows each player what the game showed at that
+    // moment.
+    let fight = giant_blocked_by_four();
+    let game = &fight.game;
+    fight.open_the_damage_step();
+    let shown = || [game.information_bytes(P1), game.information_bytes(P2)];
+    let at_first = (game.checkpoint(), shown());
+    fight.assign(1);
+    let after_one = (game.checkpoint(), shown());
+    fight.assign(0);
+    let after_two = (game.checkpoint(), shown());
+
+    assert_ne!(at_first.1[0], after_one.1[0]);
+    assert_ne!(after_one.1[0], after_two.1[0]);
+    for (checkpoint, expected) in [&after_one, &at_first, &after_two, &after_one] {
+        game.controller.restore(checkpoint.clone()).unwrap();
+        assert_eq!(&game.checkpoint(), checkpoint);
+        assert_eq!(&shown(), expected);
+    }
+
+    // Playing on from the restored half leads to what the game showed.
+    fight.assign(0);
+    assert_eq!(game.checkpoint(), after_two.0);
+    assert_eq!(shown(), after_two.1);
+}
+
+#[test]
+fn the_partial_division_is_listed_in_the_order_of_the_attackers_opaque_ids() {
+    // The order of the objects means nothing to a player. P1 has answered for
+    // two blockers, and the ids P1 knows them by are in the opposite order to
+    // the objects: the answers are listed in the order of the ids.
+    let fight = giant_blocked_by_four();
+    let game = &fight.game;
+    fight.open_the_damage_step();
+    fight.assign(1);
+    fight.assign(0);
+    let reached = game.checkpoint();
+    let (first, second) = (fight.blockers[0], fight.blockers[1]);
+    let mut forged = reached.state.clone();
+    swap_opaque_ids(&mut forged, P1, first, second);
+    assert!(first < second);
+    assert!(opaque_of(&forged, P1, second) < opaque_of(&forged, P1, first));
+    restore_state(game, &reached, forged.clone()).unwrap();
+
+    let giant = opaque_of(&forged, P1, fight.giant);
+    let row = |blocker: GameObjectId, amount: u64| AssignedDamageObservationV1 {
+        attacker: giant,
+        blocker: opaque_of(&forged, P1, blocker),
+        amount,
+    };
+    assert_eq!(
+        game.seen(P1).observation.pending_damage_assignment,
+        Some(vec![row(second, 0), row(first, 1)])
+    );
+    let wire = game.observation_json(P1)["pending_damage_assignment"].clone();
+    let listed: Vec<u64> = wire
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|row| row["blocker"].as_str().unwrap().parse().unwrap())
+        .collect();
+    assert_eq!(listed.len(), 2);
+    assert!(listed[0] < listed[1], "{listed:?}");
+    assert_eq!(game.seen(P2).observation.pending_damage_assignment, None);
+
+    // The division goes on from the restored state.
+    fight.assign(2);
+    assert!(!dividing(&game.state()));
+    for player in [P1, P2] {
+        assert_eq!(
+            game.seen(player).observation.pending_damage_assignment,
+            None
+        );
+    }
+}
+
+#[test]
+fn both_players_see_combat_damage_and_marks() {
+    // CR 510.1, 510.2, 120.3e: P1's Hill Giant (3/3) attacks and P2's Savannah
+    // Lions (2/1) blocks it. Both players observe the damage dealt, once, with
+    // both assignments in their own opaque ids, ahead of the Lions' death;
+    // the Giant survives with 2 damage marked, which both see in their
+    // observation, as a decimal string, and stays an attacking, blocked
+    // creature without a blocker. No event shows the mark.
+    let [_, _, giant] = creature_definitions();
+    let (game, giant_object, lions_object) = attacker_against_a_lions(giant, 4);
+    attack_and_block(&game, giant_object);
+    let before = game.state();
+    // Before the damage nothing is marked on any permanent.
+    for player in [P1, P2] {
+        let observation = game.seen(player).observation;
+        assert!(observation
+            .permanents
+            .iter()
+            .all(|permanent| permanent.marked_damage == 0));
+    }
+    let (product, observed) = product_and_observations(&before, pass_in(&before));
+    let (actor, step) = game.answer(pass, pass);
+    assert_eq!(actor, P2);
+    assert_eq!(step.observed_events, observed[&P2]);
+    let after = game.state();
+    assert_eq!(after, product.next_state);
+
+    for player in [P1, P2] {
+        let events = &observed[&player];
+        let giant_id = opaque_of(&before, player, giant_object);
+        let lions_id = opaque_of(&before, player, lions_object);
+        // One CombatDamageDealt holds both assignments: the Giant's 3 to the
+        // Lions, the Lions' 2 to the Giant, sorted by the player's source id.
+        assert_eq!(
+            combat_events(events),
+            [&ObservedEventKindV4::CombatDamageDealt {
+                assignments: observed_damage(
+                    &before,
+                    player,
+                    &[
+                        (giant_object, lions_object, 3),
+                        (lions_object, giant_object, 2)
+                    ]
+                )
+            }],
+            "{player:?}"
+        );
+        // It comes first, and the Lions' death is the only other event, seen
+        // as before: the card keeps the opaque id the player knew it by.
+        assert_eq!(events.len(), 2, "{player:?}: {events:?}");
+        assert!(matches!(
+            events[0].event,
+            ObservedEventKindV4::CombatDamageDealt { .. }
+        ));
+        assert_eq!(
+            observed_moves(events),
+            [(
+                Some(lions_id),
+                Some(lions_id),
+                ZoneKind::Battlefield,
+                ZoneKind::Graveyard
+            )],
+            "{player:?}"
+        );
+        assert_eq!(events[1].sequence.0, events[0].sequence.0 + 1);
+
+        // The Giant has 2 damage marked, and no permanent has any other.
+        let observation = game.seen(player).observation;
+        let damaged: Vec<_> = observation
+            .permanents
+            .iter()
+            .filter(|permanent| permanent.marked_damage != 0)
+            .map(|permanent| (permanent.object, permanent.marked_damage))
+            .collect();
+        assert_eq!(damaged, [(giant_id, 2)], "{player:?}");
+        // The Giant is still attacking, and still blocked with its blocker
+        // gone (CR 509.1h): no creature blocks.
+        assert_eq!(observation.attacking, [giant_id], "{player:?}");
+        assert_eq!(observation.blocked, [giant_id], "{player:?}");
+        assert_eq!(observation.blocking, [], "{player:?}");
+        // On the wire it is a decimal string, "0" for every other permanent.
+        let wire = game.observation_json(player);
+        let rows = wire["permanents"].as_array().unwrap();
+        assert!(rows.len() > 1);
+        let giant_wire = giant_id.0.to_string();
+        for row in rows {
+            let expected = if row["object"] == giant_wire.as_str() {
+                "2"
+            } else {
+                "0"
+            };
+            assert_eq!(row["marked_damage"], expected, "{player:?}: {row}");
+        }
+    }
+}
+
+#[test]
+fn both_players_see_a_blocker_whose_attacker_died_blocking_nothing() {
+    // CR 509.1g, 506.4: P1's Savannah Lions (2/1) attacks and P2's Hill Giant
+    // (3/3) blocks it. The Lions dies, and the Giant, which survives with 2
+    // damage marked, stays a blocking creature that blocks nothing until
+    // combat ends. Both players see it: a `blocking` entry with no attacker,
+    // and no blocked or attacking creature.
+    let (game, lions_object, giant_object) = a_lions_blocked_by_a_giant();
+    let before = game.state();
+    for player in [P1, P2] {
+        let observation = game.seen(player).observation;
+        let lions_id = opaque_of(&before, player, lions_object);
+        assert_eq!(observation.attacking, [lions_id], "{player:?}");
+        assert_eq!(observation.blocked, [lions_id], "{player:?}");
+        assert_eq!(
+            observation.blocking,
+            [BlockObservationV1 {
+                blocker: opaque_of(&before, player, giant_object),
+                attacker: Some(lions_id)
+            }],
+            "{player:?}"
+        );
+    }
+
+    game.answer(pass, pass);
+    let after = game.state();
+    assert!(!after.zones.objects.contains_key(&lions_object));
+    assert_eq!(
+        after.combat.as_ref().unwrap().blockers,
+        BTreeMap::from([(giant_object, None)])
+    );
+    for player in [P1, P2] {
+        let observation = game.seen(player).observation;
+        let giant_id = opaque_of(&after, player, giant_object);
+        assert_eq!(observation.attacking, [], "{player:?}");
+        assert_eq!(observation.blocked, [], "{player:?}");
+        assert_eq!(
+            observation.blocking,
+            [BlockObservationV1 {
+                blocker: giant_id,
+                attacker: None
+            }],
+            "{player:?}"
+        );
+        assert_eq!(game.marked_damage(player, giant_id), 2, "{player:?}");
+        // On the wire the missing attacker is a null, and the key is there.
+        let wire = game.observation_json(player);
+        let row = wire["blocking"][0].as_object().unwrap();
+        assert_eq!(row.len(), 2);
+        assert_eq!(row["attacker"], serde_json::Value::Null);
+        assert_eq!(row["blocker"], giant_id.0.to_string());
+    }
+
+    // It blocks nothing until the combat phase ends, and then the combat is
+    // gone: nobody blocks.
+    game.pass_until(|state| {
+        state.core.position
+            == TurnPosition::Combat {
+                step: CombatStep::EndOfCombat,
+            }
+    });
+    for player in [P1, P2] {
+        assert_eq!(game.seen(player).observation.blocking.len(), 1);
+    }
+    game.pass_until(|state| state.core.position == TurnPosition::PostcombatMain);
+    for player in [P1, P2] {
+        let observation = game.seen(player).observation;
+        assert_eq!(observation.blocking, [], "{player:?}");
+        assert_eq!(observation.blocked, [], "{player:?}");
+    }
+}
+
+#[test]
+fn an_attack_nobody_can_block_shows_an_empty_block_declaration() {
+    // CR 508.8, 509.1: P2 has no creature, so nothing is asked of it, and the
+    // declare blockers step's turn-based action is an empty declaration that
+    // both players are told of: the same event shape as an attack that is
+    // declined to be blocked.
+    let (mountain, plains) = land_definitions();
+    let game = Game::with_hands([vec![plains, lions()], vec![mountain]]);
+    cast_lions(&game);
+    game.run_until(at_attackers(3));
+    let state = game.state();
+    let attacker = lions_of(&state, P1)[0];
+    game.declare_attackers(&[opaque_of(&state, P1, attacker)]);
+    game.answer(pass, pass);
+    let before = game.state();
+    assert_eq!(game.pending().0, P2);
+    let (product, observed) = product_and_observations(&before, pass_in(&before));
+    let (actor, step) = game.answer(pass, pass);
+    assert_eq!(actor, P2);
+    assert_eq!(step.observed_events, observed[&P2]);
+    assert_eq!(game.state(), product.next_state);
+
+    for player in [P1, P2] {
+        assert_eq!(
+            combat_events(&observed[&player]),
+            [&ObservedEventKindV4::BlockersDeclared {
+                defending_player: P2,
+                blocks: Vec::new()
+            }],
+            "{player:?}"
+        );
+        let observation = game.seen(player).observation;
+        assert_eq!(
+            observation.attacking,
+            [opaque_of(&state, player, attacker)],
+            "{player:?}"
+        );
+        assert_eq!(observation.blocked, [], "{player:?}");
+        assert_eq!(observation.blocking, [], "{player:?}");
+    }
+    // The step is the declare blockers step, and the attacker has priority.
+    assert_eq!(
+        game.state().core.position,
+        TurnPosition::Combat {
+            step: CombatStep::DeclareBlockers
+        }
+    );
+    assert_eq!(game.pending().0, P1);
+    // The unblocked Lions then deals its damage to P2, and nothing is blocked.
+    let life = game.state().core.players[&P2].life;
+    game.answer(pass, pass);
+    game.answer(pass, pass);
+    assert_eq!(game.state().core.players[&P2].life, life - 2);
+}
+
+/// P1 casts a Savannah Lions on turn 1 and P2 a Hill Giant on turn 8; on turn
+/// 9 the Lions attacks and the Giant blocks it. The Lions dies, and the Giant
+/// survives with 2 damage marked until the cleanup step. The game goes on to the
+/// start of P2's turn 10. Each player also holds a card that is never played:
+/// `hidden` for `hider`, a Gray Ogre for the other. The cards of the `hider`'s
+/// library below the first five, which are not drawn by then, are in the order
+/// `library_tail` gives: `true` for a Plains, `false` for a Mountain.
+fn a_fight_with_a_hidden_card(
+    hider: PlayerId,
+    hidden: CardDefinitionId,
+    library_tail: [bool; 5],
+) -> Game {
+    let (mountain, plains) = land_definitions();
+    let [_, ogre, giant] = creature_definitions();
+    let mut extra = [ogre, ogre];
+    extra[usize::from(hider != P1)] = hidden;
+    let hands = [
+        vec![plains, lions(), extra[0]],
+        [vec![mountain; 4], vec![giant, extra[1]]].concat(),
+    ];
+    let mut libraries = [vec![mountain; 10], vec![mountain; 10]];
+    libraries[usize::from(hider != P1)] = vec![mountain; 5]
+        .into_iter()
+        .chain(library_tail.map(|white| if white { plains } else { mountain }))
+        .collect();
+    let game = Game::with_hands_and_libraries(hands, libraries);
+    game.record_views();
+    cast_lions(&game);
+    game.run_until(start_of_main_phase(8));
+    cast_creature(&game, 4);
+    game.run_until(at_attackers(9));
+    let state = game.state();
+    let [lions_object]: [GameObjectId; 1] = lions_of(&state, P1).try_into().unwrap();
+    let [giant_object]: [GameObjectId; 1] = creatures_of(&state, P2, giant).try_into().unwrap();
+    attack_and_block(&game, lions_object);
+    // The fight is in what both players see: the block, then the damage.
+    for player in [P1, P2] {
+        assert_eq!(game.seen(player).observation.blocking.len(), 1);
+    }
+    game.answer(pass, pass);
+    for player in [P1, P2] {
+        let giant_id = opaque_of(&state, player, giant_object);
+        assert_eq!(game.marked_damage(player, giant_id), 2, "{player:?}");
+    }
+    game.pass_until(start_of_main_phase(10));
+    game
+}
+
+#[test]
+fn a_player_learns_nothing_of_the_opponents_hidden_cards_through_a_fight() {
+    // Noninterference over a whole fight, with the blocks, the damage, the
+    // marks and the deaths in it: two games that differ only in what one
+    // player holds unseen (a card in hand that is never played, and the order
+    // of cards in their library that are not drawn) give the other player the
+    // same steps, information states, observations and events, byte for byte.
+    // `game_start::a_player_learns_nothing_about_the_opponents_deck_order` is
+    // land-only and ends at the first upkeep, so it never reaches combat.
+    let [lions, ogre, _] = creature_definitions();
+    for (observer, hider) in [(P1, P2), (P2, P1)] {
+        let games = [
+            a_fight_with_a_hidden_card(hider, lions, [false, false, true, true, false]),
+            a_fight_with_a_hidden_card(hider, ogre, [false, true, false, false, true]),
+        ];
+        let seen: Vec<_> = games.iter().map(|game| game.views_of(observer)).collect();
+        assert!(seen[0].len() > 40, "{}", seen[0].len());
+        assert_eq!(seen[0], seen[1], "{observer:?} learned something");
+        // The games do differ: the hider holds other cards.
+        let held: Vec<_> = games.iter().map(|game| game.views_of(hider)).collect();
+        assert_ne!(held[0], held[1], "{hider:?}");
+    }
 }

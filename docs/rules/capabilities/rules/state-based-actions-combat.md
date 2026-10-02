@@ -27,10 +27,11 @@ all at once as a single event, and checks again until none applies:
   graveyard (CR 701.8a), as a new object (CR 400.7). Its owner has put a
   permanent card into their graveyard this turn.
 - **A creature that leaves the battlefield leaves combat (CR 506.4).** An
-  attacker that dies leaves the attackers and is no longer blocked, and takes
-  the blocks of its blockers with it. A blocker that dies leaves the blocks, and
+  attacker that dies leaves the attackers and is no longer blocked. The
+  creatures that blocked it stay blocking creatures until the combat ends
+  (CR 509.1g), and block nothing. A blocker that dies leaves the blocks, and
   the attacker it blocked stays blocked with no blocker left (CR 509.1h). See
-  `rules/declare-blockers` for the one way this record differs from CR 509.1g.
+  `rules/declare-blockers`.
 - **The owner arranges cards that go to their graveyard together (CR 404.3).**
   When two or more cards of one owner die in one batch, the owner chooses their
   order, top to bottom. The owners with two or more cards are asked one after
@@ -71,10 +72,10 @@ The following are not supported and fail closed:
 `has_lost` on the losing player. A destroyed creature is a zone move to its
 owner's graveyard: its card gets a new object that shows the same face, its
 permanent record (and the damage in it) is dropped, and its combat entries are
-removed. The
-graveyard order waits in a MagicSbaGraveyardOrderV1 continuation that holds the
-batch, the owners to ask in APNAP order, how far they have got and the orders
-given so far.
+removed: each blocker that named it as its attacker is left blocking no
+attacker. The graveyard order waits in a MagicSbaGraveyardOrderV1 continuation
+that holds the batch, the owners to ask in APNAP order, how far they have got and
+the orders given so far.
 
 ## Events and replacement points
 
@@ -99,12 +100,15 @@ top to bottom. See `docs/DECISION_PROTOCOL.md`.
 
 The outcome is public. A destroyed creature is seen by both players as a zone
 move from the battlefield to the graveyard, and both keep the opaque id they know
-it by. `StateBasedActionsApplied`, `SbaGraveyardOrderChosen` and the combat
-changes are observed by neither player. The graveyard order request reaches only
-its actor. While an order is pending, the observation of each player tells the
-completed orders, in the opaque ids of that player, and who is asked next, so a
-later owner knows the earlier orders when they answer (CR 101.4b), and the
-creatures stay where they are until the last answer.
+it by. `StateBasedActionsApplied` and `SbaGraveyardOrderChosen` are observed by
+neither player, and neither is the removal from combat, which the observation
+shows: a destroyed attacker is no longer in `attacking` or `blocked`, a blocker
+whose attacker died is in `blocking` with a null attacker, and a destroyed
+blocker is no longer in `blocking` (see `rules/declare-blockers`). The graveyard
+order request reaches only its actor. While an order is pending, the observation
+of each player tells the completed orders, in the opaque ids of that player, and
+who is asked next, so a later owner knows the earlier orders when they answer
+(CR 101.4b), and the creatures stay where they are until the last answer.
 
 ## Transition/continuation behavior
 
@@ -123,6 +127,7 @@ and the position is the combat damage step after the damage was dealt.
   `lethal_combat_damage_ends_the_game_before_anyone_receives_priority`,
   `a_decision_state_with_a_player_at_zero_life_who_has_not_lost_is_rejected`,
   `a_creature_that_dies_is_removed_from_combat_but_its_attacker_stays_blocked`,
+  `a_blocker_whose_attacker_died_is_restored_blocking_nothing_until_combat_ends`,
   `the_prune_removes_a_departed_permanent`,
   `both_players_losing_at_once_fails_closed`,
   `the_owner_of_two_dying_cards_alone_is_asked_for_the_order`,
@@ -137,6 +142,7 @@ and the position is the combat damage step after the damage was dealt.
   `a_state_based_action_in_cleanup_fails_closed_instead_of_granting_priority`.
 - Event projection cases in `crates/mtgml-rules/src/events.rs`:
   `destroyed_objects_were_on_the_battlefield_and_are_gone`,
+  `a_blocker_whose_attacker_is_destroyed_keeps_blocking_nothing`,
   `the_last_graveyard_order_is_applied_with_its_batch`,
   `combat_damage_to_a_creature_that_is_destroyed_in_the_same_transition_is_valid`.
 - Zone move and delta cases:
@@ -151,12 +157,13 @@ and the position is the combat damage step after the damage was dealt.
   `a_3_3_blocked_by_a_2_1_kills_it_and_survives`,
   `a_2_2_and_a_2_1_that_block_each_other_both_die_one_to_each_graveyard`,
   `a_restored_combat_after_a_blocker_died_continues_identically`,
+  `a_blocker_whose_attacker_died_is_still_blocking_until_combat_ends`,
   `two_creatures_dying_together_ask_their_owner_for_the_order`,
-  `owners_order_in_turn_order_and_the_second_sees_the_first` and
-  `a_restored_graveyard_order_checkpoint_continues_identically`.
+  `owners_order_in_turn_order_and_the_second_sees_the_first`,
+  `a_restored_graveyard_order_checkpoint_continues_identically` and
+  `both_players_see_a_blocker_whose_attacker_died_blocking_nothing`.
 - Random smoke games in `crates/mtgml-environment/tests/random_smoke.rs`:
-  `asymmetric_games_cast_attack_and_end_at_zero_life` asserts that, among ten
-  seeded games of a creature deck against a land deck, at least one ends in a
-  rules loss with the land player at 0 life or less, and that it replays to the
-  same checkpoint. No smoke game reaches a death by blocking, or a graveyard
-  order: that needs two creature decks.
+  `creature_games_fight_to_a_winner` asserts that, among fifteen seeded games of
+  two creature decks, creatures died, an owner was asked for a graveyard order,
+  and at least one game ends in a rules loss with the loser at 0 life or less and
+  the winner above it; every game replays to the same checkpoint.

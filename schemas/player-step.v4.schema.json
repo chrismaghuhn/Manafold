@@ -1009,6 +1009,48 @@
               "purpose": {
                 "properties": {
                   "kind": {
+                    "const": "combat_damage_assignment"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            },
+            "required": [
+              "purpose"
+            ]
+          },
+          "then": {
+            "properties": {
+              "decision_domain_v2": {
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "choose_one"
+                    ]
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              },
+              "visibility": {
+                "const": "acting_player_only"
+              }
+            },
+            "required": [
+              "decision_domain_v2",
+              "visibility"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "purpose": {
+                "properties": {
+                  "kind": {
                     "const": "hand_size_discard"
                   }
                 },
@@ -1885,6 +1927,53 @@
                         "kind": {
                           "enum": [
                             "declare_block"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "intent"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "candidates"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "purpose": {
+                "properties": {
+                  "kind": {
+                    "const": "combat_damage_assignment"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            },
+            "required": [
+              "purpose"
+            ]
+          },
+          "then": {
+            "properties": {
+              "candidates": {
+                "items": {
+                  "properties": {
+                    "intent": {
+                      "properties": {
+                        "kind": {
+                          "enum": [
+                            "assign_combat_damage"
                           ]
                         }
                       },
@@ -3110,6 +3199,30 @@
                       "attacker"
                     ],
                     "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "amount": {
+                        "$ref": "#/$defs/u64"
+                      },
+                      "attacker": {
+                        "$ref": "#/$defs/u64"
+                      },
+                      "kind": {
+                        "const": "assign_combat_damage"
+                      },
+                      "recipient": {
+                        "$ref": "#/$defs/u64"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "attacker",
+                      "recipient",
+                      "amount"
+                    ],
+                    "type": "object"
                   }
                 ]
               }
@@ -3410,6 +3523,18 @@
               "properties": {
                 "kind": {
                   "const": "blocker_declaration"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "combat_damage_assignment"
                 }
               },
               "required": [
@@ -4037,6 +4162,113 @@
                 "attacking_player",
                 "defending_player",
                 "attackers"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "blocks": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "attacker": {
+                        "$ref": "#/$defs/uint"
+                      },
+                      "blocker": {
+                        "$ref": "#/$defs/uint"
+                      }
+                    },
+                    "required": [
+                      "blocker",
+                      "attacker"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "defending_player": {
+                  "$ref": "#/$defs/uint"
+                },
+                "kind": {
+                  "const": "blockers_declared"
+                }
+              },
+              "required": [
+                "kind",
+                "defending_player",
+                "blocks"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "assignments": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "amount": {
+                        "maximum": 18446744073709551615,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "recipient": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "player"
+                              },
+                              "player": {
+                                "$ref": "#/$defs/uint"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "player"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "object"
+                              },
+                              "object": {
+                                "$ref": "#/$defs/uint"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "object"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "source": {
+                        "$ref": "#/$defs/uint"
+                      }
+                    },
+                    "required": [
+                      "source",
+                      "recipient",
+                      "amount"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "kind": {
+                  "const": "combat_damage_dealt"
+                }
+              },
+              "required": [
+                "kind",
+                "assignments"
               ],
               "type": "object"
             }

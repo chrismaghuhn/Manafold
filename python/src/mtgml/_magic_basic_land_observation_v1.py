@@ -86,11 +86,15 @@ class ManaPoolObservationV1:
 class PermanentObservationV1:
     """A permanent on the battlefield: who controls it, the turn since which
     that player has controlled it and, for a creature, its power and toughness
-    (null for any other permanent).
+    (null for any other permanent). It also shows the damage marked on it (CR
+    120.3e), which is 0 for a permanent that is not a creature in this card pool.
 
     A creature's power and toughness are its printed ones, which are also its
     current ones: no observation is made for a creature that an effect or a
-    +1/+1 or -1/-1 counter could change.
+    +1/+1 or -1/-1 counter could change. That is what makes a permanent without
+    a power one that never was a creature, and so one with no damage: CR 120.6
+    keeps damage marked on a creature until the cleanup step even if the
+    permanent stops being a creature, so with such effects this would not hold.
     """
 
     object: int
@@ -98,6 +102,7 @@ class PermanentObservationV1:
     controlled_since_turn: int
     power: int | None
     toughness: int | None
+    marked_damage: int
 
     @property
     def is_creature(self) -> bool:
@@ -106,7 +111,15 @@ class PermanentObservationV1:
     @classmethod
     def from_wire(cls, value: JsonValue) -> PermanentObservationV1:
         obj = require_exact_keys(
-            value, {"object", "controller", "controlled_since_turn", "power", "toughness"}
+            value,
+            {
+                "object",
+                "controller",
+                "controlled_since_turn",
+                "power",
+                "toughness",
+                "marked_damage",
+            },
         )
         return cls(
             parse_uint(obj["object"]),
@@ -114,6 +127,7 @@ class PermanentObservationV1:
             parse_uint(obj["controlled_since_turn"]),
             None if obj["power"] is None else _i64(obj["power"], "power"),
             None if obj["toughness"] is None else _i64(obj["toughness"], "toughness"),
+            parse_uint(obj["marked_damage"]),
         )
 
     def to_wire(self) -> dict[str, JsonValue]:
@@ -123,6 +137,77 @@ class PermanentObservationV1:
             "controlled_since_turn": uint_wire(self.controlled_since_turn),
             "power": None if self.power is None else _i64(self.power, "power"),
             "toughness": None if self.toughness is None else _i64(self.toughness, "toughness"),
+            "marked_damage": uint_wire(self.marked_damage),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class BlockObservationV1:
+    """A blocking creature and the attacker it blocks (CR 509.1g); the attacker
+    is None when it left combat, and the creature then blocks nothing."""
+
+    blocker: int
+    attacker: int | None
+
+    @classmethod
+    def from_wire(cls, value: JsonValue) -> BlockObservationV1:
+        obj = require_exact_keys(value, {"blocker", "attacker"})
+        return cls(
+            parse_uint(obj["blocker"]),
+            None if obj["attacker"] is None else parse_uint(obj["attacker"]),
+        )
+
+    def to_wire(self) -> dict[str, JsonValue]:
+        return {
+            "blocker": uint_wire(self.blocker),
+            "attacker": None if self.attacker is None else uint_wire(self.attacker),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class DeclaredBlockObservationV1:
+    """One answer of a block declaration in progress: the creature blocks the
+    attacker, or, when the attacker is None, does not block."""
+
+    blocker: int
+    attacker: int | None
+
+    @classmethod
+    def from_wire(cls, value: JsonValue) -> DeclaredBlockObservationV1:
+        obj = require_exact_keys(value, {"blocker", "attacker"})
+        return cls(
+            parse_uint(obj["blocker"]),
+            None if obj["attacker"] is None else parse_uint(obj["attacker"]),
+        )
+
+    def to_wire(self) -> dict[str, JsonValue]:
+        return {
+            "blocker": uint_wire(self.blocker),
+            "attacker": None if self.attacker is None else uint_wire(self.attacker),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class AssignedDamageObservationV1:
+    """One answer of a combat damage division in progress: how much of the
+    attacker's damage the blocker is assigned (CR 510.1c)."""
+
+    attacker: int
+    blocker: int
+    amount: int
+
+    @classmethod
+    def from_wire(cls, value: JsonValue) -> AssignedDamageObservationV1:
+        obj = require_exact_keys(value, {"attacker", "blocker", "amount"})
+        return cls(
+            parse_uint(obj["attacker"]), parse_uint(obj["blocker"]), parse_uint(obj["amount"])
+        )
+
+    def to_wire(self) -> dict[str, JsonValue]:
+        return {
+            "attacker": uint_wire(self.attacker),
+            "blocker": uint_wire(self.blocker),
+            "amount": uint_wire(self.amount),
         }
 
 
@@ -191,6 +276,20 @@ class MagicBasicLandObservationV1:
     priority: SyntheticPriority
     players: tuple[PlayerObservationV1, ...]
     pending_sba_ordering: MagicPendingSbaOrdering | None
+    # The blocks the viewer has declared so far while the viewer's block
+    # declaration is in progress (CR 509.1a): one row for each creature
+    # answered, ascending by blocker. An empty tuple is a declaration that has
+    # begun with no creature answered yet. None when no declaration is in
+    # progress, and always None for the player who is not declaring.
+    pending_blocks: tuple[DeclaredBlockObservationV1, ...] | None
+    # The damage the viewer has divided so far while the division of the
+    # viewer's combat damage is in progress (CR 510.1c): one row for each
+    # blocker answered, ascending by attacker and then blocker. An amount the
+    # rules force is not an answer and is not listed. An empty tuple is a
+    # division that has begun with no blocker answered yet. None when no
+    # division is in progress, and always None for the player who is not
+    # dividing.
+    pending_damage_assignment: tuple[AssignedDamageObservationV1, ...] | None
     mana_pools: tuple[ManaPoolObservationV1, ...]
     counters: tuple[CounterObservationV1, ...]
     attachments: tuple[AttachmentObservationV1, ...]
@@ -198,6 +297,8 @@ class MagicBasicLandObservationV1:
     tapped: tuple[int, ...]
     permanents: tuple[PermanentObservationV1, ...]
     attacking: tuple[int, ...]
+    blocked: tuple[int, ...]
+    blocking: tuple[BlockObservationV1, ...]
 
     @classmethod
     def from_wire(cls, value: object) -> MagicBasicLandObservationV1:
@@ -211,6 +312,8 @@ class MagicBasicLandObservationV1:
                 "priority",
                 "players",
                 "pending_sba_ordering",
+                "pending_blocks",
+                "pending_damage_assignment",
                 "mana_pools",
                 "counters",
                 "attachments",
@@ -218,6 +321,8 @@ class MagicBasicLandObservationV1:
                 "tapped",
                 "permanents",
                 "attacking",
+                "blocked",
+                "blocking",
             },
         )
         if obj["schema_version"] != MAGIC_BASIC_LAND_OBSERVATION_SCHEMA_V1:
@@ -233,10 +338,17 @@ class MagicBasicLandObservationV1:
             "tapped",
             "permanents",
             "attacking",
+            "blocked",
+            "blocking",
         ):
             if not isinstance(obj[key], list):
                 raise WireError("decode.invalid_json", f"{key} must be an array")
+        for key in ("pending_blocks", "pending_damage_assignment"):
+            if obj[key] is not None and not isinstance(obj[key], list):
+                raise WireError("decode.invalid_json", f"{key} must be an array or null")
         pending = obj["pending_sba_ordering"]
+        pending_blocks = obj["pending_blocks"]
+        pending_damage = obj["pending_damage_assignment"]
         result = cls(
             MAGIC_BASIC_LAND_OBSERVATION_SCHEMA_V1,
             parse_uint(obj["active_player"]),
@@ -245,6 +357,12 @@ class MagicBasicLandObservationV1:
             SyntheticPriority.from_wire(obj["priority"]),
             tuple(PlayerObservationV1.from_wire(item) for item in obj["players"]),
             None if pending is None else MagicPendingSbaOrdering.from_wire(pending),
+            None
+            if pending_blocks is None
+            else tuple(DeclaredBlockObservationV1.from_wire(item) for item in pending_blocks),
+            None
+            if pending_damage is None
+            else tuple(AssignedDamageObservationV1.from_wire(item) for item in pending_damage),
             tuple(ManaPoolObservationV1.from_wire(item) for item in obj["mana_pools"]),
             tuple(CounterObservationV1.from_wire(item) for item in obj["counters"]),
             tuple(AttachmentObservationV1.from_wire(item) for item in obj["attachments"]),
@@ -252,6 +370,8 @@ class MagicBasicLandObservationV1:
             tuple(parse_uint(item) for item in obj["tapped"]),
             tuple(PermanentObservationV1.from_wire(item) for item in obj["permanents"]),
             tuple(parse_uint(item) for item in obj["attacking"]),
+            tuple(parse_uint(item) for item in obj["blocked"]),
+            tuple(BlockObservationV1.from_wire(item) for item in obj["blocking"]),
         )
         result.to_wire()
         return result
@@ -295,6 +415,53 @@ class MagicBasicLandObservationV1:
             raise WireError(
                 "semantic.magic_basic_land_observation_v1", "an attacker is not a creature"
             )
+        if any(a >= b for a, b in pairwise(self.blocked)):
+            raise WireError(
+                "semantic.magic_basic_land_observation_v1", "blocked attackers are not ordered"
+            )
+        if any(item not in self.attacking for item in self.blocked):
+            raise WireError(
+                "semantic.magic_basic_land_observation_v1", "a blocked attacker is not attacking"
+            )
+        if any(a.blocker >= b.blocker for a, b in pairwise(self.blocking)):
+            raise WireError(
+                "semantic.magic_basic_land_observation_v1", "block rows are not ordered"
+            )
+        if any(
+            block.blocker not in creature_ids
+            or (
+                block.attacker is not None
+                and (block.attacker not in self.attacking or block.attacker not in self.blocked)
+            )
+            for block in self.blocking
+        ):
+            raise WireError(
+                "semantic.magic_basic_land_observation_v1",
+                "a block does not name an attacking, blocked attacker and a creature",
+            )
+        if self.pending_blocks is not None and any(
+            a.blocker >= b.blocker for a, b in pairwise(self.pending_blocks)
+        ):
+            raise WireError(
+                "semantic.magic_basic_land_observation_v1", "pending block rows are not ordered"
+            )
+        if self.pending_damage_assignment is not None and any(
+            (a.attacker, a.blocker) >= (b.attacker, b.blocker)
+            for a, b in pairwise(self.pending_damage_assignment)
+        ):
+            raise WireError(
+                "semantic.magic_basic_land_observation_v1",
+                "pending damage rows are not ordered",
+            )
+        # Damage is marked on creatures (CR 120.3e). This holds for a permanent that
+        # is not a creature only in this card pool: `is_creature` reads the printed
+        # power, and no effect can make a creature stop being one (CR 120.6 would
+        # keep its damage).
+        if any(item.marked_damage != 0 and not item.is_creature for item in self.permanents):
+            raise WireError(
+                "semantic.magic_basic_land_observation_v1",
+                "damage is marked on a permanent that is not a creature",
+            )
         if any(a.player >= b.player for a, b in pairwise(self.mana_pools)):
             raise WireError("semantic.magic_basic_land_observation_v1", "mana rows are not ordered")
         counter_keys = tuple(
@@ -320,10 +487,18 @@ class MagicBasicLandObservationV1:
             "active_player": uint_wire(self.active_player),
             "attachments": [item.to_wire() for item in self.attachments],
             "attacking": [uint_wire(item) for item in self.attacking],
+            "blocked": [uint_wire(item) for item in self.blocked],
+            "blocking": [item.to_wire() for item in self.blocking],
             "counters": [item.to_wire() for item in self.counters],
             "permanents": [item.to_wire() for item in self.permanents],
             "faces": [item.to_wire() for item in self.faces],
             "mana_pools": [item.to_wire() for item in self.mana_pools],
+            "pending_blocks": None
+            if self.pending_blocks is None
+            else [item.to_wire() for item in self.pending_blocks],
+            "pending_damage_assignment": None
+            if self.pending_damage_assignment is None
+            else [item.to_wire() for item in self.pending_damage_assignment],
             "pending_sba_ordering": None
             if self.pending_sba_ordering is None
             else self.pending_sba_ordering.to_wire(),

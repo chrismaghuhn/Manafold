@@ -1,0 +1,239 @@
+{
+  "active_player": "0",
+  "attachments": [
+    {
+      "source": "4",
+      "target": "7"
+    },
+    {
+      "source": "8",
+      "target": "7"
+    }
+  ],
+  "attacking": [],
+  "blocked": [],
+  "blocking": [],
+  "counters": [
+    {
+      "count": 1,
+      "counter_kind": "minus_one_minus_one",
+      "object": "3"
+    },
+    {
+      "count": 2,
+      "counter_kind": "plus_one_plus_one",
+      "object": "7"
+    }
+  ],
+  "faces": [
+    {
+      "face": "front",
+      "object": "3"
+    },
+    {
+      "face": "back",
+      "object": "7"
+    }
+  ],
+  "mana_pools": [
+    {
+      "creature_spell_only": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "player": "0",
+      "unrestricted": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "creature_spell_only": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "player": "1",
+      "unrestricted": [
+        0,
+        0,
+        0,
+        1,
+        0,
+        0
+      ]
+    }
+  ],
+  "pending_sba_ordering": null,
+  "pending_blocks": null,
+  "permanents": [
+    {
+      "controlled_since_turn": "1",
+      "controller": "0",
+      "object": "3",
+      "power": null,
+      "toughness": null,
+      "marked_damage": "0"
+    },
+    {
+      "controlled_since_turn": "1",
+      "controller": "1",
+      "object": "4",
+      "power": null,
+      "toughness": null,
+      "marked_damage": "0"
+    },
+    {
+      "controlled_since_turn": "1",
+      "controller": "0",
+      "object": "7",
+      "power": null,
+      "toughness": null,
+      "marked_damage": "0"
+    },
+    {
+      "controlled_since_turn": "1",
+      "controller": "1",
+      "object": "8",
+      "power": null,
+      "toughness": null,
+      "marked_damage": "0"
+    }
+  ],
+  "players": [
+    {
+      "hand_count": 6,
+      "library_count": 33,
+      "life": 20,
+      "player": "0"
+    },
+    {
+      "hand_count": 7,
+      "library_count": 33,
+      "life": -2,
+      "player": "1"
+    }
+  ],
+  "priority": {
+    "kind": "held_by",
+    "player": "0"
+  },
+  "schema_version": "magic-shared-execution-observation.v1",
+  "stack": [
+    {
+      "card_object": "50",
+      "controller": "1",
+      "cost_facts": {
+        "paid_additional_cost_ids": [],
+        "selected_route": {
+          "kind": "normal"
+        }
+      },
+      "kind": "spell",
+      "modes": [
+        {
+          "mode_slot": 0,
+          "selected_mode": 1
+        }
+      ],
+      "targets": [
+        {
+          "kind": "object",
+          "object": "4"
+        },
+        {
+          "kind": "player",
+          "player": "2"
+        },
+        {
+          "kind": "stack_item",
+          "stack_position_from_top": 0
+        }
+      ]
+    },
+    {
+      "controller": "1",
+      "cost_facts": {
+        "paid_additional_cost_ids": [],
+        "selected_route": null
+      },
+      "kind": "activated_ability",
+      "source_ability": "8",
+      "source_object": "5",
+      "targets": [],
+      "modes": []
+    },
+    {
+      "controller": "2",
+      "kind": "triggered_ability",
+      "source_ability": "9",
+      "source_object": "6",
+      "targets": [
+        {
+          "kind": "player",
+          "player": "1"
+        }
+      ]
+    }
+  ],
+  "tapped": [
+    "7"
+  ],
+  "temporary_effects": [
+    {
+      "affected_objects": [
+        "2"
+      ],
+      "expiry": {
+        "kind": "until_end_of_turn",
+        "turn_number": "3"
+      },
+      "operation": {
+        "kind": "power_toughness_delta",
+        "power": 1,
+        "toughness": 0
+      }
+    },
+    {
+      "affected_objects": [
+        "4"
+      ],
+      "expiry": {
+        "kind": "until_end_of_turn",
+        "turn_number": "3"
+      },
+      "operation": {
+        "keyword": "haste",
+        "kind": "grant_keyword"
+      }
+    },
+    {
+      "affected_objects": [
+        "4"
+      ],
+      "expiry": {
+        "kind": "until_end_of_turn",
+        "turn_number": "3"
+      },
+      "operation": {
+        "keyword": "double_strike",
+        "kind": "grant_keyword"
+      }
+    }
+  ],
+  "turn_number": "1",
+  "turn_position": {
+    "kind": "precombat_main"
+  }
+}

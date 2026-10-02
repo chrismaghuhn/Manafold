@@ -70,6 +70,10 @@ pub enum DecisionPurposeV4 {
     /// CR 509.1a: the defending player chooses, for one untapped creature they
     /// control, which attacker it blocks, or none.
     BlockerDeclaration,
+    /// CR 510.1c: the attacking player divides the combat damage of an
+    /// attacking creature blocked by two or more creatures among them, one
+    /// blocker at a time.
+    CombatDamageAssignment,
     /// CR 514.1: the active player discards down to maximum hand size.
     HandSizeDiscard,
     SbaGraveyardOrder,
@@ -126,6 +130,7 @@ impl DecisionPurposeV4 {
                     | Self::OptionalCostPayment { .. }
                     | Self::AbilityAction
                     | Self::BlockerDeclaration
+                    | Self::CombatDamageAssignment
                     | Self::StartingPlayer
                     | Self::MulliganDeclaration,
                 DecisionDomainV2::ChooseOne
@@ -211,6 +216,10 @@ impl DecisionPurposeV4 {
                     CandidateIntent::DeclareBlock { .. }
                 )
                 | (
+                    Self::CombatDamageAssignment,
+                    CandidateIntent::AssignCombatDamage { .. }
+                )
+                | (
                     Self::OptionalCostPayment { .. },
                     CandidateIntent::ChooseBoolean { .. }
                 )
@@ -231,6 +240,7 @@ impl DecisionPurposeV4 {
         match self {
             Self::AttackerDeclaration
             | Self::BlockerDeclaration
+            | Self::CombatDamageAssignment
             | Self::HandSizeDiscard
             | Self::CastCostRoute
             | Self::SbaGraveyardOrder
@@ -884,6 +894,14 @@ pub enum CandidateIntent {
         #[serde(deserialize_with = "deserialize_required_option")]
         attacker: Option<OpaqueObjectId>,
     },
+    /// CR 510.1c: `attacker` assigns `amount` of its combat damage to
+    /// `recipient`, one of the creatures blocking it.
+    AssignCombatDamage {
+        attacker: OpaqueObjectId,
+        recipient: OpaqueObjectId,
+        #[serde(with = "canonical_u64_string")]
+        amount: u64,
+    },
 }
 
 impl CandidateIntent {
@@ -905,6 +923,7 @@ impl CandidateIntent {
             Self::SelectManaPayment { .. } => 13,
             Self::SelectTrigger { .. } => 14,
             Self::DeclareBlock { .. } => 15,
+            Self::AssignCombatDamage { .. } => 16,
         }
     }
 
@@ -975,6 +994,23 @@ impl CandidateIntent {
                 ) => a_blocker
                     .cmp(b_blocker)
                     .then_with(|| a_attacker.cmp(b_attacker)),
+                // The attacker, then the creature it is assigning to, then the
+                // amount, numerically.
+                (
+                    Self::AssignCombatDamage {
+                        attacker: a_attacker,
+                        recipient: a_recipient,
+                        amount: a_amount,
+                    },
+                    Self::AssignCombatDamage {
+                        attacker: b_attacker,
+                        recipient: b_recipient,
+                        amount: b_amount,
+                    },
+                ) => a_attacker
+                    .cmp(b_attacker)
+                    .then_with(|| a_recipient.cmp(b_recipient))
+                    .then_with(|| a_amount.cmp(b_amount)),
                 _ => Ordering::Equal,
             })
     }
@@ -1041,6 +1077,11 @@ pub enum EngineCandidateBinding {
         blocker: GameObjectId,
         attacker: Option<GameObjectId>,
     },
+    AssignCombatDamage {
+        attacker: GameObjectId,
+        recipient: GameObjectId,
+        amount: u64,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1100,6 +1141,10 @@ impl EngineCandidateBinding {
                 | (
                     Self::DeclareBlock { .. },
                     CandidateIntent::DeclareBlock { .. }
+                )
+                | (
+                    Self::AssignCombatDamage { .. },
+                    CandidateIntent::AssignCombatDamage { .. }
                 )
         )
     }
@@ -1253,6 +1298,7 @@ impl DecisionPurposeV4 {
             Self::PriorityAction
                 | Self::AttackerDeclaration
                 | Self::BlockerDeclaration
+                | Self::CombatDamageAssignment
                 | Self::HandSizeDiscard
                 | Self::CastCostRoute
                 | Self::ModeSelection { .. }
@@ -1774,6 +1820,18 @@ mod tests {
                     attacker: Some(OpaqueObjectId(8)),
                 },
             ),
+            (
+                EngineCandidateBinding::AssignCombatDamage {
+                    attacker: GameObjectId(3),
+                    recipient: GameObjectId(5),
+                    amount: 2,
+                },
+                CandidateIntent::AssignCombatDamage {
+                    attacker: OpaqueObjectId(8),
+                    recipient: OpaqueObjectId(7),
+                    amount: 2,
+                },
+            ),
         ];
         for (binding, intent) in cases {
             assert!(binding.same_variant_as(&intent));
@@ -1998,6 +2056,11 @@ mod tests {
                 blocker: OpaqueObjectId(5),
                 attacker: None,
             },
+            CandidateIntent::AssignCombatDamage {
+                attacker: OpaqueObjectId(5),
+                recipient: OpaqueObjectId(6),
+                amount: 0,
+            },
         ];
         let candidates = intents
             .into_iter()
@@ -2036,6 +2099,12 @@ mod hand_size_discard_tests {
         include_str!("../../../schemas/examples/player-decision-request-v4-mulligan-bottom.json");
     const BLOCKER_DECLARATION: &str = include_str!(
         "../../../schemas/examples/player-decision-request-v4-blocker-declaration.json"
+    );
+    const COMBAT_DAMAGE_ASSIGNMENT: &str = include_str!(
+        "../../../schemas/examples/player-decision-request-v4-combat-damage-assignment.json"
+    );
+    const COMBAT_DAMAGE_ASSIGNMENT_AMOUNT_NUMBER: &str = include_str!(
+        "../../../schemas/negative/player-decision-request-v4-combat-damage-assignment-amount-number.json"
     );
 
     #[test]
@@ -2101,6 +2170,94 @@ mod hand_size_discard_tests {
                 .unwrap(),
             serde_json::from_str::<serde_json::Value>(BLOCKER_DECLARATION).unwrap()
         );
+    }
+
+    #[test]
+    fn combat_damage_assignment_requires_one_answer_an_amount_intent_and_its_actor_only() {
+        let request: PlayerDecisionRequestV4 =
+            serde_json::from_str(COMBAT_DAMAGE_ASSIGNMENT).unwrap();
+        request.validate().unwrap();
+        assert_eq!(request.purpose, DecisionPurposeV4::CombatDamageAssignment);
+        assert!(request.purpose.is_profile_dependent());
+        // One attacker, one blocker, every amount from 0 to the damage left.
+        assert_eq!(
+            request
+                .candidates
+                .iter()
+                .map(|candidate| candidate.intent.clone())
+                .collect::<Vec<_>>(),
+            (0..=3)
+                .map(|amount| CandidateIntent::AssignCombatDamage {
+                    attacker: OpaqueObjectId(3),
+                    recipient: OpaqueObjectId(7),
+                    amount,
+                })
+                .collect::<Vec<_>>()
+        );
+        let rejects = |edit: &dyn Fn(&mut PlayerDecisionRequestV4)| {
+            let mut edited = request.clone();
+            edit(&mut edited);
+            assert!(edited.validate().is_err());
+        };
+        rejects(&|request| request.visibility = DecisionVisibility::Public);
+        rejects(&|request| request.candidates[0].intent = CandidateIntent::PassPriority);
+        rejects(&|request| {
+            request.decision_domain_v2 = DecisionDomainV2::ChooseMany {
+                minimum: 1,
+                maximum: 1,
+            }
+        });
+        // The amounts are in ascending order, numerically, and none twice.
+        rejects(&|request| request.candidates.swap(1, 2));
+        rejects(&|request| {
+            request.candidates[1].intent = request.candidates[0].intent.clone();
+        });
+        // The attacker is the first key, the recipient the second.
+        rejects(&|request| {
+            request.candidates[0].intent = CandidateIntent::AssignCombatDamage {
+                attacker: OpaqueObjectId(4),
+                recipient: OpaqueObjectId(7),
+                amount: 0,
+            }
+        });
+        // An amount is no block, and a block is no amount.
+        let mut other = request.clone();
+        other.purpose = DecisionPurposeV4::BlockerDeclaration;
+        assert!(other.validate().is_err());
+        let mut other = request.clone();
+        other.purpose = DecisionPurposeV4::PriorityAction;
+        assert!(other.validate().is_err());
+        // Amounts above 9 come after the amounts below it: 10 is not before 9.
+        let amount = |amount| VisibleCandidate {
+            candidate_id: CandidateIdV1(0),
+            intent: CandidateIntent::AssignCombatDamage {
+                attacker: OpaqueObjectId(3),
+                recipient: OpaqueObjectId(7),
+                amount,
+            },
+        };
+        let mut wide = request.clone();
+        wide.candidates = vec![amount(9), amount(10)];
+        wide.candidates[1].candidate_id = CandidateIdV1(1);
+        wide.validate().unwrap();
+        // The wire form is a canonical decimal string, in both directions.
+        assert_eq!(
+            serde_json::from_str::<PlayerDecisionRequestV4>(COMBAT_DAMAGE_ASSIGNMENT)
+                .map(|request| serde_json::to_value(&request).unwrap())
+                .unwrap(),
+            serde_json::from_str::<serde_json::Value>(COMBAT_DAMAGE_ASSIGNMENT).unwrap()
+        );
+        assert!(serde_json::from_str::<PlayerDecisionRequestV4>(
+            COMBAT_DAMAGE_ASSIGNMENT_AMOUNT_NUMBER
+        )
+        .is_err());
+        let leading_zero =
+            COMBAT_DAMAGE_ASSIGNMENT.replace("\"amount\": \"1\"", "\"amount\": \"01\"");
+        assert_ne!(leading_zero, COMBAT_DAMAGE_ASSIGNMENT);
+        assert!(serde_json::from_str::<PlayerDecisionRequestV4>(&leading_zero).is_err());
+        // The amount is part of the wire form.
+        let missing = COMBAT_DAMAGE_ASSIGNMENT.replace("\"amount\": \"2\",", "");
+        assert!(serde_json::from_str::<PlayerDecisionRequestV4>(&missing).is_err());
     }
 
     #[test]

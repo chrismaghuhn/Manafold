@@ -1,12 +1,16 @@
 # Vanilla Creatures and Combat Design
 
 **Status:** revision 2, APPROVED by the owner on 2026-10-01 (after an Opus spec
-review, "approve with changes", whose points revision 2 addresses). Branch
-`feat/vanilla-creatures`.
+review, "approve with changes", whose points revision 2 addresses). Branches:
+`feat/vanilla-creatures` (steps 1 and 2), `feat/blocks-and-deaths` (step 3a) and
+`feat/creature-decks-fight` (step 3b).
 
-**Depends on:** game start (#266, merged) and the public player state (#267).
-This branch is stacked on `feat/public-player-state` and rebases onto `master`
-once #267 merges.
+**Progress:** steps 1 and 2 were merged in #270 and step 3a in #272. Step 3b
+(creature decks fight) is done, on branch `feat/creature-decks-fight`: §7 says
+what each step delivered.
+
+**Depends on:** game start (#266) and the public player state (#267), both
+merged.
 
 **Source archive:** `oracle-cards-20260925210158.jsonl.gz` was downloaded with
 the owner's OK on 2026-10-01:
@@ -216,9 +220,11 @@ permanents: BTreeMap<GameObjectId, PermanentState {
 
 **Combat state.**
 - The attacker cap goes.
-- Blocks become `BTreeMap<blocker, attacker>` next to the existing
-  `blocked_attackers` (509.1h). A `Vec<blocker>` per attacker would carry an
-  order that means nothing, giving one rules state two digests.
+- Blocks become `BTreeMap<blocker, Option<attacker>>` next to the existing
+  `blocked_attackers` (509.1h). `None` is a blocker whose attacker left combat
+  (509.1g); it exists only after the damage is dealt (step 3b). A
+  `Vec<blocker>` per attacker would carry an order that means nothing, giving
+  one rules state two digests.
 - `CombatBlockerAssignmentV1`, `BlockersDeclared` (event and delta) and the
   digest change in place. The digest's dual "3-element" compatibility form
   goes.
@@ -334,6 +340,14 @@ The observation gains:
 Life, counts, tapped and attackers land with step 2. Blocks and damage land
 with step 3b.
 
+As built, "can attack" is each permanent's raw `controlled_since_turn`, from
+which the viewer derives whether it can attack (CR 302.6), and "current
+power/toughness" is the printed power and toughness, which are also the current
+ones because no observation is made for a creature that an effect or a counter
+could change (`docs/INFORMATION_MODEL.md`). The observation also has
+`pending_blocks` and `pending_damage_assignment`: the viewer's own answers so far
+in a block declaration or a damage division, and null for the other player.
+
 ## 7. Phasing
 
 Each step is green, including the smoke games, and starts with failing tests
@@ -357,7 +371,8 @@ that show the behaviour in a real game flow (AGENTS.md §5).
    - the block declaration fails closed if the defender has an untapped
      creature;
    - asymmetric smoke games: creatures and lands against lands only, so the
-     defender never has a blocker. They end at 0 life.
+     defender never has a blocker. They end at 0 life. Step 3b replaced them
+     with creature decks on both sides.
    - *Engine can:* a creature deck kills a land-only opponent.
    - Red tests:
      - a creature cast in a main phase resolves onto the battlefield;
@@ -376,13 +391,13 @@ that show the behaviour in a real game flow (AGENTS.md §5).
        - two creatures dying together ask their owner for the graveyard
          order;
        - a half-declared block is invisible to the attacker.
-   - **3b.** Damage division, observation of blocks and damage, and symmetric
-     creature smoke decks. The smoke games switch only at 3b.
-     - The blockers record must express "blocking, attacker gone" before blocks
-       are observed (CR 509.1g). 3a drops a surviving blocker whose attacker
-       died, a known divergence that nothing reads yet
-       (`docs/rules/capabilities/rules/declare-blockers.md`, "Known
-       divergence").
+   - **3b (done).** Damage division, observation of blocks and damage, and
+     symmetric creature smoke decks. The smoke games switch only at 3b.
+     - The blockers record had to express "blocking, attacker gone" before
+       blocks were observed (CR 509.1g). 3a dropped a surviving blocker whose
+       attacker died, a divergence that nothing read. 3b fixed it first:
+       `CombatState.blockers` maps each blocker to an optional attacker, and
+       `None` exists only once the damage is dealt.
      - Red tests:
        - Hill Giant blocked by Lions and Ogre can assign 0/3, 1/2, 2/1 and
          3/0;

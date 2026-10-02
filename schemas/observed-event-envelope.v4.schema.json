@@ -521,6 +521,113 @@
             "attackers"
           ],
           "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "blocks": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "attacker": {
+                    "$ref": "#/$defs/uint"
+                  },
+                  "blocker": {
+                    "$ref": "#/$defs/uint"
+                  }
+                },
+                "required": [
+                  "blocker",
+                  "attacker"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "defending_player": {
+              "$ref": "#/$defs/uint"
+            },
+            "kind": {
+              "const": "blockers_declared"
+            }
+          },
+          "required": [
+            "kind",
+            "defending_player",
+            "blocks"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "assignments": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "amount": {
+                    "maximum": 18446744073709551615,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "recipient": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "const": "player"
+                          },
+                          "player": {
+                            "$ref": "#/$defs/uint"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "player"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "const": "object"
+                          },
+                          "object": {
+                            "$ref": "#/$defs/uint"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "object"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "source": {
+                    "$ref": "#/$defs/uint"
+                  }
+                },
+                "required": [
+                  "source",
+                  "recipient",
+                  "amount"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "combat_damage_dealt"
+            }
+          },
+          "required": [
+            "kind",
+            "assignments"
+          ],
+          "type": "object"
         }
       ]
     },

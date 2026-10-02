@@ -582,6 +582,28 @@ defending player is asked about their untapped creatures one at a time) is:
 order of the defender's opaque identities, so it is not sorted. `declared` is
 ascending by blocker `GameObjectId`; an answer of no block is `null`.
 
+The combat-damage-assignment continuation payload (CR 510.1c; it exists while
+the attacking player divides the damage of an attacker blocked by two or more
+creatures, one blocker at a time) is:
+
+```text
+[
+  "combat_damage_assignment",
+  player,
+  pending_attackers[game_object_id],
+  pending_blockers[game_object_id],
+  assigned[[blocker, amount]]
+]
+```
+
+`pending_attackers` and `pending_blockers` keep the order the creatures are
+asked in, which is the order of the attacking player's opaque identities, so
+they are not sorted. `assigned` is ascending by blocker `GameObjectId` and holds
+only the amounts that were answered: the last blocker's share of what is left
+and the nothing after the damage has run out are forced, and never stored. The
+amount is an unsigned integer. The continuation's `created_at_revision` is the
+state's revision less the number of entries in `assigned`.
+
 ## `random_v1`
 
 ```text
@@ -772,10 +794,13 @@ holds:
 ```
 
 `attackers` is ascending by `GameObjectId` and duplicate-free. `blockers` lists
-`[blocker, attacker]` pairs, one for each blocking creature (CR 509.1a), sorted
-by blocker and duplicate-free: the map goes from blocker to attacker, so
+`[blocker, attacker | null]` pairs, one for each blocking creature (CR 509.1a),
+sorted by blocker and duplicate-free: the map goes from blocker to attacker, so
 several blockers of one attacker have no order of their own that two digests
-could disagree on. `blocked_attackers` is sorted by `GameObjectId` and
+could disagree on. The attacker is CBOR `null` for a blocking creature whose
+attacker was removed from combat, which stays a blocking creature until the
+combat ends (CR 509.1g, 506.4); only a combat with `damage_step_completed` set
+holds one. `blocked_attackers` is sorted by `GameObjectId` and
 duplicate-free; it binds CR 509.1h blocked history, so an attacker whose
 blockers have all left is still listed. `damage_step_completed` is a CBOR
 boolean recording whether the mandatory combat damage action has already run.
@@ -800,7 +825,9 @@ AbilityAuthority, and Permanents state. `permanents` is a list of
 `[object, controlled_since_turn, marked_damage]` triples sorted by
 `GameObjectId`: the turn since which the permanent's controller has controlled
 it (CR 302.6), and the damage marked on it (CR 120.3e). A permanent enters with
-none; only a creature is dealt damage.
+none; only a creature is dealt damage, which holds in this card pool only: CR 120.6
+keeps damage on a permanent that stops being a creature, and nothing here makes
+a creature stop being one.
 `CardRulesAuthoritativeStateV1::validate` rejects
 noncanonical ordering, duplicates, malformed records, integer range/domain
 errors, and any `land_plays_used` value outside `{0,1}`; `EngineState`

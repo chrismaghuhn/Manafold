@@ -11,6 +11,8 @@
     }
   ],
   "attacking": [],
+  "blocked": [],
+  "blocking": [],
   "counters": [
     {
       "count": 1,
@@ -74,34 +76,40 @@
     }
   ],
   "pending_sba_ordering": null,
+  "pending_blocks": null,
+  "pending_damage_assignment": null,
   "permanents": [
     {
       "controlled_since_turn": "1",
       "controller": "0",
       "object": "3",
       "power": null,
-      "toughness": null
+      "toughness": null,
+      "marked_damage": "0"
     },
     {
       "controlled_since_turn": "1",
       "controller": "1",
       "object": "4",
       "power": null,
-      "toughness": null
+      "toughness": null,
+      "marked_damage": "0"
     },
     {
       "controlled_since_turn": "1",
       "controller": "0",
       "object": "7",
       "power": null,
-      "toughness": null
+      "toughness": null,
+      "marked_damage": "0"
     },
     {
       "controlled_since_turn": "1",
       "controller": "1",
       "object": "8",
       "power": null,
-      "toughness": null
+      "toughness": null,
+      "marked_damage": "0"
     }
   ],
   "players": [

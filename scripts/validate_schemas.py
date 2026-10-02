@@ -75,6 +75,14 @@ SCHEMA_NEGATIVE_CASES = [
     ),
     (
         "player-decision-request.v4.schema.json",
+        "schemas/negative/player-decision-request-v4-combat-damage-assignment-public.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/negative/player-decision-request-v4-combat-damage-assignment-amount-number.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
         "schemas/negative/player-decision-request-v4-cost-route-normal-with-ordinal.json",
     ),
     (
@@ -108,6 +116,14 @@ SCHEMA_NEGATIVE_CASES = [
     (
         "observed-event-envelope.v4.schema.json",
         "schemas/negative/observed-event-v4-mulligan-not-boolean.json",
+    ),
+    (
+        "observed-event-envelope.v4.schema.json",
+        "schemas/negative/observed-event-v4-combat-damage-zero-amount.json",
+    ),
+    (
+        "observed-event-envelope.v4.schema.json",
+        "schemas/negative/observed-event-v4-blockers-declared-attacker-null.json",
     ),
     (
         "player-step.v4.schema.json",
@@ -150,6 +166,18 @@ SCHEMA_NEGATIVE_CASES = [
         "schemas/negative/magic-basic-land-observation-v1-permanents-missing.json",
     ),
     (
+        "magic-basic-land-observation.v1.schema.json",
+        "schemas/negative/magic-basic-land-observation-v1-pending-blocks-missing.json",
+    ),
+    (
+        "magic-basic-land-observation.v1.schema.json",
+        "schemas/negative/magic-basic-land-observation-v1-marked-damage-as-number.json",
+    ),
+    (
+        "magic-basic-land-observation.v1.schema.json",
+        "schemas/negative/magic-basic-land-observation-v1-marked-damage-on-a-land.json",
+    ),
+    (
         "magic-shared-execution-observation.v1.schema.json",
         "schemas/negative/magic-shared-execution-observation-v1-tapped-repeated.json",
     ),
@@ -176,6 +204,14 @@ SCHEMA_NEGATIVE_CASES = [
     (
         "magic-shared-execution-observation.v1.schema.json",
         "schemas/negative/magic-shared-execution-observation-v1-activated-modes-missing.json",
+    ),
+    (
+        "magic-shared-execution-observation.v1.schema.json",
+        "schemas/negative/magic-shared-execution-observation-v1-blocking-attacker-missing.json",
+    ),
+    (
+        "magic-shared-execution-observation.v1.schema.json",
+        "schemas/negative/magic-shared-execution-observation-v1-pending-damage-assignment-missing.json",
     ),
     (
         "decision-response.v3.schema.json",
@@ -317,12 +353,20 @@ SCHEMA_POSITIVE_CASES = [
         "schemas/examples/player-decision-request-v4-blocker-declaration.json",
     ),
     (
+        "player-decision-request.v4.schema.json",
+        "schemas/examples/player-decision-request-v4-combat-damage-assignment.json",
+    ),
+    (
         "player-step.v4.schema.json",
         "schemas/examples/player-step-v4-hand-size-discard.json",
     ),
     (
         "player-step.v4.schema.json",
         "schemas/examples/player-step-v4-blocker-declaration.json",
+    ),
+    (
+        "player-step.v4.schema.json",
+        "schemas/examples/player-step-v4-combat-damage-assignment.json",
     ),
     (
         "player-decision-request.v4.schema.json",

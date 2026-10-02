@@ -1068,6 +1068,7 @@ fn magic_basic_land_projection_lists_each_permanent_and_shows_a_creatures_printe
         controlled_since_turn: 0,
         power: power_toughness.map(|(power, _)| power),
         toughness: power_toughness.map(|(_, toughness)| toughness),
+        marked_damage: 0,
     };
     let with_definition = |state: &EngineState, definition: u64| {
         let mut state = state.clone();

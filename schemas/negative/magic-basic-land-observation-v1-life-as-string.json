@@ -24,6 +24,8 @@
     }
   ],
   "pending_sba_ordering": null,
+  "pending_blocks": null,
+  "pending_damage_assignment": null,
   "mana_pools": [
     {
       "player": "0",
@@ -68,5 +70,7 @@
     "7"
   ],
   "permanents": [],
-  "attacking": []
+  "attacking": [],
+  "blocked": [],
+  "blocking": []
 }
