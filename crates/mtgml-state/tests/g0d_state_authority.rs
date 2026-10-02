@@ -1609,7 +1609,9 @@ fn a_block_declaration_names_the_defender_and_the_untapped_creatures_it_controls
     refused("no combat", &|state| state.combat = None);
     refused("a recorded block", &|state| {
         let combat = state.combat.as_mut().unwrap();
-        combat.blockers.insert(GameObjectId(5), GameObjectId(3));
+        combat
+            .blockers
+            .insert(GameObjectId(5), Some(GameObjectId(3)));
         combat.blocked_attackers.insert(GameObjectId(3));
     });
     refused("blocked attackers", &|state| {

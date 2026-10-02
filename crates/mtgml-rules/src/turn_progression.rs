@@ -2786,7 +2786,7 @@ mod tests {
         let combat = blocked.combat.as_ref().unwrap();
         assert_eq!(
             combat.blockers,
-            std::collections::BTreeMap::from([(blocker, attacker)])
+            std::collections::BTreeMap::from([(blocker, Some(attacker))])
         );
         assert_eq!(
             combat.blocked_attackers,
@@ -2972,7 +2972,7 @@ mod tests {
             .unwrap();
         let combat = blocked.combat.as_mut().unwrap();
         let attacker = combat.attackers[0];
-        combat.blockers.insert(blocker, attacker);
+        combat.blockers.insert(blocker, Some(attacker));
         combat.blocked_attackers.insert(attacker);
         blocked
     }
@@ -3038,7 +3038,7 @@ mod tests {
         tapped.zones.objects.get_mut(&land).unwrap().controller = P2;
         let mut land_blocks = with_the_attacker_blocked(&tapped, CombatStep::DeclareBlockers);
         let combat = land_blocks.combat.as_mut().unwrap();
-        combat.blockers = std::collections::BTreeMap::from([(land, combat.attackers[0])]);
+        combat.blockers = std::collections::BTreeMap::from([(land, Some(combat.attackers[0]))]);
         mtgml_state::validate_engine_state(&land_blocks).unwrap();
         assert_eq!(
             crate::combat::validate_reachable_combat(&admission, &land_blocks),
@@ -4045,8 +4045,10 @@ mod tests {
     fn a_creature_that_dies_is_removed_from_combat_but_its_attacker_stays_blocked() {
         // CR 506.4: a creature that leaves the battlefield is removed from
         // combat, and stops being an attacking, blocking, blocked creature.
-        // CR 509.1h: an attacker stays blocked when all its blockers are
-        // removed from combat.
+        // CR 509.1g: a blocking creature remains one until it is removed from
+        // combat or the combat phase ends, so a blocker whose attacker is
+        // removed still blocks, with no attacker. CR 509.1h: an attacker stays
+        // blocked when all its blockers are removed from combat.
         // P1 attacks with Savannah Lions and Hill Giant; P2 blocks the Lions
         // with its Hill Giant and P1's Giant with its Savannah Lions. P1's Lions
         // is destroyed (3 damage), and so is P2's (3 damage); both Giants
@@ -4069,6 +4071,10 @@ mod tests {
         let combat = before.combat.as_ref().unwrap();
         assert_eq!(combat.attackers, [lions, giant]);
         assert_eq!(combat.blocked_attackers, [lions, giant].into());
+        assert_eq!(
+            combat.blockers,
+            [(blocking_giant, Some(lions)), (blocking_lions, Some(giant))].into()
+        );
 
         let (after, product) = pass(&admission, &before);
         assert_eq!(
@@ -4076,21 +4082,62 @@ mod tests {
             [vec![destroyed(lions), destroyed(blocking_lions)]]
         );
         let combat = after.combat.as_ref().unwrap();
-        // The attacker that died is no longer attacking or blocked. Known
-        // divergence: CR 509.1g keeps the creature that blocked it (P2's Hill
-        // Giant) a blocking creature until combat ends, but the combat records
-        // a block as the attacker its blocker blocks, so its entry is dropped
-        // with the attacker (`rules/declare-blockers`, "Known divergence").
-        // The assertion that no blocker is left pins that divergence; a fix
-        // that keeps the creature blocking changes it. The blocker that died
-        // is gone, and the Giant it blocked is still attacking, and still
-        // blocked (CR 509.1h).
+        // The attacker that died is no longer attacking or blocked. P2's Hill
+        // Giant, which blocked it, survives and is still a blocking creature,
+        // that blocks nothing (CR 509.1g). The blocker that died is gone, and
+        // the Giant it blocked is still attacking, and still blocked
+        // (CR 509.1h).
         assert_eq!(combat.attackers, [giant]);
         assert_eq!(combat.blocked_attackers, [giant].into());
-        assert!(combat.blockers.is_empty());
+        assert_eq!(combat.blockers, [(blocking_giant, None)].into());
         for survivor in [giant, blocking_giant] {
             assert_eq!(marked(&after, survivor), 2);
         }
+    }
+
+    #[test]
+    fn a_blocker_whose_attacker_died_is_restored_blocking_nothing_until_combat_ends() {
+        // CR 509.1g, 506.4: Savannah Lions (2/1) attacks and Hill Giant (3/3)
+        // blocks it. The Lions is destroyed, and the Giant, which has 2
+        // damage marked, is still a blocking creature, with no attacker, until
+        // the combat ends. Every state of the combat that follows the damage
+        // step, as the game reaches them, is one a restore accepts; after the
+        // end of combat step there is no combat.
+        let (admission, state, creatures) =
+            game_with_creature_cards(&[(P1, SAVANNAH_LIONS), (P2, HILL_GIANT)]);
+        let [lions, giant] = creatures[..] else {
+            panic!("two creatures")
+        };
+        let before = blocks_declared(&admission, state, &[lions], &[(giant, lions)]);
+        let (damaged, _) = pass(&admission, &before);
+        let running = EpisodeStatus::Running;
+        let combat = |step| TurnPosition::Combat { step };
+        for position in [
+            combat(CombatStep::CombatDamage),
+            combat(CombatStep::EndOfCombat),
+        ] {
+            let reached = pass_until(&admission, damaged.clone(), at(position, 3));
+            let combat = reached.combat.as_ref().unwrap();
+            assert!(!reached.zones.objects.contains_key(&lions), "{position:?}");
+            assert_eq!(marked(&reached, giant), 2, "{position:?}");
+            assert!(combat.attackers.is_empty() && combat.blocked_attackers.is_empty());
+            assert_eq!(combat.blockers, [(giant, None)].into(), "{position:?}");
+            validate_magic_pending_request(&admission, &reached, &running)
+                .unwrap_or_else(|error| panic!("{position:?}: {error:?}"));
+        }
+        let ended = pass_until(&admission, damaged, at(TurnPosition::PostcombatMain, 3));
+        assert!(ended.combat.is_none());
+
+        // Before the damage no blocker is without an attacker: no game rests
+        // in a declare blockers step with a blocker whose attacker is gone.
+        let mut undealt = before.clone();
+        let forged = undealt.combat.as_mut().unwrap();
+        forged.blockers.insert(giant, None);
+        forged.blocked_attackers.clear();
+        assert_eq!(
+            crate::combat::validate_reachable_combat(&admission, &undealt),
+            Err(crate::BasicLandTransitionError::TurnProgressUnsupported)
+        );
     }
 
     #[test]

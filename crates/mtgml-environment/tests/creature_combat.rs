@@ -689,7 +689,10 @@ fn the_defender_declares_blocks_one_creature_at_a_time() {
     let combat = declared.combat.as_ref().unwrap();
     assert_eq!(
         combat.blockers,
-        BTreeMap::from([(blockers[0], attackers[0]), (blockers[1], attackers[1])])
+        BTreeMap::from([
+            (blockers[0], Some(attackers[0])),
+            (blockers[1], Some(attackers[1]))
+        ])
     );
     assert_eq!(
         combat.blocked_attackers,
@@ -845,7 +848,7 @@ fn a_tapped_creature_is_not_asked_to_block() {
     let declared = game.state();
     assert_eq!(
         declared.combat.as_ref().unwrap().blockers,
-        BTreeMap::from([(new_lions, attackers[0])])
+        BTreeMap::from([(new_lions, Some(attackers[0]))])
     );
     assert_eq!(game.pending().0, P1);
 }
@@ -1205,7 +1208,7 @@ fn a_restored_block_declaration_the_game_could_not_have_reached_is_refused() {
     // The declaration is one declaration: nothing is blocked while it is open.
     let mut blocked = half.clone();
     let combat = blocked.combat.as_mut().unwrap();
-    combat.blockers.insert(blockers[0], attackers[0]);
+    combat.blockers.insert(blockers[0], Some(attackers[0]));
     combat.blocked_attackers.insert(attackers[0]);
     refused("a block recorded before the declaration ends", &blocked);
     // Nobody has priority while the declaration is open, and it belongs to the
@@ -1357,7 +1360,10 @@ fn two_creatures_may_block_one_attacker() {
     let combat = declared.combat.as_ref().unwrap();
     assert_eq!(
         combat.blockers,
-        BTreeMap::from([(blockers[0], attackers[0]), (blockers[1], attackers[0])])
+        BTreeMap::from([
+            (blockers[0], Some(attackers[0])),
+            (blockers[1], Some(attackers[0]))
+        ])
     );
     assert_eq!(combat.blocked_attackers, BTreeSet::from([attackers[0]]));
     assert!(declared.execution.continuations.is_empty());
@@ -1380,7 +1386,7 @@ fn a_3_3_blocked_by_a_2_1_kills_it_and_survives() {
     let blocked = before.combat.clone().unwrap();
     assert_eq!(
         blocked.blockers,
-        BTreeMap::from([(lions_object, giant_object)])
+        BTreeMap::from([(lions_object, Some(giant_object))])
     );
     let card = before.zones.objects[&lions_object].physical_card;
     let lives = before.core.players.clone();
@@ -1634,6 +1640,94 @@ fn a_restored_combat_after_a_blocker_died_continues_identically() {
     assert_eq!(game.checkpoint(), last);
 }
 
+/// P1 casts a Savannah Lions on its first turn, and P2 a Hill Giant on its
+/// fourth, with the four lands it plays. On turn 9 P1 attacks with the Lions
+/// and P2 blocks it with the Giant. P2 holds priority in the declare blockers
+/// step: its pass opens the combat damage step. Returns the game, the Lions
+/// and the Giant.
+fn a_lions_blocked_by_a_giant() -> (Game, GameObjectId, GameObjectId) {
+    let (mountain, plains) = land_definitions();
+    let [_, _, giant] = creature_definitions();
+    let hand = [vec![mountain; 4], vec![giant]].concat();
+    let game = Game::with_hands([vec![plains, lions()], hand]);
+    cast_lions(&game);
+    game.run_until(start_of_main_phase(8));
+    cast_creature(&game, 4);
+    game.run_until(at_attackers(9));
+    let state = game.state();
+    let [lions_object]: [GameObjectId; 1] = lions_of(&state, P1).try_into().unwrap();
+    let [giant_object]: [GameObjectId; 1] = creatures_of(&state, P2, giant).try_into().unwrap();
+    attack_and_block(&game, lions_object);
+    (game, lions_object, giant_object)
+}
+
+#[test]
+fn a_blocker_whose_attacker_died_is_still_blocking_until_combat_ends() {
+    // CR 509.1g, 506.4: P1's Savannah Lions (2/1) attacks, and P2's Hill Giant
+    // (3/3) blocks it. The Lions is destroyed in the combat damage step and so
+    // removed from combat. The Giant survives with 2 damage marked, and it
+    // remains a blocking creature, which blocks nothing, until the combat
+    // ends: the combat records it with no attacker.
+    let (game, lions_object, giant_object) = a_lions_blocked_by_a_giant();
+    let combat = game.state().combat.unwrap();
+    assert_eq!(
+        combat.blockers,
+        BTreeMap::from([(giant_object, Some(lions_object))])
+    );
+
+    game.answer(pass, pass);
+    let at_damage = game.checkpoint();
+    let state = &at_damage.state;
+    assert_eq!(
+        state.core.position,
+        TurnPosition::Combat {
+            step: CombatStep::CombatDamage
+        }
+    );
+    assert!(!state.zones.objects.contains_key(&lions_object));
+    let [dead] = graveyard_of(state, P1)[..] else {
+        panic!("P1's graveyard holds the Lions")
+    };
+    assert_eq!(state.zones.objects[&dead].card_definition, lions());
+    assert_eq!(marked(state, giant_object), 2);
+    let combat = state.combat.clone().unwrap();
+    assert!(combat.damage_step_completed);
+    assert!(combat.attackers.is_empty() && combat.blocked_attackers.is_empty());
+    assert_eq!(combat.blockers, BTreeMap::from([(giant_object, None)]));
+    game.controller.restore(at_damage.clone()).unwrap();
+    assert_eq!(game.checkpoint(), at_damage);
+
+    // The end of combat step: the Giant still blocks nothing, and still has its
+    // damage. The checkpoint restores, and the answers that follow it lead to
+    // the same state as before.
+    game.pass_until(|state| {
+        state.core.position
+            == TurnPosition::Combat {
+                step: CombatStep::EndOfCombat,
+            }
+    });
+    let at_end_of_combat = game.checkpoint();
+    let state = &at_end_of_combat.state;
+    assert_eq!(marked(state, giant_object), 2);
+    assert_eq!(
+        state.combat.as_ref().unwrap().blockers,
+        BTreeMap::from([(giant_object, None)])
+    );
+    game.answer(pass, pass);
+    game.answer(pass, pass);
+    let after = game.checkpoint();
+    game.controller.restore(at_end_of_combat.clone()).unwrap();
+    assert_eq!(game.checkpoint(), at_end_of_combat);
+    game.answer(pass, pass);
+    game.answer(pass, pass);
+    assert_eq!(game.checkpoint(), after);
+
+    // The combat phase has ended, and with it the combat: nothing blocks.
+    assert_eq!(after.state.core.position, TurnPosition::PostcombatMain);
+    assert_eq!(after.state.combat, None);
+    assert_eq!(marked(&after.state, giant_object), 2);
+}
+
 #[test]
 fn a_restored_blocked_attacker_has_its_blocker_until_the_damage_is_dealt() {
     // CR 509.1h: an attacker is blocked by the creature that blocks it. The
@@ -1648,7 +1742,10 @@ fn a_restored_blocked_attacker_has_its_blocker_until_the_damage_is_dealt() {
     attack_and_block(&game, giant_object);
     let blocked = game.checkpoint();
     let combat = blocked.state.combat.as_ref().unwrap();
-    assert_eq!(combat.blockers.get(&lions_object), Some(&giant_object));
+    assert_eq!(
+        combat.blockers.get(&lions_object),
+        Some(&Some(giant_object))
+    );
     assert!(combat.blocked_attackers.contains(&giant_object) && !combat.damage_step_completed);
     restore_state(&game, &blocked, blocked.state.clone()).unwrap();
     assert_eq!(game.checkpoint(), blocked);

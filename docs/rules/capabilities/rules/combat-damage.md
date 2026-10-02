@@ -52,7 +52,8 @@ The following are not supported and fail closed:
 ## State and identity model
 
 The combat state holds the defending player, the attackers (any number, sorted
-by object), the blockers (each blocking creature with the attacker it blocks),
+by object), the blockers (each blocking creature with the attacker it blocks;
+none, once the attacker has died, for a blocker that survives it, CR 509.1g),
 the attackers that became blocked, and `damage_step_completed`, which the damage
 step sets. The combat state is removed when the end of combat step ends.
 Attackers are tapped by the declaration (CR 508.1f). A creature that leaves the

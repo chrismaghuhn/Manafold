@@ -70,7 +70,12 @@ pub struct CombatState {
     /// An attacker may have any number of blockers (CR 509.1h, 510.1c), so the
     /// map goes from blocker to attacker: a list of blockers per attacker would
     /// carry an order that means nothing and give one rules state two digests.
-    pub blockers: BTreeMap<mtgml_model::GameObjectId, mtgml_model::GameObjectId>,
+    /// A blocker whose attacker was removed from combat stays a blocking
+    /// creature until the combat ends (CR 509.1g, 506.4) and maps to `None`:
+    /// it blocks nothing. An attacker is removed by dying in the state-based
+    /// actions after the combat damage step, so a state holds a `None` only
+    /// once `damage_step_completed`.
+    pub blockers: BTreeMap<mtgml_model::GameObjectId, Option<mtgml_model::GameObjectId>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

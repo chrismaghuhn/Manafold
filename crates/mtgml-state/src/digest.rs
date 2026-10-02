@@ -1275,12 +1275,9 @@ pub(crate) fn combat_value(state: &EngineState) -> Value {
     array([
         u(combat.defending_player.0),
         array(combat.attackers.iter().map(|object| u(object.0))),
-        array(
-            combat
-                .blockers
-                .iter()
-                .map(|(blocker, attacker)| array([u(blocker.0), u(attacker.0)])),
-        ),
+        array(combat.blockers.iter().map(|(blocker, attacker)| {
+            array([u(blocker.0), optional(attacker.map(|object| u(object.0)))])
+        })),
         array(combat.blocked_attackers.iter().map(|object| u(object.0))),
         Value::Bool(combat.damage_step_completed),
     ])

@@ -323,7 +323,7 @@ fn block(state: &mut EngineState, blocker: u64, attacker: u64) {
     let combat = state.combat.as_mut().unwrap();
     combat
         .blockers
-        .insert(GameObjectId(blocker), GameObjectId(attacker));
+        .insert(GameObjectId(blocker), Some(GameObjectId(attacker)));
     combat.blocked_attackers.insert(GameObjectId(attacker));
 }
 
@@ -412,7 +412,7 @@ fn a_blocker_for_a_non_attacker_is_rejected() {
         .as_mut()
         .unwrap()
         .blockers
-        .insert(GameObjectId(5), GameObjectId(7));
+        .insert(GameObjectId(5), Some(GameObjectId(7)));
     assert_eq!(
         validate_engine_state(&state),
         Err(EngineStateViolation::CombatState)
@@ -427,6 +427,80 @@ fn a_blocker_is_on_the_battlefield() {
         block(&mut state, blocker, 3);
         assert!(validate_engine_state(&state).is_err(), "blocker {blocker}");
     }
+}
+
+/// `blocker` is still a blocking creature whose attacker was removed from
+/// combat (CR 509.1g, 506.4).
+fn block_without_an_attacker(state: &mut EngineState, blocker: u64) {
+    state
+        .combat
+        .as_mut()
+        .unwrap()
+        .blockers
+        .insert(GameObjectId(blocker), None);
+}
+
+/// `state` with the combat damage dealt.
+fn damage_dealt(mut state: EngineState, step: crate::CombatStep) -> EngineState {
+    state.core.position = TurnPosition::Combat { step };
+    state.combat.as_mut().unwrap().damage_step_completed = true;
+    state
+}
+
+#[test]
+fn a_blocker_without_an_attacker_needs_the_damage_dealt() {
+    // CR 509.1g, 506.4: a blocking creature stays a blocking creature when
+    // its attacker is removed from combat, until the combat ends. An attacker
+    // leaves combat by dying in the state-based actions after the combat
+    // damage step, so before the damage there is no blocker without one.
+    let mut before_the_damage = combat_before_blocks();
+    block(&mut before_the_damage, 5, 3);
+    block_without_an_attacker(&mut before_the_damage, 6);
+    assert_eq!(
+        validate_engine_state(&before_the_damage),
+        Err(EngineStateViolation::CombatState)
+    );
+
+    // After the damage the attacker 4 is gone, and the blocker 6 that blocked
+    // it, which survived, still blocks. The blocker 5 blocks the attacker 3 as
+    // before.
+    for step in [
+        crate::CombatStep::CombatDamage,
+        crate::CombatStep::EndOfCombat,
+    ] {
+        let mut after_the_damage = damage_dealt(combat_before_blocks(), step);
+        block(&mut after_the_damage, 5, 3);
+        block_without_an_attacker(&mut after_the_damage, 6);
+        after_the_damage.combat.as_mut().unwrap().attackers = vec![GameObjectId(3)];
+        validate_engine_state(&after_the_damage)
+            .unwrap_or_else(|error| panic!("{step:?}: {error}"));
+    }
+
+    // A blocker that names an attacker still needs the attacker to be blocked.
+    let mut unblocked = damage_dealt(combat_before_blocks(), crate::CombatStep::CombatDamage);
+    unblocked
+        .combat
+        .as_mut()
+        .unwrap()
+        .blockers
+        .insert(GameObjectId(5), Some(GameObjectId(3)));
+    assert_eq!(
+        validate_engine_state(&unblocked),
+        Err(EngineStateViolation::CombatState)
+    );
+
+    // The blocker without an attacker is still a permanent of the defending
+    // player's on the battlefield.
+    let mut other_players = damage_dealt(combat_before_blocks(), crate::CombatStep::CombatDamage);
+    put_on_battlefield(&mut other_players, 7, PlayerId(1));
+    block_without_an_attacker(&mut other_players, 7);
+    assert_eq!(
+        validate_engine_state(&other_players),
+        Err(EngineStateViolation::CombatState)
+    );
+    let mut gone = damage_dealt(combat_before_blocks(), crate::CombatStep::CombatDamage);
+    block_without_an_attacker(&mut gone, 99);
+    assert!(validate_engine_state(&gone).is_err());
 }
 
 #[test]

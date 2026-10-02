@@ -772,10 +772,13 @@ holds:
 ```
 
 `attackers` is ascending by `GameObjectId` and duplicate-free. `blockers` lists
-`[blocker, attacker]` pairs, one for each blocking creature (CR 509.1a), sorted
-by blocker and duplicate-free: the map goes from blocker to attacker, so
+`[blocker, attacker | null]` pairs, one for each blocking creature (CR 509.1a),
+sorted by blocker and duplicate-free: the map goes from blocker to attacker, so
 several blockers of one attacker have no order of their own that two digests
-could disagree on. `blocked_attackers` is sorted by `GameObjectId` and
+could disagree on. The attacker is CBOR `null` for a blocking creature whose
+attacker was removed from combat, which stays a blocking creature until the
+combat ends (CR 509.1g, 506.4); only a combat with `damage_step_completed` set
+holds one. `blocked_attackers` is sorted by `GameObjectId` and
 duplicate-free; it binds CR 509.1h blocked history, so an attacker whose
 blockers have all left is still listed. `damage_step_completed` is a CBOR
 boolean recording whether the mandatory combat damage action has already run.

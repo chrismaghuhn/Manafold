@@ -85,7 +85,7 @@ fn dangling_blocker(state: &mut mtgml_state::EngineState) {
         attackers: vec![GameObjectId(1)],
         damage_step_completed: false,
         blocked_attackers: std::collections::BTreeSet::from([GameObjectId(1)]),
-        blockers: BTreeMap::from([(GameObjectId(99), GameObjectId(1))]),
+        blockers: BTreeMap::from([(GameObjectId(99), Some(GameObjectId(1)))]),
     });
 }
 

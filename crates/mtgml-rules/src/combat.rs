@@ -462,7 +462,7 @@ pub(crate) fn declare_block(
     for assignment in &assignments {
         combat
             .blockers
-            .insert(assignment.blocker, assignment.attacker);
+            .insert(assignment.blocker, Some(assignment.attacker));
         combat.blocked_attackers.insert(assignment.attacker);
     }
     // No observed event or observation field shows blocks yet, so no player
@@ -491,10 +491,11 @@ pub(crate) fn declare_block(
 /// - no attacker is blocked while attackers are still being declared
 ///   (CR 509.1, 508.2), and every blocker is an untapped creature the defending
 ///   player controls (CR 509.1a): nothing taps a blocker once it blocks. An
-///   attacker may be blocked with no blocker left (CR 509.1h), but only once
-///   the damage is dealt: a blocker leaves combat only by dying in the
-///   state-based actions after the damage step (CR 704.5g, 506.4), so before
-///   it the blocked attackers are exactly the ones a blocker names;
+///   attacker may be blocked with no blocker left (CR 509.1h), and a blocker
+///   may block no attacker (CR 509.1g), but only once the damage is dealt: a
+///   creature leaves combat only by dying in the state-based actions after the
+///   damage step (CR 704.5g, 506.4), so before it every blocker blocks an
+///   attacker, and the blocked attackers are exactly the ones a blocker names;
 /// - a block declaration in progress is the one the battlefield calls for (see
 ///   `validate_pending_block_declaration`). Once the declaration is complete, in the
 ///   declare blockers step with priority or in a later step, an untapped
@@ -562,13 +563,19 @@ pub(crate) fn validate_reachable_combat(
     {
         return Err(Error::TurnProgressUnsupported);
     }
-    // A blocker leaves combat only by dying in the state-based actions after
-    // the combat damage step, so until the damage is dealt every blocked
-    // attacker has a blocker, and every blocker's attacker is blocked.
-    if !combat.damage_step_completed
-        && combat.blocked_attackers != combat.blockers.values().copied().collect::<BTreeSet<_>>()
-    {
-        return Err(Error::TurnProgressUnsupported);
+    // A creature leaves combat only by dying in the state-based actions after
+    // the combat damage step, so until the damage is dealt every blocker has an
+    // attacker, and the blocked attackers are exactly the ones a blocker names.
+    if !combat.damage_step_completed {
+        // `None` when some blocker has no attacker.
+        let named_by_blockers = combat
+            .blockers
+            .values()
+            .copied()
+            .collect::<Option<BTreeSet<_>>>();
+        if named_by_blockers.as_ref() != Some(&combat.blocked_attackers) {
+            return Err(Error::TurnProgressUnsupported);
+        }
     }
     if combat.blockers.keys().any(|blocker| {
         !creatures.iter().any(|creature| {
@@ -589,13 +596,9 @@ pub(crate) fn validate_reachable_combat(
 
 /// CR 506.4: the creature `object`, which leaves the battlefield, is removed
 /// from combat and stops being an attacking, blocking, blocked creature.
-/// - An attacker leaves `attackers` and `blocked_attackers`, and the entries of
-///   the creatures that blocked it are dropped from `blockers`. That is a known
-///   divergence from CR 509.1g, which keeps them blocking creatures until combat
-///   ends: the combat records a block as the attacker its blocker blocks, so a
-///   blocker whose attacker is gone has no record (see "Known divergence" in
-///   `docs/rules/capabilities/rules/declare-blockers.md`). Nothing of this slice
-///   reads them afterwards.
+/// - An attacker leaves `attackers` and `blocked_attackers`. The creatures that
+///   blocked it stay blocking creatures until combat ends (CR 509.1g): each is
+///   recorded as blocking no attacker.
 /// - A blocker leaves the blocks. The attacker it blocked stays blocked with no
 ///   blocker left (CR 509.1h): it stays in `blocked_attackers`.
 pub(crate) fn remove_from_combat(next: &mut EngineState, object: GameObjectId) {
@@ -605,7 +608,11 @@ pub(crate) fn remove_from_combat(next: &mut EngineState, object: GameObjectId) {
     combat.attackers.retain(|attacker| *attacker != object);
     combat.blocked_attackers.remove(&object);
     combat.blockers.remove(&object);
-    combat.blockers.retain(|_, attacker| *attacker != object);
+    for attacker in combat.blockers.values_mut() {
+        if *attacker == Some(object) {
+            *attacker = None;
+        }
+    }
 }
 
 /// CR 510.1, 510.2: every attacking and blocking creature deals combat damage
@@ -614,7 +621,8 @@ pub(crate) fn remove_from_combat(next: &mut EngineState, object: GameObjectId) {
 ///   loses that much life (CR 120.3a);
 /// - an attacker with exactly one blocker deals all of it to that blocker; one
 ///   that is blocked with no blocker left deals none (CR 510.1c, 509.1h);
-/// - a blocker deals it to the attacker it blocks (CR 510.1d).
+/// - a blocker deals it to the attacker it blocks (CR 510.1d); one whose
+///   attacker was removed from combat blocks nothing and deals none.
 ///
 /// Damage dealt to a creature is marked on it (CR 120.3e). A creature that
 /// would assign 0 or less damage assigns none (CR 510.1a). An attacker with two
@@ -646,7 +654,7 @@ pub(crate) fn deal_combat_damage(
         let mut blockers = combat
             .blockers
             .iter()
-            .filter(|(_, blocked)| *blocked == attacker)
+            .filter(|(_, blocked)| **blocked == Some(*attacker))
             .map(|(blocker, _)| *blocker);
         let recipient = match (blockers.next(), blockers.next()) {
             (None, _) if combat.blocked_attackers.contains(attacker) => continue,
@@ -665,6 +673,11 @@ pub(crate) fn deal_combat_damage(
         }
     }
     for (blocker, attacker) in &combat.blockers {
+        // A blocker whose attacker was removed from combat blocks no creature,
+        // so it assigns no damage (CR 510.1d).
+        let Some(attacker) = attacker else {
+            continue;
+        };
         let amount = assigned(blocker, combat.defending_player)?;
         if amount > 0 {
             assignments.push(DamageAssignmentV1 {

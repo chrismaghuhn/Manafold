@@ -451,6 +451,44 @@ fn the_combat_digest_binds_blockers_and_blocked_attackers() {
 }
 
 #[test]
+fn the_combat_digest_binds_a_blocker_without_an_attacker() {
+    // CR 509.1g, 506.4: a blocking creature whose attacker was removed from
+    // combat is not the same state as one that blocks an attacker, or as no
+    // blocker at all. After the damage the attacker 3 is gone, and the blocker
+    // 5, which blocked it, still blocks nothing.
+    let after_the_damage = damage_dealt(combat_before_blocks(), crate::CombatStep::CombatDamage);
+    let blocking = |attacker: Option<u64>| {
+        let mut state = after_the_damage.clone();
+        let combat = state.combat.as_mut().unwrap();
+        combat
+            .blockers
+            .insert(GameObjectId(5), attacker.map(GameObjectId));
+        combat.blocked_attackers.extend(attacker.map(GameObjectId));
+        validate_engine_state(&state).unwrap();
+        state
+    };
+    let states = [
+        after_the_damage.clone(),
+        blocking(None),
+        blocking(Some(3)),
+        blocking(Some(4)),
+    ];
+    let digests: BTreeSet<_> = states.iter().map(v7_digest).collect();
+    assert_eq!(digests.len(), states.len());
+
+    // The blocker's pair is `[blocker, attacker]`, and `null` for the attacker
+    // that is gone: a blocker with an attacker keeps the form it had.
+    let blockers = |state: &EngineState| match crate::digest::combat_value(state) {
+        Value::Array(mut items) => items.swap_remove(2),
+        other => panic!("a combat is an array, not {other:?}"),
+    };
+    let pair =
+        |attacker: Value| Value::Array(vec![Value::Array(vec![Value::Unsigned(5), attacker])]);
+    assert_eq!(blockers(&states[1]), pair(Value::Null));
+    assert_eq!(blockers(&states[2]), pair(Value::Unsigned(3)));
+}
+
+#[test]
 fn an_empty_combat_has_one_digest_form() {
     // An attack with no attackers ends the combat without a damage step, so
     // the state before and after the step's completion differ in the flag

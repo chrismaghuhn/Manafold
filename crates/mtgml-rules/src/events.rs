@@ -1231,10 +1231,31 @@ fn combat_damage_may_be_assigned(
             }
             Recipient::Creature { object } => {
                 (combat.attackers.contains(&source)
-                    && combat.blockers.get(&object) == Some(&source))
-                    || combat.blockers.get(&source) == Some(&object)
+                    && combat.blockers.get(&object) == Some(&Some(source)))
+                    || combat.blockers.get(&source) == Some(&Some(object))
             }
         }
+}
+
+/// CR 506.4, 509.1g: whether the blocks of `after` are those of `before` with
+/// the creatures that left the battlefield removed from combat. A blocker that
+/// left is not blocking any more; a blocker whose attacker left still blocks,
+/// and blocks nothing; every other block is as it was. A creature that left is
+/// one `after` has no object for. There is nothing to check without a combat
+/// in `after`.
+fn blocks_follow_the_creatures_that_left(before: &EngineState, after: &EngineState) -> bool {
+    let Some(combat) = after.combat.as_ref() else {
+        return true;
+    };
+    let left = |object: &GameObjectId| !after.zones.objects.contains_key(object);
+    let expected: std::collections::BTreeMap<_, _> = before
+        .combat
+        .iter()
+        .flat_map(|combat| &combat.blockers)
+        .filter(|(blocker, _)| !left(blocker))
+        .map(|(blocker, attacker)| (*blocker, attacker.filter(|attacker| !left(attacker))))
+        .collect();
+    combat.blockers == expected
 }
 
 /// Whether the damage `assignments` are combat damage the `before` combat
@@ -1448,6 +1469,8 @@ fn validate_event_projection_v3(
                 // A battlefield object that is gone afterwards, and that is no
                 // longer in combat (CR 506.4): the delta lets this event stand
                 // for the combat changing in a transition that dealt no damage.
+                // Its blocks are checked below, with those of the other
+                // creatures.
                 mtgml_state::SbaSelectedActionV1::ObjectToOwnerGraveyard { object, .. } => {
                     before
                         .zones
@@ -1458,11 +1481,9 @@ fn validate_event_projection_v3(
                         && after.combat.as_ref().is_none_or(|combat| {
                             !combat.attackers.contains(object)
                                 && !combat.blocked_attackers.contains(object)
-                                && !combat.blockers.contains_key(object)
-                                && !combat.blockers.values().any(|attacker| attacker == object)
                         })
                 }
-            })
+            }) && blocks_follow_the_creatures_that_left(before, after)
         }
         AuthoritativeRuleEventKind::CombatDamageStepCompleted => {
             before
@@ -1520,9 +1541,12 @@ fn validate_event_projection_v3(
         AuthoritativeRuleEventKind::BlockersDeclared { assignments } => {
             let blockers: std::collections::BTreeMap<_, _> = assignments
                 .iter()
-                .map(|assignment| (assignment.blocker, assignment.attacker))
+                .map(|assignment| (assignment.blocker, Some(assignment.attacker)))
                 .collect();
-            let blocked: std::collections::BTreeSet<_> = blockers.values().copied().collect();
+            let blocked: std::collections::BTreeSet<_> = assignments
+                .iter()
+                .map(|assignment| assignment.attacker)
+                .collect();
             assignments
                 .windows(2)
                 .all(|pair| pair[0].blocker < pair[1].blocker)
@@ -3398,7 +3422,7 @@ mod tests {
             attackers: vec![GameObjectId(3), GameObjectId(4)],
             damage_step_completed: false,
             blocked_attackers: std::collections::BTreeSet::from([GameObjectId(3)]),
-            blockers: std::collections::BTreeMap::from([(GameObjectId(5), GameObjectId(3))]),
+            blockers: std::collections::BTreeMap::from([(GameObjectId(5), Some(GameObjectId(3)))]),
         });
         before.validate().unwrap();
         let mut after = before.clone();
@@ -3898,7 +3922,7 @@ mod tests {
             .as_mut()
             .unwrap()
             .blockers
-            .insert(GameObjectId(5), GameObjectId(3));
+            .insert(GameObjectId(5), Some(GameObjectId(3)));
         assert_eq!(
             validate_event_projection_v3(&before, &still_blocking, &destroyed(5)),
             Err(EventDeltaError::Mismatch)
@@ -3926,9 +3950,89 @@ mod tests {
             .as_mut()
             .unwrap()
             .blockers
-            .insert(GameObjectId(3), GameObjectId(5));
+            .insert(GameObjectId(3), Some(GameObjectId(5)));
         assert_eq!(
             validate_event_projection_v3(&before, &blocked_by_it, &destroyed(5)),
+            Err(EventDeltaError::Mismatch)
+        );
+    }
+
+    /// `state` with the creature `id` gone from the battlefield, and from the
+    /// rules' memory of its permanent (CR 400.7).
+    fn without_the_creature(state: &mut EngineState, id: u64) {
+        let id = GameObjectId(id);
+        state.zones.objects.remove(&id);
+        state.zones.locations.remove(&id);
+        state.card_rules.permanents.permanents.remove(&id);
+        state.card_rules.faces.faces.remove(&id);
+    }
+
+    /// The states of `fight_states`, with the attacker 3 destroyed (CR 704.5g)
+    /// in the same transition, which the blocker 5 survives: the combat no
+    /// longer has the attacker, and the blocker is still a blocking creature
+    /// that blocks nothing (CR 509.1g, 506.4).
+    fn fight_states_with_the_attacker_destroyed() -> (EngineState, EngineState) {
+        let (before, mut after) = fight_states();
+        without_the_creature(&mut after, 3);
+        let combat = after.combat.as_mut().unwrap();
+        combat.attackers = vec![GameObjectId(4)];
+        combat.blocked_attackers.clear();
+        combat.blockers = std::collections::BTreeMap::from([(GameObjectId(5), None)]);
+        after.validate().unwrap();
+        (before, after)
+    }
+
+    #[test]
+    fn a_blocker_whose_attacker_is_destroyed_keeps_blocking_nothing() {
+        // CR 506.4, 509.1g: the destroyed attacker is removed from combat, and
+        // the creature that blocked it is not: it stays a blocking creature
+        // with no attacker until the combat ends.
+        let (before, after) = fight_states_with_the_attacker_destroyed();
+        let destroyed = |object: u64| AuthoritativeRuleEventKind::StateBasedActionsApplied {
+            actions: vec![mtgml_state::SbaSelectedActionV1::ObjectToOwnerGraveyard {
+                object: GameObjectId(object),
+                causes: vec![mtgml_state::SbaObjectCauseV1::LethalDamage],
+            }],
+        };
+        let valid =
+            |after: &EngineState| validate_event_projection_v3(&before, after, &destroyed(3));
+        assert_eq!(valid(&after), Ok(()));
+
+        // A projection that drops the blocker with its attacker is refused.
+        let mut dropped = after.clone();
+        dropped.combat.as_mut().unwrap().blockers.clear();
+        assert_eq!(valid(&dropped), Err(EventDeltaError::Mismatch));
+        // So is one in which the blocker still names the destroyed attacker.
+        let mut names_it = after.clone();
+        names_it
+            .combat
+            .as_mut()
+            .unwrap()
+            .blockers
+            .insert(GameObjectId(5), Some(GameObjectId(3)));
+        assert_eq!(valid(&names_it), Err(EventDeltaError::Mismatch));
+
+        // A blocker whose attacker survived keeps it: the attacker 4 is
+        // destroyed here, and the blocker 5 blocks the attacker 3, which is
+        // not. Giving the blocker no attacker is refused.
+        let (before, mut survived) = fight_states();
+        without_the_creature(&mut survived, 4);
+        survived.combat.as_mut().unwrap().attackers = vec![GameObjectId(3)];
+        survived.validate().unwrap();
+        let mut forged = survived.clone();
+        forged
+            .combat
+            .as_mut()
+            .unwrap()
+            .blockers
+            .insert(GameObjectId(5), None);
+        forged.validate().unwrap();
+        assert_eq!(
+            validate_event_projection_v3(&before, &survived, &destroyed(4)),
+            Ok(())
+        );
+        assert_eq!(
+            validate_event_projection_v3(&before, &forged, &destroyed(4)),
             Err(EventDeltaError::Mismatch)
         );
     }
@@ -4131,8 +4235,8 @@ mod tests {
         after.revision = StateRevision(before.revision.0 + 1);
         let combat = after.combat.as_mut().unwrap();
         combat.blockers = std::collections::BTreeMap::from([
-            (GameObjectId(5), GameObjectId(3)),
-            (GameObjectId(6), GameObjectId(3)),
+            (GameObjectId(5), Some(GameObjectId(3))),
+            (GameObjectId(6), Some(GameObjectId(3))),
         ]);
         combat.blocked_attackers = std::collections::BTreeSet::from([GameObjectId(3)]);
         after.validate().unwrap();
