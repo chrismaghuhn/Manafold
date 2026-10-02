@@ -212,6 +212,22 @@ pub enum ContinuationPayload {
         pending_blockers: Vec<GameObjectId>,
         declared: BTreeMap<GameObjectId, Option<GameObjectId>>,
     },
+    /// The attacking player `player` divides the combat damage of each
+    /// attacking creature that two or more creatures block, one blocker at a
+    /// time (CR 510.1c). `pending_attackers` are the attackers not finished
+    /// yet, in the order of `player`'s opaque identities; the first is being
+    /// divided. `pending_blockers` are the blockers of that first attacker
+    /// that have no amount yet, in the same order; the first is asked next.
+    /// `assigned` holds each answered amount, by blocker. An amount the rules
+    /// force is never stored: the last blocker's share of what is left, and the
+    /// nothing after the damage has run out. The damage is dealt, all of it at
+    /// once, when the last attacker is finished (CR 510.2).
+    CombatDamageAssignment {
+        player: PlayerId,
+        pending_attackers: Vec<GameObjectId>,
+        pending_blockers: Vec<GameObjectId>,
+        assigned: BTreeMap<GameObjectId, u64>,
+    },
 }
 
 /// Where the start of the game is (CR 103).

@@ -57,11 +57,13 @@ _CANDIDATE_RANK = {
     "select_mana_payment": 13,
     "select_trigger": 14,
     "declare_block": 15,
+    "assign_combat_damage": 16,
 }
 _PURPOSE_CANDIDATES = {
     "priority_action": {"pass_priority", "play_land", "cast_spell", "activate_ability"},
     "attacker_declaration": {"select_object"},
     "blocker_declaration": {"declare_block"},
+    "combat_damage_assignment": {"assign_combat_damage"},
     "hand_size_discard": {"select_object"},
     "sba_graveyard_order": {"select_object"},
     "cast_cost_route": {"select_cost_route"},
@@ -83,6 +85,7 @@ _PURPOSE_DOMAINS = {
     "priority_action": {"choose_one"},
     "attacker_declaration": {"choose_many"},
     "blocker_declaration": {"choose_one"},
+    "combat_damage_assignment": {"choose_one"},
     "hand_size_discard": {"choose_many"},
     "sba_graveyard_order": {"order"},
     "cast_cost_route": {"choose_one"},
@@ -867,6 +870,8 @@ class CandidateIntent:
     trigger: SafeTriggerDescriptorV1 | None = None
     blocker_id: int | None = None
     attacker_id: int | None = None
+    recipient_id: int | None = None
+    amount: int | None = None
 
     @classmethod
     def from_wire(cls, value: object) -> CandidateIntent:
@@ -894,6 +899,7 @@ class CandidateIntent:
             "select_mana_payment": {"spent_buckets"},
             "select_trigger": {"trigger"},
             "declare_block": {"blocker", "attacker"},
+            "assign_combat_damage": {"attacker", "recipient", "amount"},
         }[kind]
         obj = require_exact_keys(value, {"kind", *fields})
         if kind in {"play_land", "cast_spell", "select_object"}:
@@ -944,6 +950,13 @@ class CandidateIntent:
                 blocker_id=parse_uint(obj["blocker"]),
                 attacker_id=_nullable_u64(obj["attacker"], "attacker"),
             )
+        if kind == "assign_combat_damage":
+            return cls(
+                kind,
+                attacker_id=parse_uint(obj["attacker"]),
+                recipient_id=parse_uint(obj["recipient"]),
+                amount=parse_uint(obj["amount"]),
+            )
         return cls(kind)
 
     def to_wire(self) -> dict[str, object]:
@@ -988,6 +1001,12 @@ class CandidateIntent:
                 raise WireError("encode.serialization", "blocker is absent")
             result["blocker"] = uint_wire(self.blocker_id)
             result["attacker"] = _nullable_wire(self.attacker_id)
+        elif self.kind == "assign_combat_damage":
+            if self.attacker_id is None or self.recipient_id is None or self.amount is None:
+                raise WireError("encode.serialization", "combat damage payload is incomplete")
+            result["attacker"] = uint_wire(self.attacker_id)
+            result["recipient"] = uint_wire(self.recipient_id)
+            result["amount"] = uint_wire(self.amount)
         self.from_wire(result)
         return result
 
@@ -1039,6 +1058,10 @@ class CandidateIntent:
             if self.blocker_id is None:
                 raise WireError("semantic.decision", "blocker is absent")
             value = (self.blocker_id, _opt_key(self.attacker_id))
+        elif self.kind == "assign_combat_damage":
+            if self.attacker_id is None or self.recipient_id is None or self.amount is None:
+                raise WireError("semantic.decision", "combat damage candidate is incomplete")
+            value = (self.attacker_id, self.recipient_id, self.amount)
         return rank, value
 
 
@@ -1079,6 +1102,7 @@ class DecisionPurposeV4:
             "priority_action": set(),
             "attacker_declaration": set(),
             "blocker_declaration": set(),
+            "combat_damage_assignment": set(),
             "hand_size_discard": set(),
             "starting_player": set(),
             "mulligan_declaration": set(),
@@ -1160,6 +1184,7 @@ class DecisionPurposeV4:
             "priority_action": set(),
             "attacker_declaration": set(),
             "blocker_declaration": set(),
+            "combat_damage_assignment": set(),
             "hand_size_discard": set(),
             "starting_player": set(),
             "mulligan_declaration": set(),
@@ -1279,6 +1304,7 @@ class PlayerDecisionRequestV4:
                 "trigger_order",
                 "attacker_declaration",
                 "blocker_declaration",
+                "combat_damage_assignment",
                 "hand_size_discard",
                 "sba_graveyard_order",
                 "cast_cost_route",

@@ -2643,3 +2643,889 @@ fn a_discard_in_the_cleanup_step_comes_before_the_damage_is_removed() {
         .unwrap();
     assert_eq!(report.final_checkpoint, checkpoint);
 }
+
+/// P1's Hill Giant (3/3) blocked by every creature of P2: a Gray Ogre (2/2)
+/// and some Savannah Lions (2/1).
+struct GiantFight {
+    game: Game,
+    giant: GameObjectId,
+    ogre: GameObjectId,
+    lions: Vec<GameObjectId>,
+    /// P2's creatures in the order P1 divides the Giant's damage among them:
+    /// the order of P1's opaque ids, not of the object ids.
+    blockers: Vec<GameObjectId>,
+}
+
+/// P2 casts a Savannah Lions on turn 2 (and a second on turn 4 when
+/// `lions_count` is 2) and a Gray Ogre on turn 6; P1 casts a Hill Giant on turn
+/// 7. On turn 9 the Giant attacks and every creature of P2 blocks it. P2 holds
+/// priority in the declare blockers step: its pass opens the combat damage
+/// step.
+fn giant_blocked_by(lions_count: usize) -> GiantFight {
+    let [_, ogre_card, giant_card] = creature_definitions();
+    let (mountain, plains) = land_definitions();
+    let mut hand = vec![plains, lions(), plains];
+    if lions_count == 2 {
+        hand.push(lions());
+    }
+    hand.push(ogre_card);
+    let game = Game::with_hands([
+        vec![mountain, mountain, mountain, mountain, giant_card],
+        hand,
+    ]);
+    game.run_until(start_of_main_phase(2));
+    cast_lions(&game);
+    if lions_count == 2 {
+        game.run_until(start_of_main_phase(4));
+        cast_lions(&game);
+    }
+    game.run_until(start_of_main_phase(6));
+    cast_creature(&game, 3);
+    game.run_until(start_of_main_phase(7));
+    cast_creature(&game, 4);
+    game.run_until(at_attackers(9));
+
+    let state = game.state();
+    let [giant]: [GameObjectId; 1] = creatures_of(&state, P1, giant_card).try_into().unwrap();
+    let [ogre]: [GameObjectId; 1] = creatures_of(&state, P2, ogre_card).try_into().unwrap();
+    let lions = lions_of(&state, P2);
+    assert_eq!(lions.len(), lions_count);
+    let blockers = in_opaque_order(&state, P1, [lions.clone(), vec![ogre]].concat());
+    game.declare_attackers(&[opaque_of(&state, P1, giant)]);
+    game.answer(pass, pass);
+    game.answer(pass, pass);
+    for _ in &blockers {
+        game.declare_block(Some(opaque_of(&state, P2, giant)));
+    }
+    game.answer(pass, pass);
+    assert_eq!(game.pending().0, P2);
+    assert_eq!(
+        game.state().core.position,
+        TurnPosition::Combat {
+            step: CombatStep::DeclareBlockers
+        }
+    );
+    GiantFight {
+        game,
+        giant,
+        ogre,
+        lions,
+        blockers,
+    }
+}
+
+/// The answer to a division request that gives its recipient `amount`.
+fn damage_answer(request: &PlayerDecisionRequestV4, amount: u64) -> DecisionAnswerV2 {
+    let candidate = request
+        .candidates
+        .iter()
+        .find(|candidate| {
+            matches!(candidate.intent,
+                CandidateIntent::AssignCombatDamage { amount: offered, .. } if offered == amount)
+        })
+        .unwrap_or_else(|| panic!("the request does not offer {amount}"));
+    DecisionAnswerV2::SelectOne {
+        candidate_id: candidate.candidate_id,
+    }
+}
+
+impl GiantFight {
+    /// P2 passes, which opens the combat damage step: P1 is asked how the
+    /// Giant divides its damage. Returns that request.
+    fn open_the_damage_step(&self) -> PlayerDecisionRequestV4 {
+        assert_eq!(self.game.answer(pass, pass).0, P2);
+        let (actor, request) = self.game.pending();
+        assert_eq!(actor, P1);
+        assert_eq!(request.purpose, DecisionPurposeV4::CombatDamageAssignment);
+        request
+    }
+
+    /// P1 gives `amount` of the Giant's damage to the creature it is asked
+    /// about.
+    fn assign(&self, amount: u64) -> (PlayerId, PlayerStepV4) {
+        let (actor, request) = self.game.pending();
+        assert_eq!(
+            (actor, &request.purpose),
+            (P1, &DecisionPurposeV4::CombatDamageAssignment)
+        );
+        self.game.submit(damage_answer(&request, amount))
+    }
+
+    /// What P1 is offered for `blocker`: each amount from 0 to `most`, in the
+    /// opaque ids of P1.
+    fn offered_for(
+        &self,
+        state: &EngineState,
+        blocker: GameObjectId,
+        most: u64,
+    ) -> Vec<CandidateIntent> {
+        (0..=most)
+            .map(|amount| CandidateIntent::AssignCombatDamage {
+                attacker: opaque_of(state, P1, self.giant),
+                recipient: opaque_of(state, P1, blocker),
+                amount,
+            })
+            .collect()
+    }
+}
+
+/// The combat damage assignment in progress: who divides, the attackers and
+/// the blockers still to ask, and the amounts answered.
+fn damage_division(
+    state: &EngineState,
+) -> (
+    PlayerId,
+    Vec<GameObjectId>,
+    Vec<GameObjectId>,
+    BTreeMap<GameObjectId, u64>,
+) {
+    let [record] = state
+        .execution
+        .continuations
+        .values()
+        .collect::<Vec<_>>()
+        .try_into()
+        .expect("one continuation");
+    let ContinuationPayload::CombatDamageAssignment {
+        player,
+        pending_attackers,
+        pending_blockers,
+        assigned,
+    } = &record.payload
+    else {
+        panic!("not a combat damage assignment: {record:?}");
+    };
+    (
+        *player,
+        pending_attackers.clone(),
+        pending_blockers.clone(),
+        assigned.clone(),
+    )
+}
+
+/// Whether `state` waits for the damage of an attacker to be divided.
+fn dividing(state: &EngineState) -> bool {
+    state.execution.continuations.values().any(|record| {
+        matches!(
+            record.payload,
+            ContinuationPayload::CombatDamageAssignment { .. }
+        )
+    })
+}
+
+/// The damage the product's `CombatDamageDealt` assigns, as (source, creature
+/// recipient, amount), sorted. There is exactly one such event.
+fn damage_dealt_to_creatures(
+    product: &BasicLandTransitionProduct,
+) -> Vec<(GameObjectId, GameObjectId, u64)> {
+    let dealt: Vec<_> = product
+        .events
+        .iter()
+        .filter_map(|event| match &event.event {
+            AuthoritativeRuleEventKind::CombatDamageDealt { assignments } => Some(assignments),
+            _ => None,
+        })
+        .collect();
+    let [assignments] = dealt[..] else {
+        panic!("one CombatDamageDealt: {dealt:?}")
+    };
+    let mut dealt: Vec<_> = assignments
+        .iter()
+        .map(|assignment| match assignment.recipient {
+            mtgml_state::DamageRecipientV1::Creature { object } => {
+                (assignment.source, object, assignment.amount)
+            }
+            other => panic!("no player is dealt damage: {other:?}"),
+        })
+        .collect();
+    dealt.sort();
+    dealt
+}
+
+#[test]
+fn a_hill_giant_blocked_by_lions_and_ogre_can_assign_every_division() {
+    // CR 510.1c: a creature blocked by two or more creatures assigns its combat
+    // damage to them divided as its controller chooses. P1's Hill Giant (3/3)
+    // is blocked by P2's Savannah Lions and Gray Ogre, so P1 is asked, once,
+    // for the first of them in the order of P1's opaque ids, how much of the 3
+    // it gets, which is any of 0, 1, 2 and 3; the other gets what is left.
+    let fight = giant_blocked_by(1);
+    let request = fight.open_the_damage_step();
+    let at_request = fight.game.checkpoint();
+    let state = &at_request.state;
+
+    // Nobody has priority while the damage is divided, and none is dealt yet.
+    assert_eq!(
+        state.core.position,
+        TurnPosition::Combat {
+            step: CombatStep::CombatDamage
+        }
+    );
+    assert_eq!(state.core.priority, PriorityState::None);
+    let combat = state.combat.as_ref().unwrap();
+    assert!(!combat.damage_step_completed);
+    assert_eq!(combat.attackers, vec![fight.giant]);
+    assert_eq!(combat.blockers.len(), 2);
+    assert!(state
+        .card_rules
+        .permanents
+        .permanents
+        .values()
+        .all(|permanent| permanent.marked_damage == 0));
+
+    // The request is P1's alone, one answer, with an amount for the first of
+    // the two blockers in P1's opaque order.
+    assert_eq!(request.visibility, DecisionVisibility::ActingPlayerOnly);
+    assert_eq!(request.decision_domain_v2, DecisionDomainV2::ChooseOne);
+    assert_eq!(fight.blockers.len(), 2);
+    assert_eq!(
+        fight.game.offered(),
+        fight.offered_for(state, fight.blockers[0], 3)
+    );
+    assert_eq!(fight.game.endpoint(P2).visible_decision().unwrap(), None);
+
+    // The division waits in a continuation that names P1, the attacker and both
+    // blockers, in P1's opaque order, with nothing answered.
+    let [(_, record)] = state.execution.continuations.iter().collect::<Vec<_>>()[..] else {
+        panic!("one continuation")
+    };
+    assert_eq!(record.created_at_revision, state.revision);
+    assert_eq!(
+        record.payload,
+        ContinuationPayload::CombatDamageAssignment {
+            player: P1,
+            pending_attackers: vec![fight.giant],
+            pending_blockers: fight.blockers.clone(),
+            assigned: BTreeMap::new(),
+        }
+    );
+    assert_eq!(
+        state
+            .execution
+            .pending_decision
+            .as_ref()
+            .unwrap()
+            .continuation_id,
+        Some(record.id)
+    );
+
+    // Every one of the four amounts is an answer the game takes, and asks
+    // nothing more: the last blocker gets the rest.
+    for amount in 0..=3 {
+        fight.game.controller.restore(at_request.clone()).unwrap();
+        fight.assign(amount);
+        let after = fight.game.state();
+        assert!(!dividing(&after), "{amount}");
+        assert!(after.combat.as_ref().unwrap().damage_step_completed);
+        assert_ne!(
+            fight.game.pending().1.purpose,
+            DecisionPurposeV4::CombatDamageAssignment,
+            "{amount}"
+        );
+    }
+}
+
+#[test]
+fn each_division_gives_the_expected_deaths() {
+    // CR 510.1c, 510.2, 704.5g: Hill Giant (3/3) is blocked by Savannah Lions
+    // (2/1) and Gray Ogre (2/2) and divides its 3 damage between them as
+    // (to the Lions, to the Ogre). The two deal the Giant 4, which is lethal in
+    // every division. What the Giant gives each of them is lethal to the Lions
+    // from 1 and to the Ogre from 2.
+    //
+    // For each division: the damage marked on the Lions and on the Ogre when it
+    // survives, and none when it dies.
+    type Survivor = Option<u64>;
+    let cases: [((u64, u64), Survivor, Survivor); 4] = [
+        ((0, 3), Some(0), None),
+        ((1, 2), None, None),
+        ((2, 1), None, Some(1)),
+        ((3, 0), None, Some(0)),
+    ];
+    for ((to_lions, to_ogre), lions_survives, ogre_survives) in cases {
+        let fight = giant_blocked_by(1);
+        let [lions] = fight.lions[..] else {
+            unreachable!()
+        };
+        let (giant, ogre) = (fight.giant, fight.ogre);
+        let request = fight.open_the_damage_step();
+        let before = fight.game.state();
+        let first = fight.blockers[0];
+        let to_first = if first == lions { to_lions } else { to_ogre };
+        let answer = damage_answer(&request, to_first);
+        let (product, observed) = product_and_observations(&before, answer.clone());
+        let lives = before.core.players.clone();
+
+        let (actor, step) = fight.game.submit(answer);
+        assert_eq!(actor, P1, "{to_lions}/{to_ogre}");
+        assert_eq!(step.observed_events, observed[&P1]);
+        let answered = fight.game.state();
+        assert_eq!(answered, product.next_state);
+        assert!(!dividing(&answered));
+        assert!(answered.combat.as_ref().unwrap().damage_step_completed);
+        // Only creatures are dealt damage: nobody loses life.
+        assert_eq!(answered.core.players, lives);
+
+        // One event holds the whole assignment: the Giant's division, whose
+        // zero amounts are not assignments, and the damage of the blockers.
+        let mut expected = vec![
+            (giant, lions, to_lions),
+            (giant, ogre, to_ogre),
+            (lions, giant, 2),
+            (ogre, giant, 2),
+        ];
+        expected.retain(|(_, _, amount)| *amount > 0);
+        expected.sort();
+        assert_eq!(damage_dealt_to_creatures(&product), expected);
+
+        // In the division (1, 2) both of P2's creatures die together, so P2
+        // orders its two cards (CR 404.3) and P1 is not asked: it loses only
+        // the Giant. The creatures die with the answer to that request, with
+        // the damage they were dealt on them until then.
+        if (to_lions, to_ogre) == (1, 2) {
+            let (asked, next) = fight.game.pending();
+            assert_eq!(
+                (asked, &next.purpose),
+                (P2, &DecisionPurposeV4::SbaGraveyardOrder)
+            );
+            assert_eq!(fight.game.endpoint(P1).visible_decision().unwrap(), None);
+            assert_eq!(next.candidates.len(), 2);
+            assert_eq!(
+                [giant, lions, ogre].map(|creature| marked(&answered, creature)),
+                [4, 1, 2]
+            );
+            let wanted: Vec<_> = next
+                .candidates
+                .iter()
+                .map(|candidate| match candidate.intent {
+                    CandidateIntent::SelectObject { object } => object,
+                    _ => unreachable!(),
+                })
+                .collect();
+            fight.game.submit(order_answer(&next, &wanted));
+        }
+        let after = fight.game.state();
+        assert!(after.execution.continuations.is_empty());
+        let (asked, next) = fight.game.pending();
+        assert_eq!(
+            (asked, next.purpose),
+            (P1, DecisionPurposeV4::PriorityAction),
+            "{to_lions}/{to_ogre}"
+        );
+
+        // The Giant is dealt 4 in every division, and dies.
+        assert!(!after.zones.objects.contains_key(&giant));
+        for (creature, survives) in [(lions, lions_survives), (ogre, ogre_survives)] {
+            match survives {
+                Some(damage) => {
+                    assert_eq!(
+                        after.zones.locations[&creature].zone,
+                        ZoneKind::Battlefield,
+                        "{to_lions}/{to_ogre}"
+                    );
+                    assert_eq!(marked(&after, creature), damage, "{to_lions}/{to_ogre}");
+                }
+                None => assert!(
+                    !after.zones.objects.contains_key(&creature),
+                    "{to_lions}/{to_ogre}"
+                ),
+            }
+        }
+        assert_eq!(graveyard_of(&after, P1).len(), 1);
+        let p2_dead = usize::from(lions_survives.is_none()) + usize::from(ogre_survives.is_none());
+        assert_eq!(graveyard_of(&after, P2).len(), p2_dead);
+    }
+}
+
+#[test]
+fn a_division_that_runs_out_asks_for_no_more() {
+    // CR 510.1c: the Giant's 3 damage is blocked by two Savannah Lions and a
+    // Gray Ogre. Giving all 3 to the first blocker leaves nothing for the
+    // others, so they are not asked: each is assigned 0.
+    let fight = giant_blocked_by(2);
+    let request = fight.open_the_damage_step();
+    let before = fight.game.state();
+    assert_eq!(fight.blockers.len(), 3);
+    let first = fight.blockers[0];
+    assert_eq!(fight.game.offered(), fight.offered_for(&before, first, 3));
+    let answer = damage_answer(&request, 3);
+    let (product, _) = product_and_observations(&before, answer.clone());
+
+    fight.game.submit(answer);
+    let after = fight.game.state();
+    assert_eq!(after, product.next_state);
+    // Nothing more is asked: the division is over and P1 has priority.
+    assert!(after.execution.continuations.is_empty());
+    let (asked, next) = fight.game.pending();
+    assert_eq!(
+        (asked, next.purpose),
+        (P1, DecisionPurposeV4::PriorityAction)
+    );
+
+    // The first blocker is assigned all 3, the others nothing; each of the
+    // three deals the Giant its own 2.
+    let mut expected = vec![(fight.giant, first, 3)];
+    expected.extend(
+        fight
+            .blockers
+            .iter()
+            .map(|blocker| (*blocker, fight.giant, 2)),
+    );
+    expected.sort();
+    assert_eq!(damage_dealt_to_creatures(&product), expected);
+    assert!(!after.zones.objects.contains_key(&first));
+    for other in &fight.blockers[1..] {
+        assert_eq!(after.zones.locations[other].zone, ZoneKind::Battlefield);
+        assert_eq!(marked(&after, *other), 0);
+    }
+    assert!(!after.zones.objects.contains_key(&fight.giant));
+}
+
+#[test]
+fn a_restored_partial_division_continues_identically() {
+    // The Giant's 3 damage is blocked by two Savannah Lions and a Gray Ogre.
+    // P1 gives 1 to the first, which leaves 2 for the other two, and is asked
+    // for the second.
+    let fight = giant_blocked_by(2);
+    let game = &fight.game;
+    fight.open_the_damage_step();
+    let at_first = game.checkpoint();
+    fight.assign(1);
+    let half = game.checkpoint();
+
+    // The half-divided damage names who has been answered and who is asked
+    // next, and the revision it was created at is the state's less the answers.
+    let state = &half.state;
+    assert_eq!(
+        damage_division(state),
+        (
+            P1,
+            vec![fight.giant],
+            fight.blockers[1..].to_vec(),
+            BTreeMap::from([(fight.blockers[0], 1)])
+        )
+    );
+    assert_eq!(
+        state
+            .execution
+            .continuations
+            .values()
+            .next()
+            .unwrap()
+            .created_at_revision
+            .0,
+        state.revision.0 - 1
+    );
+    assert_eq!(
+        game.offered(),
+        fight.offered_for(state, fight.blockers[1], 2)
+    );
+
+    fight.assign(1);
+    let divided = game.checkpoint();
+    // 1, 1 and the 1 that is left: both Lions die, and P2 orders its two.
+    assert_eq!(
+        game.pending().1.purpose,
+        DecisionPurposeV4::SbaGraveyardOrder
+    );
+
+    // The checkpoint with the whole division pending restores the request and
+    // its continuation, and the same answers lead to the same checkpoints.
+    game.controller.restore(at_first.clone()).unwrap();
+    assert_eq!(game.checkpoint(), at_first);
+    assert_eq!(
+        game.pending().1.purpose,
+        DecisionPurposeV4::CombatDamageAssignment
+    );
+    fight.assign(1);
+    assert_eq!(game.checkpoint(), half);
+
+    // So does the half-divided one.
+    game.controller.restore(half.clone()).unwrap();
+    assert_eq!(game.checkpoint(), half);
+    assert_eq!(game.pending().0, P1);
+    fight.assign(1);
+    assert_eq!(game.checkpoint(), divided);
+
+    // The whole game, the division included, replays to the same checkpoint.
+    let report = game
+        .controller
+        .execute_replay(game.controller.export_replay().unwrap())
+        .unwrap();
+    assert_eq!(report.final_checkpoint, divided);
+}
+
+/// `state` with `edit` applied to its combat damage assignment.
+fn forged_division(
+    state: &EngineState,
+    edit: impl FnOnce(
+        &mut PlayerId,
+        &mut Vec<GameObjectId>,
+        &mut Vec<GameObjectId>,
+        &mut BTreeMap<GameObjectId, u64>,
+    ),
+) -> EngineState {
+    let mut forged = state.clone();
+    let record = forged.execution.continuations.values_mut().next().unwrap();
+    let ContinuationPayload::CombatDamageAssignment {
+        player,
+        pending_attackers,
+        pending_blockers,
+        assigned,
+    } = &mut record.payload
+    else {
+        unreachable!()
+    };
+    edit(player, pending_attackers, pending_blockers, assigned);
+    forged
+}
+
+#[test]
+fn a_forged_partial_division_is_refused() {
+    let fight = giant_blocked_by(2);
+    let game = &fight.game;
+    fight.open_the_damage_step();
+    let at_first = game.checkpoint();
+    fight.assign(1);
+    let half = game.checkpoint();
+    let [b0, b1, b2] = fight.blockers[..] else {
+        unreachable!()
+    };
+    let refused = |what: &str, reached: &EnvironmentCheckpointV8, forged: EngineState| {
+        let before = game.checkpoint();
+        assert!(
+            restore_state(game, reached, forged).is_err(),
+            "restored: {what}"
+        );
+        assert_eq!(game.checkpoint(), before, "{what}");
+    };
+
+    // The states as played restore.
+    restore_state(game, &at_first, at_first.state.clone()).unwrap();
+    restore_state(game, &half, half.state.clone()).unwrap();
+
+    // CR 510.1c: all of the attacker's damage is divided, none more. An amount
+    // above what is left is refused, however it is placed.
+    refused(
+        "an amount above the damage the attacker has",
+        &half,
+        forged_division(&half.state, |_, _, _, assigned| {
+            assigned.insert(b0, 4);
+        }),
+    );
+    refused(
+        "two amounts that add up to more than the attacker has",
+        &half,
+        forged_division(&half.state, |_, _, pending, assigned| {
+            pending.remove(0);
+            assigned.insert(b1, 3);
+        }),
+    );
+    refused(
+        "an amount that leaves nothing, with blockers still to ask",
+        &half,
+        forged_division(&half.state, |_, _, _, assigned| {
+            assigned.insert(b0, 3);
+        }),
+    );
+    refused(
+        "an answer for a blocker that is not asked before the first",
+        &half,
+        forged_division(&half.state, |_, _, pending, assigned| {
+            pending.clear();
+            pending.push(b0);
+            assigned.clear();
+            assigned.insert(b1, 1);
+        }),
+    );
+    refused(
+        "an answer for the blocker that gets the rest",
+        &half,
+        forged_division(&half.state, |_, _, pending, assigned| {
+            pending.truncate(1);
+            assigned.insert(b2, 1);
+        }),
+    );
+    refused(
+        "an answer for a creature that does not block",
+        &half,
+        forged_division(&half.state, |_, _, _, assigned| {
+            assigned.insert(fight.giant, 1);
+        }),
+    );
+
+    // The record is made by the transition that opens the damage step and
+    // gains one answer with each revision after it, so the revision it was
+    // created at is the state's, less the answers. Every other value is
+    // refused.
+    for (reached, answered) in [(&at_first, 0), (&half, 1)] {
+        let created = |state: &EngineState| {
+            state
+                .execution
+                .continuations
+                .values()
+                .next()
+                .unwrap()
+                .created_at_revision
+        };
+        assert_eq!(
+            created(&reached.state).0,
+            reached.state.revision.0 - answered
+        );
+        for revision in
+            (0..=reached.state.revision.0).filter(|revision| *revision != created(&reached.state).0)
+        {
+            let mut forged = reached.state.clone();
+            forged
+                .execution
+                .continuations
+                .values_mut()
+                .next()
+                .unwrap()
+                .created_at_revision = StateRevision(revision);
+            refused(
+                &format!("{answered} answered, created at revision {revision}"),
+                reached,
+                forged,
+            );
+        }
+    }
+
+    // The blockers asked are the first attacker's, in P1's opaque order.
+    refused(
+        "the blockers asked in another order",
+        &at_first,
+        forged_division(&at_first.state, |_, _, pending, _| pending.swap(0, 1)),
+    );
+    refused(
+        "the blockers asked in reverse",
+        &at_first,
+        forged_division(&at_first.state, |_, _, pending, _| pending.reverse()),
+    );
+    refused(
+        "the remaining blockers swapped",
+        &half,
+        forged_division(&half.state, |_, _, pending, _| pending.swap(0, 1)),
+    );
+    refused(
+        "a blocker that is asked and answered",
+        &half,
+        forged_division(&half.state, |_, _, pending, _| pending.insert(0, b0)),
+    );
+    refused(
+        "a blocker that is never asked",
+        &at_first,
+        forged_division(&at_first.state, |_, _, pending, _| pending.truncate(2)),
+    );
+    refused(
+        "nobody left to ask",
+        &half,
+        forged_division(&half.state, |_, _, pending, _| pending.clear()),
+    );
+    refused(
+        "no attacker to divide",
+        &at_first,
+        forged_division(&at_first.state, |_, attackers, _, _| attackers.clear()),
+    );
+    refused(
+        "an attacker twice",
+        &at_first,
+        forged_division(&at_first.state, |_, attackers, _, _| {
+            attackers.push(attackers[0]);
+        }),
+    );
+    refused(
+        "the defending player as the one who divides",
+        &at_first,
+        forged_division(&at_first.state, |player, _, _, _| *player = P2),
+    );
+
+    // The damage has not been dealt while it is divided, and nobody has
+    // priority.
+    for reached in [&at_first, &half] {
+        let mut dealt = reached.state.clone();
+        dealt.combat.as_mut().unwrap().damage_step_completed = true;
+        refused("a division with the damage already dealt", reached, dealt);
+        let mut priority = reached.state.clone();
+        priority.core.priority = PriorityState::HeldBy {
+            player: P1,
+            consecutive_passes: 0,
+        };
+        refused("priority during the division", reached, priority);
+        let mut step = reached.state.clone();
+        step.core.position = TurnPosition::Combat {
+            step: CombatStep::EndOfCombat,
+        };
+        refused("the division in another step", reached, step);
+    }
+    // The request is the one the continuation calls for.
+    let tampered =
+        |reached: &EnvironmentCheckpointV8,
+         edit: &dyn Fn(&mut mtgml_decision::AuthoritativeDecisionRequest)| {
+            let mut forged = reached.state.clone();
+            edit(forged.execution.pending_decision.as_mut().unwrap());
+            forged
+        };
+    refused(
+        "the request of the first blocker after it was answered",
+        &half,
+        tampered(&half, &|request| {
+            request.candidates = at_first
+                .state
+                .execution
+                .pending_decision
+                .as_ref()
+                .unwrap()
+                .candidates
+                .clone();
+        }),
+    );
+    refused(
+        "a request without its largest amount",
+        &at_first,
+        tampered(&at_first, &|request| {
+            request.candidates.pop();
+        }),
+    );
+    refused(
+        "a request with an amount too many",
+        &at_first,
+        tampered(&at_first, &|request| {
+            let mut last = request.candidates.last().unwrap().clone();
+            last.candidate_id = CandidateIdV1(request.candidates.len() as u32);
+            if let (
+                CandidateIntent::AssignCombatDamage { amount, .. },
+                mtgml_decision::EngineCandidateBinding::AssignCombatDamage {
+                    amount: bound, ..
+                },
+            ) = (&mut last.visible_intent, &mut last.trusted_binding)
+            {
+                *amount += 1;
+                *bound += 1;
+            }
+            request.candidates.push(last);
+        }),
+    );
+    refused(
+        "a request for the blocker after the first",
+        &at_first,
+        tampered(&at_first, &|request| {
+            for candidate in &mut request.candidates {
+                if let (
+                    CandidateIntent::AssignCombatDamage { recipient, .. },
+                    mtgml_decision::EngineCandidateBinding::AssignCombatDamage {
+                        recipient: bound,
+                        ..
+                    },
+                ) = (
+                    &mut candidate.visible_intent,
+                    &mut candidate.trusted_binding,
+                ) {
+                    *recipient = opaque_of(&at_first.state, P1, b1);
+                    *bound = b1;
+                }
+            }
+        }),
+    );
+    refused(
+        "a public request",
+        &half,
+        tampered(&half, &|request| {
+            request.visibility = DecisionVisibility::Public
+        }),
+    );
+    refused(
+        "a request of the defending player",
+        &half,
+        tampered(&half, &|request| request.actor = P2),
+    );
+    refused(
+        "a request without its continuation",
+        &half,
+        tampered(&half, &|request| request.continuation_id = None),
+    );
+    refused(
+        "a request for several answers",
+        &half,
+        tampered(&half, &|request| {
+            request.decision_domain_v2 = DecisionDomainV2::ChooseMany {
+                minimum: 0,
+                maximum: 2,
+            }
+        }),
+    );
+    refused(
+        "a priority request in the middle of the division",
+        &half,
+        tampered(&half, &|request| {
+            request.purpose = DecisionPurposeV4::PriorityAction
+        }),
+    );
+
+    // A division needs the rule, and is never part of a closed episode.
+    let admission = creature_game_admission();
+    let running = EpisodeStatus::Running;
+    mtgml_rules::validate_magic_pending_request(&admission, &half.state, &running).unwrap();
+    assert!(mtgml_rules::validate_magic_pending_request(
+        &common::game_admission(),
+        &half.state,
+        &running
+    )
+    .is_err());
+    let closed = EpisodeStatus::Truncated {
+        reason: TruncationReason::ExternalStop,
+        players: Vec::new(),
+    };
+    assert!(mtgml_rules::validate_magic_pending_request(&admission, &half.state, &closed).is_err());
+}
+
+#[test]
+fn a_half_divided_damage_is_invisible_to_the_defender() {
+    // CR 510.1c: P1 divides the Giant's damage one blocker at a time. P2 sees
+    // nothing of it, not the request, not an answer, and not what is left: the
+    // damage is not shown to any player yet.
+    let fight = giant_blocked_by(2);
+    let game = &fight.game;
+    fight.open_the_damage_step();
+    let information = game.information_bytes(P2);
+    let observation = game
+        .endpoint(P2)
+        .information_state()
+        .unwrap()
+        .current_observation;
+    let seen = game.seen(P2);
+    assert_eq!(game.endpoint(P2).visible_decision().unwrap(), None);
+
+    let (_, step) = fight.assign(1);
+    assert!(step.observed_events.is_empty());
+    assert_eq!(game.pending().0, P1, "P1 divides on");
+    assert_eq!(game.information_bytes(P2), information);
+    assert_eq!(
+        game.endpoint(P2)
+            .information_state()
+            .unwrap()
+            .current_observation,
+        observation
+    );
+    assert_eq!(game.seen(P2), seen);
+    assert_eq!(game.endpoint(P2).visible_decision().unwrap(), None);
+
+    // Positive control: the same comparison does see what is public. The last
+    // answer makes both Lions die together, so P2 is asked to arrange its two
+    // cards, which both players see; and when it has, they see the deaths.
+    fight.assign(1);
+    assert_eq!(game.pending().0, P2);
+    assert_ne!(game.information_bytes(P2), information);
+    assert_ne!(game.seen(P2), seen);
+    let (_, request) = game.pending();
+    let wanted: Vec<_> = request
+        .candidates
+        .iter()
+        .map(|candidate| match candidate.intent {
+            CandidateIntent::SelectObject { object } => object,
+            _ => unreachable!(),
+        })
+        .collect();
+    let (_, step) = game.submit(order_answer(&request, &wanted));
+    assert!(!step.observed_events.is_empty());
+}

@@ -582,6 +582,28 @@ defending player is asked about their untapped creatures one at a time) is:
 order of the defender's opaque identities, so it is not sorted. `declared` is
 ascending by blocker `GameObjectId`; an answer of no block is `null`.
 
+The combat-damage-assignment continuation payload (CR 510.1c; it exists while
+the attacking player divides the damage of an attacker blocked by two or more
+creatures, one blocker at a time) is:
+
+```text
+[
+  "combat_damage_assignment",
+  player,
+  pending_attackers[game_object_id],
+  pending_blockers[game_object_id],
+  assigned[[blocker, amount]]
+]
+```
+
+`pending_attackers` and `pending_blockers` keep the order the creatures are
+asked in, which is the order of the attacking player's opaque identities, so
+they are not sorted. `assigned` is ascending by blocker `GameObjectId` and holds
+only the amounts that were answered: the last blocker's share of what is left
+and the nothing after the damage has run out are forced, and never stored. The
+amount is an unsigned integer. The continuation's `created_at_revision` is the
+state's revision less the number of entries in `assigned`.
+
 ## `random_v1`
 
 ```text

@@ -131,6 +131,58 @@ class PlayerDecisionRequestV4Tests(unittest.TestCase):
             with self.assertRaises(WireError):
                 PlayerDecisionRequestV4.from_wire(edited)
 
+    def test_combat_damage_assignment_offers_each_amount_for_one_blocker_to_its_actor_only(
+        self,
+    ) -> None:
+        path = ROOT / "schemas/examples/player-decision-request-v4-combat-damage-assignment.json"
+        value = json.loads(path.read_text(encoding="utf-8"))
+        request = PlayerDecisionRequestV4.from_wire(value)
+        self.assertEqual(request.purpose.kind, "combat_damage_assignment")
+        self.assertEqual(request.to_wire(), value)
+        # One attacker, one blocker, each amount from 0 to the damage left.
+        self.assertEqual(
+            [
+                (item.intent.attacker_id, item.intent.recipient_id, item.intent.amount)
+                for item in request.candidates
+            ],
+            [(3, 7, 0), (3, 7, 1), (3, 7, 2), (3, 7, 3)],
+        )
+
+        def swap_amounts(item: dict[str, object]) -> None:
+            first, second = item["candidates"][1]["intent"], item["candidates"][2]["intent"]  # type: ignore[index]
+            first["amount"], second["amount"] = second["amount"], first["amount"]
+
+        for edit in (
+            lambda item: item.update(visibility="public"),
+            lambda item: item["candidates"][0].update(intent={"kind": "pass_priority"}),
+            lambda item: item["candidates"][0]["intent"].pop("amount"),
+            lambda item: item["candidates"][0]["intent"].pop("recipient"),
+            lambda item: item["candidates"][0]["intent"].update(amount=1),
+            lambda item: item["candidates"][0]["intent"].update(amount="01"),
+            lambda item: item["candidates"][0]["intent"].update(amount=None),
+            lambda item: item["candidates"][0]["intent"].update(attacker=None),
+            lambda item: item["candidates"][1]["intent"].update(amount="0"),
+            lambda item: item.update(
+                decision_domain_v2={"kind": "choose_many", "minimum": 1, "maximum": 1}
+            ),
+            swap_amounts,
+        ):
+            edited = copy.deepcopy(value)
+            edit(edited)
+            with self.assertRaises(WireError):
+                PlayerDecisionRequestV4.from_wire(edited)
+
+        # Amounts compare as numbers, not as text: 10 comes after 9.
+        wide = copy.deepcopy(value)
+        wide["candidates"] = wide["candidates"][:2]
+        wide["candidates"][0]["intent"]["amount"] = "9"
+        wide["candidates"][1]["intent"]["amount"] = "10"
+        PlayerDecisionRequestV4.from_wire(wide)
+        wide["candidates"].reverse()
+        wide["candidates"][0]["candidate_id"], wide["candidates"][1]["candidate_id"] = 0, 1
+        with self.assertRaises(WireError):
+            PlayerDecisionRequestV4.from_wire(wide)
+
     def test_cost_route_request_must_be_actor_only(self) -> None:
         raw = json.loads(
             (ROOT / "schemas/examples/player-decision-request-v4-cost-route.json").read_text(

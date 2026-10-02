@@ -48,9 +48,7 @@ The following are not supported and fail closed:
   check over the whole declaration, which the one-creature-at-a-time encoding
   cannot express and would need a final validation of its own;
 - abilities that trigger on blockers being declared (CR 509.1i, 509.2a);
-- blocking a planeswalker or a battle, and more than two players;
-- combat damage of an attacker with two or more blockers (see
-  `rules/combat-damage`).
+- blocking a planeswalker or a battle, and more than two players.
 
 ## State and identity model
 

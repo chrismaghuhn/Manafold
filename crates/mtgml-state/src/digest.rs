@@ -539,6 +539,22 @@ fn continuation_value(value: &ContinuationRecord) -> Result<Value, crate::StateD
                 ])
             })),
         ]),
+        ContinuationPayload::CombatDamageAssignment {
+            player,
+            pending_attackers,
+            pending_blockers,
+            assigned,
+        } => array([
+            text("combat_damage_assignment"),
+            u(player.0),
+            array(pending_attackers.iter().map(|attacker| u(attacker.0))),
+            array(pending_blockers.iter().map(|blocker| u(blocker.0))),
+            array(
+                assigned
+                    .iter()
+                    .map(|(blocker, amount)| array([u(blocker.0), u(*amount)])),
+            ),
+        ]),
     };
     Ok(array([
         u(value.id.0),
@@ -797,6 +813,7 @@ fn decision_purpose_value(value: &DecisionPurposeV4) -> Value {
         DecisionPurposeV4::PriorityAction => array([text("priority_action")]),
         DecisionPurposeV4::AttackerDeclaration => array([text("attacker_declaration")]),
         DecisionPurposeV4::BlockerDeclaration => array([text("blocker_declaration")]),
+        DecisionPurposeV4::CombatDamageAssignment => array([text("combat_damage_assignment")]),
         DecisionPurposeV4::HandSizeDiscard => array([text("hand_size_discard")]),
         DecisionPurposeV4::SbaGraveyardOrder => array([text("sba_graveyard_order")]),
         DecisionPurposeV4::CastCostRoute => array([text("cast_cost_route")]),
@@ -917,6 +934,16 @@ fn candidate_intent_value(value: &CandidateIntent) -> Value {
             u(blocker.0),
             optional(attacker.map(|attacker| u(attacker.0))),
         ]),
+        CandidateIntent::AssignCombatDamage {
+            attacker,
+            recipient,
+            amount,
+        } => array([
+            text("assign_combat_damage"),
+            u(attacker.0),
+            u(recipient.0),
+            u(*amount),
+        ]),
     }
 }
 
@@ -987,6 +1014,16 @@ fn candidate_binding_value(value: &EngineCandidateBinding) -> Value {
             text("declare_block"),
             u(blocker.0),
             optional(attacker.map(|attacker| u(attacker.0))),
+        ]),
+        EngineCandidateBinding::AssignCombatDamage {
+            attacker,
+            recipient,
+            amount,
+        } => array([
+            text("assign_combat_damage"),
+            u(attacker.0),
+            u(recipient.0),
+            u(*amount),
         ]),
     }
 }
@@ -1658,5 +1695,104 @@ mod block_declaration_codec_tests {
         assert_ne!(intent(None), intent(Some(0)));
         assert_ne!(binding(None), binding(Some(0)));
         assert_eq!(binding(Some(3)), array([text("declare_block"), u(5), u(3)]));
+    }
+}
+
+#[cfg(test)]
+mod combat_damage_assignment_codec_tests {
+    use super::*;
+    use mtgml_model::{GameObjectId, OpaqueObjectId, StateRevision};
+
+    fn division(
+        player: u64,
+        attackers: &[u64],
+        blockers: &[u64],
+        assigned: &[(u64, u64)],
+    ) -> Value {
+        continuation_value(&ContinuationRecord {
+            id: mtgml_model::ContinuationId(1),
+            created_at_revision: StateRevision(0),
+            payload: ContinuationPayload::CombatDamageAssignment {
+                player: mtgml_model::PlayerId(player),
+                pending_attackers: attackers.iter().copied().map(GameObjectId).collect(),
+                pending_blockers: blockers.iter().copied().map(GameObjectId).collect(),
+                assigned: assigned
+                    .iter()
+                    .map(|(blocker, amount)| (GameObjectId(*blocker), *amount))
+                    .collect(),
+            },
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn the_combat_damage_assignment_digest_binds_every_field() {
+        let variants = [
+            division(1, &[3], &[5, 6], &[]),
+            division(2, &[3], &[5, 6], &[]),
+            division(1, &[4], &[5, 6], &[]),
+            division(1, &[3, 4], &[5, 6], &[]),
+            division(1, &[4, 3], &[5, 6], &[]),
+            division(1, &[3], &[6, 5], &[]),
+            division(1, &[3], &[6], &[(5, 0)]),
+            division(1, &[3], &[6], &[(5, 1)]),
+            division(1, &[3], &[6], &[(5, 2)]),
+            division(1, &[3], &[5], &[(6, 1)]),
+            division(1, &[3], &[], &[(5, 1), (6, 1)]),
+            division(1, &[3], &[], &[(5, 1), (6, 2)]),
+            division(1, &[3], &[], &[(5, 2), (6, 1)]),
+        ];
+        for (index, variant) in variants.iter().enumerate() {
+            for (other, other_variant) in variants.iter().enumerate().skip(index + 1) {
+                assert_ne!(variant, other_variant, "{index} / {other}");
+            }
+        }
+        // The pair is [blocker, amount], and the amount is a number.
+        assert_eq!(
+            division(1, &[3], &[6], &[(5, 2)]),
+            array([
+                u(1),
+                u(0),
+                array([
+                    text("combat_damage_assignment"),
+                    u(1),
+                    array([u(3)]),
+                    array([u(6)]),
+                    array([array([u(5), u(2)])]),
+                ])
+            ])
+        );
+    }
+
+    #[test]
+    fn an_amount_of_combat_damage_has_its_own_purpose_and_candidate_forms() {
+        assert_eq!(
+            decision_purpose_value(&DecisionPurposeV4::CombatDamageAssignment),
+            array([text("combat_damage_assignment")])
+        );
+        let intent = |amount: u64| {
+            candidate_intent_value(&CandidateIntent::AssignCombatDamage {
+                attacker: OpaqueObjectId(7),
+                recipient: OpaqueObjectId(8),
+                amount,
+            })
+        };
+        let binding = |amount: u64| {
+            candidate_binding_value(&EngineCandidateBinding::AssignCombatDamage {
+                attacker: GameObjectId(3),
+                recipient: GameObjectId(5),
+                amount,
+            })
+        };
+        assert_eq!(
+            intent(2),
+            array([text("assign_combat_damage"), u(7), u(8), u(2)])
+        );
+        assert_eq!(
+            binding(2),
+            array([text("assign_combat_damage"), u(3), u(5), u(2)])
+        );
+        assert_ne!(intent(0), intent(1));
+        assert_ne!(binding(0), binding(1));
     }
 }

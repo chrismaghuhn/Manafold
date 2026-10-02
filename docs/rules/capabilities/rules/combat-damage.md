@@ -5,12 +5,12 @@
 **Owner role:** `combat`
 **Authority snapshots:** WotC Comprehensive Rules snapshot `wotc-cr-2026-09-25-txt-20260925-sha256-8d860e451f20f38865b725b42d82feb714c725373dd8f3b32b8652b3eeb070ca`, rules 506.2, 506.4, 508.1, 508.1f, 508.8, 509.1a, 509.1h, 509.2, 510.1a, 510.1b, 510.1c, 510.1d, 510.2, 510.3, 511.3. Design: `docs/superpowers/specs/2026-10-01-vanilla-creatures-design.md` sections 3 to 5.
 
-Covered for attackers that are unblocked or blocked by at most one creature, in
-two-player games of admitted lands and vanilla creatures, by the listed rules and
-production-endpoint cases. An attacker blocked by two or more creatures has to
-divide its damage among them (CR 510.1c); that division is not supported yet,
-and the combat damage step of such an attacker fails closed. No certification,
-card, deck, format, or playability support is claimed.
+Covered for unblocked attackers and attackers blocked by one or more creatures,
+in two-player games of admitted lands and vanilla creatures, by the listed rules
+and production-endpoint cases. An attacker blocked by two or more creatures
+divides its damage among them as its controller chooses (CR 510.1c): the
+controller is asked, one blocker at a time. No certification, card, deck, format,
+or playability support is claimed.
 
 ## Supported scope
 
@@ -24,7 +24,9 @@ power, and all of it is dealt simultaneously (CR 510.1a, 510.2):
 1. An unblocked attacker deals its damage to the defending player
    (CR 510.1b), who loses that much life (see `rules/damage-and-life`).
 2. An attacker with exactly one blocker deals all of its damage to that
-   blocker (CR 510.1c).
+   blocker (CR 510.1c). An attacker with two or more blockers divides its damage
+   among them as its controller chooses (CR 510.1c): see "Decisions and
+   ordering".
 3. A blocked attacker with no blocker left deals no damage (CR 510.1c, 509.1h).
 4. A blocker deals all of its damage to the attacker it blocks (CR 510.1d).
 5. A creature that would assign 0 or less damage assigns none (CR 510.1a).
@@ -39,12 +41,6 @@ step ends (CR 511.3).
 ## Explicit exclusions
 
 The following are not supported and fail closed:
-- an attacker blocked by two or more creatures: the pass that opens the combat
-  damage step is refused with `TurnProgressUnsupported`, and nothing changes. A
-  game can reach that state, because declaring such blocks is legal (see
-  `rules/declare-blockers`), but it cannot play on past it until damage can be
-  divided. The division is a decision of the attacker's controller, one per
-  blocker, and is not part of this slice;
 - first strike, double strike, trample and every other keyword;
 - damage prevention and replacement;
 - more than two players.
@@ -78,9 +74,23 @@ overlapped these events and is deleted. There are no replacement points.
 
 ## Decisions and ordering
 
-No decision is involved in the damage step: with one blocker, the division of
-CR 510.1c is the only legal one. Whether a creature attacks is the attacker
-declaration's decision, and whether it blocks is the block declaration's.
+With no blocker or one blocker, no decision is involved in the damage step: the
+damage goes to the defending player, or all of it to the blocker (CR 510.1b,
+510.1c). An attacker with power 1 or more and two or more blockers has its
+controller divide its damage: a `CombatDamageAssignment` request (`ChooseOne`,
+the active player only) is asked for each such attacker in turn, in the order of
+the active player's opaque ids, and within an attacker for each blocker in the
+same order, with one `AssignCombatDamage { attacker, recipient, amount }`
+candidate for each amount from 0 to the damage left. A blocker is asked only
+while two or more blockers of the attacker have no amount and damage is left;
+otherwise the last blocker is assigned what is left, and when nothing is left
+each blocker still without an amount is assigned none, and nobody is asked. The
+answers wait in a `CombatDamageAssignment` continuation (answered amounts only,
+`created_at_revision` the state's revision less the answers); the damage of every
+creature is dealt at once with the last answer, in one `CombatDamageDealt`
+(CR 510.2), and the state-based actions follow. Whether a creature attacks is the
+attacker declaration's decision, and whether it blocks is the block
+declaration's.
 
 ## Information and opaque identities
 
@@ -111,7 +121,12 @@ blockers step could have made (see `rules/declare-blockers`). From the combat
 damage step on, a combat with attackers has dealt its damage: the turn-based
 action runs on entering the step, so no game rests there before it, and the end
 of combat step is reached only through it (CR 508.8, 510.1; with no attackers
-the step is skipped). Anything else fails closed, for priority requests too.
+the step is skipped). The one exception is a pending division, which is accepted
+only if its continuation and request are exactly those the battlefield calls for:
+the divided attackers and the blockers still to ask in the active player's opaque
+order, answers the division could have been given (none above the damage left,
+none for a blocker the rules force), the revision it was created at, no priority
+and the damage undealt. Anything else fails closed, for priority requests too.
 
 ## Conformance, property, replay, and performance evidence
 
@@ -120,7 +135,8 @@ the step is skipped). Anything else fails closed, for priority requests too.
   `a_blocked_attacker_and_its_blocker_damage_each_other`,
   `an_unblocked_attacker_still_hits_the_player_while_another_is_blocked`,
   `an_attacker_whose_blocker_is_gone_deals_no_damage`,
-  `two_blockers_on_one_attacker_fail_closed_until_damage_can_be_divided`,
+  `two_divided_attackers_are_asked_one_after_the_other`,
+  `the_damage_dealt_is_the_division_made`,
   `the_vanilla_creatures_have_the_powers_and_toughnesses_the_fights_assume`.
 - Event projection cases in `crates/mtgml-rules/src/events.rs`:
   `combat_damage_to_a_player_must_match_the_life_change`,
@@ -146,11 +162,17 @@ the step is skipped). Anything else fails closed, for priority requests too.
   (two unblocked attackers lower the defender's life by their powers),
   `a_3_3_blocked_by_a_2_1_kills_it_and_survives`,
   `a_2_2_and_a_2_1_that_block_each_other_both_die_one_to_each_graveyard`,
-  `a_restored_combat_after_a_blocker_died_continues_identically` and
-  `a_restored_end_of_combat_has_dealt_the_damage_of_its_attackers`.
+  `a_restored_combat_after_a_blocker_died_continues_identically`,
+  `a_restored_end_of_combat_has_dealt_the_damage_of_its_attackers`,
+  `a_hill_giant_blocked_by_lions_and_ogre_can_assign_every_division`,
+  `each_division_gives_the_expected_deaths`,
+  `a_division_that_runs_out_asks_for_no_more`,
+  `a_restored_partial_division_continues_identically`,
+  `a_forged_partial_division_is_refused` and
+  `a_half_divided_damage_is_invisible_to_the_defender`.
 - Random smoke games in `crates/mtgml-environment/tests/random_smoke.rs`:
   `asymmetric_games_cast_attack_and_end_at_zero_life` plays ten seeded games of a
   creature deck against a land deck, in which creatures attack and unblocked
   combat damage is dealt; every game repeats and replays to the same
-  checkpoint. No smoke game reaches a block: a game of two creature decks needs
-  the division of damage.
+  checkpoint. No smoke game reaches a block yet: a game of two creature decks
+  needs its random players to answer the division of damage.

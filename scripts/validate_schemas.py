@@ -75,6 +75,14 @@ SCHEMA_NEGATIVE_CASES = [
     ),
     (
         "player-decision-request.v4.schema.json",
+        "schemas/negative/player-decision-request-v4-combat-damage-assignment-public.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/negative/player-decision-request-v4-combat-damage-assignment-amount-number.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
         "schemas/negative/player-decision-request-v4-cost-route-normal-with-ordinal.json",
     ),
     (
@@ -315,6 +323,10 @@ SCHEMA_POSITIVE_CASES = [
     (
         "player-decision-request.v4.schema.json",
         "schemas/examples/player-decision-request-v4-blocker-declaration.json",
+    ),
+    (
+        "player-decision-request.v4.schema.json",
+        "schemas/examples/player-decision-request-v4-combat-damage-assignment.json",
     ),
     (
         "player-step.v4.schema.json",

@@ -1796,3 +1796,324 @@ fn a_block_request_asks_about_the_next_creature_and_the_real_attackers() {
         .continuation_id = None;
     assert_eq!(orphan.validate_structure(), Err(PendingCandidateBinding));
 }
+
+/// P1 attacks P2 with object 3, which P2's objects 5 and 6 block, and is in the
+/// combat damage step, dividing the damage of the attacker (CR 510.1c): it is
+/// asked how much of it object 5 is assigned, from 0 to 3. P1 knows 3, 5 and 6
+/// by opaque identities (the object's plus 20); object 4 is P1's and did not
+/// attack.
+fn damage_being_divided() -> EngineState {
+    use mtgml_decision::{AuthoritativeCandidate, CandidateIntent, EngineCandidateBinding};
+    let mut state = blocks_being_declared();
+    let identity = state
+        .perspective_identities
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap();
+    for object in [3, 5, 6] {
+        let (id, opaque) = (
+            GameObjectId(object),
+            mtgml_model::OpaqueObjectId(object + 20),
+        );
+        identity.object_to_opaque.insert(id, opaque);
+        identity.opaque_to_object.insert(opaque, id);
+    }
+    identity.next_opaque_object_id = mtgml_model::OpaqueObjectId(100);
+    identity.next_player_decision_id = PlayerDecisionIdV1(2);
+    state.core.position = mtgml_state::TurnPosition::Combat {
+        step: mtgml_state::CombatStep::CombatDamage,
+    };
+    let combat = state.combat.as_mut().unwrap();
+    combat.blocked_attackers.insert(GameObjectId(3));
+    for blocker in [5, 6] {
+        combat
+            .blockers
+            .insert(GameObjectId(blocker), Some(GameObjectId(3)));
+    }
+    state
+        .execution
+        .continuations
+        .get_mut(&ContinuationId(1))
+        .unwrap()
+        .payload = mtgml_state::ContinuationPayload::CombatDamageAssignment {
+        player: PlayerId(1),
+        pending_attackers: vec![GameObjectId(3)],
+        pending_blockers: vec![GameObjectId(5), GameObjectId(6)],
+        assigned: Default::default(),
+    };
+    let view_sequence = state.knowledge.players[&PlayerId(1)].next_visible_sequence;
+    state.execution.pending_decision = Some(mtgml_decision::AuthoritativeDecisionRequest {
+        decision_id: DecisionId(2),
+        player_decision_id: PlayerDecisionIdV1(1),
+        state_revision: state.revision,
+        view_sequence,
+        actor: PlayerId(1),
+        visibility: mtgml_decision::DecisionVisibility::ActingPlayerOnly,
+        decision_domain_v2: mtgml_decision::DecisionDomainV2::ChooseOne,
+        purpose: mtgml_decision::DecisionPurposeV4::CombatDamageAssignment,
+        parent_player_decision_id: None,
+        continuation_id: Some(ContinuationId(1)),
+        candidates: (0..=3)
+            .map(|amount| AuthoritativeCandidate {
+                candidate_id: CandidateIdV1(amount as u32),
+                visible_intent: CandidateIntent::AssignCombatDamage {
+                    attacker: mtgml_model::OpaqueObjectId(23),
+                    recipient: mtgml_model::OpaqueObjectId(25),
+                    amount,
+                },
+                trusted_binding: EngineCandidateBinding::AssignCombatDamage {
+                    attacker: GameObjectId(3),
+                    recipient: GameObjectId(5),
+                    amount,
+                },
+            })
+            .collect(),
+    });
+    state
+}
+
+fn damage_division(
+    state: &mut EngineState,
+) -> (
+    &mut PlayerId,
+    &mut Vec<GameObjectId>,
+    &mut Vec<GameObjectId>,
+    &mut std::collections::BTreeMap<GameObjectId, u64>,
+) {
+    let record = state
+        .execution
+        .continuations
+        .get_mut(&ContinuationId(1))
+        .unwrap();
+    match &mut record.payload {
+        mtgml_state::ContinuationPayload::CombatDamageAssignment {
+            player,
+            pending_attackers,
+            pending_blockers,
+            assigned,
+        } => (player, pending_attackers, pending_blockers, assigned),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn a_combat_damage_assignment_names_the_attacking_player_and_the_blockers_of_its_attacker() {
+    use mtgml_state::EngineStateError::CombatDamageAssignment;
+    let state = damage_being_divided();
+    state.validate_structure().unwrap();
+    // The request names creatures of its own, which the G0 runtime boundary
+    // does not admit.
+    assert_eq!(
+        state.validate(),
+        Err(mtgml_state::EngineStateError::ProfileDependentDecisionNotAdmitted)
+    );
+
+    let refused = |what: &str, edit: &dyn Fn(&mut EngineState)| {
+        let mut forged = state.clone();
+        edit(&mut forged);
+        assert_eq!(
+            forged.validate_structure(),
+            Err(CombatDamageAssignment),
+            "{what}"
+        );
+    };
+    // CR 510.1c: the attacking player divides the damage.
+    refused("the defending player", &|state| {
+        *damage_division(state).0 = PlayerId(2);
+    });
+    // The attackers are attacking creatures, each once, with one being divided.
+    refused("no attacker", &|state| damage_division(state).1.clear());
+    refused("an attacker that does not attack", &|state| {
+        damage_division(state).1[0] = GameObjectId(4);
+    });
+    refused("an attacker twice", &|state| {
+        let attackers = damage_division(state).1;
+        attackers.push(attackers[0]);
+    });
+    // The blockers asked block the attacker being divided, each once.
+    refused("nobody asked", &|state| damage_division(state).2.clear());
+    refused("a creature that does not block", &|state| {
+        damage_division(state).2[1] = GameObjectId(4);
+    });
+    refused("a creature of the attacking player", &|state| {
+        damage_division(state).2[1] = GameObjectId(3);
+    });
+    refused("a blocker asked twice", &|state| {
+        damage_division(state).2[1] = GameObjectId(5);
+    });
+    refused("a blocker of another attacker", &|state| {
+        let combat = state.combat.as_mut().unwrap();
+        combat.attackers.push(GameObjectId(4));
+        combat.attackers.sort();
+        combat.blocked_attackers.insert(GameObjectId(4));
+        combat
+            .blockers
+            .insert(GameObjectId(6), Some(GameObjectId(4)));
+    });
+    refused("a blocker that is asked and answered", &|state| {
+        damage_division(state).3.insert(GameObjectId(5), 1);
+    });
+    refused("an answer for a creature that does not block", &|state| {
+        damage_division(state).3.insert(GameObjectId(4), 1);
+    });
+    // It belongs to the combat damage step of an attack, before the damage is
+    // dealt, and nobody has priority.
+    refused("another step", &|state| {
+        state.core.position = mtgml_state::TurnPosition::Combat {
+            step: mtgml_state::CombatStep::DeclareBlockers,
+        };
+    });
+    refused("priority", &|state| {
+        state.core.priority = mtgml_state::PriorityState::HeldBy {
+            player: PlayerId(1),
+            consecutive_passes: 0,
+        };
+    });
+    refused("the damage dealt", &|state| {
+        state.combat.as_mut().unwrap().damage_step_completed = true;
+    });
+    refused("no combat", &|state| state.combat = None);
+
+    // A half-divided damage: object 5 has been answered, and 6 is asked next.
+    let mut half = state.clone();
+    {
+        let (_, _, pending, assigned) = damage_division(&mut half);
+        assigned.insert(pending.remove(0), 1);
+    }
+    let request = half.execution.pending_decision.as_mut().unwrap();
+    for candidate in &mut request.candidates {
+        let mtgml_decision::CandidateIntent::AssignCombatDamage { recipient, .. } =
+            &mut candidate.visible_intent
+        else {
+            unreachable!()
+        };
+        *recipient = mtgml_model::OpaqueObjectId(26);
+        let mtgml_decision::EngineCandidateBinding::AssignCombatDamage { recipient, .. } =
+            &mut candidate.trusted_binding
+        else {
+            unreachable!()
+        };
+        *recipient = GameObjectId(6);
+    }
+    half.validate_structure().unwrap();
+    // An answered blocker of an attacker that has not been reached yet is
+    // refused: object 4 attacks too, and is divided after object 3.
+    let mut later = half.clone();
+    let combat = later.combat.as_mut().unwrap();
+    combat.attackers.push(GameObjectId(4));
+    combat.attackers.sort();
+    damage_division(&mut later).1.push(GameObjectId(4));
+    later.validate_structure().unwrap();
+    let combat = later.combat.as_mut().unwrap();
+    combat
+        .blockers
+        .insert(GameObjectId(5), Some(GameObjectId(4)));
+    combat.blocked_attackers.insert(GameObjectId(4));
+    assert_eq!(later.validate_structure(), Err(CombatDamageAssignment));
+}
+
+#[test]
+fn a_combat_damage_request_asks_about_the_next_blocker_and_an_amount_each() {
+    use mtgml_decision::{CandidateIntent as Intent, EngineCandidateBinding as Binding};
+    use mtgml_state::EngineStateError::{ContinuationRequestMismatch, PendingCandidateBinding};
+    let state = damage_being_divided();
+    let refused =
+        |what: &str, error, edit: &dyn Fn(&mut mtgml_decision::AuthoritativeDecisionRequest)| {
+            let mut forged = state.clone();
+            edit(forged.execution.pending_decision.as_mut().unwrap());
+            assert_eq!(forged.validate_structure(), Err(error), "{what}");
+        };
+    // The request is the continuation's: the attacking player's, one answer.
+    refused("another purpose", ContinuationRequestMismatch, &|request| {
+        request.purpose = mtgml_decision::DecisionPurposeV4::PriorityAction;
+        request.candidates = vec![mtgml_decision::AuthoritativeCandidate {
+            candidate_id: CandidateIdV1(0),
+            visible_intent: Intent::PassPriority,
+            trusted_binding: Binding::PassPriority,
+        }];
+    });
+    refused(
+        "the defending player",
+        ContinuationRequestMismatch,
+        &|request| {
+            request.actor = PlayerId(2);
+        },
+    );
+    refused(
+        "several answers",
+        mtgml_state::EngineStateError::PendingDecision,
+        &|request| {
+            request.decision_domain_v2 = mtgml_decision::DecisionDomainV2::ChooseMany {
+                minimum: 0,
+                maximum: 2,
+            };
+        },
+    );
+    // Each candidate is an amount for the next blocker of the attacker.
+    refused(
+        "the blocker after the next",
+        PendingCandidateBinding,
+        &|request| {
+            for candidate in &mut request.candidates {
+                let Intent::AssignCombatDamage { recipient, .. } = &mut candidate.visible_intent
+                else {
+                    unreachable!()
+                };
+                *recipient = mtgml_model::OpaqueObjectId(26);
+                let Binding::AssignCombatDamage { recipient, .. } = &mut candidate.trusted_binding
+                else {
+                    unreachable!()
+                };
+                *recipient = GameObjectId(6);
+            }
+        },
+    );
+    refused("another attacker", PendingCandidateBinding, &|request| {
+        for candidate in &mut request.candidates {
+            let Intent::AssignCombatDamage { attacker, .. } = &mut candidate.visible_intent else {
+                unreachable!()
+            };
+            *attacker = mtgml_model::OpaqueObjectId(24);
+            let Binding::AssignCombatDamage { attacker, .. } = &mut candidate.trusted_binding
+            else {
+                unreachable!()
+            };
+            *attacker = GameObjectId(4);
+        }
+    });
+    refused(
+        "an opaque identity that is not the blockers",
+        PendingCandidateBinding,
+        &|request| {
+            for candidate in &mut request.candidates {
+                let Intent::AssignCombatDamage { recipient, .. } = &mut candidate.visible_intent
+                else {
+                    unreachable!()
+                };
+                *recipient = mtgml_model::OpaqueObjectId(26);
+            }
+        },
+    );
+    refused(
+        "an amount that is not the bound one",
+        PendingCandidateBinding,
+        &|request| {
+            let Intent::AssignCombatDamage { amount, .. } =
+                &mut request.candidates[3].visible_intent
+            else {
+                unreachable!()
+            };
+            *amount = 4;
+        },
+    );
+    // A request about no division at all.
+    let mut orphan = state.clone();
+    orphan.execution.continuations.clear();
+    orphan
+        .execution
+        .pending_decision
+        .as_mut()
+        .unwrap()
+        .continuation_id = None;
+    assert_eq!(orphan.validate_structure(), Err(PendingCandidateBinding));
+}

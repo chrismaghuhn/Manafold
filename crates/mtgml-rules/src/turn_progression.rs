@@ -1,7 +1,8 @@
 //! Native turn progression for the slice of lands and vanilla creatures.
 //!
 //! Passing priority and every turn-based action run directly on V3 state:
-//! step changes, untap, draw, attackers, blockers and combat damage, cleanup
+//! step changes, untap, draw, attackers, blockers and combat damage (the
+//! attacking player divides an attacker's damage among its blockers), cleanup
 //! and the turn change. One response is one transition
 //! (`StateRevision` +1, one `StateDelta`). V3 validates turn-position,
 //! priority, active-player and turn-number events against the transition's
@@ -152,6 +153,32 @@ pub fn execute_magic_response(
                 attacker: *attacker,
             }
         }
+        // CR 510.1c: the attacking player chose how much of an attacker's
+        // damage one of the creatures blocking it is assigned.
+        DecisionPurposeV4::CombatDamageAssignment => {
+            validate_magic_pending_request(admission, state, status)
+                .map_err(|_| Error::InvalidSelection)?;
+            let DecisionAnswerV2::SelectOne { candidate_id } = &response.answer else {
+                return Err(Error::InvalidSelection);
+            };
+            let Some(EngineCandidateBinding::AssignCombatDamage {
+                attacker,
+                recipient,
+                amount,
+            }) = request
+                .candidates
+                .iter()
+                .find(|candidate| candidate.candidate_id == *candidate_id)
+                .map(|candidate| &candidate.trusted_binding)
+            else {
+                return Err(Error::InvalidSelection);
+            };
+            Answer::Damage {
+                attacker: *attacker,
+                blocker: *recipient,
+                amount: *amount,
+            }
+        }
         // CR 404.3: an owner chose the order of their cards, top to bottom.
         DecisionPurposeV4::SbaGraveyardOrder => {
             validate_magic_pending_request(admission, state, status)
@@ -234,6 +261,7 @@ pub fn validate_magic_pending_request(
             request.purpose,
             DecisionPurposeV4::AttackerDeclaration
                 | DecisionPurposeV4::BlockerDeclaration
+                | DecisionPurposeV4::CombatDamageAssignment
                 | DecisionPurposeV4::SbaGraveyardOrder
                 | DecisionPurposeV4::HandSizeDiscard
                 | DecisionPurposeV4::ManaPayment
@@ -246,6 +274,9 @@ pub fn validate_magic_pending_request(
     }
     if request.purpose == DecisionPurposeV4::BlockerDeclaration {
         return validate_block_request(admission, state, request, status);
+    }
+    if request.purpose == DecisionPurposeV4::CombatDamageAssignment {
+        return validate_damage_request(admission, state, request, status);
     }
     if request.purpose == DecisionPurposeV4::SbaGraveyardOrder {
         return validate_graveyard_order_request(admission, state, request, status);
@@ -266,6 +297,13 @@ enum Answer {
         blocker: GameObjectId,
         attacker: Option<GameObjectId>,
     },
+    /// The attacking player's choice for one blocker of the attacker being
+    /// divided: it is assigned `amount` of the attacker's damage.
+    Damage {
+        attacker: GameObjectId,
+        blocker: GameObjectId,
+        amount: u64,
+    },
     Discard(GameObjectId),
     /// The owner's order for their cards that die together, top to bottom.
     GraveyardOrder(Vec<GameObjectId>),
@@ -279,6 +317,9 @@ pub(crate) enum NextDecision {
     /// The defending player is asked about the next creature of a block
     /// declaration.
     Blockers,
+    /// The attacking player is asked how much of an attacker's damage the next
+    /// blocker is assigned (CR 510.1c): this is the request.
+    DamageAssignment(RequestShape),
     /// The next owner is asked for the order of their cards that die together
     /// (CR 404.3).
     GraveyardOrder,
@@ -354,7 +395,9 @@ pub(crate) fn record_unobserved(facts: &mut Facts, event: AuthoritativeRuleEvent
 /// its owner, a stack that is empty or holds one creature spell that the active
 /// player cast in a main phase (see `crate::casting::stack_within_profile`), no
 /// continuation but the payment of that spell, the defending player's block
-/// declaration (see `crate::combat::validate_pending_block_declaration`) or an
+/// declaration (see `crate::combat::validate_pending_block_declaration`), the
+/// attacking player's division of damage (see
+/// `crate::combat::validate_pending_damage_division`) or an
 /// owner's graveyard order (see
 /// `crate::state_based_actions::validate_pending_graveyard_order`), a combat that
 /// this slice could have produced (see `crate::combat::validate_reachable_combat`),
@@ -377,6 +420,7 @@ fn validate_slice(
         || (!execution.continuations.is_empty()
             && crate::casting::pending_payment(admission, state).is_err()
             && crate::combat::validate_pending_block_declaration(admission, state).is_err()
+            && crate::combat::validate_pending_damage_division(admission, state).is_err()
             && crate::state_based_actions::validate_pending_graveyard_order(admission, state)
                 .is_err())
         || !execution.effects.is_empty()
@@ -551,6 +595,26 @@ fn progress(
                 open_priority(&mut next)
             } else {
                 NextDecision::Blockers
+            }
+        }
+        // CR 510.1c: the attacking player divides an attacker's damage, one
+        // blocker at a time. After the last answer the damage is dealt (CR
+        // 510.2) and the state-based actions are checked (CR 704.3), as when
+        // there is nothing to divide.
+        Answer::Damage {
+            attacker,
+            blocker,
+            amount,
+        } => {
+            match crate::combat::assign_combat_damage(
+                admission, &mut next, &mut facts, attacker, blocker, amount,
+            )? {
+                crate::combat::DamageAnswer::Asking(shape) => NextDecision::DamageAssignment(shape),
+                crate::combat::DamageAnswer::Dealt => {
+                    crate::state_based_actions::perform_state_based_actions(
+                        admission, &mut next, &mut facts,
+                    )?
+                }
             }
         }
         // CR 404.3: the owner orders their cards. After the last owner the
@@ -792,7 +856,12 @@ fn advance(
             } => {
                 admits(admission, "rules/combat-damage")?;
                 admits(admission, "rules/damage-and-life")?;
-                crate::combat::deal_combat_damage(admission, next, facts)?;
+                // CR 510.1c: an attacker with two or more blockers has its
+                // controller divide its damage first, one blocker at a time.
+                if let Some(request) = crate::combat::begin_damage_division(admission, next)? {
+                    return Ok(NextDecision::DamageAssignment(request));
+                }
+                crate::combat::deal_combat_damage(admission, next, facts, &Default::default())?;
                 // CR 704.3: state-based actions are checked before the active
                 // player gets priority (CR 510.3): a creature dealt lethal
                 // damage is destroyed (CR 704.5g) and a player at 0 life
@@ -1124,6 +1193,9 @@ pub(crate) fn finish(
             running,
             Some(crate::combat::install_block_request(&mut next)?),
         ),
+        NextDecision::DamageAssignment(shape) => {
+            (running, Some(install_request(&mut next, shape)?))
+        }
         NextDecision::GraveyardOrder => (
             running,
             Some(crate::state_based_actions::install_order_request(
@@ -1363,23 +1435,25 @@ fn actor_only_request_matches(state: &EngineState, request: &AuthoritativeDecisi
         && request.continuation_id.is_none()
 }
 
-/// CR 601.2h: a restored or committed payment request is exactly the one the
-/// pending cast calls for, with the identities the installer allocates.
-fn validate_payment_request(
+/// A restored or committed request is exactly `expected`, the one the state
+/// calls for, with the identities the installer allocates: the capability
+/// `rule`, the one that creates the request, is admitted, the episode is
+/// running, and the request is the same as `expected` in everything but its
+/// identities and is the latest one. What `expected` was derived from is for the
+/// caller to have validated. Every validator of a request that a continuation
+/// owns ends here.
+pub(crate) fn validate_request_shape(
     admission: &ExecutableProfileAdmissionV1,
     state: &EngineState,
     request: &AuthoritativeDecisionRequest,
     status: &EpisodeStatus,
+    rule: &str,
+    expected: Result<RequestShape, Error>,
 ) -> Result<(), BasicLandCandidateError> {
-    state
-        .validate_structure()
-        .map_err(|_| BasicLandCandidateError::InvalidState)?;
-    validate_slice(admission, state).map_err(|_| BasicLandCandidateError::InvalidState)?;
-    // Only an admission with the rule that creates this request accepts it.
-    admits(admission, "rules/cast-creature-spell")
-        .map_err(|_| BasicLandCandidateError::PendingCandidateSetMismatch)?;
     let mismatch = BasicLandCandidateError::PendingCandidateSetMismatch;
-    let expected = crate::casting::payment_request_shape(admission, state).map_err(|_| mismatch)?;
+    // Only an admission with the rule that creates this request accepts it.
+    admits(admission, rule).map_err(|_| mismatch)?;
+    let expected = expected.map_err(|_| mismatch)?;
     let shape = RequestShape {
         actor: request.actor,
         visibility: request.visibility,
@@ -1395,6 +1469,28 @@ fn validate_payment_request(
         return Err(mismatch);
     }
     Ok(())
+}
+
+/// CR 601.2h: a restored or committed payment request is exactly the one the
+/// pending cast calls for, with the identities the installer allocates.
+fn validate_payment_request(
+    admission: &ExecutableProfileAdmissionV1,
+    state: &EngineState,
+    request: &AuthoritativeDecisionRequest,
+    status: &EpisodeStatus,
+) -> Result<(), BasicLandCandidateError> {
+    state
+        .validate_structure()
+        .map_err(|_| BasicLandCandidateError::InvalidState)?;
+    validate_slice(admission, state).map_err(|_| BasicLandCandidateError::InvalidState)?;
+    validate_request_shape(
+        admission,
+        state,
+        request,
+        status,
+        "rules/cast-creature-spell",
+        crate::casting::payment_request_shape(admission, state),
+    )
 }
 
 /// CR 508.1a: the active player declares any subset of the creatures that can
@@ -1469,28 +1565,41 @@ fn validate_block_request(
     state
         .validate_structure()
         .map_err(|_| BasicLandCandidateError::InvalidState)?;
-    validate_slice(admission, state).map_err(|_| BasicLandCandidateError::InvalidState)?;
-    // Only an admission with the rule that creates this request accepts it.
-    admits(admission, "rules/declare-blockers")
-        .map_err(|_| BasicLandCandidateError::PendingCandidateSetMismatch)?;
-    let mismatch = BasicLandCandidateError::PendingCandidateSetMismatch;
     // `validate_slice` has checked the continuation against the battlefield.
-    let expected = crate::combat::block_request_shape(state).map_err(|_| mismatch)?;
-    let shape = RequestShape {
-        actor: request.actor,
-        visibility: request.visibility,
-        continuation_id: request.continuation_id,
-        purpose: request.purpose.clone(),
-        decision_domain_v2: request.decision_domain_v2.clone(),
-        candidates: request.candidates.clone(),
-    };
-    if !matches!(status, EpisodeStatus::Running)
-        || shape != expected
-        || !request_is_current(state, request)
-    {
-        return Err(mismatch);
-    }
-    Ok(())
+    validate_slice(admission, state).map_err(|_| BasicLandCandidateError::InvalidState)?;
+    validate_request_shape(
+        admission,
+        state,
+        request,
+        status,
+        "rules/declare-blockers",
+        crate::combat::block_request_shape(state),
+    )
+}
+
+/// CR 510.1c: a restored or committed combat damage request is exactly the one
+/// the pending division calls for: for the active player, about the next blocker
+/// of the attacker being divided, with one candidate for each amount of the
+/// damage that is left, with the identities the installer allocates.
+fn validate_damage_request(
+    admission: &ExecutableProfileAdmissionV1,
+    state: &EngineState,
+    request: &AuthoritativeDecisionRequest,
+    status: &EpisodeStatus,
+) -> Result<(), BasicLandCandidateError> {
+    state
+        .validate_structure()
+        .map_err(|_| BasicLandCandidateError::InvalidState)?;
+    // `validate_slice` has checked the continuation against the battlefield.
+    validate_slice(admission, state).map_err(|_| BasicLandCandidateError::InvalidState)?;
+    validate_request_shape(
+        admission,
+        state,
+        request,
+        status,
+        "rules/combat-damage",
+        crate::combat::damage_request_shape(admission, state),
+    )
 }
 
 /// CR 404.3: a restored or committed graveyard order request is exactly the one
@@ -1508,26 +1617,14 @@ fn validate_graveyard_order_request(
         .map_err(|_| BasicLandCandidateError::InvalidState)?;
     // `validate_slice` has checked the continuation against the state.
     validate_slice(admission, state).map_err(|_| BasicLandCandidateError::InvalidState)?;
-    // Only an admission with the rule that creates this request accepts it.
-    admits(admission, "rules/state-based-actions-combat")
-        .map_err(|_| BasicLandCandidateError::PendingCandidateSetMismatch)?;
-    let mismatch = BasicLandCandidateError::PendingCandidateSetMismatch;
-    let expected = crate::state_based_actions::order_request_shape(state).map_err(|_| mismatch)?;
-    let shape = RequestShape {
-        actor: request.actor,
-        visibility: request.visibility,
-        continuation_id: request.continuation_id,
-        purpose: request.purpose.clone(),
-        decision_domain_v2: request.decision_domain_v2.clone(),
-        candidates: request.candidates.clone(),
-    };
-    if !matches!(status, EpisodeStatus::Running)
-        || shape != expected
-        || !request_is_current(state, request)
-    {
-        return Err(mismatch);
-    }
-    Ok(())
+    validate_request_shape(
+        admission,
+        state,
+        request,
+        status,
+        "rules/state-based-actions-combat",
+        crate::state_based_actions::order_request_shape(state),
+    )
 }
 
 /// Allocates the next decision identity (D5) for an active-player request.
@@ -3956,7 +4053,8 @@ mod tests {
 
         let mut after = before.clone();
         let mut facts = Facts::default();
-        crate::combat::deal_combat_damage(&admission, &mut after, &mut facts).unwrap();
+        crate::combat::deal_combat_damage(&admission, &mut after, &mut facts, &Default::default())
+            .unwrap();
         assert_eq!(after.core.players, before.core.players);
         assert_eq!((marked(&after, attacker), marked(&after, blocker)), (0, 0));
         assert!(after.combat.as_ref().unwrap().damage_step_completed);
@@ -3970,10 +4068,294 @@ mod tests {
         );
     }
 
+    /// The division of combat damage in progress: who divides, the attackers
+    /// not finished yet, the blockers of the first not yet answered, and the
+    /// answers so far.
+    fn damage_division(
+        state: &EngineState,
+    ) -> (
+        PlayerId,
+        Vec<GameObjectId>,
+        Vec<GameObjectId>,
+        std::collections::BTreeMap<GameObjectId, u64>,
+    ) {
+        let [record] = state
+            .execution
+            .continuations
+            .values()
+            .collect::<Vec<_>>()
+            .try_into()
+            .expect("one continuation");
+        match &record.payload {
+            mtgml_state::ContinuationPayload::CombatDamageAssignment {
+                player,
+                pending_attackers,
+                pending_blockers,
+                assigned,
+            } => (
+                *player,
+                pending_attackers.clone(),
+                pending_blockers.clone(),
+                assigned.clone(),
+            ),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// The answer in the pending division request that gives its recipient
+    /// `amount`.
+    fn damage_answer(state: &EngineState, amount: u64) -> DecisionAnswerV2 {
+        DecisionAnswerV2::SelectOne {
+            candidate_id: candidate(pending(state), |binding| {
+                matches!(binding,
+                    EngineCandidateBinding::AssignCombatDamage { amount: bound, .. }
+                        if *bound == amount)
+            })
+            .unwrap_or_else(|| panic!("the request does not offer {amount}")),
+        }
+    }
+
+    /// The attacker and the blocker the pending division request asks about,
+    /// and the amounts it offers.
+    fn damage_asked(state: &EngineState) -> (GameObjectId, GameObjectId, Vec<u64>) {
+        let request = pending(state);
+        assert_eq!(request.purpose, DecisionPurposeV4::CombatDamageAssignment);
+        assert_eq!(request.actor, P1);
+        assert_eq!(request.visibility, DecisionVisibility::ActingPlayerOnly);
+        assert_eq!(request.decision_domain_v2, DecisionDomainV2::ChooseOne);
+        let asked: Vec<_> = request
+            .candidates
+            .iter()
+            .map(|candidate| match candidate.trusted_binding {
+                EngineCandidateBinding::AssignCombatDamage {
+                    attacker,
+                    recipient,
+                    amount,
+                } => (attacker, recipient, amount),
+                ref other => panic!("{other:?}"),
+            })
+            .collect();
+        let (attacker, recipient, _) = asked[0];
+        assert!(asked
+            .iter()
+            .all(|(a, r, _)| (*a, *r) == (attacker, recipient)));
+        (
+            attacker,
+            recipient,
+            asked.iter().map(|(_, _, amount)| *amount).collect(),
+        )
+    }
+
+    /// `objects` in the order of `player`'s opaque ids.
+    fn in_opaque_order(
+        state: &EngineState,
+        player: PlayerId,
+        objects: &[GameObjectId],
+    ) -> Vec<GameObjectId> {
+        let identity = &state.perspective_identities.players[&player];
+        let mut ordered = objects.to_vec();
+        ordered.sort_by_key(|object| identity.object_to_opaque[object]);
+        ordered
+    }
+
+    /// Swaps the opaque ids `player` has for `a` and `b`, so that the order of
+    /// the ids is not the order of the objects.
+    fn swap_opaque_ids(
+        state: &mut EngineState,
+        player: PlayerId,
+        a: GameObjectId,
+        b: GameObjectId,
+    ) {
+        let identity = state
+            .perspective_identities
+            .players
+            .get_mut(&player)
+            .unwrap();
+        let (opaque_a, opaque_b) = (identity.object_to_opaque[&a], identity.object_to_opaque[&b]);
+        identity.object_to_opaque.insert(a, opaque_b);
+        identity.object_to_opaque.insert(b, opaque_a);
+        identity.opaque_to_object.insert(opaque_a, b);
+        identity.opaque_to_object.insert(opaque_b, a);
+        let active = &mut state.knowledge.players.get_mut(&player).unwrap().active;
+        let record_a = active.remove(&opaque_a).unwrap();
+        let record_b = active.remove(&opaque_b).unwrap();
+        active.insert(
+            opaque_b,
+            mtgml_state::KnowledgeRecordV2 {
+                opaque_object: opaque_b,
+                ..record_a
+            },
+        );
+        active.insert(
+            opaque_a,
+            mtgml_state::KnowledgeRecordV2 {
+                opaque_object: opaque_a,
+                ..record_b
+            },
+        );
+    }
+
     #[test]
-    fn two_blockers_on_one_attacker_fail_closed_until_damage_can_be_divided() {
-        // CR 510.1c: an attacker blocked by two creatures divides its damage
-        // between them as its controller chooses, which is not supported yet.
+    fn two_divided_attackers_are_asked_one_after_the_other() {
+        // CR 510.1c: P1's Hill Giant (3/3) and Gray Ogre (2/2) are each blocked
+        // by two Savannah Lions of P2, so each divides its damage. P1 is asked
+        // attacker by attacker, in the order of P1's opaque ids (the Ogre's
+        // comes first here, though the Giant has the lower object id), and for
+        // each attacker blocker by blocker in the same order (the second Lions
+        // of the Ogre comes first here). One CombatDamageDealt holds every
+        // assignment of the step.
+        let (admission, mut state, creatures) = game_with_creature_cards(&[
+            (P1, HILL_GIANT),
+            (P1, GRAY_OGRE),
+            (P2, SAVANNAH_LIONS),
+            (P2, SAVANNAH_LIONS),
+            (P2, SAVANNAH_LIONS),
+            (P2, SAVANNAH_LIONS),
+        ]);
+        let [giant, ogre, giant_a, giant_b, ogre_a, ogre_b] = creatures[..] else {
+            panic!("six creatures")
+        };
+        assert!(giant < ogre && ogre_a < ogre_b);
+        swap_opaque_ids(&mut state, P1, giant, ogre);
+        swap_opaque_ids(&mut state, P1, ogre_a, ogre_b);
+        assert_eq!(in_opaque_order(&state, P1, &[giant, ogre]), [ogre, giant]);
+        assert_eq!(
+            in_opaque_order(&state, P1, &[ogre_a, ogre_b]),
+            [ogre_b, ogre_a]
+        );
+        let before = blocks_declared(
+            &admission,
+            state,
+            &[giant, ogre],
+            &[
+                (giant_a, giant),
+                (giant_b, giant),
+                (ogre_a, ogre),
+                (ogre_b, ogre),
+            ],
+        );
+        let at_start = before.revision.0;
+
+        // The pass that opens the combat damage step asks P1 about the Ogre,
+        // which comes first, and its blocker that comes first.
+        let (first, _) = pass(&admission, &before);
+        assert_eq!(
+            first.core.position,
+            TurnPosition::Combat {
+                step: CombatStep::CombatDamage
+            }
+        );
+        assert_eq!(first.core.priority, PriorityState::None);
+        assert!(!first.combat.as_ref().unwrap().damage_step_completed);
+        assert_eq!(first.revision.0, at_start + 1);
+        validate_magic_pending_request(&admission, &first, &EpisodeStatus::Running).unwrap();
+        assert_eq!(
+            damage_division(&first),
+            (
+                P1,
+                vec![ogre, giant],
+                vec![ogre_b, ogre_a],
+                Default::default()
+            )
+        );
+        assert_eq!(damage_asked(&first), (ogre, ogre_b, vec![0, 1, 2]));
+        assert_eq!(
+            first
+                .execution
+                .continuations
+                .values()
+                .next()
+                .unwrap()
+                .created_at_revision
+                .0,
+            first.revision.0
+        );
+        // Nobody is dealt damage while it is divided.
+        assert!(!crate::combat::damage_is_marked(&first));
+        assert_eq!(first.core.players, before.core.players);
+
+        // The Ogre gives all 2 to the blocker asked, so the other is assigned 0
+        // without being asked, and the Giant is asked next: its first blocker
+        // in P1's order, 0 to 3. Only that one answer is stored.
+        let product = submit(&admission, &first, damage_answer(&first, 2)).unwrap();
+        assert!(damage_events(&product).is_empty());
+        let second = apply(&first, &product);
+        validate_magic_pending_request(&admission, &second, &EpisodeStatus::Running).unwrap();
+        assert_eq!(
+            damage_division(&second),
+            (
+                P1,
+                vec![giant],
+                vec![giant_a, giant_b],
+                [(ogre_b, 2)].into()
+            )
+        );
+        assert_eq!(damage_asked(&second), (giant, giant_a, vec![0, 1, 2, 3]));
+        assert_eq!(
+            second
+                .execution
+                .continuations
+                .values()
+                .next()
+                .unwrap()
+                .created_at_revision
+                .0,
+            second.revision.0 - 1
+        );
+        assert_eq!(second.core.priority, PriorityState::None);
+        assert!(!crate::combat::damage_is_marked(&second));
+
+        // The Giant gives 1 to the first, and the last gets the other 2. That
+        // is the last answer: the damage of both attackers and of the four
+        // blockers is dealt together, in one event.
+        let product = submit(&admission, &second, damage_answer(&second, 1)).unwrap();
+        let events = damage_events(&product);
+        assert_eq!(
+            events[0],
+            format!(
+                "damage {giant}>{giant_a}:1 {giant}>{giant_b}:2 {ogre}>{ogre_b}:2 \
+                 {giant_a}>{giant}:2 {giant_b}>{giant}:2 {ogre_a}>{ogre}:2 {ogre_b}>{ogre}:2",
+                giant = giant.0,
+                ogre = ogre.0,
+                giant_a = giant_a.0,
+                giant_b = giant_b.0,
+                ogre_a = ogre_a.0,
+                ogre_b = ogre_b.0,
+            )
+        );
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event.starts_with("damage"))
+                .count(),
+            1
+        );
+        assert_eq!(events.last().unwrap(), "completed");
+        let third = apply(&second, &product);
+        // The division is over; the damage is dealt, and marked until the
+        // creatures that were dealt enough die.
+        assert!(third.combat.as_ref().unwrap().damage_step_completed);
+        let marks: Vec<_> = [giant, ogre, giant_a, giant_b, ogre_a, ogre_b]
+            .map(|creature| marked(&third, creature))
+            .to_vec();
+        assert_eq!(marks, [4, 4, 1, 2, 0, 2]);
+        // Both attackers and three of the Lions were dealt lethal damage. P1
+        // arranges its two cards first (CR 404.3, 101.4): the next request.
+        assert!(!third.execution.continuations.is_empty());
+        assert_eq!(
+            pending(&third).purpose,
+            DecisionPurposeV4::SbaGraveyardOrder
+        );
+        assert_eq!(pending(&third).actor, P1);
+        validate_magic_pending_request(&admission, &third, &EpisodeStatus::Running).unwrap();
+    }
+
+    #[test]
+    fn the_damage_dealt_is_the_division_made() {
+        // CR 510.1c, 510.1a: an attacker blocked by two or more creatures
+        // assigns all its damage to them. The step refuses a division that does
+        // not give every blocker an amount, or whose amounts are not the
+        // attacker's power, and changes nothing when it does.
         let (admission, state, creatures) = game_with_creature_cards(&[
             (P1, HILL_GIANT),
             (P2, SAVANNAH_LIONS),
@@ -3982,22 +4364,55 @@ mod tests {
         let [giant, first, second] = creatures[..] else {
             panic!("three creatures")
         };
-        let before = blocks_declared(
+        let mut before = blocks_declared(
             &admission,
-            state.clone(),
+            state,
             &[giant],
             &[(first, giant), (second, giant)],
         );
-        assert_eq!(before.combat.as_ref().unwrap().blockers.len(), 2);
+        before.core.position = TurnPosition::Combat {
+            step: CombatStep::CombatDamage,
+        };
+        before.core.priority = PriorityState::None;
+        let deal = |divided: &[(GameObjectId, u64)]| {
+            let mut after = before.clone();
+            let mut facts = Facts::default();
+            let divided = divided.iter().copied().collect();
+            crate::combat::deal_combat_damage(&admission, &mut after, &mut facts, &divided)
+                .map(|()| (after, facts))
+        };
+        for wrong in [
+            &[][..],
+            &[(first, 3)][..],
+            &[(second, 3)][..],
+            &[(first, 1), (second, 1)][..],
+            &[(first, 2), (second, 2)][..],
+            &[(first, 3), (second, 3)][..],
+        ] {
+            assert_eq!(
+                deal(wrong).map(|_| ()),
+                Err(crate::BasicLandTransitionError::InvalidResult),
+                "{wrong:?}"
+            );
+        }
+        let (after, _) = deal(&[(first, 3), (second, 0)]).unwrap();
         assert_eq!(
-            submit(&admission, &before, pass_answer(pending(&before))),
-            Err(crate::BasicLandTransitionError::TurnProgressUnsupported)
+            (
+                marked(&after, first),
+                marked(&after, second),
+                marked(&after, giant)
+            ),
+            (3, 0, 4)
         );
-
-        // With one of them blocking, the same fight is supported: it is the
-        // two blockers that fail closed, not the damage.
-        let one = blocks_declared(&admission, state, &[giant], &[(first, giant)]);
-        assert!(submit(&admission, &one, pass_answer(pending(&one))).is_ok());
+        let (after, _) = deal(&[(first, 1), (second, 2)]).unwrap();
+        assert_eq!(
+            (
+                marked(&after, first),
+                marked(&after, second),
+                marked(&after, giant)
+            ),
+            (1, 2, 4)
+        );
     }
 
     #[test]

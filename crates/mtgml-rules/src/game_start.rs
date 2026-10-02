@@ -409,9 +409,6 @@ pub(crate) fn validate_pregame_request(
     state
         .validate_structure()
         .map_err(|_| BasicLandCandidateError::InvalidState)?;
-    if !admitted(admission) || !matches!(status, EpisodeStatus::Running) {
-        return Err(mismatch);
-    }
     // Two players at the starting life total (CR 103.4), and the chooser the
     // seed picks (CR 103.1): the chooser draw is re-derived, not trusted.
     let (_, start) = game_start(state).ok_or(mismatch)?;
@@ -438,35 +435,14 @@ pub(crate) fn validate_pregame_request(
     {
         return Err(mismatch);
     }
-    let expected = expected_request_shape(state).map_err(|_| mismatch)?;
-    let identity = state
-        .perspective_identities
-        .players
-        .get(&request.actor)
-        .ok_or(mismatch)?;
-    let knowledge = state
-        .knowledge
-        .players
-        .get(&request.actor)
-        .ok_or(mismatch)?;
-    let shape = RequestShape {
-        actor: request.actor,
-        visibility: request.visibility,
-        continuation_id: request.continuation_id,
-        purpose: request.purpose.clone(),
-        decision_domain_v2: request.decision_domain_v2.clone(),
-        candidates: request.candidates.clone(),
-    };
-    if shape != expected
-        || request.decision_id.0.checked_add(1) != Some(state.allocators.next_decision_id.0)
-        || request.player_decision_id.0.checked_add(1) != Some(identity.next_player_decision_id.0)
-        || request.state_revision != state.revision
-        || request.view_sequence != knowledge.next_visible_sequence
-        || request.parent_player_decision_id.is_some()
-    {
-        return Err(mismatch);
-    }
-    Ok(())
+    crate::turn_progression::validate_request_shape(
+        admission,
+        state,
+        request,
+        status,
+        GAME_START,
+        expected_request_shape(state),
+    )
 }
 
 /// Executes one answer of the start of the game: the answer plus every

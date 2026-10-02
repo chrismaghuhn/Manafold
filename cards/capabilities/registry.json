@@ -163,7 +163,8 @@
         "a_blocked_attacker_and_its_blocker_damage_each_other",
         "an_unblocked_attacker_still_hits_the_player_while_another_is_blocked",
         "an_attacker_whose_blocker_is_gone_deals_no_damage",
-        "two_blockers_on_one_attacker_fail_closed_until_damage_can_be_divided",
+        "two_divided_attackers_are_asked_one_after_the_other",
+        "the_damage_dealt_is_the_division_made",
         "combat_damage_to_a_player_must_match_the_life_change",
         "combat_damage_to_creatures_must_match_the_blocks_and_the_marked_damage",
         "combat_damage_goes_where_the_combat_sends_it",
@@ -179,6 +180,12 @@
         "an_unblocked_attack_lowers_the_defenders_life",
         "a_3_3_blocked_by_a_2_1_kills_it_and_survives",
         "a_2_2_and_a_2_1_that_block_each_other_both_die_one_to_each_graveyard",
+        "a_hill_giant_blocked_by_lions_and_ogre_can_assign_every_division",
+        "each_division_gives_the_expected_deaths",
+        "a_division_that_runs_out_asks_for_no_more",
+        "a_restored_partial_division_continues_identically",
+        "a_forged_partial_division_is_refused",
+        "a_half_divided_damage_is_invisible_to_the_defender",
         "asymmetric_games_cast_attack_and_end_at_zero_life"
       ],
       "dependencies": [
@@ -194,12 +201,12 @@
       "information_risk": "high",
       "key": "rules/combat-damage",
       "lifecycle": "covered",
-      "notes": "Covered for attackers that are unblocked or blocked by at most one creature, in two-player games of admitted lands and vanilla creatures, by the listed rules and production-endpoint cases. Damage dealt to a creature is marked on it (rules/damage-and-life). An attacker blocked by two or more creatures has to divide its damage (CR 510.1c): that division is specified in docs/superpowers/specs/2026-10-01-vanilla-creatures-design.md, is not implemented, and fails closed with TurnProgressUnsupported. First strike, trample, every other keyword and damage prevention are excluded and fail closed. No player observes blocks, combat damage to creatures or marked damage until the observation of combat is extended. No certification, card, deck, format, or playability support is claimed.",
+      "notes": "Covered for unblocked attackers and attackers blocked by one or more creatures, in two-player games of admitted lands and vanilla creatures, by the listed rules and production-endpoint cases. Damage dealt to a creature is marked on it (rules/damage-and-life). An attacker blocked by two or more creatures divides its damage among them as its controller chooses (CR 510.1c): the controller is asked, one blocker at a time, in a CombatDamageAssignment decision. First strike, trample, every other keyword and damage prevention are excluded and fail closed. No player observes blocks, combat damage to creatures or marked damage until the observation of combat is extended. No certification, card, deck, format, or playability support is claimed.",
       "owners": [
         "combat"
       ],
       "spec_path": "docs/rules/capabilities/rules/combat-damage.md",
-      "summary": "One normal combat-damage step: every attacker and blocker assigns damage equal to its power, an unblocked attacker to the defending player, an attacker with one blocker to that blocker, and a blocker to its attacker. Division among two or more blockers is not implemented.",
+      "summary": "One normal combat-damage step: every attacker and blocker assigns damage equal to its power, an unblocked attacker to the defending player, an attacker with one blocker to that blocker, an attacker with two or more blockers to them as its controller divides it, and a blocker to its attacker.",
       "version": "0.1.0"
     },
     {
@@ -375,7 +382,7 @@
       "information_risk": "high",
       "key": "rules/declare-blockers",
       "lifecycle": "covered",
-      "notes": "Covered for two-player games of admitted lands and vanilla creatures by the listed rules and production-endpoint cases. A blocker whose attacker has died stays a blocking creature that blocks nothing until the end of combat (CR 509.1g). The defending player is asked, one untapped creature at a time, which attacker it blocks or no block, and any number of creatures may block one attacker; the combat damage of an attacker with two or more blockers fails closed (rules/combat-damage). Blocking restrictions and requirements (CR 509.1b, 509.1c) and costs to block are excluded and fail closed. No player observes blocks until the observation of combat is extended. No certification, card, deck, format, or playability support is claimed.",
+      "notes": "Covered for two-player games of admitted lands and vanilla creatures by the listed rules and production-endpoint cases. A blocker whose attacker has died stays a blocking creature that blocks nothing until the end of combat (CR 509.1g). The defending player is asked, one untapped creature at a time, which attacker it blocks or no block, and any number of creatures may block one attacker, whose controller then divides its combat damage among them (rules/combat-damage). Blocking restrictions and requirements (CR 509.1b, 509.1c) and costs to block are excluded and fail closed. No player observes blocks until the observation of combat is extended. No certification, card, deck, format, or playability support is claimed.",
       "owners": [
         "combat"
       ],

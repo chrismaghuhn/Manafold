@@ -1,0 +1,52 @@
+{
+  "actor": "1",
+  "candidates": [
+    {
+      "candidate_id": 0,
+      "intent": {
+        "amount": "0",
+        "attacker": "3",
+        "kind": "assign_combat_damage",
+        "recipient": "7"
+      }
+    },
+    {
+      "candidate_id": 1,
+      "intent": {
+        "amount": "1",
+        "attacker": "3",
+        "kind": "assign_combat_damage",
+        "recipient": "7"
+      }
+    },
+    {
+      "candidate_id": 2,
+      "intent": {
+        "amount": "2",
+        "attacker": "3",
+        "kind": "assign_combat_damage",
+        "recipient": "7"
+      }
+    },
+    {
+      "candidate_id": 3,
+      "intent": {
+        "amount": "3",
+        "attacker": "3",
+        "kind": "assign_combat_damage",
+        "recipient": "7"
+      }
+    }
+  ],
+  "decision_domain_v2": {
+    "kind": "choose_one"
+  },
+  "parent_player_decision_id": null,
+  "player_decision_id": "32",
+  "purpose": {
+    "kind": "combat_damage_assignment"
+  },
+  "schema_version": "player-decision-request.v4",
+  "view_sequence": "0",
+  "visibility": "acting_player_only"
+}
