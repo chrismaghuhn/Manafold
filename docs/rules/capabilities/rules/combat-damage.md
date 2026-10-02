@@ -68,12 +68,15 @@ player lost life, one `MarkedDamageChanged` for each creature that was dealt
 damage, in object order, and `CombatDamageStepCompleted`. The events of the
 state-based actions that follow are in `rules/state-based-actions-combat`. Every
 assignment names a declared attacker or blocker and the recipient the combat
-sends its damage to, the assignments of a divided attacker add up to its power,
-and the amounts add up to the player's life loss and to the damage marked on
-each creature. A creature destroyed in the same transition is
-gone from the state it ends in, so its `MarkedDamageChanged` is checked as
-damage added to what it had before. There is no `DamageApplied` event: it
-overlapped these events and is deleted. There are no replacement points.
+sends its damage to, and the amounts add up to the player's life loss and to the
+damage marked on each creature. The event projection knows no powers, so it does
+not check that the assignments of a divided attacker add up to its power. That
+sum is enforced where the damage is dealt: `deal_combat_damage` fails closed on
+a division that does not add up (CR 510.1c). A creature destroyed in the same
+transition is gone from the state it ends in, so its `MarkedDamageChanged` is
+checked as damage added to what it had before. There is no `DamageApplied`
+event: it overlapped these events and is deleted. There are no replacement
+points.
 
 ## Decisions and ordering
 

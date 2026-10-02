@@ -46,6 +46,12 @@ const CREATURE_SHORT_SEED: u64 = FIRST_SEED + 32;
 const CREATURE_SHORT_LAST_TURN: u64 = 8;
 const CREATURE_SHORT_FINGERPRINT: &str =
     "e9761bdb156707b9b79d61c723a09808dd0411f37a4eccbaa503ab9872e0ecda";
+/// How many creature games run, on the seeds `FIRST_SEED` onwards. The test
+/// asserts that these games, taken together, cover every kind of play (casts,
+/// multi-blocks, divisions, deaths, graveyard orders, ...). When a coverage
+/// assertion reports a count of 0, the games did not reach that play: raise
+/// this constant in steps of 5 until they do. The trajectories of the first
+/// games do not change.
 const CREATURE_GAMES: u64 = 15;
 const CREATURE_LANDS: usize = 17;
 const CREATURE_CREATURES: usize = 10;
@@ -467,6 +473,12 @@ fn check_creature_game(seed: u64) -> (Tally, bool) {
     (tally, has_winner)
 }
 
+/// The message of a failed coverage assertion: what the games did not reach,
+/// the remedy, and what they did reach.
+fn uncovered(what: &str, total: &Tally) -> String {
+    format!("{what} in {CREATURE_GAMES} games; raise CREATURE_GAMES in steps of 5: {total:?}")
+}
+
 #[test]
 #[cfg_attr(debug_assertions, ignore = "needs a release build; see module docs")]
 fn creature_games_fight_to_a_winner() {
@@ -491,22 +503,49 @@ fn creature_games_fight_to_a_winner() {
         winners += usize::from(*has_winner);
     }
     eprintln!("creature games: {total:?}, {winners} of {CREATURE_GAMES} ended with a winner");
-    assert!(total.casts > 0, "no spell was cast: {total:?}");
-    assert!(total.payments > 0, "no mana payment was decided: {total:?}");
-    assert!(total.attacks > 0, "no creature attacked: {total:?}");
-    assert!(total.blocks > 0, "no creature blocked: {total:?}");
+    assert!(
+        total.casts > 0,
+        "{}",
+        uncovered("no spell was cast", &total)
+    );
+    assert!(
+        total.payments > 0,
+        "{}",
+        uncovered("no mana payment was decided", &total)
+    );
+    assert!(
+        total.attacks > 0,
+        "{}",
+        uncovered("no creature attacked", &total)
+    );
+    assert!(
+        total.blocks > 0,
+        "{}",
+        uncovered("no creature blocked", &total)
+    );
     assert!(
         total.multi_blocks > 0,
-        "no attacker was blocked twice: {total:?}"
+        "{}",
+        uncovered("no attacker was blocked twice", &total)
     );
     assert!(
         total.divisions > 0,
-        "no combat damage was divided: {total:?}"
+        "{}",
+        uncovered("no combat damage was divided", &total)
     );
-    assert!(total.deaths > 0, "no creature died: {total:?}");
+    assert!(
+        total.deaths > 0,
+        "{}",
+        uncovered("no creature died", &total)
+    );
     assert!(
         total.graveyard_orders > 0,
-        "no graveyard order was decided: {total:?}"
+        "{}",
+        uncovered("no graveyard order was decided", &total)
     );
-    assert!(winners > 0, "no game ended with a winner: {total:?}");
+    assert!(
+        winners > 0,
+        "{}",
+        uncovered("no game ended with a winner", &total)
+    );
 }

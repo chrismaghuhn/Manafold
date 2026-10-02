@@ -220,9 +220,11 @@ permanents: BTreeMap<GameObjectId, PermanentState {
 
 **Combat state.**
 - The attacker cap goes.
-- Blocks become `BTreeMap<blocker, attacker>` next to the existing
-  `blocked_attackers` (509.1h). A `Vec<blocker>` per attacker would carry an
-  order that means nothing, giving one rules state two digests.
+- Blocks become `BTreeMap<blocker, Option<attacker>>` next to the existing
+  `blocked_attackers` (509.1h). `None` is a blocker whose attacker left combat
+  (509.1g); it exists only after the damage is dealt (step 3b). A
+  `Vec<blocker>` per attacker would carry an order that means nothing, giving
+  one rules state two digests.
 - `CombatBlockerAssignmentV1`, `BlockersDeclared` (event and delta) and the
   digest change in place. The digest's dual "3-element" compatibility form
   goes.
