@@ -60,14 +60,17 @@ battlefield leaves combat first (CR 506.4; see
 ## Events and replacement points
 
 The combat damage step emits, in this order, `CombatDamageDealt` (one
-assignment per creature that assigns damage: its source, its recipient, which is
-the defending player or a creature, and the amount), `LifeChanged` when the
+assignment for each source and recipient that receives damage: its source, its
+recipient, which is the defending player or a creature, and the amount, which is
+1 or more; an attacker whose damage is divided among its blockers has one
+assignment for each blocker with a share above 0), `LifeChanged` when the
 player lost life, one `MarkedDamageChanged` for each creature that was dealt
 damage, in object order, and `CombatDamageStepCompleted`. The events of the
 state-based actions that follow are in `rules/state-based-actions-combat`. Every
 assignment names a declared attacker or blocker and the recipient the combat
-sends its damage to, and the amounts add up to the player's life loss and to the
-damage marked on each creature. A creature destroyed in the same transition is
+sends its damage to, the assignments of a divided attacker add up to its power,
+and the amounts add up to the player's life loss and to the damage marked on
+each creature. A creature destroyed in the same transition is
 gone from the state it ends in, so its `MarkedDamageChanged` is checked as
 damage added to what it had before. There is no `DamageApplied` event: it
 overlapped these events and is deleted. There are no replacement points.

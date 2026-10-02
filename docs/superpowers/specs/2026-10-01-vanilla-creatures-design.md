@@ -1,16 +1,16 @@
 # Vanilla Creatures and Combat Design
 
 **Status:** revision 2, APPROVED by the owner on 2026-10-01 (after an Opus spec
-review, "approve with changes", whose points revision 2 addresses). Branch
-`feat/vanilla-creatures`.
+review, "approve with changes", whose points revision 2 addresses). Branches:
+`feat/vanilla-creatures` (steps 1 and 2), `feat/blocks-and-deaths` (step 3a) and
+`feat/creature-decks-fight` (step 3b).
 
 **Progress:** steps 1 and 2 were merged in #270 and step 3a in #272. Step 3b
 (creature decks fight) is done, on branch `feat/creature-decks-fight`: §7 says
 what each step delivered.
 
-**Depends on:** game start (#266, merged) and the public player state (#267).
-This branch is stacked on `feat/public-player-state` and rebases onto `master`
-once #267 merges.
+**Depends on:** game start (#266) and the public player state (#267), both
+merged.
 
 **Source archive:** `oracle-cards-20260925210158.jsonl.gz` was downloaded with
 the owner's OK on 2026-10-01:
@@ -337,6 +337,14 @@ The observation gains:
 
 Life, counts, tapped and attackers land with step 2. Blocks and damage land
 with step 3b.
+
+As built, "can attack" is each permanent's raw `controlled_since_turn`, from
+which the viewer derives whether it can attack (CR 302.6), and "current
+power/toughness" is the printed power and toughness, which are also the current
+ones because no observation is made for a creature that an effect or a counter
+could change (`docs/INFORMATION_MODEL.md`). The observation also has
+`pending_blocks` and `pending_damage_assignment`: the viewer's own answers so far
+in a block declaration or a damage division, and null for the other player.
 
 ## 7. Phasing
 
