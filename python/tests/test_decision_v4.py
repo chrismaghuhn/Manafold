@@ -157,8 +157,6 @@ class PlayerDecisionRequestV4Tests(unittest.TestCase):
             lambda item: item["candidates"][0].update(intent={"kind": "pass_priority"}),
             lambda item: item["candidates"][0]["intent"].pop("amount"),
             lambda item: item["candidates"][0]["intent"].pop("recipient"),
-            lambda item: item["candidates"][0]["intent"].update(amount=1),
-            lambda item: item["candidates"][0]["intent"].update(amount="01"),
             lambda item: item["candidates"][0]["intent"].update(amount=None),
             lambda item: item["candidates"][0]["intent"].update(attacker=None),
             lambda item: item["candidates"][1]["intent"].update(amount="0"),
@@ -170,6 +168,15 @@ class PlayerDecisionRequestV4Tests(unittest.TestCase):
             edited = copy.deepcopy(value)
             edit(edited)
             with self.assertRaises(WireError):
+                PlayerDecisionRequestV4.from_wire(edited)
+
+        # The amount is a canonical decimal string. These edits go on the last
+        # candidate, and keep the amounts ascending when read as numbers (the last
+        # is 3), so that nothing but the format check can reject them.
+        for amount in (3, 4, "03", "+3", "3.0", " 3"):
+            edited = copy.deepcopy(value)
+            edited["candidates"][3]["intent"]["amount"] = amount
+            with self.assertRaises(WireError, msg=f"amount {amount!r}"):
                 PlayerDecisionRequestV4.from_wire(edited)
 
         # Amounts compare as numbers, not as text: 10 comes after 9.

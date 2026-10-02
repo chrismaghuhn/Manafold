@@ -337,6 +337,10 @@ SCHEMA_POSITIVE_CASES = [
         "schemas/examples/player-step-v4-blocker-declaration.json",
     ),
     (
+        "player-step.v4.schema.json",
+        "schemas/examples/player-step-v4-combat-damage-assignment.json",
+    ),
+    (
         "player-decision-request.v4.schema.json",
         "schemas/examples/player-decision-request-v4-synthetic-entry.json",
     ),

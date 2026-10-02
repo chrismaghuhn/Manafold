@@ -174,5 +174,5 @@ and the damage undealt. Anything else fails closed, for priority requests too.
   `asymmetric_games_cast_attack_and_end_at_zero_life` plays ten seeded games of a
   creature deck against a land deck, in which creatures attack and unblocked
   combat damage is dealt; every game repeats and replays to the same
-  checkpoint. No smoke game reaches a block yet: a game of two creature decks
-  needs its random players to answer the division of damage.
+  checkpoint. No smoke game reaches a block: the land player has no creatures. A
+  game of two creature decks is not run yet.

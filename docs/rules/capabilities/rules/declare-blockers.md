@@ -163,4 +163,5 @@ was.
   `a_restored_blocked_attacker_has_its_blocker_until_the_damage_is_dealt`,
   `a_blocker_whose_attacker_died_is_still_blocking_until_combat_ends`.
 - The random smoke games do not reach a block: they pit a creature deck against
-  a land deck. Games of two creature decks come with damage division.
+  a land deck, whose player has no creatures. A game of two creature decks is not
+  run yet.

@@ -3256,8 +3256,9 @@ fn a_forged_partial_division_is_refused() {
 
     // The record is made by the transition that opens the damage step and
     // gains one answer with each revision after it, so the revision it was
-    // created at is the state's, less the answers. Every other value is
-    // refused.
+    // created at is the state's, less the answers. The values next to it and
+    // the first revision are refused; the sweep over every other value, which
+    // the same check refuses, is not worth its time.
     for (reached, answered) in [(&at_first, 0), (&half, 1)] {
         let created = |state: &EngineState| {
             state
@@ -3272,9 +3273,13 @@ fn a_forged_partial_division_is_refused() {
             created(&reached.state).0,
             reached.state.revision.0 - answered
         );
-        for revision in
-            (0..=reached.state.revision.0).filter(|revision| *revision != created(&reached.state).0)
-        {
+        let real = created(&reached.state).0;
+        let others: BTreeSet<u64> = [0, real - 1, real + 1]
+            .into_iter()
+            .filter(|revision| *revision != real)
+            .collect();
+        assert!(others.len() >= 2, "{others:?}");
+        for revision in others {
             let mut forged = reached.state.clone();
             forged
                 .execution
